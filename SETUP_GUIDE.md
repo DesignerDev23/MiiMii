@@ -78,10 +78,12 @@ BellBank provides virtual account services and bank transfer capabilities. Based
 ### Step 3: Get API Credentials
 After approval, you'll receive:
 ```env
-BELLBANK_API_URL=https://api.bellmfb.com/v1
-BELLBANK_API_KEY=your_api_key_here
-BELLBANK_MERCHANT_ID=your_merchant_id
+# From BellBank developer dashboard
+BELLBANK_CONSUMER_KEY=your_consumer_key_here
+BELLBANK_CONSUMER_SECRET=your_consumer_secret_here
 ```
+
+**Important**: BellBank uses a token-based authentication system. You'll use your `consumerKey` and `consumerSecret` to generate temporary access tokens (valid for up to 48 hours).
 
 ### Step 4: Webhook Configuration
 Configure webhook URL in BellBank dashboard:
@@ -90,32 +92,56 @@ Configure webhook URL in BellBank dashboard:
 
 ### Key BellBank Features to Implement:
 ```javascript
-// Virtual Account Creation
-POST /virtual-accounts
-{
-  "customer_id": "user_uuid",
-  "customer_name": "John Doe",
-  "customer_email": "john@example.com",
-  "customer_phone": "08012345678"
+// 1. Generate Access Token
+POST /v1/generate-token
+Headers: {
+  "consumerKey": "your_consumer_key",
+  "consumerSecret": "your_consumer_secret", 
+  "validityTime": "2880" // 48 hours in minutes
 }
 
-// Bank Transfer
-POST /transfers
+// 2. Create Virtual Account (Individual)
+POST /v1/account/clients/individual
 {
+  "firstname": "John",
+  "lastname": "Doe", 
+  "middlename": "Smith",
+  "phoneNumber": "08012345678",
+  "address": "123 Main Street",
+  "bvn": "12345678901",
+  "gender": "male",
+  "dateOfBirth": "1993/12/29",
+  "metadata": {}
+}
+
+// 3. Bank Transfer
+POST /v1/transfer
+{
+  "beneficiaryBankCode": "000013",
+  "beneficiaryAccountNumber": "0123456789",
+  "narration": "Transfer from MiiMii",
   "amount": 5000,
-  "recipient_bank_code": "058",
-  "recipient_account_number": "0123456789",
-  "recipient_name": "Jane Doe",
-  "narration": "Transfer from MiiMii"
+  "reference": "MIIMII_1234567890ABC",
+  "senderName": "MiiMii User"
 }
 
-// Account Validation
-POST /account-validation
+// 4. Account Name Enquiry
+POST /v1/transfer/name-enquiry
 {
-  "bank_code": "058",
-  "account_number": "0123456789"
+  "bankCode": "000013",
+  "accountNumber": "0123456789"
 }
+
+// 5. Get Bank List
+GET /v1/transfer/banks
+
+// 6. Transaction Status Query
+GET /v1/transactions/reference/{reference}
 ```
+
+### BellBank API Endpoints:
+- **Sandbox**: `https://sandbox-baas-api.bellmfb.com`
+- **Production**: `https://baas-api.bellmfb.com`
 
 ### 📖 Documentation
 - [BellBank API Docs](https://docs.bellmfb.com/)

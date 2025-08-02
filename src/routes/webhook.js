@@ -258,8 +258,12 @@ router.post('/dojah',
 
 // Webhook handler functions
 async function handleVirtualAccountCredit(data) {
+  // Handle BellBank webhook notification format
+  const bellbankService = require('../services/bellbank');
+  const processedData = bellbankService.handleWebhookNotification(data);
+
   const walletService = require('../services/wallet');
-  await walletService.creditWalletFromVirtualAccount(data);
+  await walletService.creditWalletFromVirtualAccount(processedData);
 }
 
 async function handleTransferCompleted(data) {

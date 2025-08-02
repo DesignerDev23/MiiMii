@@ -3,76 +3,96 @@ const logger = require('../utils/logger');
 
 class BellBankService {
   constructor() {
-    this.baseURL = process.env.BELLBANK_API_URL;
-    this.apiKey = process.env.BELLBANK_API_KEY;
-    this.merchantId = process.env.BELLBANK_MERCHANT_ID;
+    this.sandboxURL = 'https://sandbox-baas-api.bellmfb.com';
+    this.productionURL = 'https://baas-api.bellmfb.com';
+    this.baseURL = process.env.NODE_ENV === 'production' ? this.productionURL : this.sandboxURL;
+    this.consumerKey = process.env.BELLBANK_CONSUMER_KEY;
+    this.consumerSecret = process.env.BELLBANK_CONSUMER_SECRET;
+    this.validityTime = 2880; // 48 hours in minutes
+    this.token = null;
+    this.tokenExpiry = null;
   }
 
-  async createVirtualAccount(user) {
+  async generateToken() {
     try {
-      const payload = {
-        merchant_id: this.merchantId,
-        customer_id: user.id,
-        customer_name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.whatsappNumber,
-        customer_email: user.email || `${user.whatsappNumber}@miimii.app`,
-        customer_phone: user.whatsappNumber,
-        webhook_url: `${process.env.BASE_URL}/webhook/bellbank`
-      };
+      if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+        return this.token;
+      }
 
-      const response = await this.makeRequest('POST', '/virtual-accounts', payload);
-
-      logger.info('Virtual account created', {
-        userId: user.id,
-        accountNumber: response.data.account_number,
-        bankName: response.data.bank_name
+      const response = await axios.post(`${this.baseURL}/v1/generate-token`, {}, {
+        headers: {
+          'Content-Type': 'application/json',
+          'consumerKey': this.consumerKey,
+          'consumerSecret': this.consumerSecret,
+          'validityTime': this.validityTime.toString()
+        }
       });
 
-      return {
-        accountNumber: response.data.account_number,
-        bankName: response.data.bank_name,
-        accountName: response.data.account_name,
-        reference: response.data.reference
-      };
+      if (response.data.success) {
+        this.token = response.data.token;
+        // Set expiry to 47 hours to refresh before actual expiry
+        this.tokenExpiry = Date.now() + (this.validityTime - 60) * 60 * 1000;
+        
+        logger.info('BellBank token generated successfully');
+        return this.token;
+      } else {
+        throw new Error(response.data.message || 'Failed to generate token');
+      }
     } catch (error) {
-      logger.error('Failed to create virtual account', {
-        error: error.message,
-        userId: user.id
-      });
+      logger.error('Failed to generate BellBank token', { error: error.message });
       throw error;
     }
   }
 
-  async initiateTransfer(transferData) {
+  async createVirtualAccount(userData) {
     try {
+      const token = await this.generateToken();
+      
       const payload = {
-        merchant_id: this.merchantId,
-        amount: transferData.amount,
-        recipient_bank_code: transferData.bankCode,
-        recipient_account_number: transferData.accountNumber,
-        recipient_name: transferData.accountName,
-        narration: transferData.description || 'MiiMii Transfer',
-        reference: transferData.reference,
-        webhook_url: `${process.env.BASE_URL}/webhook/bellbank`
+        firstname: userData.firstName,
+        lastname: userData.lastName,
+        middlename: userData.middleName || '',
+        phoneNumber: userData.phoneNumber,
+        address: userData.address,
+        bvn: userData.bvn,
+        gender: userData.gender,
+        dateOfBirth: userData.dateOfBirth, // Format: 1993/12/29
+        metadata: userData.metadata || {}
       };
 
-      const response = await this.makeRequest('POST', '/transfers', payload);
-
-      logger.info('Transfer initiated', {
-        reference: transferData.reference,
-        amount: transferData.amount,
-        recipient: transferData.accountNumber
+      const response = await axios.post(`${this.baseURL}/v1/account/clients/individual`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
       });
 
-      return {
-        status: response.data.status,
-        reference: response.data.reference,
-        providerReference: response.data.provider_reference,
-        message: response.data.message
-      };
+      if (response.data.success) {
+        const accountData = response.data.data;
+        
+        logger.info('BellBank virtual account created', {
+          accountNumber: accountData.accountNumber,
+          accountName: accountData.accountName,
+          userId: userData.userId
+        });
+
+        return {
+          success: true,
+          accountNumber: accountData.accountNumber,
+          accountName: accountData.accountName,
+          accountType: accountData.accountType,
+          externalReference: accountData.externalReference,
+          validityType: accountData.validityType,
+          bankCode: '000023', // BellMonie bank code
+          bankName: 'BellMonie'
+        };
+      } else {
+        throw new Error(response.data.message || 'Failed to create virtual account');
+      }
     } catch (error) {
-      logger.error('Failed to initiate transfer', {
+      logger.error('Virtual account creation failed', { 
         error: error.message,
-        reference: transferData.reference
+        userData: { ...userData, bvn: '***' + userData.bvn?.slice(-4) }
       });
       throw error;
     }
@@ -80,13 +100,20 @@ class BellBankService {
 
   async getBankList() {
     try {
-      const response = await this.makeRequest('GET', '/banks');
+      const token = await this.generateToken();
+      
+      const response = await axios.get(`${this.baseURL}/v1/transfer/banks`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-      return response.data.banks.map(bank => ({
-        code: bank.code,
-        name: bank.name,
-        slug: bank.slug
-      }));
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to get bank list');
+      }
     } catch (error) {
       logger.error('Failed to get bank list', { error: error.message });
       throw error;
@@ -95,29 +122,102 @@ class BellBankService {
 
   async validateBankAccount(bankCode, accountNumber) {
     try {
+      const token = await this.generateToken();
+      
       const payload = {
-        bank_code: bankCode,
-        account_number: accountNumber
+        bankCode: bankCode,
+        accountNumber: accountNumber
       };
 
-      const response = await this.makeRequest('POST', '/account-validation', payload);
-
-      logger.info('Bank account validated', {
-        bankCode,
-        accountNumber,
-        accountName: response.data.account_name
+      const response = await axios.post(`${this.baseURL}/v1/transfer/name-enquiry`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
       });
 
-      return {
-        valid: response.data.valid,
-        accountName: response.data.account_name,
-        bankName: response.data.bank_name
-      };
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        return {
+          valid: data.responseCode === '00',
+          accountName: data.accountName,
+          bvn: data.bvn,
+          kycLevel: data.kycLevel,
+          sessionID: data.sessionID,
+          transactionId: data.transactionId
+        };
+      } else {
+        return {
+          valid: false,
+          error: response.data.message
+        };
+      }
     } catch (error) {
-      logger.error('Bank account validation failed', {
+      logger.error('Account validation failed', { 
         error: error.message,
         bankCode,
-        accountNumber
+        accountNumber: '***' + accountNumber?.slice(-4)
+      });
+      return {
+        valid: false,
+        error: error.message
+      };
+    }
+  }
+
+  async initiateTransfer(transferData) {
+    try {
+      const token = await this.generateToken();
+      
+      const payload = {
+        beneficiaryBankCode: transferData.bankCode,
+        beneficiaryAccountNumber: transferData.accountNumber,
+        narration: transferData.description || 'MiiMii transfer',
+        amount: parseFloat(transferData.amount),
+        reference: transferData.reference, // Should have business prefix
+        senderName: transferData.senderName || 'MiiMii User'
+      };
+
+      const response = await axios.post(`${this.baseURL}/v1/transfer`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        logger.info('BellBank transfer initiated', {
+          reference: data.reference,
+          amount: data.amount,
+          destinationAccountNumber: data.destinationAccountNumber,
+          status: data.status
+        });
+
+        return {
+          success: true,
+          providerReference: data.reference,
+          sessionId: data.sessionId,
+          amount: data.amount,
+          charge: data.charge,
+          netAmount: data.netAmount,
+          status: data.status,
+          destinationAccountName: data.destinationAccountName,
+          destinationBankName: data.destinationBankName,
+          message: response.data.message
+        };
+      } else {
+        throw new Error(response.data.message || 'Transfer failed');
+      }
+    } catch (error) {
+      logger.error('Transfer initiation failed', { 
+        error: error.message,
+        transferData: { 
+          ...transferData, 
+          accountNumber: '***' + transferData.accountNumber?.slice(-4) 
+        }
       });
       throw error;
     }
@@ -125,18 +225,36 @@ class BellBankService {
 
   async getTransactionStatus(reference) {
     try {
-      const response = await this.makeRequest('GET', `/transactions/${reference}`);
+      const token = await this.generateToken();
+      
+      const response = await axios.get(`${this.baseURL}/v1/transactions/reference/${reference}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-      return {
-        status: response.data.status,
-        reference: response.data.reference,
-        amount: response.data.amount,
-        fees: response.data.fees,
-        completedAt: response.data.completed_at,
-        failureReason: response.data.failure_reason
-      };
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        return {
+          success: true,
+          status: data.status,
+          amount: data.amount,
+          charge: data.charge,
+          description: data.description,
+          destinationAccountNumber: data.destinationAccountNumber,
+          destinationAccountName: data.destinationAccountName,
+          destinationBankName: data.destinationBankName,
+          reference: data.reference,
+          completedAt: data.completedAt,
+          transactionTypeName: data.transactionTypeName
+        };
+      } else {
+        throw new Error(response.data.message || 'Failed to get transaction status');
+      }
     } catch (error) {
-      logger.error('Failed to get transaction status', {
+      logger.error('Failed to get transaction status', { 
         error: error.message,
         reference
       });
@@ -144,149 +262,164 @@ class BellBankService {
     }
   }
 
-  async getVirtualAccountTransactions(accountNumber, startDate = null, endDate = null) {
+  async requeryTransfer(transactionId) {
     try {
-      const params = {
-        account_number: accountNumber
-      };
-
-      if (startDate) params.start_date = startDate;
-      if (endDate) params.end_date = endDate;
-
-      const response = await this.makeRequest('GET', '/virtual-accounts/transactions', params);
-
-      return response.data.transactions.map(transaction => ({
-        reference: transaction.reference,
-        amount: transaction.amount,
-        description: transaction.description,
-        senderName: transaction.sender_name,
-        senderBank: transaction.sender_bank,
-        createdAt: transaction.created_at,
-        status: transaction.status
-      }));
-    } catch (error) {
-      logger.error('Failed to get virtual account transactions', {
-        error: error.message,
-        accountNumber
-      });
-      throw error;
-    }
-  }
-
-  async calculateTransferFee(amount) {
-    try {
-      const response = await this.makeRequest('POST', '/transfer-fees', { amount });
-
-      const bellBankFee = parseFloat(response.data.fee);
-      const platformFee = parseFloat(process.env.PLATFORM_FEE) || 5;
-      const totalFee = bellBankFee + platformFee;
-
-      return {
-        bellBankFee,
-        platformFee,
-        totalFee,
-        totalAmount: parseFloat(amount) + totalFee
-      };
-    } catch (error) {
-      logger.error('Failed to calculate transfer fee', {
-        error: error.message,
-        amount
-      });
+      const token = await this.generateToken();
       
-      // Fallback fee calculation
-      const bellBankFee = 20; // Default BellBank fee
-      const platformFee = parseFloat(process.env.PLATFORM_FEE) || 5;
-      const totalFee = bellBankFee + platformFee;
-
-      return {
-        bellBankFee,
-        platformFee,
-        totalFee,
-        totalAmount: parseFloat(amount) + totalFee
-      };
-    }
-  }
-
-  async makeRequest(method, endpoint, data = null) {
-    try {
-      const config = {
-        method,
-        url: `${this.baseURL}${endpoint}`,
+      const response = await axios.get(`${this.baseURL}/v1/transfer/tsq?transactionId=${transactionId}`, {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Authorization': `Bearer ${token}`
         }
-      };
+      });
 
-      if (data) {
-        if (method === 'GET') {
-          config.params = data;
-        } else {
-          config.data = data;
-        }
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        return {
+          success: true,
+          transactionStatus: data.transactionStatus,
+          feedbackCode: data.feedbackCode,
+          feedbackDescription: data.feedbackDescription
+        };
+      } else {
+        throw new Error(response.data.message || 'Failed to requery transfer');
       }
-
-      const response = await axios(config);
-
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'API request failed');
-      }
-
-      return response.data;
     } catch (error) {
-      if (error.response) {
-        const apiError = error.response.data;
-        throw new Error(apiError.message || `API Error: ${error.response.status}`);
-      }
+      logger.error('Transfer requery failed', { 
+        error: error.message,
+        transactionId
+      });
       throw error;
     }
   }
 
-  // Helper method to get bank code by bank name
+  calculateTransferFee(amount) {
+    const transferAmount = parseFloat(amount);
+    
+    // BellBank charges (based on their response structure)
+    let bellbankFee = 10; // Standard BellBank fee from API response
+    const platformFee = parseFloat(process.env.PLATFORM_FEE || 5);
+    
+    // Calculate total fees
+    const totalFee = bellbankFee + platformFee;
+    const totalAmount = transferAmount + totalFee;
+
+    return {
+      originalAmount: transferAmount,
+      bellbankFee,
+      platformFee,
+      totalFee,
+      totalAmount
+    };
+  }
+
   getBankCodeByName(bankName) {
-    const bankCodes = {
-      'access bank': '044',
-      'diamond bank': '063',
-      'ecobank': '050',
-      'fidelity bank': '070',
-      'first bank': '011',
-      'fcmb': '214',
-      'gtbank': '058',
-      'heritage bank': '030',
-      'keystone bank': '082',
-      'polaris bank': '076',
-      'providus bank': '101',
-      'stanbic ibtc': '221',
-      'standard chartered': '068',
-      'sterling bank': '232',
-      'suntrust bank': '100',
-      'uba': '033',
-      'union bank': '032',
-      'unity bank': '215',
-      'wema bank': '035',
-      'zenith bank': '057',
-      'citibank': '023',
-      'coronation bank': '559',
-      'jaiz bank': '301',
-      'parallex bank': '526',
-      'taj bank': '302',
-      'titan trust bank': '102'
+    // Common Nigerian bank codes from BellBank documentation
+    const bankMap = {
+      'access': '000014',
+      'access bank': '000014',
+      'gtbank': '000013',
+      'gtb': '000013',
+      'guaranty trust bank': '000013',
+      'zenith': '000015',
+      'zenith bank': '000015',
+      'first bank': '000016',
+      'firstbank': '000016',
+      'uba': '000018',
+      'united bank for africa': '000018',
+      'union bank': '000018',
+      'fidelity': '000007',
+      'fidelity bank': '000007',
+      'sterling': '000021',
+      'sterling bank': '000021',
+      'fcmb': '000003',
+      'first city monument bank': '000003',
+      'unity bank': '000011',
+      'keystone bank': '000002',
+      'polaris bank': '000008',
+      'stanbic ibtc': '000012',
+      'wema bank': '000017',
+      'wema': '000017',
+      'providus bank': '000023',
+      'bellmonie': '000023' // BellBank's own code
     };
 
     const normalizedName = bankName.toLowerCase().trim();
-    return bankCodes[normalizedName] || null;
+    return bankMap[normalizedName] || null;
   }
 
-  // Method to format Nigerian bank account numbers
-  formatAccountNumber(accountNumber) {
-    const cleaned = accountNumber.replace(/\D/g, '');
-    
-    if (cleaned.length !== 10) {
-      throw new Error('Account number must be 10 digits');
+  // Handle webhook notification from BellBank
+  handleWebhookNotification(webhookData) {
+    try {
+      const {
+        event,
+        reference,
+        virtualAccount,
+        externalReference,
+        amountReceived,
+        transactionFee,
+        netAmount,
+        stampDuty,
+        sessionId,
+        sourceCurrency,
+        sourceAccountNumber,
+        sourceAccountName,
+        sourceBankCode,
+        sourceBankName,
+        remarks,
+        destinationCurrency,
+        status,
+        createdAt,
+        updatedAt
+      } = webhookData;
+
+      logger.info('BellBank webhook received', {
+        event,
+        reference,
+        virtualAccount,
+        amountReceived,
+        status
+      });
+
+      return {
+        event,
+        reference,
+        virtualAccount,
+        externalReference,
+        amount: parseFloat(amountReceived),
+        fee: parseFloat(transactionFee || 0),
+        netAmount: parseFloat(netAmount),
+        stampDuty: parseFloat(stampDuty || 0),
+        sessionId,
+        sourceAccountNumber,
+        sourceAccountName,
+        sourceBankCode,
+        sourceBankName,
+        remarks,
+        status,
+        createdAt: new Date(createdAt),
+        updatedAt: new Date(updatedAt)
+      };
+    } catch (error) {
+      logger.error('Failed to handle BellBank webhook', {
+        error: error.message,
+        webhookData
+      });
+      throw error;
     }
-    
-    return cleaned;
+  }
+
+  formatAccountNumber(accountNumber) {
+    // Remove any non-digit characters
+    return accountNumber.replace(/\D/g, '');
+  }
+
+  // Generate reference with business prefix as required by BellBank
+  generateReference(prefix = 'MIIMII') {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `${prefix}_${timestamp}${random}`;
   }
 }
 
