@@ -1,0 +1,529 @@
+const { Wallet, Transaction, User } = require('../models');
+const { sequelize } = require('../database/connection');
+const bellBankService = require('./bellbank');
+const logger = require('../utils/logger');
+const { v4: uuidv4 } = require('uuid');
+
+class WalletService {
+  async createWallet(userId) {
+    const transaction = await sequelize.transaction();
+    
+    try {
+      // Check if wallet already exists
+      const existingWallet = await Wallet.findOne({ where: { userId } });
+      if (existingWallet) {
+        await transaction.rollback();
+        return existingWallet;
+      }
+
+      // Create wallet
+      const wallet = await Wallet.create({
+        userId,
+        balance: 0.00,
+        ledgerBalance: 0.00,
+        currency: 'NGN'
+      }, { transaction });
+
+      // Get user for virtual account creation
+      const user = await User.findByPk(userId);
+      
+      // Create virtual account with BellBank
+      if (user.isKycComplete()) {
+        try {
+          const virtualAccount = await bellBankService.createVirtualAccount(user);
+          
+          await wallet.update({
+            virtualAccountNumber: virtualAccount.accountNumber,
+            virtualAccountBank: virtualAccount.bankName,
+            virtualAccountName: virtualAccount.accountName
+          }, { transaction });
+        } catch (error) {
+          logger.warn('Failed to create virtual account during wallet creation', {
+            error: error.message,
+            userId
+          });
+          // Continue without virtual account - can be created later
+        }
+      }
+
+      await transaction.commit();
+      
+      logger.info('Wallet created successfully', {
+        userId,
+        walletId: wallet.id,
+        hasVirtualAccount: !!wallet.virtualAccountNumber
+      });
+
+      return wallet;
+    } catch (error) {
+      await transaction.rollback();
+      logger.error('Failed to create wallet', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async getUserWallet(userId) {
+    try {
+      let wallet = await Wallet.findOne({ where: { userId } });
+      
+      if (!wallet) {
+        wallet = await this.createWallet(userId);
+      }
+
+      return wallet;
+    } catch (error) {
+      logger.error('Failed to get user wallet', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async creditWallet(userId, amount, description, metadata = {}) {
+    const transaction = await sequelize.transaction();
+    
+    try {
+      const wallet = await this.getUserWallet(userId);
+      const user = await User.findByPk(userId);
+
+      if (!wallet.isActive) {
+        throw new Error('Wallet is inactive');
+      }
+
+      const balanceBefore = parseFloat(wallet.balance);
+      const creditAmount = parseFloat(amount);
+      const balanceAfter = balanceBefore + creditAmount;
+
+      // Create transaction record
+      const txnRecord = await Transaction.create({
+        reference: this.generateReference(),
+        userId,
+        type: 'credit',
+        category: metadata.category || 'wallet_funding',
+        amount: creditAmount,
+        fee: 0,
+        totalAmount: creditAmount,
+        status: 'completed',
+        description,
+        balanceBefore,
+        balanceAfter,
+        metadata,
+        processedAt: new Date()
+      }, { transaction });
+
+      // Update wallet balance
+      await wallet.update({
+        previousBalance: balanceBefore,
+        balance: balanceAfter,
+        ledgerBalance: balanceAfter
+      }, { transaction });
+
+      await transaction.commit();
+
+      logger.info('Wallet credited successfully', {
+        userId,
+        amount: creditAmount,
+        reference: txnRecord.reference,
+        newBalance: balanceAfter
+      });
+
+      return {
+        transaction: txnRecord,
+        newBalance: balanceAfter,
+        previousBalance: balanceBefore
+      };
+    } catch (error) {
+      await transaction.rollback();
+      logger.error('Failed to credit wallet', { error: error.message, userId, amount });
+      throw error;
+    }
+  }
+
+  async debitWallet(userId, amount, description, metadata = {}) {
+    const transaction = await sequelize.transaction();
+    
+    try {
+      const wallet = await this.getUserWallet(userId);
+      const user = await User.findByPk(userId);
+
+      if (!wallet.isActive) {
+        throw new Error('Wallet is inactive');
+      }
+
+      if (wallet.isFrozen) {
+        throw new Error('Wallet is frozen');
+      }
+
+      const balanceBefore = parseFloat(wallet.balance);
+      const debitAmount = parseFloat(amount);
+      
+      if (balanceBefore < debitAmount) {
+        throw new Error('Insufficient balance');
+      }
+
+      const balanceAfter = balanceBefore - debitAmount;
+
+      // Create transaction record
+      const txnRecord = await Transaction.create({
+        reference: this.generateReference(),
+        userId,
+        type: 'debit',
+        category: metadata.category || 'wallet_transfer',
+        amount: debitAmount,
+        fee: metadata.fee || 0,
+        totalAmount: debitAmount + (metadata.fee || 0),
+        status: 'completed',
+        description,
+        balanceBefore,
+        balanceAfter,
+        metadata,
+        processedAt: new Date()
+      }, { transaction });
+
+      // Update wallet balance
+      await wallet.update({
+        previousBalance: balanceBefore,
+        balance: balanceAfter,
+        ledgerBalance: balanceAfter
+      }, { transaction });
+
+      await transaction.commit();
+
+      logger.info('Wallet debited successfully', {
+        userId,
+        amount: debitAmount,
+        reference: txnRecord.reference,
+        newBalance: balanceAfter
+      });
+
+      return {
+        transaction: txnRecord,
+        newBalance: balanceAfter,
+        previousBalance: balanceBefore
+      };
+    } catch (error) {
+      await transaction.rollback();
+      logger.error('Failed to debit wallet', { error: error.message, userId, amount });
+      throw error;
+    }
+  }
+
+  async transferBetweenWallets(fromUserId, toUserId, amount, description = 'Wallet transfer') {
+    const transaction = await sequelize.transaction();
+    
+    try {
+      const fromUser = await User.findByPk(fromUserId);
+      const toUser = await User.findByPk(toUserId);
+
+      if (!fromUser || !toUser) {
+        throw new Error('User not found');
+      }
+
+      if (!fromUser.canPerformTransactions()) {
+        throw new Error('Sender cannot perform transactions');
+      }
+
+      const transferAmount = parseFloat(amount);
+      const reference = this.generateReference();
+
+      // Debit sender
+      await this.debitWallet(fromUserId, transferAmount, description, {
+        category: 'wallet_transfer',
+        recipientUserId: toUserId,
+        recipientPhone: toUser.whatsappNumber,
+        transferReference: reference
+      });
+
+      // Credit receiver
+      await this.creditWallet(toUserId, transferAmount, description, {
+        category: 'wallet_funding',
+        senderUserId: fromUserId,
+        senderPhone: fromUser.whatsappNumber,
+        transferReference: reference
+      });
+
+      await transaction.commit();
+
+      logger.info('Wallet to wallet transfer completed', {
+        fromUserId,
+        toUserId,
+        amount: transferAmount,
+        reference
+      });
+
+      return {
+        reference,
+        amount: transferAmount,
+        sender: fromUser.whatsappNumber,
+        recipient: toUser.whatsappNumber
+      };
+    } catch (error) {
+      await transaction.rollback();
+      logger.error('Wallet transfer failed', { 
+        error: error.message, 
+        fromUserId, 
+        toUserId, 
+        amount 
+      });
+      throw error;
+    }
+  }
+
+  async creditWalletFromVirtualAccount(webhookData) {
+    try {
+      const { customer_id, amount, reference, sender_name, sender_bank } = webhookData;
+      
+      // Find user by customer_id (which should be the user ID)
+      const user = await User.findByPk(customer_id);
+      if (!user) {
+        throw new Error('User not found for virtual account credit');
+      }
+
+      // Apply transfer fee logic
+      const creditAmount = parseFloat(amount);
+      let finalAmount = creditAmount;
+      let fee = 0;
+
+      // Apply incoming transfer fees based on amount
+      if (creditAmount > 1000) {
+        fee = Math.round(creditAmount * 0.005); // 0.5% for amounts above ₦1,000
+        finalAmount = creditAmount - fee;
+      }
+      // Amounts ₦0-₦500 are free, ₦501-₦1000 are also free for now
+
+      const description = `Transfer from ${sender_name} (${sender_bank})`;
+
+      // Credit the wallet
+      const result = await this.creditWallet(user.id, finalAmount, description, {
+        category: 'wallet_funding',
+        virtualAccountCredit: true,
+        originalAmount: creditAmount,
+        fee,
+        senderName: sender_name,
+        senderBank: sender_bank,
+        providerReference: reference
+      });
+
+      // Send notification to user
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `💰 *Money Received!*\n\n` +
+        `Amount: ₦${finalAmount.toLocaleString()}\n` +
+        `From: ${sender_name}\n` +
+        `New Balance: ₦${result.newBalance.toLocaleString()}\n\n` +
+        `${fee > 0 ? `Fee: ₦${fee.toLocaleString()}\n` : ''}` +
+        `Reference: ${result.transaction.reference}`
+      );
+
+      logger.info('Virtual account credit processed', {
+        userId: user.id,
+        originalAmount: creditAmount,
+        finalAmount,
+        fee,
+        reference
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to process virtual account credit', {
+        error: error.message,
+        webhookData
+      });
+      throw error;
+    }
+  }
+
+  async freezeWallet(userId, reason = null) {
+    try {
+      const wallet = await this.getUserWallet(userId);
+      
+      await wallet.update({
+        isFrozen: true,
+        metadata: {
+          ...wallet.metadata,
+          frozenAt: new Date(),
+          freezeReason: reason
+        }
+      });
+
+      logger.info('Wallet frozen', { userId, reason });
+      
+      return wallet;
+    } catch (error) {
+      logger.error('Failed to freeze wallet', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async unfreezeWallet(userId) {
+    try {
+      const wallet = await this.getUserWallet(userId);
+      
+      await wallet.update({
+        isFrozen: false,
+        metadata: {
+          ...wallet.metadata,
+          unfrozenAt: new Date()
+        }
+      });
+
+      logger.info('Wallet unfrozen', { userId });
+      
+      return wallet;
+    } catch (error) {
+      logger.error('Failed to unfreeze wallet', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async createVirtualAccountForWallet(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      const wallet = await this.getUserWallet(userId);
+
+      if (!user.isKycComplete()) {
+        throw new Error('KYC verification required for virtual account');
+      }
+
+      if (wallet.virtualAccountNumber) {
+        return {
+          accountNumber: wallet.virtualAccountNumber,
+          bankName: wallet.virtualAccountBank,
+          accountName: wallet.virtualAccountName
+        };
+      }
+
+      const virtualAccount = await bellBankService.createVirtualAccount(user);
+      
+      await wallet.update({
+        virtualAccountNumber: virtualAccount.accountNumber,
+        virtualAccountBank: virtualAccount.bankName,
+        virtualAccountName: virtualAccount.accountName
+      });
+
+      logger.info('Virtual account created for existing wallet', {
+        userId,
+        accountNumber: virtualAccount.accountNumber
+      });
+
+      return virtualAccount;
+    } catch (error) {
+      logger.error('Failed to create virtual account for wallet', {
+        error: error.message,
+        userId
+      });
+      throw error;
+    }
+  }
+
+  async chargeMaintenanceFee(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      const wallet = await this.getUserWallet(userId);
+
+      if (!user.isActive || user.isBanned) {
+        return null; // Skip maintenance fee for inactive/banned users
+      }
+
+      const maintenanceFee = parseFloat(process.env.MAINTENANCE_FEE) || 100;
+      const lastCharge = wallet.lastMaintenanceFee;
+      const now = new Date();
+
+      // Check if maintenance fee is due (monthly)
+      if (lastCharge) {
+        const nextDue = new Date(lastCharge);
+        nextDue.setMonth(nextDue.getMonth() + 1);
+        
+        if (now < nextDue) {
+          return null; // Not due yet
+        }
+      }
+
+      // Check if wallet has sufficient balance
+      if (parseFloat(wallet.balance) < maintenanceFee) {
+        logger.warn('Insufficient balance for maintenance fee', {
+          userId,
+          balance: wallet.balance,
+          fee: maintenanceFee
+        });
+        return null; // Skip if insufficient balance
+      }
+
+      // Charge maintenance fee
+      const result = await this.debitWallet(
+        userId,
+        maintenanceFee,
+        'Monthly maintenance fee',
+        {
+          category: 'fee_charge',
+          feeType: 'maintenance'
+        }
+      );
+
+      // Update last maintenance fee date
+      await wallet.update({ lastMaintenanceFee: now });
+
+      // Send notification
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `📋 *Maintenance Fee Charged*\n\n` +
+        `Amount: ₦${maintenanceFee.toLocaleString()}\n` +
+        `New Balance: ₦${result.newBalance.toLocaleString()}\n\n` +
+        `This is your monthly account maintenance fee.`
+      );
+
+      logger.info('Maintenance fee charged', {
+        userId,
+        fee: maintenanceFee,
+        newBalance: result.newBalance
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to charge maintenance fee', {
+        error: error.message,
+        userId
+      });
+      throw error;
+    }
+  }
+
+  generateReference() {
+    return `MII_${Date.now()}_${uuidv4().slice(0, 8).toUpperCase()}`;
+  }
+
+  async getWalletBalance(userId) {
+    try {
+      const wallet = await this.getUserWallet(userId);
+      return {
+        available: parseFloat(wallet.balance),
+        ledger: parseFloat(wallet.ledgerBalance),
+        currency: wallet.currency
+      };
+    } catch (error) {
+      logger.error('Failed to get wallet balance', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async getWalletTransactions(userId, limit = 10, offset = 0) {
+    try {
+      const transactions = await Transaction.findAll({
+        where: { userId },
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset
+      });
+
+      return transactions;
+    } catch (error) {
+      logger.error('Failed to get wallet transactions', {
+        error: error.message,
+        userId
+      });
+      throw error;
+    }
+  }
+}
+
+module.exports = new WalletService();
