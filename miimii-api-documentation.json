@@ -1,0 +1,1727 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MiiMii Fintech Platform API",
+    "description": "WhatsApp-based fintech assistant platform with AI integration for banking, payments, and financial services",
+    "version": "1.0.0",
+    "contact": {
+      "name": "MiiMii Team",
+      "email": "support@miimii.com"
+    },
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://your-production-domain.com",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check endpoint",
+        "description": "Check the health status of the application and its dependencies",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service is degraded or unhealthy"
+          }
+        }
+      }
+    },
+    "/api/admin/dashboard": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get admin dashboard overview",
+        "description": "Retrieve comprehensive dashboard metrics and statistics",
+        "responses": {
+          "200": {
+            "description": "Dashboard data retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get all users with pagination",
+        "description": "Retrieve paginated list of users with optional filters",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "kycStatus",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "in_progress", "completed", "rejected"]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["active", "inactive", "banned"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Users retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/admin/users/{userId}": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get user details",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User details retrieved successfully"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/admin/users/{userId}/ban": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Ban a user",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["reason"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User banned successfully"
+          }
+        }
+      }
+    },
+    "/api/admin/users/{userId}/unban": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Unban a user",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User unbanned successfully"
+          }
+        }
+      }
+    },
+    "/api/wallet/balance/{phoneNumber}": {
+      "get": {
+        "tags": ["Wallet"],
+        "summary": "Get wallet balance",
+        "description": "Retrieve wallet balance for a user by phone number",
+        "parameters": [
+          {
+            "name": "phoneNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "08012345678"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Balance retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletBalanceResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/wallet/transactions/{phoneNumber}": {
+      "get": {
+        "tags": ["Wallet"],
+        "summary": "Get wallet transactions",
+        "description": "Retrieve transaction history for a user",
+        "parameters": [
+          {
+            "name": "phoneNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transactions retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/wallet/credit": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Credit user wallet",
+        "description": "Add funds to a user's wallet (admin function)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "08012345678"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 1,
+                    "example": 1000
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Manual credit"
+                  },
+                  "adminNote": {
+                    "type": "string"
+                  }
+                },
+                "required": ["phoneNumber", "amount", "description"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wallet credited successfully"
+          },
+          "400": {
+            "description": "Invalid request data"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/wallet/debit": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Debit user wallet",
+        "description": "Deduct funds from a user's wallet (admin function)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 1
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "adminNote": {
+                    "type": "string"
+                  }
+                },
+                "required": ["phoneNumber", "amount", "description"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wallet debited successfully"
+          }
+        }
+      }
+    },
+    "/api/wallet/freeze": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Freeze user wallet",
+        "description": "Freeze a user's wallet to prevent transactions",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["phoneNumber", "reason"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wallet frozen successfully"
+          }
+        }
+      }
+    },
+    "/api/wallet/unfreeze": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Unfreeze user wallet",
+        "description": "Unfreeze a user's wallet to allow transactions",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string"
+                  }
+                },
+                "required": ["phoneNumber"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wallet unfrozen successfully"
+          }
+        }
+      }
+    },
+    "/api/wallet/create-virtual-account": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Create virtual account",
+        "description": "Create a virtual bank account for a user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string"
+                  }
+                },
+                "required": ["phoneNumber"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Virtual account created successfully"
+          }
+        }
+      }
+    },
+    "/api/transactions/{reference}": {
+      "get": {
+        "tags": ["Transactions"],
+        "summary": "Get transaction by reference",
+        "description": "Retrieve transaction details using transaction reference",
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "MIIMII_TXN_123456"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction not found"
+          }
+        }
+      }
+    },
+    "/api/transactions": {
+      "get": {
+        "tags": ["Transactions"],
+        "summary": "Get transactions with filters",
+        "description": "Retrieve transactions with optional filtering and pagination",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "phoneNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "processing", "completed", "failed", "cancelled"]
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["credit", "debit", "transfer", "airtime", "data", "utility"]
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transactions retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/transactions/transfer": {
+      "post": {
+        "tags": ["Transactions"],
+        "summary": "Transfer funds",
+        "description": "Transfer funds between users or to external bank accounts",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "08012345678"
+                  },
+                  "recipientPhone": {
+                    "type": "string",
+                    "example": "08087654321"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 1,
+                    "example": 500
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Payment for services"
+                  },
+                  "pin": {
+                    "type": "string",
+                    "example": "1234"
+                  },
+                  "bankCode": {
+                    "type": "string",
+                    "description": "Bank code for external transfers"
+                  },
+                  "accountNumber": {
+                    "type": "string",
+                    "description": "Account number for external transfers"
+                  }
+                },
+                "required": ["phoneNumber", "amount", "pin"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transfer initiated successfully"
+          },
+          "400": {
+            "description": "Invalid request data"
+          },
+          "401": {
+            "description": "Invalid PIN"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "422": {
+            "description": "Insufficient funds"
+          }
+        }
+      }
+    },
+    "/api/transactions/stats/overview": {
+      "get": {
+        "tags": ["Transactions"],
+        "summary": "Get transaction statistics",
+        "description": "Retrieve transaction overview and statistics",
+        "responses": {
+          "200": {
+            "description": "Statistics retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/transactions/{reference}/status": {
+      "patch": {
+        "tags": ["Transactions"],
+        "summary": "Update transaction status",
+        "description": "Update the status of a transaction (admin function)",
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["pending", "processing", "completed", "failed", "cancelled"]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["status"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transaction status updated successfully"
+          }
+        }
+      }
+    },
+    "/api/kyc/start": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Start KYC process",
+        "description": "Initiate KYC verification process for a user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "08012345678"
+                  },
+                  "firstName": {
+                    "type": "string",
+                    "example": "John"
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "example": "Doe"
+                  },
+                  "middleName": {
+                    "type": "string",
+                    "example": "Michael"
+                  },
+                  "dateOfBirth": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "1990-01-01"
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": ["male", "female"],
+                    "example": "male"
+                  },
+                  "address": {
+                    "type": "string",
+                    "example": "123 Main Street, Lagos"
+                  },
+                  "bvn": {
+                    "type": "string",
+                    "pattern": "^[0-9]{11}$",
+                    "example": "12345678901"
+                  }
+                },
+                "required": ["phoneNumber", "firstName", "lastName", "dateOfBirth", "gender", "address", "bvn"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "KYC process started successfully"
+          },
+          "400": {
+            "description": "Invalid request data"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/kyc/status/{phoneNumber}": {
+      "get": {
+        "tags": ["KYC"],
+        "summary": "Get KYC status",
+        "description": "Retrieve KYC verification status and information for a user",
+        "parameters": [
+          {
+            "name": "phoneNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KYC status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KYCStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/kyc/update": {
+      "put": {
+        "tags": ["KYC"],
+        "summary": "Update KYC information",
+        "description": "Update KYC information for a user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string"
+                  },
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  },
+                  "middleName": {
+                    "type": "string"
+                  },
+                  "dateOfBirth": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": ["male", "female"]
+                  },
+                  "address": {
+                    "type": "string"
+                  }
+                },
+                "required": ["phoneNumber"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "KYC information updated successfully"
+          }
+        }
+      }
+    },
+    "/api/kyc/verify-bvn": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Verify BVN",
+        "description": "Verify Bank Verification Number",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string"
+                  },
+                  "bvn": {
+                    "type": "string",
+                    "pattern": "^[0-9]{11}$"
+                  }
+                },
+                "required": ["phoneNumber", "bvn"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "BVN verified successfully"
+          },
+          "400": {
+            "description": "Invalid BVN or verification failed"
+          }
+        }
+      }
+    },
+    "/api/kyc/submit-documents": {
+      "post": {
+        "tags": ["KYC"],
+        "summary": "Submit KYC documents",
+        "description": "Submit identity documents for KYC verification",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string"
+                  },
+                  "documentType": {
+                    "type": "string",
+                    "enum": ["id_card", "passport", "drivers_license"]
+                  },
+                  "document": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "selfie": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": ["phoneNumber", "documentType", "document"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Documents submitted successfully"
+          }
+        }
+      }
+    },
+    "/api/whatsapp/send-message": {
+      "post": {
+        "tags": ["WhatsApp"],
+        "summary": "Send text message",
+        "description": "Send a text message via WhatsApp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "example": "2348012345678"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Hello! Welcome to MiiMii."
+                  }
+                },
+                "required": ["to", "message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent successfully"
+          },
+          "400": {
+            "description": "Invalid request data"
+          }
+        }
+      }
+    },
+    "/api/whatsapp/send-button-message": {
+      "post": {
+        "tags": ["WhatsApp"],
+        "summary": "Send button message",
+        "description": "Send a message with interactive buttons via WhatsApp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "buttons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "example": "reply"
+                        },
+                        "reply": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": ["to", "text", "buttons"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Button message sent successfully"
+          }
+        }
+      }
+    },
+    "/api/whatsapp/send-list-message": {
+      "post": {
+        "tags": ["WhatsApp"],
+        "summary": "Send list message",
+        "description": "Send a message with interactive list via WhatsApp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "buttonText": {
+                    "type": "string"
+                  },
+                  "sections": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": ["to", "text", "buttonText", "sections"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "List message sent successfully"
+          }
+        }
+      }
+    },
+    "/api/whatsapp/media/{mediaId}": {
+      "get": {
+        "tags": ["WhatsApp"],
+        "summary": "Download media",
+        "description": "Download media file from WhatsApp",
+        "parameters": [
+          {
+            "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Media downloaded successfully",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/whatsapp/templates": {
+      "get": {
+        "tags": ["WhatsApp"],
+        "summary": "Get predefined message templates",
+        "description": "Retrieve predefined WhatsApp message templates",
+        "responses": {
+          "200": {
+            "description": "Templates retrieved successfully"
+          }
+        }
+      }
+    },
+    "/webhook/whatsapp": {
+      "get": {
+        "tags": ["Webhooks"],
+        "summary": "WhatsApp webhook verification",
+        "description": "Verify WhatsApp webhook endpoint",
+        "parameters": [
+          {
+            "name": "hub.mode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hub.verify_token",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hub.challenge",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook verified successfully"
+          },
+          "403": {
+            "description": "Forbidden - Invalid verification token"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Webhooks"],
+        "summary": "WhatsApp webhook handler",
+        "description": "Handle incoming WhatsApp messages and status updates",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "WhatsApp webhook payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully"
+          }
+        }
+      }
+    },
+    "/webhook/bellbank": {
+      "post": {
+        "tags": ["Webhooks"],
+        "summary": "BellBank webhook handler",
+        "description": "Handle BellBank transaction status updates",
+        "security": [
+          {
+            "webhookSignature": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "BellBank webhook payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully"
+          },
+          "401": {
+            "description": "Invalid webhook signature"
+          }
+        }
+      }
+    },
+    "/webhook/bilal": {
+      "post": {
+        "tags": ["Webhooks"],
+        "summary": "Bilal webhook handler",
+        "description": "Handle Bilal service transaction updates",
+        "security": [
+          {
+            "webhookSignature": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Bilal webhook payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully"
+          }
+        }
+      }
+    },
+    "/test/bellbank/token": {
+      "post": {
+        "tags": ["Testing"],
+        "summary": "Test BellBank token generation",
+        "description": "Test BellBank API token generation (development only)",
+        "responses": {
+          "200": {
+            "description": "Token generated successfully"
+          },
+          "500": {
+            "description": "Token generation failed"
+          }
+        }
+      }
+    },
+    "/test/bellbank/banks": {
+      "get": {
+        "tags": ["Testing"],
+        "summary": "Test BellBank bank list",
+        "description": "Test BellBank bank list retrieval (development only)",
+        "responses": {
+          "200": {
+            "description": "Bank list retrieved successfully"
+          }
+        }
+      }
+    },
+    "/test/bellbank/validate-account": {
+      "post": {
+        "tags": ["Testing"],
+        "summary": "Test BellBank account validation",
+        "description": "Test BellBank account validation (development only)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bankCode": {
+                    "type": "string",
+                    "example": "010"
+                  },
+                  "accountNumber": {
+                    "type": "string",
+                    "example": "1001011000"
+                  }
+                },
+                "required": ["bankCode", "accountNumber"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account validation successful"
+          }
+        }
+      }
+    },
+    "/test/bilal/airtime": {
+      "post": {
+        "tags": ["Testing"],
+        "summary": "Test Bilal airtime purchase",
+        "description": "Test Bilal airtime purchase (development only)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "08012345678"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "example": 100
+                  }
+                },
+                "required": ["phoneNumber", "amount"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Airtime purchase test successful"
+          }
+        }
+      }
+    },
+    "/test/bilal/data": {
+      "post": {
+        "tags": ["Testing"],
+        "summary": "Test Bilal data purchase",
+        "description": "Test Bilal data bundle purchase (development only)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "08012345678"
+                  },
+                  "dataSize": {
+                    "type": "string",
+                    "example": "1GB"
+                  },
+                  "dataPlanId": {
+                    "type": "integer",
+                    "example": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Data purchase test successful"
+          }
+        }
+      }
+    },
+    "/test/ai/analyze": {
+      "post": {
+        "tags": ["Testing"],
+        "summary": "Test AI intent analysis",
+        "description": "Test AI message intent analysis (development only)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "example": "Send 5000 naira to John on 08012345678"
+                  },
+                  "userContext": {
+                    "type": "object",
+                    "properties": {
+                      "userId": {
+                        "type": "string"
+                      },
+                      "phoneNumber": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "AI analysis completed successfully"
+          }
+        }
+      }
+    },
+    "/test/ocr": {
+      "post": {
+        "tags": ["Testing"],
+        "summary": "Test OCR processing",
+        "description": "Test optical character recognition (development only)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": ["image"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OCR processing completed successfully"
+          }
+        }
+      }
+    },
+    "/test/transcription": {
+      "post": {
+        "tags": ["Testing"],
+        "summary": "Test voice transcription",
+        "description": "Test voice message transcription (development only)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "audio": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": ["audio"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transcription completed successfully"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["OK", "DEGRADED"]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uptime": {
+            "type": "number"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "services": {
+            "type": "object",
+            "properties": {
+              "database": {
+                "type": "string",
+                "enum": ["healthy", "unhealthy", "unknown"]
+              },
+              "redis": {
+                "type": "string",
+                "enum": ["healthy", "unhealthy", "unknown"]
+              }
+            }
+          }
+        }
+      },
+      "DashboardResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "overview": {
+            "type": "object",
+            "properties": {
+              "totalUsers": {
+                "type": "integer"
+              },
+              "activeUsers": {
+                "type": "integer"
+              },
+              "totalTransactions": {
+                "type": "integer"
+              },
+              "totalVolume": {
+                "type": "number"
+              },
+              "pendingTransactions": {
+                "type": "integer"
+              },
+              "openTickets": {
+                "type": "integer"
+              }
+            }
+          },
+          "kycStats": {
+            "type": "object"
+          },
+          "transactionTypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "volume": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "recentTransactions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "WalletBalanceResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "balance": {
+            "type": "number"
+          },
+          "user": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "kycStatus": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "TransactionResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "transaction": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reference": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number"
+              },
+              "fee": {
+                "type": "number"
+              },
+              "totalAmount": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              },
+              "userPhone": {
+                "type": "string"
+              },
+              "recipientDetails": {
+                "type": "object"
+              },
+              "balanceBefore": {
+                "type": "number"
+              },
+              "balanceAfter": {
+                "type": "number"
+              },
+              "metadata": {
+                "type": "object"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "processedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "failureReason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "KYCStatusResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "kycStatus": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "completed", "rejected"]
+          },
+          "kycData": {
+            "type": "object"
+          },
+          "userInfo": {
+            "type": "object",
+            "properties": {
+              "firstName": {
+                "type": "string"
+              },
+              "lastName": {
+                "type": "string"
+              },
+              "middleName": {
+                "type": "string"
+              },
+              "dateOfBirth": {
+                "type": "string",
+                "format": "date"
+              },
+              "gender": {
+                "type": "string"
+              },
+              "address": {
+                "type": "string"
+              },
+              "bvn": {
+                "type": "string",
+                "description": "Masked BVN for security"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "msg": {
+                  "type": "string"
+                },
+                "param": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "webhookSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-webhook-signature"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Health check endpoints"
+    },
+    {
+      "name": "Admin",
+      "description": "Administrative operations"
+    },
+    {
+      "name": "Wallet",
+      "description": "Wallet management operations"
+    },
+    {
+      "name": "Transactions",
+      "description": "Transaction operations"
+    },
+    {
+      "name": "KYC",
+      "description": "Know Your Customer verification"
+    },
+    {
+      "name": "WhatsApp",
+      "description": "WhatsApp messaging operations"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Webhook endpoints for external services"
+    },
+    {
+      "name": "Testing",
+      "description": "Testing endpoints (development only)"
+    }
+  ]
+}
