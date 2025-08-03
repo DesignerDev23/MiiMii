@@ -1,0 +1,126 @@
+name: miimii-fintech-platform
+services:
+- name: api
+  source_dir: /
+  github:
+    repo: your-github-username/miimii-platform
+    branch: main
+  run_command: npm start
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  health_check:
+    http_path: /health
+    initial_delay_seconds: 10
+    period_seconds: 10
+    timeout_seconds: 5
+    success_threshold: 1
+    failure_threshold: 3
+  http_port: 3000
+  env:
+  - key: NODE_ENV
+    value: production
+  - key: PORT
+    value: "3000"
+  - key: JWT_SECRET
+    value: ${JWT_SECRET}
+  - key: WHATSAPP_ACCESS_TOKEN
+    value: ${WHATSAPP_ACCESS_TOKEN}
+  - key: WHATSAPP_PHONE_NUMBER_ID
+    value: ${WHATSAPP_PHONE_NUMBER_ID}
+  - key: WHATSAPP_BUSINESS_ACCOUNT_ID
+    value: ${WHATSAPP_BUSINESS_ACCOUNT_ID}
+  - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+    value: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN}
+  - key: BELLBANK_API_URL
+    value: ${BELLBANK_API_URL}
+  - key: BELLBANK_API_KEY
+    value: ${BELLBANK_API_KEY}
+  - key: BELLBANK_MERCHANT_ID
+    value: ${BELLBANK_MERCHANT_ID}
+  - key: BILAL_API_URL
+    value: ${BILAL_API_URL}
+  - key: BILAL_API_KEY
+    value: ${BILAL_API_KEY}
+  - key: BILAL_MERCHANT_ID
+    value: ${BILAL_MERCHANT_ID}
+  - key: DOJAH_API_URL
+    value: ${DOJAH_API_URL}
+  - key: DOJAH_APP_ID
+    value: ${DOJAH_APP_ID}
+  - key: DOJAH_SECRET_KEY
+    value: ${DOJAH_SECRET_KEY}
+  - key: OPENAI_API_KEY
+    value: ${OPENAI_API_KEY}
+  - key: OPENAI_MODEL
+    value: gpt-4-turbo
+  - key: GOOGLE_APPLICATION_CREDENTIALS
+    value: /app/gcp-service-account.json
+  - key: WEBHOOK_SECRET
+    value: ${WEBHOOK_SECRET}
+  - key: ADMIN_EMAIL
+    value: ${ADMIN_EMAIL}
+  - key: ADMIN_PASSWORD
+    value: ${ADMIN_PASSWORD}
+  - key: TRANSFER_FEE_PERCENTAGE
+    value: "0.5"
+  - key: PLATFORM_FEE
+    value: "5"
+  - key: BELLBANK_FEE
+    value: "20"
+  - key: MAINTENANCE_FEE
+    value: "100"
+  - key: DATA_PURCHASE_FEE
+    value: "10"
+  - key: RATE_LIMIT_WINDOW_MS
+    value: "900000"
+  - key: RATE_LIMIT_MAX_REQUESTS
+    value: "100"
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
+  - key: REDIS_URL
+    value: ${redis.REDIS_URL}
+  - key: BASE_URL
+    value: ${APP_URL}
+
+databases:
+- name: db
+  engine: PG
+  version: "14"
+  production: true
+  cluster_name: miimii-db-cluster
+
+- name: redis
+  engine: REDIS
+  version: "7"
+  production: true
+
+workers:
+- name: maintenance-worker
+  source_dir: /
+  run_command: node src/workers/maintenance.js
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  env:
+  - key: NODE_ENV
+    value: production
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
+  - key: REDIS_URL
+    value: ${redis.REDIS_URL}
+  - key: MAINTENANCE_FEE
+    value: "100"
+
+jobs:
+- name: db-migrate
+  source_dir: /
+  run_command: npm run migrate
+  environment_slug: node-js
+  instance_size_slug: basic-xxs
+  kind: PRE_DEPLOY
+  env:
+  - key: NODE_ENV
+    value: production
+  - key: DATABASE_URL
+    value: ${db.DATABASE_URL}
