@@ -5,22 +5,20 @@ spec:
 services:
 - name: api
   source_dir: /
-  github:
-    repo: your-github-username/miimii-platform
-    branch: main
-    deploy_on_push: true
   run_command: npm start
-  build_command: npm ci --only=production
+  build_command: |
+    npm install --production --no-optional --legacy-peer-deps
+    mkdir -p uploads/temp logs admin
   environment_slug: node-js
   instance_count: 2
   instance_size_slug: basic-s
   health_check:
     http_path: /health
-    initial_delay_seconds: 30
-    period_seconds: 10
-    timeout_seconds: 5
+    initial_delay_seconds: 60
+    period_seconds: 30
+    timeout_seconds: 10
     success_threshold: 1
-    failure_threshold: 3
+    failure_threshold: 5
   http_port: 3000
   routes:
   - path: /
