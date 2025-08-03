@@ -17,8 +17,8 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --only=production
+# Install dependencies using npm ci for cleaner builds
+RUN npm ci --only=production
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs
