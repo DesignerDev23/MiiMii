@@ -11,6 +11,7 @@ require('dotenv').config();
 
 const logger = require('./utils/logger');
 const { sequelize } = require('./database/connection');
+const redisClient = require('./utils/redis');
 const errorHandler = require('./middleware/errorHandler');
 
 // Route imports
@@ -59,13 +60,38 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/admin', express.static(path.join(__dirname, '../admin')));
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+app.get('/health', async (req, res) => {
+  const health = {
+    status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV 
-  });
+    environment: process.env.NODE_ENV,
+    services: {
+      database: 'unknown',
+      redis: 'unknown'
+    }
+  };
+
+  // Check database
+  try {
+    await sequelize.authenticate();
+    health.services.database = 'healthy';
+  } catch (error) {
+    health.services.database = 'unhealthy';
+    health.status = 'DEGRADED';
+  }
+
+  // Check Redis
+  try {
+    const redisHealthy = await redisClient.healthCheck();
+    health.services.redis = redisHealthy ? 'healthy' : 'unhealthy';
+    if (!redisHealthy) health.status = 'DEGRADED';
+  } catch (error) {
+    health.services.redis = 'unhealthy';
+    health.status = 'DEGRADED';
+  }
+
+  res.status(health.status === 'OK' ? 200 : 503).json(health);
 });
 
 // API Routes
@@ -97,6 +123,14 @@ async function startServer() {
     // Test database connection
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
+
+    // Initialize Redis connection
+    const redisConnected = await redisClient.connect();
+    if (redisConnected) {
+      logger.info('Redis connection established successfully');
+    } else {
+      logger.warn('Redis connection failed - continuing without Redis features');
+    }
 
     // Sync database models (use { force: true } only in development to recreate tables)
     if (process.env.NODE_ENV === 'development') {
@@ -130,6 +164,7 @@ process.on('uncaughtException', (err) => {
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
   await sequelize.close();
+  await redisClient.disconnect();
   process.exit(0);
 });
 

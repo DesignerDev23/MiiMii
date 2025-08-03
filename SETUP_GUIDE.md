@@ -422,9 +422,42 @@ DATABASE_URL=postgresql://username:password@host:port/database_name
 
 ---
 
-## 8. 🔄 Redis Setup (Optional)
+## 8. 🔄 Redis Setup
 
-### Local Redis
+### DigitalOcean Managed Redis (Recommended)
+
+Redis is automatically provisioned when using DigitalOcean App Platform:
+
+1. **Automatic Provisioning**
+   - Redis is defined in `.digitalocean/app.yaml`
+   - App Platform creates a managed Redis instance
+   - Connection URL is automatically provided as `REDIS_URL`
+
+2. **Configuration**
+   ```yaml
+   # In .digitalocean/app.yaml
+   databases:
+   - name: miimii-redis-db
+     engine: REDIS
+     version: "7"
+     production: true
+     cluster_name: miimii-redis-cluster
+     size: db-s-1vcpu-1gb
+     eviction_policy: allkeys-lru
+   ```
+
+3. **Features Available**
+   - Session management
+   - API rate limiting
+   - Transaction caching
+   - WhatsApp conversation state
+   - OTP storage
+   - Background job queues
+
+### Local Development Redis
+
+For local development:
+
 ```bash
 # Install Redis (Ubuntu/Debian)
 sudo apt update
@@ -433,12 +466,20 @@ sudo apt install redis-server
 # Start Redis
 sudo systemctl start redis-server
 sudo systemctl enable redis-server
+
+# Test connection
+redis-cli ping
 ```
 
-### Cloud Redis
-- **DigitalOcean Managed Redis**
-- **AWS ElastiCache**
+```env
+# Local development
+REDIS_URL=redis://localhost:6379
+```
+
+### Alternative Cloud Redis Providers
 - **Redis Cloud** (free tier available)
+- **AWS ElastiCache**
+- **Google Cloud Memorystore**
 
 ```env
 REDIS_URL=redis://username:password@host:port
