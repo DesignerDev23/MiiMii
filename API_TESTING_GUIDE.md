@@ -206,10 +206,10 @@ curl -X GET http://localhost:3000/api/wallet/transactions/08012345678 \
 
 ## 🔐 Dojah KYC Testing
 
-### 1. Test BVN Basic Lookup
+### 1. Test BVN Basic Validation
 
 ```bash
-curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn/full?bvn=22222222222" \
+curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn?bvn=22222222222" \
   -H "AppId: YOUR_APP_ID" \
   -H "Authorization: YOUR_SECRET_KEY" \
   -H "Content-Type: application/json"
@@ -219,32 +219,18 @@ curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn/full?bvn=22222222222" \
 ```json
 {
   "entity": {
-    "bvn": "22222222222",
-    "first_name": "JOHN",
-    "last_name": "DOE",
-    "middle_name": "AHMED",
-    "gender": "Male",
-    "date_of_birth": "1997-05-16",
-    "phone_number1": "08012345678",
-    "image": "BASE 64 IMAGE",
-    "phone_number2": "08012345678"
+    "bvn": {
+      "value": "22222222222",
+      "status": true
+    }
   }
 }
 ```
 
-### 2. Test BVN Advanced Lookup
+### 2. Test BVN Validation with Name and DOB Matching
 
 ```bash
-curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn/advance?bvn=22222222222" \
-  -H "AppId: YOUR_APP_ID" \
-  -H "Authorization: YOUR_SECRET_KEY" \
-  -H "Content-Type: application/json"
-```
-
-### 3. Test NIN Lookup
-
-```bash
-curl -X GET "https://sandbox.dojah.io/api/v1/kyc/nin?nin=70123456789" \
+curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn?bvn=22222222222&first_name=John&last_name=Doe&dob=1990-01-01" \
   -H "AppId: YOUR_APP_ID" \
   -H "Authorization: YOUR_SECRET_KEY" \
   -H "Content-Type: application/json"
@@ -254,17 +240,39 @@ curl -X GET "https://sandbox.dojah.io/api/v1/kyc/nin?nin=70123456789" \
 ```json
 {
   "entity": {
-    "first_name": "John",
-    "last_name": "Doe",
-    "gender": "Male",
-    "middle_name": "",
-    "photo": "/9j/4AAQSkZJRgABAgAAAQABAAD/2wBDAAgGBgc...",
-    "date_of_birth": "1982-01-01",
-    "email": "abc@gmail.com",
-    "phone_number": "08012345678",
-    "employment_status": "unemployment",
-    "marital_status": "Single"
+    "bvn": {
+      "value": "22222222222",
+      "status": true
+    },
+    "first_name": {
+      "confidence_value": 100,
+      "status": true
+    },
+    "last_name": {
+      "confidence_value": 95,
+      "status": true
+    },
+    "dob": {
+      "confidence_value": 100,
+      "status": true
+    }
   }
+}
+```
+
+### 3. Test BVN Validation Error Response
+
+```bash
+curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn?bvn=12345678901" \
+  -H "AppId: YOUR_APP_ID" \
+  -H "Authorization: YOUR_SECRET_KEY" \
+  -H "Content-Type: application/json"
+```
+
+**Expected Response:**
+```json
+{
+  "error": "BVN not found"
 }
 ```
 
@@ -309,15 +317,20 @@ curl -X POST http://localhost:3000/api/kyc/submit-documents \
 ### 7. Test KYC Service Directly
 
 ```bash
-# Test BVN lookup
+# Test BVN basic lookup
 curl -X POST http://localhost:3000/test/kyc/bvn \
   -H "Content-Type: application/json" \
   -d '{"bvn": "22222222222"}'
 
-# Test NIN lookup  
-curl -X POST http://localhost:3000/test/kyc/nin \
+# Test BVN validation with matching
+curl -X POST http://localhost:3000/test/kyc/bvn-validate \
   -H "Content-Type: application/json" \
-  -d '{"nin": "70123456789"}'
+  -d '{
+    "bvn": "22222222222",
+    "firstName": "John",
+    "lastName": "Doe", 
+    "dateOfBirth": "1990-01-01"
+  }'
 ```
 
 ---

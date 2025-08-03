@@ -15,7 +15,7 @@ class KYCService {
 
   async startKycProcess(user, phoneNumber, kycData, extractedData = null) {
     try {
-      const { firstName, lastName, middleName, dateOfBirth, gender, address, bvn, nin } = kycData;
+      const { firstName, lastName, middleName, dateOfBirth, gender, address, bvn } = kycData;
       
       // Update user with KYC data
       await userService.updateUser(user.id, {
@@ -26,14 +26,12 @@ class KYCService {
         gender,
         address,
         bvn,
-        nin,
         kycStatus: 'pending',
         kycData: {
           submittedAt: new Date(),
           extractedData,
           verificationSteps: {
             bvnVerification: false,
-            ninVerification: false,
             phoneVerification: false
           }
         }
@@ -44,12 +42,6 @@ class KYCService {
       if (bvn) {
         bvnVerification = await this.verifyBvn(bvn, user);
       }
-      
-      // Start NIN verification if provided
-      let ninVerification = { verified: false };
-      if (nin) {
-        ninVerification = await this.verifyNin(nin, user);
-      }
 
       const reference = `KYC_${Date.now()}_${uuidv4().slice(0, 8)}`;
 
@@ -59,18 +51,15 @@ class KYCService {
         `Reference: ${reference}\n\n` +
         `✅ Personal details recorded\n` +
         `${bvnVerification.verified ? '✅' : '⏳'} BVN verification ${bvn ? '(processing)' : '(pending)'}\n` +
-        `${ninVerification.verified ? '✅' : '⏳'} NIN verification ${nin ? '(processing)' : '(pending)'}\n` +
         `⏳ Phone verification pending\n\n` +
         `${!bvn ? 'Please provide your 11-digit BVN.\n' : ''}` +
-        `${!nin ? 'Please provide your 11-digit NIN.\n' : ''}` +
         `Send a clear photo of your ID card, driver's license, or passport to complete verification.`
       );
 
       logger.info('KYC process started', {
         userId: user.id,
         reference,
-        bvnVerified: bvnVerification.verified,
-        ninVerified: ninVerification.verified
+        bvnVerified: bvnVerification.verified
       });
 
       return {
@@ -78,7 +67,6 @@ class KYCService {
         kycStatus: 'pending',
         verificationSteps: {
           bvnVerification: bvnVerification.verified,
-          ninVerification: ninVerification.verified,
           phoneVerification: false
         }
       };
@@ -88,22 +76,39 @@ class KYCService {
     }
   }
 
-  async verifyBvn(bvn, user, advanced = false) {
+  async verifyBvn(bvn, user) {
     try {
       if (!bvn || bvn.length !== 11) {
         throw new Error('BVN must be 11 digits');
       }
 
-      const endpoint = advanced ? '/api/v1/kyc/bvn/advance' : '/api/v1/kyc/bvn/full';
-      const response = await this.makeRequest('GET', endpoint, { bvn });
+      // Build query parameters for BVN validation
+      const params = {
+        bvn: bvn
+      };
+
+      // Add optional parameters if available
+      if (user.firstName) {
+        params.first_name = user.firstName;
+      }
+      if (user.lastName) {
+        params.last_name = user.lastName;
+      }
+      if (user.dateOfBirth) {
+        // Convert to YYYY-MM-DD format if needed
+        const dobFormatted = new Date(user.dateOfBirth).toISOString().split('T')[0];
+        params.dob = dobFormatted;
+      }
+
+      const response = await this.makeRequest('GET', '/api/v1/kyc/bvn', params);
 
       if (response.entity) {
         const entity = response.entity;
         
-        // Cross-check names for verification
-        const nameMatch = this.crossCheckNames(user, entity);
+        // Process validation results
+        const validationResult = this.processBvnValidation(entity, user);
         
-        if (nameMatch.isValid) {
+        if (validationResult.isValid) {
           // Update user KYC data
           await userService.updateUser(user.id, {
             kycData: {
@@ -111,19 +116,9 @@ class KYCService {
               bvnVerification: {
                 verified: true,
                 verifiedAt: new Date(),
-                confidence: nameMatch.confidence,
-                details: {
-                  fullName: `${entity.first_name} ${entity.middle_name || ''} ${entity.last_name}`.trim(),
-                  dateOfBirth: entity.date_of_birth,
-                  phoneNumber: entity.phone_number1,
-                  gender: entity.gender,
-                  email: entity.email,
-                  enrollmentBank: entity.enrollment_bank,
-                  nationality: entity.nationality,
-                  stateOfOrigin: entity.state_of_origin,
-                  maritalStatus: entity.marital_status,
-                  watchListed: entity.watch_listed
-                }
+                confidence: validationResult.overallConfidence,
+                validationDetails: entity,
+                matchedFields: validationResult.matchedFields
               }
             }
           });
@@ -131,16 +126,18 @@ class KYCService {
           logger.info('BVN verification successful', {
             userId: user.id,
             bvn: '***' + bvn.slice(-4),
-            confidence: nameMatch.confidence
+            confidence: validationResult.overallConfidence,
+            matchedFields: validationResult.matchedFields
           });
 
           return {
             verified: true,
-            confidence: nameMatch.confidence,
+            confidence: validationResult.overallConfidence,
+            matchedFields: validationResult.matchedFields,
             details: entity
           };
         } else {
-          throw new Error(`BVN verification failed - ${nameMatch.reason}`);
+          throw new Error(`BVN verification failed - ${validationResult.reason}`);
         }
       } else {
         throw new Error('BVN verification failed - invalid response');
@@ -157,6 +154,73 @@ class KYCService {
         error: error.message
       };
     }
+  }
+
+  processBvnValidation(entity, user) {
+    let overallConfidence = 0;
+    let matchedFields = [];
+    let totalChecks = 0;
+
+    // Check BVN status
+    if (entity.bvn && entity.bvn.status === true) {
+      overallConfidence += 40; // BVN exists and is valid
+      matchedFields.push('bvn_valid');
+      totalChecks++;
+    } else {
+      return {
+        isValid: false,
+        reason: 'BVN not found or invalid',
+        overallConfidence: 0,
+        matchedFields: []
+      };
+    }
+
+    // Check first name if provided
+    if (entity.first_name && user.firstName) {
+      totalChecks++;
+      if (entity.first_name.status === true) {
+        const confidence = entity.first_name.confidence_value || 0;
+        overallConfidence += (confidence / 100) * 30; // Weight: 30%
+        matchedFields.push(`first_name_${confidence}%`);
+      }
+    }
+
+    // Check last name if provided  
+    if (entity.last_name && user.lastName) {
+      totalChecks++;
+      if (entity.last_name.status === true) {
+        const confidence = entity.last_name.confidence_value || 0;
+        overallConfidence += (confidence / 100) * 30; // Weight: 30%
+        matchedFields.push(`last_name_${confidence}%`);
+      }
+    }
+
+    // Check date of birth if provided
+    if (entity.dob && user.dateOfBirth) {
+      totalChecks++;
+      if (entity.dob.status === true) {
+        const confidence = entity.dob.confidence_value || 0;
+        overallConfidence += (confidence / 100) * 20; // Weight: 20%
+        matchedFields.push(`dob_${confidence}%`);
+      }
+    }
+
+    // Calculate final confidence (normalize if less than 4 checks)
+    if (totalChecks > 1) {
+      overallConfidence = Math.min(100, overallConfidence);
+    }
+
+    const isValid = overallConfidence >= 70; // Minimum 70% confidence required
+    const reason = isValid ? 'Verification successful' : 
+                   overallConfidence < 40 ? 'BVN validation failed' : 
+                   'Insufficient confidence in matching details';
+
+    return {
+      isValid,
+      overallConfidence: Math.round(overallConfidence),
+      reason,
+      matchedFields
+    };
   }
 
   async verifyNin(nin, user) {
@@ -321,7 +385,7 @@ class KYCService {
       const kycData = user.kycData || {};
 
       const allVerified = 
-        (kycData.bvnVerification?.verified || kycData.ninVerification?.verified) &&
+        kycData.bvnVerification?.verified &&
         kycData.phoneVerification?.verified;
 
       if (allVerified) {
@@ -534,7 +598,7 @@ class KYCService {
     } catch (error) {
       if (error.response) {
         const apiError = error.response.data;
-        throw new Error(apiError.message || `Dojah API Error: ${error.response.status}`);
+        throw new Error(apiError.error || `Dojah API Error: ${error.response.status}`);
       }
       throw error;
     }
@@ -548,24 +612,22 @@ class KYCService {
     return {
       names: extractedData.names || [],
       dates: extractedData.dates || [],
-      bvnNumbers: extractedData.bvnNumbers || [],
-      ninNumbers: this.extractNinNumbers(text),
+      bvnNumbers: this.extractBvnNumbers(text),
       documentNumbers: this.extractDocumentNumbers(text),
       confidence: ocrResult.confidence || 0
     };
   }
 
-  extractNinNumbers(text) {
-    // Extract NIN pattern (11 digits)
-    const ninPattern = /\b\d{11}\b/g;
-    const matches = text.match(ninPattern);
+  extractBvnNumbers(text) {
+    // Extract BVN pattern (11 digits)
+    const bvnPattern = /\b\d{11}\b/g;
+    const matches = text.match(bvnPattern);
     return matches || [];
   }
 
   extractDocumentNumbers(text) {
     // Extract various Nigerian document number patterns
     const patterns = {
-      nin: /\b\d{11}\b/g, // NIN format (11 digits)
       bvn: /\b\d{11}\b/g, // BVN format (11 digits)
       driversLicense: /\b[A-Z]{3}\s?\d{8}\b/g, // Driver's license
       passport: /\b[A-Z]\d{8}\b/g, // Passport number
@@ -589,7 +651,7 @@ class KYCService {
     try {
       // Use test BVN from documentation
       const testBvn = '22222222222';
-      const response = await this.makeRequest('GET', '/api/v1/kyc/bvn/full', { bvn: testBvn });
+      const response = await this.makeRequest('GET', '/api/v1/kyc/bvn', { bvn: testBvn });
       
       logger.info('Test BVN lookup successful', { response });
       return response;
@@ -599,16 +661,23 @@ class KYCService {
     }
   }
 
-  async testNinLookup() {
+  async testBvnValidation(firstName = 'John', lastName = 'Doe', dateOfBirth = '1990-01-01') {
     try {
-      // Use test NIN from documentation
-      const testNin = '70123456789';
-      const response = await this.makeRequest('GET', '/api/v1/kyc/nin', { nin: testNin });
+      // Use test BVN with validation parameters
+      const testBvn = '22222222222';
+      const params = {
+        bvn: testBvn,
+        first_name: firstName,
+        last_name: lastName,
+        dob: dateOfBirth
+      };
       
-      logger.info('Test NIN lookup successful', { response });
+      const response = await this.makeRequest('GET', '/api/v1/kyc/bvn', params);
+      
+      logger.info('Test BVN validation successful', { response, params });
       return response;
     } catch (error) {
-      logger.error('Test NIN lookup failed', { error: error.message });
+      logger.error('Test BVN validation failed', { error: error.message });
       throw error;
     }
   }

@@ -257,25 +257,42 @@ DOJAH_SECRET_KEY=your_secret_key_here
 
 ### Key Dojah Features to Implement:
 ```javascript
-// 1. BVN Basic Lookup
-GET /api/v1/kyc/bvn/full?bvn=22222222222
+// BVN Validation (Basic)
+GET /api/v1/kyc/bvn?bvn=22222222222
 Headers: {
   "AppId": "your_app_id",
   "Authorization": "your_secret_key"
 }
 
-// 2. BVN Advanced Lookup (More Details)
-GET /api/v1/kyc/bvn/advance?bvn=22222222222
-Headers: {
-  "AppId": "your_app_id", 
-  "Authorization": "your_secret_key"
-}
-
-// 3. NIN Lookup
-GET /api/v1/kyc/nin?nin=70123456789
+// BVN Validation with Name and DOB Matching
+GET /api/v1/kyc/bvn?bvn=22222222222&first_name=John&last_name=Doe&dob=1990-01-01
 Headers: {
   "AppId": "your_app_id",
   "Authorization": "your_secret_key"
+}
+```
+
+**Expected Response:**
+```json
+{
+  "entity": {
+    "bvn": {
+      "value": "22222222222",
+      "status": true
+    },
+    "first_name": {
+      "confidence_value": 100,
+      "status": true
+    },
+    "last_name": {
+      "confidence_value": 95,
+      "status": true
+    },
+    "dob": {
+      "confidence_value": 100,
+      "status": true
+    }
+  }
 }
 ```
 
@@ -285,9 +302,8 @@ Headers: {
 
 ### Test Credentials for Sandbox:
 - **Test BVN**: `22222222222`
-- **Test NIN**: `70123456789`
 
-**Note**: Use these test credentials only in the sandbox environment for testing your integration.
+**Note**: The confidence_value indicates how closely the provided information matches the BVN record (0-100%). Status indicates if the validation was successful.
 
 ### 📖 Documentation
 - [Dojah API Documentation](https://docs.dojah.io/)

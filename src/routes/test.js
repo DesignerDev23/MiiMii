@@ -56,14 +56,17 @@ if (process.env.NODE_ENV !== 'production') {
     }
   });
 
-  router.post('/kyc/nin', async (req, res) => {
+  router.post('/kyc/bvn-validate', async (req, res) => {
     try {
-      const { nin } = req.body;
-      const testNin = nin || '70123456789'; // Use test NIN if not provided
-      const result = await kycService.testNinLookup();
+      const { bvn, firstName, lastName, dateOfBirth } = req.body;
+      const result = await kycService.testBvnValidation(
+        firstName || 'John',
+        lastName || 'Doe', 
+        dateOfBirth || '1990-01-01'
+      );
       res.json({ success: true, result });
     } catch (error) {
-      logger.error('Dojah NIN test failed', { error: error.message });
+      logger.error('Dojah BVN validation test failed', { error: error.message });
       res.status(500).json({ success: false, error: error.message });
     }
   });
