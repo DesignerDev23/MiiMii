@@ -204,9 +204,71 @@ curl -X GET http://localhost:3000/api/wallet/transactions/08012345678 \
 
 ---
 
-## 🔐 KYC Testing
+## 🔐 Dojah KYC Testing
 
-### 1. Test KYC Initiation
+### 1. Test BVN Basic Lookup
+
+```bash
+curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn/full?bvn=22222222222" \
+  -H "AppId: YOUR_APP_ID" \
+  -H "Authorization: YOUR_SECRET_KEY" \
+  -H "Content-Type: application/json"
+```
+
+**Expected Response:**
+```json
+{
+  "entity": {
+    "bvn": "22222222222",
+    "first_name": "JOHN",
+    "last_name": "DOE",
+    "middle_name": "AHMED",
+    "gender": "Male",
+    "date_of_birth": "1997-05-16",
+    "phone_number1": "08012345678",
+    "image": "BASE 64 IMAGE",
+    "phone_number2": "08012345678"
+  }
+}
+```
+
+### 2. Test BVN Advanced Lookup
+
+```bash
+curl -X GET "https://sandbox.dojah.io/api/v1/kyc/bvn/advance?bvn=22222222222" \
+  -H "AppId: YOUR_APP_ID" \
+  -H "Authorization: YOUR_SECRET_KEY" \
+  -H "Content-Type: application/json"
+```
+
+### 3. Test NIN Lookup
+
+```bash
+curl -X GET "https://sandbox.dojah.io/api/v1/kyc/nin?nin=70123456789" \
+  -H "AppId: YOUR_APP_ID" \
+  -H "Authorization: YOUR_SECRET_KEY" \
+  -H "Content-Type: application/json"
+```
+
+**Expected Response:**
+```json
+{
+  "entity": {
+    "first_name": "John",
+    "last_name": "Doe",
+    "gender": "Male",
+    "middle_name": "",
+    "photo": "/9j/4AAQSkZJRgABAgAAAQABAAD/2wBDAAgGBgc...",
+    "date_of_birth": "1982-01-01",
+    "email": "abc@gmail.com",
+    "phone_number": "08012345678",
+    "employment_status": "unemployment",
+    "marital_status": "Single"
+  }
+}
+```
+
+### 4. Test KYC Initiation via MiiMii API
 
 ```bash
 curl -X POST http://localhost:3000/api/kyc/start \
@@ -218,22 +280,23 @@ curl -X POST http://localhost:3000/api/kyc/start \
     "dateOfBirth": "1990-01-01",
     "gender": "male",
     "address": "123 Main Street, Lagos",
-    "bvn": "12345678901"
+    "bvn": "22222222222",
+    "nin": "70123456789"
   }'
 ```
 
-### 2. Test BVN Verification
+### 5. Test BVN Verification via MiiMii API
 
 ```bash
 curl -X POST http://localhost:3000/api/kyc/verify-bvn \
   -H "Content-Type: application/json" \
   -d '{
     "phoneNumber": "08012345678",
-    "bvn": "12345678901"
+    "bvn": "22222222222"
   }'
 ```
 
-### 3. Test Document Submission
+### 6. Test Document Submission
 
 ```bash
 curl -X POST http://localhost:3000/api/kyc/submit-documents \
@@ -241,6 +304,20 @@ curl -X POST http://localhost:3000/api/kyc/submit-documents \
   -F "phoneNumber=08012345678" \
   -F "documentType=drivers_license" \
   -F "document=@drivers-license.jpg"
+```
+
+### 7. Test KYC Service Directly
+
+```bash
+# Test BVN lookup
+curl -X POST http://localhost:3000/test/kyc/bvn \
+  -H "Content-Type: application/json" \
+  -d '{"bvn": "22222222222"}'
+
+# Test NIN lookup  
+curl -X POST http://localhost:3000/test/kyc/nin \
+  -H "Content-Type: application/json" \
+  -d '{"nin": "70123456789"}'
 ```
 
 ---

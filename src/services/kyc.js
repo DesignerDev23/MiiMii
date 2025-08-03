@@ -6,14 +6,16 @@ const { v4: uuidv4 } = require('uuid');
 
 class KYCService {
   constructor() {
-    this.baseURL = process.env.DOJAH_API_URL;
+    this.sandboxURL = 'https://sandbox.dojah.io';
+    this.productionURL = 'https://api.dojah.io';
+    this.baseURL = process.env.NODE_ENV === 'production' ? this.productionURL : this.sandboxURL;
     this.appId = process.env.DOJAH_APP_ID;
     this.secretKey = process.env.DOJAH_SECRET_KEY;
   }
 
   async startKycProcess(user, phoneNumber, kycData, extractedData = null) {
     try {
-      const { firstName, lastName, middleName, dateOfBirth, gender, address, bvn } = kycData;
+      const { firstName, lastName, middleName, dateOfBirth, gender, address, bvn, nin } = kycData;
       
       // Update user with KYC data
       await userService.updateUser(user.id, {
@@ -24,23 +26,30 @@ class KYCService {
         gender,
         address,
         bvn,
+        nin,
         kycStatus: 'pending',
         kycData: {
           submittedAt: new Date(),
           extractedData,
           verificationSteps: {
             bvnVerification: false,
-            phoneVerification: false,
-            documentVerification: false
+            ninVerification: false,
+            phoneVerification: false
           }
         }
       });
 
-      // Start BVN verification
-      const bvnVerification = await this.verifyBvn(bvn, user);
+      // Start BVN verification if provided
+      let bvnVerification = { verified: false };
+      if (bvn) {
+        bvnVerification = await this.verifyBvn(bvn, user);
+      }
       
-      // Start phone verification
-      const phoneVerification = await this.verifyPhoneNumber(phoneNumber, user);
+      // Start NIN verification if provided
+      let ninVerification = { verified: false };
+      if (nin) {
+        ninVerification = await this.verifyNin(nin, user);
+      }
 
       const reference = `KYC_${Date.now()}_${uuidv4().slice(0, 8)}`;
 
@@ -49,17 +58,19 @@ class KYCService {
         `✅ *KYC Process Started*\n\n` +
         `Reference: ${reference}\n\n` +
         `✅ Personal details recorded\n` +
-        `${bvnVerification.verified ? '✅' : '⏳'} BVN verification\n` +
-        `${phoneVerification.verified ? '✅' : '⏳'} Phone verification\n` +
-        `⏳ Document verification pending\n\n` +
-        `Please send a clear photo of your ID card, driver's license, or passport to complete verification.`
+        `${bvnVerification.verified ? '✅' : '⏳'} BVN verification ${bvn ? '(processing)' : '(pending)'}\n` +
+        `${ninVerification.verified ? '✅' : '⏳'} NIN verification ${nin ? '(processing)' : '(pending)'}\n` +
+        `⏳ Phone verification pending\n\n` +
+        `${!bvn ? 'Please provide your 11-digit BVN.\n' : ''}` +
+        `${!nin ? 'Please provide your 11-digit NIN.\n' : ''}` +
+        `Send a clear photo of your ID card, driver's license, or passport to complete verification.`
       );
 
       logger.info('KYC process started', {
         userId: user.id,
         reference,
         bvnVerified: bvnVerification.verified,
-        phoneVerified: phoneVerification.verified
+        ninVerified: ninVerification.verified
       });
 
       return {
@@ -67,8 +78,8 @@ class KYCService {
         kycStatus: 'pending',
         verificationSteps: {
           bvnVerification: bvnVerification.verified,
-          phoneVerification: phoneVerification.verified,
-          documentVerification: false
+          ninVerification: ninVerification.verified,
+          phoneVerification: false
         }
       };
     } catch (error) {
@@ -77,50 +88,62 @@ class KYCService {
     }
   }
 
-  async verifyBvn(bvn, user) {
+  async verifyBvn(bvn, user, advanced = false) {
     try {
       if (!bvn || bvn.length !== 11) {
         throw new Error('BVN must be 11 digits');
       }
 
-      const payload = {
-        bvn: bvn,
-        first_name: user.firstName,
-        last_name: user.lastName,
-        date_of_birth: user.dateOfBirth
-      };
+      const endpoint = advanced ? '/api/v1/kyc/bvn/advance' : '/api/v1/kyc/bvn/full';
+      const response = await this.makeRequest('GET', endpoint, { bvn });
 
-      const response = await this.makeRequest('POST', '/kyc/bvn', payload);
-
-      if (response.success && response.data.match) {
-        // Update user KYC data
-        await userService.updateUser(user.id, {
-          kycData: {
-            ...user.kycData,
-            bvnVerification: {
-              verified: true,
-              verifiedAt: new Date(),
-              details: {
-                fullName: response.data.full_name,
-                dateOfBirth: response.data.date_of_birth,
-                phoneNumber: response.data.phone_number,
-                gender: response.data.gender
+      if (response.entity) {
+        const entity = response.entity;
+        
+        // Cross-check names for verification
+        const nameMatch = this.crossCheckNames(user, entity);
+        
+        if (nameMatch.isValid) {
+          // Update user KYC data
+          await userService.updateUser(user.id, {
+            kycData: {
+              ...user.kycData,
+              bvnVerification: {
+                verified: true,
+                verifiedAt: new Date(),
+                confidence: nameMatch.confidence,
+                details: {
+                  fullName: `${entity.first_name} ${entity.middle_name || ''} ${entity.last_name}`.trim(),
+                  dateOfBirth: entity.date_of_birth,
+                  phoneNumber: entity.phone_number1,
+                  gender: entity.gender,
+                  email: entity.email,
+                  enrollmentBank: entity.enrollment_bank,
+                  nationality: entity.nationality,
+                  stateOfOrigin: entity.state_of_origin,
+                  maritalStatus: entity.marital_status,
+                  watchListed: entity.watch_listed
+                }
               }
             }
-          }
-        });
+          });
 
-        logger.info('BVN verification successful', {
-          userId: user.id,
-          bvn: '***' + bvn.slice(-4)
-        });
+          logger.info('BVN verification successful', {
+            userId: user.id,
+            bvn: '***' + bvn.slice(-4),
+            confidence: nameMatch.confidence
+          });
 
-        return {
-          verified: true,
-          details: response.data
-        };
+          return {
+            verified: true,
+            confidence: nameMatch.confidence,
+            details: entity
+          };
+        } else {
+          throw new Error(`BVN verification failed - ${nameMatch.reason}`);
+        }
       } else {
-        throw new Error('BVN verification failed - details do not match');
+        throw new Error('BVN verification failed - invalid response');
       }
     } catch (error) {
       logger.error('BVN verification failed', { 
@@ -136,46 +159,65 @@ class KYCService {
     }
   }
 
-  async verifyPhoneNumber(phoneNumber, user) {
+  async verifyNin(nin, user) {
     try {
-      const cleanNumber = phoneNumber.replace(/\D/g, '');
-      
-      const payload = {
-        phone_number: cleanNumber
-      };
+      if (!nin || nin.length !== 11) {
+        throw new Error('NIN must be 11 digits');
+      }
 
-      const response = await this.makeRequest('POST', '/kyc/phone', payload);
+      const response = await this.makeRequest('GET', '/api/v1/kyc/nin', { nin });
 
-      if (response.success) {
-        // Update user KYC data
-        await userService.updateUser(user.id, {
-          kycData: {
-            ...user.kycData,
-            phoneVerification: {
-              verified: true,
-              verifiedAt: new Date(),
-              details: response.data
+      if (response.entity) {
+        const entity = response.entity;
+        
+        // Cross-check names for verification
+        const nameMatch = this.crossCheckNames(user, entity);
+        
+        if (nameMatch.isValid) {
+          // Update user KYC data
+          await userService.updateUser(user.id, {
+            kycData: {
+              ...user.kycData,
+              ninVerification: {
+                verified: true,
+                verifiedAt: new Date(),
+                confidence: nameMatch.confidence,
+                details: {
+                  fullName: `${entity.first_name} ${entity.middle_name || ''} ${entity.last_name}`.trim(),
+                  dateOfBirth: entity.date_of_birth,
+                  phoneNumber: entity.phone_number,
+                  gender: entity.gender,
+                  email: entity.email,
+                  employmentStatus: entity.employment_status,
+                  maritalStatus: entity.marital_status,
+                  photo: entity.photo ? 'Available' : 'Not available'
+                }
+              }
             }
-          }
-        });
+          });
 
-        logger.info('Phone verification successful', {
-          userId: user.id,
-          phoneNumber
-        });
+          logger.info('NIN verification successful', {
+            userId: user.id,
+            nin: '***' + nin.slice(-4),
+            confidence: nameMatch.confidence
+          });
 
-        return {
-          verified: true,
-          details: response.data
-        };
+          return {
+            verified: true,
+            confidence: nameMatch.confidence,
+            details: entity
+          };
+        } else {
+          throw new Error(`NIN verification failed - ${nameMatch.reason}`);
+        }
       } else {
-        throw new Error('Phone verification failed');
+        throw new Error('NIN verification failed - invalid response');
       }
     } catch (error) {
-      logger.error('Phone verification failed', { 
+      logger.error('NIN verification failed', { 
         error: error.message, 
         userId: user.id,
-        phoneNumber
+        nin: '***' + nin.slice(-4)
       });
       
       return {
@@ -185,72 +227,102 @@ class KYCService {
     }
   }
 
-  async submitDocuments(user, documentData) {
-    try {
-      const { documentType, documentNumber } = documentData;
-      
-      const payload = {
-        type: documentType,
-        number: documentNumber,
-        first_name: user.firstName,
-        last_name: user.lastName,
-        date_of_birth: user.dateOfBirth
-      };
+  crossCheckNames(user, entity) {
+    const userFirstName = (user.firstName || '').toLowerCase().trim();
+    const userLastName = (user.lastName || '').toLowerCase().trim();
+    const userMiddleName = (user.middleName || '').toLowerCase().trim();
 
-      const response = await this.makeRequest('POST', '/kyc/document', payload);
-      const reference = `DOC_${Date.now()}_${uuidv4().slice(0, 8)}`;
+    const entityFirstName = (entity.first_name || '').toLowerCase().trim();
+    const entityLastName = (entity.last_name || '').toLowerCase().trim();
+    const entityMiddleName = (entity.middle_name || '').toLowerCase().trim();
 
-      if (response.success && response.data.match) {
-        // Update user KYC data
-        await userService.updateUser(user.id, {
-          kycData: {
-            ...user.kycData,
-            documentVerification: {
-              verified: true,
-              verifiedAt: new Date(),
-              documentType,
-              documentNumber,
-              details: response.data
-            }
-          }
-        });
+    let confidence = 0;
+    let matchedFields = [];
 
-        // Check if all verifications are complete
-        await this.checkKycCompletion(user);
-
-        logger.info('Document verification successful', {
-          userId: user.id,
-          documentType,
-          reference
-        });
-
-        return {
-          reference,
-          status: 'verified'
-        };
-      } else {
-        throw new Error('Document verification failed - details do not match');
-      }
-    } catch (error) {
-      logger.error('Document verification failed', { 
-        error: error.message, 
-        userId: user.id,
-        documentData
-      });
-      
-      throw error;
+    // Check first name match
+    if (userFirstName && entityFirstName && userFirstName === entityFirstName) {
+      confidence += 40;
+      matchedFields.push('first_name');
+    } else if (userFirstName && entityFirstName && this.isSimilarName(userFirstName, entityFirstName)) {
+      confidence += 25;
+      matchedFields.push('first_name_similar');
     }
+
+    // Check last name match
+    if (userLastName && entityLastName && userLastName === entityLastName) {
+      confidence += 40;
+      matchedFields.push('last_name');
+    } else if (userLastName && entityLastName && this.isSimilarName(userLastName, entityLastName)) {
+      confidence += 25;
+      matchedFields.push('last_name_similar');
+    }
+
+    // Check middle name match (optional)
+    if (userMiddleName && entityMiddleName && userMiddleName === entityMiddleName) {
+      confidence += 20;
+      matchedFields.push('middle_name');
+    }
+
+    // Date of birth check if available
+    if (user.dateOfBirth && entity.date_of_birth) {
+      const userDob = new Date(user.dateOfBirth).toISOString().split('T')[0];
+      const entityDob = new Date(entity.date_of_birth).toISOString().split('T')[0];
+      
+      if (userDob === entityDob) {
+        confidence += 20;
+        matchedFields.push('date_of_birth');
+      }
+    }
+
+    const isValid = confidence >= 60; // Minimum 60% confidence required
+    const reason = isValid ? 'Verification successful' : 
+                   confidence < 30 ? 'Names do not match' : 
+                   'Insufficient confidence in name matching';
+
+    return {
+      isValid,
+      confidence,
+      reason,
+      matchedFields
+    };
+  }
+
+  isSimilarName(name1, name2) {
+    // Simple similarity check (can be enhanced with fuzzy matching)
+    if (Math.abs(name1.length - name2.length) > 3) return false;
+    
+    // Check if one name contains the other
+    if (name1.includes(name2) || name2.includes(name1)) return true;
+    
+    // Check for common abbreviations/variations
+    const variations = {
+      'muhammad': ['mohammed', 'mohamed', 'ahmad'],
+      'ibrahim': ['abraham'],
+      'fatima': ['fatimah'],
+      'aisha': ['aishah'],
+      'abdul': ['abdullahi'],
+      'emmanuel': ['emeka'],
+      'oluwaseun': ['seun'],
+      'oluwasegun': ['segun']
+    };
+
+    for (const [key, values] of Object.entries(variations)) {
+      if ((name1 === key && values.includes(name2)) || 
+          (name2 === key && values.includes(name1))) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async checkKycCompletion(user) {
     try {
       const kycData = user.kycData || {};
-      const verifications = kycData.verificationSteps || {};
 
       const allVerified = 
-        kycData.bvnVerification?.verified &&
-        kycData.phoneVerification?.verified &&
-        kycData.documentVerification?.verified;
+        (kycData.bvnVerification?.verified || kycData.ninVerification?.verified) &&
+        kycData.phoneVerification?.verified;
 
       if (allVerified) {
         await userService.updateUser(user.id, {
@@ -436,24 +508,23 @@ class KYCService {
     }
   }
 
-  async makeRequest(method, endpoint, data = null) {
+  async makeRequest(method, endpoint, params = null) {
     try {
       const config = {
         method,
         url: `${this.baseURL}${endpoint}`,
         headers: {
-          'Authorization': `Bearer ${this.secretKey}`,
           'AppId': this.appId,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Authorization': this.secretKey,
+          'Content-Type': 'application/json'
         }
       };
 
-      if (data) {
+      if (params) {
         if (method === 'GET') {
-          config.params = data;
+          config.params = params;
         } else {
-          config.data = data;
+          config.data = params;
         }
       }
 
@@ -478,15 +549,24 @@ class KYCService {
       names: extractedData.names || [],
       dates: extractedData.dates || [],
       bvnNumbers: extractedData.bvnNumbers || [],
+      ninNumbers: this.extractNinNumbers(text),
       documentNumbers: this.extractDocumentNumbers(text),
       confidence: ocrResult.confidence || 0
     };
   }
 
+  extractNinNumbers(text) {
+    // Extract NIN pattern (11 digits)
+    const ninPattern = /\b\d{11}\b/g;
+    const matches = text.match(ninPattern);
+    return matches || [];
+  }
+
   extractDocumentNumbers(text) {
     // Extract various Nigerian document number patterns
     const patterns = {
-      nationalId: /\b[A-Z]{2}\d{9}\b/g, // NIN format
+      nin: /\b\d{11}\b/g, // NIN format (11 digits)
+      bvn: /\b\d{11}\b/g, // BVN format (11 digits)
       driversLicense: /\b[A-Z]{3}\s?\d{8}\b/g, // Driver's license
       passport: /\b[A-Z]\d{8}\b/g, // Passport number
       votersCard: /\b\d{19}\b/g // Voter's card
@@ -502,6 +582,35 @@ class KYCService {
     }
 
     return results;
+  }
+
+  // Test methods for sandbox environment
+  async testBvnLookup() {
+    try {
+      // Use test BVN from documentation
+      const testBvn = '22222222222';
+      const response = await this.makeRequest('GET', '/api/v1/kyc/bvn/full', { bvn: testBvn });
+      
+      logger.info('Test BVN lookup successful', { response });
+      return response;
+    } catch (error) {
+      logger.error('Test BVN lookup failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  async testNinLookup() {
+    try {
+      // Use test NIN from documentation
+      const testNin = '70123456789';
+      const response = await this.makeRequest('GET', '/api/v1/kyc/nin', { nin: testNin });
+      
+      logger.info('Test NIN lookup successful', { response });
+      return response;
+    } catch (error) {
+      logger.error('Test NIN lookup failed', { error: error.message });
+      throw error;
+    }
   }
 }
 

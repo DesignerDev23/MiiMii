@@ -236,38 +236,58 @@ POST /utility
 2. Complete compliance questionnaire
 3. Wait for verification (2-5 business days)
 
-### Step 3: Get API Credentials
+### Step 3: Create Application
+1. Go to "My Apps" section in dashboard
+2. Click "Create App"
+3. Fill in application details
+4. Get your App ID and Secret Key
+
+### Step 4: Get API Credentials
 ```env
-DOJAH_API_URL=https://api.dojah.io/api/v1
-DOJAH_APP_ID=your_app_id
-DOJAH_SECRET_KEY=your_secret_key
+# From Dojah dashboard → My Apps
+DOJAH_APP_ID=your_app_id_here
+DOJAH_SECRET_KEY=your_secret_key_here
 ```
 
-### Step 4: Configure Webhook
+**Important**: Dojah provides separate credentials for Sandbox and Live environments. You can toggle between them in the dashboard.
+
+### Step 5: Configure Webhook (Optional)
 - **URL**: `https://your-domain.com/webhook/dojah`
-- **Events**: `kyc.verified`, `kyc.rejected`
+- **Events**: Custom webhook events as needed
 
-### Key Dojah Features:
+### Key Dojah Features to Implement:
 ```javascript
-// BVN Verification
-POST /kyc/bvn
-{
-  "bvn": "12345678901"
+// 1. BVN Basic Lookup
+GET /api/v1/kyc/bvn/full?bvn=22222222222
+Headers: {
+  "AppId": "your_app_id",
+  "Authorization": "your_secret_key"
 }
 
-// Phone Number Verification
-POST /kyc/phone
-{
-  "phone": "08012345678"
+// 2. BVN Advanced Lookup (More Details)
+GET /api/v1/kyc/bvn/advance?bvn=22222222222
+Headers: {
+  "AppId": "your_app_id", 
+  "Authorization": "your_secret_key"
 }
 
-// Document Verification
-POST /kyc/document
-{
-  "type": "drivers_license",
-  "number": "ABC123456789"
+// 3. NIN Lookup
+GET /api/v1/kyc/nin?nin=70123456789
+Headers: {
+  "AppId": "your_app_id",
+  "Authorization": "your_secret_key"
 }
 ```
+
+### Dojah API Endpoints:
+- **Sandbox**: `https://sandbox.dojah.io`
+- **Production**: `https://api.dojah.io`
+
+### Test Credentials for Sandbox:
+- **Test BVN**: `22222222222`
+- **Test NIN**: `70123456789`
+
+**Note**: Use these test credentials only in the sandbox environment for testing your integration.
 
 ### 📖 Documentation
 - [Dojah API Documentation](https://docs.dojah.io/)
