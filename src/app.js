@@ -9,10 +9,18 @@ const path = require('path');
 
 require('dotenv').config();
 
+// Handle SSL certificate issues for DigitalOcean managed databases
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('digitalocean.com')) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 const logger = require('./utils/logger');
 const { sequelize } = require('./database/connection');
 const redisClient = require('./utils/redis');
 const errorHandler = require('./middleware/errorHandler');
+
+// Import models to ensure they are registered with Sequelize
+require('./models');
 
 // Route imports
 const whatsappRoutes = require('./routes/whatsapp');
@@ -77,6 +85,7 @@ app.get('/health', async (req, res) => {
     await sequelize.authenticate();
     health.services.database = 'healthy';
   } catch (error) {
+    logger.error('Database health check failed:', error.message);
     health.services.database = 'unhealthy';
     health.status = 'DEGRADED';
   }
@@ -124,12 +133,20 @@ async function startServer() {
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
 
-    // Initialize Redis connection
-    const redisConnected = await redisClient.connect();
-    if (redisConnected) {
-      logger.info('Redis connection established successfully');
-    } else {
-      logger.warn('Redis connection failed - continuing without Redis features');
+    // Initialize Redis connection (non-blocking)
+    try {
+      const redisConnected = await Promise.race([
+        redisClient.connect(),
+        new Promise(resolve => setTimeout(() => resolve(false), 5000)) // 5 second timeout
+      ]);
+      
+      if (redisConnected) {
+        logger.info('Redis connection established successfully');
+      } else {
+        logger.warn('Redis connection failed or timed out - continuing without Redis features');
+      }
+    } catch (error) {
+      logger.warn('Redis connection error - continuing without Redis features:', error.message);
     }
 
     // Sync database models (use { force: true } only in development to recreate tables)
@@ -139,8 +156,31 @@ async function startServer() {
     }
 
     // Start server
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`MiiMii server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+      logger.info(`Server bound to 0.0.0.0:${PORT}`);
+    });
+
+    server.on('error', (error) => {
+      if (error.syscall !== 'listen') {
+        throw error;
+      }
+
+      const bind = typeof PORT === 'string' ? 'Pipe ' + PORT : 'Port ' + PORT;
+
+      // Handle specific listen errors with friendly messages
+      switch (error.code) {
+        case 'EACCES':
+          logger.error(`${bind} requires elevated privileges`);
+          process.exit(1);
+          break;
+        case 'EADDRINUSE':
+          logger.error(`${bind} is already in use`);
+          process.exit(1);
+          break;
+        default:
+          throw error;
+      }
     });
   } catch (error) {
     logger.error('Unable to start server:', error);

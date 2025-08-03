@@ -6,7 +6,7 @@ class RedisClient {
     this.client = null;
     this.isConnected = false;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = 3;
   }
 
   async connect() {
@@ -22,16 +22,19 @@ class RedisClient {
       this.client = redis.createClient({
         url: redisUrl,
         socket: {
-          reconnectDelay: 1000,
-          timeout: 5000,
+          reconnectDelay: 5000,
+          timeout: 3000,
+          connectTimeout: 3000,
         },
         retryStrategy: (times) => {
           if (times > this.maxReconnectAttempts) {
-            logger.error('Redis max reconnection attempts reached');
+            logger.error('Redis max reconnection attempts reached - disabling Redis');
+            this.isConnected = false;
             return null;
           }
-          return Math.min(times * 50, 2000);
-        }
+          return Math.min(times * 1000, 5000);
+        },
+        lazyConnect: true
       });
 
       // Event handlers
