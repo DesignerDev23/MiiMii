@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules/
 jspm_packages/
 
+# Package manager files (keep package.json and package-lock.json)
+.npmrc
+
 # Optional npm cache directory
 .npm
 
