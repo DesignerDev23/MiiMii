@@ -29,6 +29,12 @@ const walletRoutes = require('./routes/wallet');
 const transactionRoutes = require('./routes/transaction');
 const kycRoutes = require('./routes/kyc');
 const webhookRoutes = require('./routes/webhook');
+const dataRoutes = require('./routes/data');
+const airtimeRoutes = require('./routes/airtime');
+const utilityRoutes = require('./routes/utility');
+const userRoutes = require('./routes/user');
+const bankTransferRoutes = require('./routes/bankTransfer');
+const virtualCardRoutes = require('./routes/virtualCard');
 
 const app = express();
 
@@ -110,6 +116,12 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/kyc', kycRoutes);
+app.use('/api/data', dataRoutes);
+app.use('/api/airtime', airtimeRoutes);
+app.use('/api/utility', utilityRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/bank-transfer', bankTransferRoutes);
+app.use('/api/virtual-cards', virtualCardRoutes);
 
 // Serve admin dashboard
 app.get('/admin*', (req, res) => {

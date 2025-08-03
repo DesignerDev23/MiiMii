@@ -1,4 +1,4 @@
-const aiService = require('./ai');
+const aiAssistantService = require('./aiAssistant');
 const whatsappService = require('./whatsapp');
 const userService = require('./user');
 const ocrService = require('./ocr');
@@ -59,11 +59,38 @@ class MessageProcessor {
         return;
       }
 
-      // Analyze intent with AI
-      const intent = await aiService.analyzeIntent(processedText, user, extractedData);
-      
-      // Execute the appropriate action
-      await this.executeAction(intent, user, from, processedText, extractedData);
+      // Process with AI Assistant for intent recognition and response
+      const aiProcessingResult = await aiAssistantService.processUserMessage(from, processedText, messageType);
+
+      // Handle the AI processing result
+      if (aiProcessingResult.result) {
+        const { result } = aiProcessingResult;
+        
+        // Send response message
+        await whatsappService.sendTextMessage(from, result.message);
+        
+        // Handle specific response types
+        if (result.awaitingInput) {
+          // Store conversation state for next message
+          await this.storeConversationState(from, result);
+        }
+        
+        if (result.transactionDetails) {
+          // Send transaction receipt
+          await this.sendTransactionReceipt(from, result.transactionDetails);
+        }
+        
+        if (result.requiresAction === 'COMPLETE_REGISTRATION') {
+          // Send registration flow
+          await this.sendRegistrationFlow(from);
+        }
+      } else if (aiProcessingResult.error) {
+        // Send error response
+        await whatsappService.sendTextMessage(from, aiProcessingResult.userFriendlyResponse);
+      } else {
+        // Fallback response
+        await whatsappService.sendTextMessage(from, "I'm here to help! Type 'help' to see what I can do for you.");
+      }
 
     } catch (error) {
       logger.error('Message processing failed', { error: error.message, messageData });
@@ -440,6 +467,78 @@ class MessageProcessor {
       `This is required by CBN regulations to keep your money safe.`;
 
     await whatsappService.sendTextMessage(phoneNumber, message);
+  }
+
+  // Store conversation state for multi-step interactions
+  async storeConversationState(phoneNumber, result) {
+    try {
+      // Store conversation state in Redis or database
+      // For now, we'll use the user's metadata field
+      const user = await userService.getUserByPhoneNumber(phoneNumber);
+      if (user) {
+        const conversationState = {
+          awaitingInput: result.awaitingInput,
+          pendingTransaction: result.pendingTransaction,
+          timestamp: new Date()
+        };
+        
+        await user.update({
+          metadata: {
+            ...user.metadata,
+            conversationState
+          }
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to store conversation state', { error: error.message, phoneNumber });
+    }
+  }
+
+  // Send transaction receipt
+  async sendTransactionReceipt(phoneNumber, transactionDetails) {
+    try {
+      let receiptMessage = `🧾 *Transaction Receipt*\n\n`;
+      
+      if (transactionDetails.reference) {
+        receiptMessage += `📄 Reference: ${transactionDetails.reference}\n`;
+      }
+      
+      if (transactionDetails.amount) {
+        receiptMessage += `💰 Amount: ₦${parseFloat(transactionDetails.amount).toLocaleString()}\n`;
+      }
+      
+      if (transactionDetails.fee && transactionDetails.fee > 0) {
+        receiptMessage += `💳 Fee: ₦${parseFloat(transactionDetails.fee).toLocaleString()}\n`;
+      }
+      
+      if (transactionDetails.recipient || transactionDetails.accountNumber) {
+        receiptMessage += `👤 Recipient: ${transactionDetails.recipient || transactionDetails.accountNumber}\n`;
+      }
+      
+      receiptMessage += `✅ Status: Successful\n`;
+      receiptMessage += `⏰ Time: ${new Date().toLocaleString()}\n\n`;
+      receiptMessage += `Thank you for using MiiMii! 💚`;
+
+      await whatsappService.sendTextMessage(phoneNumber, receiptMessage);
+    } catch (error) {
+      logger.error('Failed to send transaction receipt', { error: error.message, phoneNumber });
+    }
+  }
+
+  // Send registration flow
+  async sendRegistrationFlow(phoneNumber) {
+    try {
+      const registrationMessage = `🚀 *Complete Your Registration*\n\n` +
+        `To enjoy all MiiMii services:\n\n` +
+        `1️⃣ Complete your profile\n` +
+        `2️⃣ Set your transaction PIN\n` +
+        `3️⃣ Verify your identity (KYC)\n\n` +
+        `Type "register" to start the process!`;
+
+      await whatsappService.sendTextMessage(phoneNumber, registrationMessage);
+    } catch (error) {
+      logger.error('Failed to send registration flow', { error: error.message, phoneNumber });
+    }
   }
 }
 
