@@ -166,29 +166,13 @@ router.post('/bilal',
   logWebhook('bilal'),
   async (req, res) => {
     try {
-      const { event, data } = req.body;
-
-      switch (event) {
-        case 'airtime.successful':
-          await handleAirtimeSuccess(data);
-          break;
-        case 'airtime.failed':
-          await handleAirtimeFailed(data);
-          break;
-        case 'data.successful':
-          await handleDataSuccess(data);
-          break;
-        case 'data.failed':
-          await handleDataFailed(data);
-          break;
-        case 'utility.successful':
-          await handleUtilitySuccess(data);
-          break;
-        case 'utility.failed':
-          await handleUtilityFailed(data);
-          break;
-        default:
-          logger.info('Unhandled Bilal webhook event', { event, data });
+      // Bilal webhook format: { status, request-id, response }
+      const webhookData = req.body;
+      
+      if (webhookData.status && webhookData['request-id']) {
+        await handleBilalCallback(webhookData);
+      } else {
+        logger.warn('Invalid Bilal webhook format', { webhookData });
       }
 
       if (req.webhookLogId) {
@@ -276,34 +260,9 @@ async function handleTransferFailed(data) {
   await transactionService.handleBellBankTransferFailed(data);
 }
 
-async function handleAirtimeSuccess(data) {
-  const transactionService = require('../services/transaction');
-  await transactionService.handleBilalSuccess(data, 'airtime');
-}
-
-async function handleAirtimeFailed(data) {
-  const transactionService = require('../services/transaction');
-  await transactionService.handleBilalFailed(data, 'airtime');
-}
-
-async function handleDataSuccess(data) {
-  const transactionService = require('../services/transaction');
-  await transactionService.handleBilalSuccess(data, 'data');
-}
-
-async function handleDataFailed(data) {
-  const transactionService = require('../services/transaction');
-  await transactionService.handleBilalFailed(data, 'data');
-}
-
-async function handleUtilitySuccess(data) {
-  const transactionService = require('../services/transaction');
-  await transactionService.handleBilalSuccess(data, 'utility');
-}
-
-async function handleUtilityFailed(data) {
-  const transactionService = require('../services/transaction');
-  await transactionService.handleBilalFailed(data, 'utility');
+async function handleBilalCallback(data) {
+  const bilalService = require('../services/bilal');
+  await bilalService.handleBilalCallback(data);
 }
 
 async function handleKycVerified(data) {

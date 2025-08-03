@@ -126,6 +126,121 @@ curl -X GET http://localhost:3000/api/whatsapp/media/MEDIA_ID \
 
 ---
 
+## 📡 Bilal API Testing
+
+### 1. Test Token Generation
+
+```bash
+curl -X POST https://bilalsadasub.com/api/user \
+  -H "Authorization: Basic $(echo -n 'username:password' | base64)" \
+  -H "Content-Type: application/json"
+```
+
+**Expected Response:**
+```json
+{
+  "status": "success",
+  "AccessToken": "d7e29da48b5aee5d166eb71c22fb31692dd028852345cf833bc4a0b5762c",
+  "balance": "257.46",
+  "username": "Maikaba94"
+}
+```
+
+### 2. Test Airtime Purchase
+
+```bash
+curl -X POST https://bilalsadasub.com/api/topup \
+  -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "network": 1,
+    "phone": "08037448807",
+    "plan_type": "VTU",
+    "bypass": false,
+    "amount": 100,
+    "request-id": "Airtime_12345678900"
+  }'
+```
+
+### 3. Test Data Purchase
+
+```bash
+curl -X POST https://bilalsadasub.com/api/data \
+  -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "network": 1,
+    "phone": "08037448807",
+    "data_plan": 1,
+    "bypass": false,
+    "request-id": "Data_12345678900"
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "network": "MTN",
+  "request-id": "Data_1234567890",
+  "amount": "100",
+  "dataplan": "500MB",
+  "status": "success",
+  "message": "Yello! You have gifted 500MB to 2347013397088...",
+  "phone_number": "07013397088",
+  "oldbal": "110325",
+  "newbal": 110225,
+  "system": "API",
+  "plan_type": "GIFTING",
+  "wallet_vending": "wallet"
+}
+```
+
+### 4. Test Cable Subscription
+
+```bash
+curl -X POST https://bilalsadasub.com/api/cable \
+  -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cable": 2,
+    "iuc": "0123456789",
+    "cable_plan": 1,
+    "bypass": false,
+    "request-id": "Cable_12345678900"
+  }'
+```
+
+### 5. Test Bilal Integration via MiiMii API
+
+```bash
+# Test airtime purchase
+curl -X POST http://localhost:3000/test/bilal/airtime \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phoneNumber": "08012345678",
+    "amount": 100
+  }'
+
+# Test data purchase
+curl -X POST http://localhost:3000/test/bilal/data \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phoneNumber": "08012345678",
+    "dataSize": "1GB"
+  }'
+
+# Test cable subscription
+curl -X POST http://localhost:3000/test/bilal/cable \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cableProvider": "DSTV",
+    "iucNumber": "0123456789",
+    "planId": 1
+  }'
+```
+
+---
+
 ## 🤖 AI Service Testing
 
 ### 1. Test Intent Analysis

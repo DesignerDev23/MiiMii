@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const kycService = require('../services/kyc');
 const bellbankService = require('../services/bellbank');
+const bilalService = require('../services/bilal');
 const whatsappService = require('../services/whatsapp');
 const aiService = require('../services/ai');
 const ocrService = require('../services/ocr');
@@ -39,6 +40,107 @@ if (process.env.NODE_ENV !== 'production') {
       res.json({ success: true, result });
     } catch (error) {
       logger.error('BellBank account validation test failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Test Bilal integration
+  router.post('/bilal/token', async (req, res) => {
+    try {
+      const tokenData = await bilalService.generateToken();
+      res.json({ success: true, tokenData });
+    } catch (error) {
+      logger.error('Bilal token test failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.post('/bilal/airtime', async (req, res) => {
+    try {
+      const { phoneNumber, amount } = req.body;
+      
+      // Create mock user for testing
+      const mockUser = {
+        id: 'test-user-123',
+        firstName: 'Test',
+        lastName: 'User'
+      };
+
+      const result = await bilalService.purchaseAirtime(
+        mockUser,
+        { phoneNumber: phoneNumber || '08012345678', amount: amount || 100 },
+        '08087654321' // Mock user phone number
+      );
+      
+      res.json({ success: true, result });
+    } catch (error) {
+      logger.error('Bilal airtime test failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.post('/bilal/data', async (req, res) => {
+    try {
+      const { phoneNumber, dataSize, dataPlanId } = req.body;
+      
+      // Create mock user for testing
+      const mockUser = {
+        id: 'test-user-123',
+        firstName: 'Test',
+        lastName: 'User'
+      };
+
+      const result = await bilalService.purchaseData(
+        mockUser,
+        { 
+          phoneNumber: phoneNumber || '08012345678', 
+          dataSize: dataSize || '1GB',
+          dataPlanId: dataPlanId || 2
+        },
+        '08087654321' // Mock user phone number
+      );
+      
+      res.json({ success: true, result });
+    } catch (error) {
+      logger.error('Bilal data test failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.post('/bilal/cable', async (req, res) => {
+    try {
+      const { cableProvider, iucNumber, planId } = req.body;
+      
+      // Create mock user for testing
+      const mockUser = {
+        id: 'test-user-123',
+        firstName: 'Test',
+        lastName: 'User'
+      };
+
+      const result = await bilalService.payCableBill(
+        mockUser,
+        { 
+          cableProvider: cableProvider || 'DSTV',
+          iucNumber: iucNumber || '0123456789',
+          planId: planId || 1
+        },
+        '08087654321' // Mock user phone number
+      );
+      
+      res.json({ success: true, result });
+    } catch (error) {
+      logger.error('Bilal cable test failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.get('/bilal/balance', async (req, res) => {
+    try {
+      const balance = await bilalService.getBalance();
+      res.json({ success: true, balance });
+    } catch (error) {
+      logger.error('Bilal balance test failed', { error: error.message });
       res.status(500).json({ success: false, error: error.message });
     }
   });

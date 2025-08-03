@@ -153,13 +153,13 @@ GET /v1/transactions/reference/{reference}
 ## 3. 📡 Bilal Integration Setup
 
 ### Understanding Bilal Services
-Bilal provides airtime, data bundles, and utility bill payment services across Nigerian networks.
+Bilal provides airtime, data bundles, and cable subscription services across Nigerian networks through their REST API.
 
 ### Step 1: Bilal Account Registration
-1. Visit [Bilal Dashboard](https://app.bilalsadasub.com/)
+1. Visit [BilalSadaSub](https://bilalsadasub.com/)
 2. Click "Register" and create account
 3. Complete email verification
-4. Fill business profile information
+4. Fill profile information
 
 ### Step 2: Account Verification
 1. Upload required documents:
@@ -168,55 +168,82 @@ Bilal provides airtime, data bundles, and utility bill payment services across N
    - Business registration (if applicable)
 2. Wait for verification (1-2 business days)
 
-### Step 3: API Access
-1. Navigate to "API Documentation" section
-2. Generate API credentials in dashboard
-3. Copy your credentials:
-
+### Step 3: Get API Credentials
 ```env
-BILAL_API_URL=https://app.bilalsadasub.com/api/v1
-BILAL_API_KEY=your_api_key_here
-BILAL_MERCHANT_ID=your_merchant_id
+# Your Bilal login credentials are used for API access
+BILAL_USERNAME=your_bilal_username
+BILAL_PASSWORD=your_bilal_password
 ```
 
+**Important**: Bilal uses Basic Authentication with your username and password to generate access tokens.
+
 ### Step 4: Wallet Funding
-1. Fund your Bilal wallet via bank transfer
+1. Fund your Bilal wallet via bank transfer or other methods
 2. Minimum funding: ₦1,000
 3. Note: This will be your float for purchasing services
 
+### Step 5: Configure Webhook (Optional)
+1. Set your callback URL in the Bilal dashboard
+2. URL format: `https://your-domain.com/webhook/bilal`
+3. Bilal will send transaction status updates to this URL
+
 ### Key Bilal Features to Implement:
 ```javascript
-// Get Available Services
-GET /services
-
-// Buy Airtime
-POST /airtime
-{
-  "network": "MTN",
-  "phone": "08012345678",
-  "amount": 1000
+// 1. Generate Access Token
+POST /api/user
+Headers: {
+  "Authorization": "Basic " + base64("username:password")
 }
 
-// Buy Data
-POST /data
+// 2. Buy Airtime  
+POST /api/topup
 {
-  "network": "MTN", 
+  "network": 1,        // 1=MTN, 2=AIRTEL, 3=GLO, 4=9MOBILE
   "phone": "08012345678",
-  "plan_id": "mtn_1gb_30days"
+  "plan_type": "VTU",
+  "amount": 100,
+  "bypass": false,
+  "request-id": "Airtime_123456789"
 }
 
-// Pay Utility Bill
-POST /utility
+// 3. Buy Data
+POST /api/data
 {
-  "service": "phcn",
-  "meter_number": "12345678901",
-  "amount": 5000
+  "network": 1,        // 1=MTN, 2=AIRTEL, 3=GLO, 4=9MOBILE
+  "phone": "08012345678", 
+  "data_plan": 1,      // Plan ID (1=500MB, 2=1GB, etc.)
+  "bypass": false,
+  "request-id": "Data_123456789"
+}
+
+// 4. Pay Cable Subscription
+POST /api/cable
+{
+  "cable": 2,          // 1=GOTV, 2=DSTV, 3=STARTIME
+  "iuc": "0123456789",
+  "cable_plan": 1,     // Plan ID
+  "bypass": false,
+  "request-id": "Cable_123456789"
 }
 ```
 
+### Bilal API Endpoints:
+- **Base URL**: `https://bilalsadasub.com/api`
+
+### Network IDs:
+- **MTN**: 1
+- **AIRTEL**: 2  
+- **GLO**: 3
+- **9MOBILE**: 4
+
+### Cable Provider IDs:
+- **GOTV**: 1
+- **DSTV**: 2
+- **STARTIME**: 3
+
 ### 📖 Documentation
-- [Bilal API Documentation](https://app.bilalsadasub.com/documentation/home)
-- [Service Integration Guide](https://app.bilalsadasub.com/documentation/api)
+- [Bilal Website](https://bilalsadasub.com/)
+- Contact them directly for detailed API documentation
 
 ---
 

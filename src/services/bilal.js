@@ -5,27 +5,61 @@ const whatsappService = require('./whatsapp');
 
 class BilalService {
   constructor() {
-    this.baseURL = process.env.BILAL_API_URL;
-    this.apiKey = process.env.BILAL_API_KEY;
-    this.merchantId = process.env.BILAL_MERCHANT_ID;
+    this.baseURL = 'https://bilalsadasub.com/api';
+    this.username = process.env.BILAL_USERNAME;
+    this.password = process.env.BILAL_PASSWORD;
+    this.token = null;
+    this.tokenExpiry = null;
   }
 
-  async getAvailableServices() {
+  async generateToken() {
     try {
-      const response = await this.makeRequest('GET', '/services');
-      return response.data;
+      if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+        return this.token;
+      }
+
+      const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
+      
+      const response = await axios.post(`${this.baseURL}/user`, {}, {
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.data.status === 'success') {
+        this.token = response.data.AccessToken;
+        // Set expiry to 23 hours (tokens typically last 24 hours)
+        this.tokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
+        
+        logger.info('Bilal token generated successfully', {
+          username: response.data.username,
+          balance: response.data.balance
+        });
+        
+        return {
+          token: this.token,
+          balance: response.data.balance,
+          username: response.data.username
+        };
+      } else {
+        throw new Error('Failed to generate token');
+      }
     } catch (error) {
-      logger.error('Failed to get available services', { error: error.message });
+      logger.error('Failed to generate Bilal token', { error: error.message });
       throw error;
     }
   }
 
-  async getNetworkPlans(network) {
+  async getBalance() {
     try {
-      const response = await this.makeRequest('GET', `/plans/${network.toLowerCase()}`);
-      return response.data;
+      const tokenData = await this.generateToken();
+      return {
+        balance: parseFloat(tokenData.balance),
+        currency: 'NGN'
+      };
     } catch (error) {
-      logger.error('Failed to get network plans', { error: error.message, network });
+      logger.error('Failed to get Bilal balance', { error: error.message });
       throw error;
     }
   }
@@ -33,7 +67,7 @@ class BilalService {
   async purchaseAirtime(user, purchaseData, userPhoneNumber) {
     try {
       const { amount, phoneNumber } = purchaseData;
-      const network = this.detectNetwork(phoneNumber);
+      const network = this.getNetworkId(phoneNumber);
       
       // Check user balance first
       const wallet = await walletService.getUserWallet(user.id);
@@ -47,54 +81,63 @@ class BilalService {
         return;
       }
 
-      // Create transaction reference
-      const reference = walletService.generateReference();
+      // Generate unique request ID
+      const requestId = `Airtime_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      // Get token
+      const tokenData = await this.generateToken();
 
       // Purchase airtime via Bilal API
       const payload = {
-        network: network.toUpperCase(),
+        network: network.id,
         phone: phoneNumber,
+        plan_type: 'VTU',
         amount: parseFloat(amount),
-        reference: reference,
-        callback_url: `${process.env.BASE_URL}/webhook/bilal`
+        bypass: false,
+        'request-id': requestId
       };
 
-      const response = await this.makeRequest('POST', '/airtime', payload);
+      const response = await this.makeRequest('POST', '/topup', payload, tokenData.token);
 
-      if (response.success) {
+      if (response.status === 'success') {
         // Debit user wallet
         await walletService.debitWallet(
           user.id,
           totalCost,
-          `Airtime purchase - ${network} ₦${amount} for ${phoneNumber}`,
+          `Airtime purchase - ${network.name} ₦${amount} for ${phoneNumber}`,
           {
             category: 'airtime_purchase',
-            network,
+            network: network.name,
             phoneNumber,
             originalAmount: amount,
             fee: process.env.DATA_PURCHASE_FEE || 10,
-            providerReference: response.data.reference,
-            provider: 'bilal'
+            providerReference: response['request-id'],
+            provider: 'bilal',
+            bilalResponse: response
           }
         );
 
         await whatsappService.sendTextMessage(
           userPhoneNumber,
           `✅ *Airtime Purchase Successful!*\n\n` +
-          `Network: ${network.toUpperCase()}\n` +
-          `Amount: ₦${amount}\n` +
-          `Phone: ${phoneNumber}\n` +
-          `Reference: ${reference}\n\n` +
-          `Airtime will be delivered within 2 minutes.`
+          `Network: ${response.network}\n` +
+          `Amount: ₦${response.amount}\n` +
+          `Phone: ${response.phone_number}\n` +
+          `Reference: ${response['request-id']}\n` +
+          `Discount: ₦${response.discount || 0}\n\n` +
+          `${response.message}`
         );
 
         logger.info('Airtime purchase successful', {
           userId: user.id,
           amount,
           phoneNumber,
-          network,
-          reference
+          network: network.name,
+          requestId,
+          bilalBalance: response.newbal
         });
+
+        return response;
 
       } else {
         throw new Error(response.message || 'Airtime purchase failed');
@@ -118,100 +161,119 @@ class BilalService {
 
   async purchaseData(user, purchaseData, userPhoneNumber) {
     try {
-      const { dataSize, amount, phoneNumber } = purchaseData;
-      const network = this.detectNetwork(phoneNumber);
+      const { dataSize, amount, phoneNumber, dataPlanId } = purchaseData;
+      const network = this.getNetworkId(phoneNumber);
       
-      // Get available data plans for the network
-      const plans = await this.getNetworkPlans(network);
+      // Get available data plans for the network if plan ID not provided
       let selectedPlan = null;
+      if (dataPlanId) {
+        selectedPlan = { id: dataPlanId };
+      } else {
+        const plans = await this.getDataPlans(network.name);
+        
+        if (dataSize) {
+          // Find plan by data size (e.g., "2GB", "1GB")
+          selectedPlan = plans.find(plan => 
+            plan.dataplan.toLowerCase().includes(dataSize.toLowerCase())
+          );
+        } else if (amount) {
+          // Find plan by amount
+          selectedPlan = plans.find(plan => 
+            parseFloat(plan.amount) === parseFloat(amount)
+          );
+        }
 
-      if (dataSize) {
-        // Find plan by data size (e.g., "2GB", "1GB")
-        selectedPlan = plans.find(plan => 
-          plan.size.toLowerCase().includes(dataSize.toLowerCase())
-        );
-      } else if (amount) {
-        // Find plan by amount
-        selectedPlan = plans.find(plan => 
-          parseFloat(plan.price) === parseFloat(amount)
-        );
+        if (!selectedPlan && plans.length > 0) {
+          // Show available plans
+          await whatsappService.sendTextMessage(
+            userPhoneNumber,
+            `❌ Data plan not found!\n\nAvailable plans for ${network.name}:\n` +
+            plans.slice(0, 5).map(plan => 
+              `• ${plan.dataplan} - ₦${plan.amount} (${plan.validity})`
+            ).join('\n') +
+            `\n\nPlease specify a valid plan.`
+          );
+          return;
+        }
       }
 
-      if (!selectedPlan) {
-        await whatsappService.sendTextMessage(
-          userPhoneNumber,
-          `❌ Data plan not found!\n\nAvailable plans for ${network.toUpperCase()}:\n` +
-          plans.slice(0, 5).map(plan => 
-            `• ${plan.size} - ₦${plan.price} (${plan.validity})`
-          ).join('\n') +
-          `\n\nPlease specify a valid plan.`
-        );
-        return;
-      }
+      // Use default plan if none specified (usually plan 1 for 500MB)
+      const planId = selectedPlan?.id || 1;
 
-      // Check user balance
+      // Check user balance (we'll get the actual cost from the plan)
       const wallet = await walletService.getUserWallet(user.id);
-      const totalCost = parseFloat(selectedPlan.price) + parseFloat(process.env.DATA_PURCHASE_FEE || 10);
+      const estimatedCost = amount ? parseFloat(amount) : 500; // Estimate if no amount provided
+      const totalCost = estimatedCost + parseFloat(process.env.DATA_PURCHASE_FEE || 10);
       
       if (!wallet.canDebit(totalCost)) {
         await whatsappService.sendTextMessage(
           userPhoneNumber,
-          `❌ Insufficient balance!\n\nRequired: ₦${totalCost.toLocaleString()}\nAvailable: ₦${parseFloat(wallet.balance).toLocaleString()}\n\nPlease fund your wallet first.`
+          `❌ Insufficient balance!\n\nEstimated cost: ₦${totalCost.toLocaleString()}\nAvailable: ₦${parseFloat(wallet.balance).toLocaleString()}\n\nPlease fund your wallet first.`
         );
         return;
       }
 
-      // Create transaction reference
-      const reference = walletService.generateReference();
+      // Generate unique request ID
+      const requestId = `Data_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      // Get token
+      const tokenData = await this.generateToken();
 
       // Purchase data via Bilal API
       const payload = {
-        network: network.toUpperCase(),
+        network: network.id,
         phone: phoneNumber,
-        plan_id: selectedPlan.id,
-        reference: reference,
-        callback_url: `${process.env.BASE_URL}/webhook/bilal`
+        data_plan: planId,
+        bypass: false,
+        'request-id': requestId
       };
 
-      const response = await this.makeRequest('POST', '/data', payload);
+      const response = await this.makeRequest('POST', '/data', payload, tokenData.token);
 
-      if (response.success) {
-        // Debit user wallet
+      if (response.status === 'success') {
+        // Debit user wallet with actual amount
+        const actualAmount = parseFloat(response.amount);
+        const actualTotalCost = actualAmount + parseFloat(process.env.DATA_PURCHASE_FEE || 10);
+        
         await walletService.debitWallet(
           user.id,
-          totalCost,
-          `Data purchase - ${network} ${selectedPlan.size} for ${phoneNumber}`,
+          actualTotalCost,
+          `Data purchase - ${network.name} ${response.dataplan} for ${phoneNumber}`,
           {
             category: 'data_purchase',
-            network,
+            network: network.name,
             phoneNumber,
-            planId: selectedPlan.id,
-            dataSize: selectedPlan.size,
-            originalAmount: selectedPlan.price,
+            planId,
+            dataSize: response.dataplan,
+            originalAmount: actualAmount,
             fee: process.env.DATA_PURCHASE_FEE || 10,
-            providerReference: response.data.reference,
-            provider: 'bilal'
+            providerReference: response['request-id'],
+            provider: 'bilal',
+            bilalResponse: response
           }
         );
 
         await whatsappService.sendTextMessage(
           userPhoneNumber,
           `✅ *Data Purchase Successful!*\n\n` +
-          `Network: ${network.toUpperCase()}\n` +
-          `Plan: ${selectedPlan.size}\n` +
-          `Phone: ${phoneNumber}\n` +
-          `Validity: ${selectedPlan.validity}\n` +
-          `Reference: ${reference}\n\n` +
-          `Data will be delivered within 5 minutes.`
+          `Network: ${response.network}\n` +
+          `Plan: ${response.dataplan}\n` +
+          `Phone: ${response.phone_number}\n` +
+          `Amount: ₦${response.amount}\n` +
+          `Reference: ${response['request-id']}\n\n` +
+          `${response.message}`
         );
 
         logger.info('Data purchase successful', {
           userId: user.id,
-          plan: selectedPlan,
+          plan: response.dataplan,
           phoneNumber,
-          network,
-          reference
+          network: network.name,
+          requestId,
+          bilalBalance: response.newbal
         });
+
+        return response;
 
       } else {
         throw new Error(response.message || 'Data purchase failed');
@@ -233,91 +295,98 @@ class BilalService {
     }
   }
 
-  async payUtilityBill(user, billData, userPhoneNumber) {
+  async payCableBill(user, billData, userPhoneNumber) {
     try {
-      const { utilityType, meterNumber, amount } = billData;
+      const { cableProvider, iucNumber, planId, amount } = billData;
       
-      // Validate meter number first
-      const validation = await this.validateMeterNumber(utilityType, meterNumber);
-      
-      if (!validation.valid) {
+      const cableId = this.getCableId(cableProvider);
+      if (!cableId) {
         await whatsappService.sendTextMessage(
           userPhoneNumber,
-          `❌ Invalid meter number!\n\nPlease check your ${utilityType.toUpperCase()} meter number and try again.`
+          `❌ Unsupported cable provider!\n\nSupported providers:\n• DSTV\n• GOTV\n• STARTIME\n\nPlease specify a valid provider.`
         );
         return;
       }
 
-      const billAmount = amount || validation.minimumAmount || 1000;
-      
       // Check user balance
       const wallet = await walletService.getUserWallet(user.id);
+      const estimatedAmount = amount || 5000; // Default estimate
       
-      if (!wallet.canDebit(billAmount)) {
+      if (!wallet.canDebit(estimatedAmount)) {
         await whatsappService.sendTextMessage(
           userPhoneNumber,
-          `❌ Insufficient balance!\n\nRequired: ₦${billAmount.toLocaleString()}\nAvailable: ₦${parseFloat(wallet.balance).toLocaleString()}\n\nPlease fund your wallet first.`
+          `❌ Insufficient balance!\n\nEstimated cost: ₦${estimatedAmount.toLocaleString()}\nAvailable: ₦${parseFloat(wallet.balance).toLocaleString()}\n\nPlease fund your wallet first.`
         );
         return;
       }
 
-      // Create transaction reference
-      const reference = walletService.generateReference();
+      // Generate unique request ID
+      const requestId = `Cable_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-      // Pay utility bill via Bilal API
+      // Get token
+      const tokenData = await this.generateToken();
+
+      // Pay cable bill via Bilal API
       const payload = {
-        service: utilityType.toLowerCase(),
-        meter_number: meterNumber,
-        amount: parseFloat(billAmount),
-        customer_name: validation.customerName || `${user.firstName} ${user.lastName}`.trim(),
-        reference: reference,
-        callback_url: `${process.env.BASE_URL}/webhook/bilal`
+        cable: cableId,
+        iuc: iucNumber,
+        cable_plan: planId || 1, // Default to first plan if not specified
+        bypass: false,
+        'request-id': requestId
       };
 
-      const response = await this.makeRequest('POST', '/utility', payload);
+      const response = await this.makeRequest('POST', '/cable', payload, tokenData.token);
 
-      if (response.success) {
-        // Debit user wallet
+      if (response.status === 'success') {
+        // Debit user wallet with actual amount
+        const actualAmount = parseFloat(response.amount);
+        
         await walletService.debitWallet(
           user.id,
-          billAmount,
-          `${utilityType.toUpperCase()} bill payment - ${meterNumber}`,
+          actualAmount,
+          `Cable subscription - ${response.cabl_name} ${response.plan_name} for ${iucNumber}`,
           {
-            category: 'utility_payment',
-            utilityType,
-            meterNumber,
-            customerName: validation.customerName,
-            originalAmount: billAmount,
-            providerReference: response.data.reference,
-            provider: 'bilal'
+            category: 'cable_payment',
+            cableProvider: response.cabl_name,
+            iucNumber,
+            planName: response.plan_name,
+            originalAmount: actualAmount,
+            charges: response.charges,
+            providerReference: response['request-id'],
+            provider: 'bilal',
+            bilalResponse: response
           }
         );
 
         await whatsappService.sendTextMessage(
           userPhoneNumber,
-          `✅ *Bill Payment Successful!*\n\n` +
-          `Service: ${utilityType.toUpperCase()}\n` +
-          `Meter: ${meterNumber}\n` +
-          `Customer: ${validation.customerName || 'N/A'}\n` +
-          `Amount: ₦${billAmount.toLocaleString()}\n` +
-          `Reference: ${reference}\n\n` +
-          `Your payment has been processed successfully.`
+          `✅ *Cable Subscription Successful!*\n\n` +
+          `Provider: ${response.cabl_name}\n` +
+          `Plan: ${response.plan_name}\n` +
+          `IUC: ${response.iuc}\n` +
+          `Amount: ₦${response.amount}\n` +
+          `Charges: ₦${response.charges}\n` +
+          `Reference: ${response['request-id']}\n\n` +
+          `${response.message}`
         );
 
-        logger.info('Utility payment successful', {
+        logger.info('Cable payment successful', {
           userId: user.id,
-          utilityType,
-          meterNumber,
-          amount: billAmount,
-          reference
+          provider: response.cabl_name,
+          planName: response.plan_name,
+          iucNumber,
+          amount: actualAmount,
+          requestId
         });
 
+        return response;
+
       } else {
-        throw new Error(response.message || 'Bill payment failed');
+        throw new Error(response.message || 'Cable payment failed');
       }
 
     } catch (error) {
-      logger.error('Utility payment failed', { 
+      logger.error('Cable payment failed', { 
         error: error.message, 
         userId: user.id,
         billData 
@@ -325,64 +394,94 @@ class BilalService {
 
       await whatsappService.sendTextMessage(
         userPhoneNumber,
-        `❌ Bill payment failed!\n\nReason: ${error.message}\n\nPlease try again or contact support.`
+        `❌ Cable payment failed!\n\nReason: ${error.message}\n\nPlease try again or contact support.`
       );
       
       throw error;
     }
   }
 
-  async validateMeterNumber(utilityType, meterNumber) {
-    try {
-      const response = await this.makeRequest('POST', '/validate-meter', {
-        service: utilityType.toLowerCase(),
-        meter_number: meterNumber
-      });
-
-      return {
-        valid: response.success,
-        customerName: response.data?.customer_name,
-        address: response.data?.address,
-        minimumAmount: response.data?.minimum_amount
-      };
-    } catch (error) {
-      logger.error('Meter validation failed', { error: error.message, utilityType, meterNumber });
-      return { valid: false };
-    }
-  }
-
-  detectNetwork(phoneNumber) {
+  getNetworkId(phoneNumber) {
     const cleanNumber = phoneNumber.replace(/\D/g, '');
     const prefix = cleanNumber.substring(0, 4);
     
-    // Nigerian network prefixes
+    // Nigerian network prefixes mapped to Bilal IDs
     const networkMap = {
-      'MTN': ['0803', '0806', '0703', '0706', '0813', '0810', '0814', '0816', '0903', '0906'],
-      'GLO': ['0805', '0807', '0705', '0815', '0811', '0905'],
-      'AIRTEL': ['0802', '0808', '0708', '0812', '0701', '0902', '0901'],
-      '9MOBILE': ['0809', '0817', '0818', '0909', '0908']
+      'MTN': { id: 1, prefixes: ['0803', '0806', '0703', '0706', '0813', '0810', '0814', '0816', '0903', '0906'] },
+      'AIRTEL': { id: 2, prefixes: ['0802', '0808', '0708', '0812', '0701', '0902', '0901'] },
+      'GLO': { id: 3, prefixes: ['0805', '0807', '0705', '0815', '0811', '0905'] },
+      '9MOBILE': { id: 4, prefixes: ['0809', '0817', '0818', '0909', '0908'] }
     };
 
-    for (const [network, prefixes] of Object.entries(networkMap)) {
-      if (prefixes.includes(prefix)) {
-        return network;
+    for (const [name, network] of Object.entries(networkMap)) {
+      if (network.prefixes.includes(prefix)) {
+        return { name, id: network.id };
       }
     }
     
-    return 'MTN'; // Default to MTN if not detected
+    return { name: 'MTN', id: 1 }; // Default to MTN if not detected
   }
 
-  async makeRequest(method, endpoint, data = null) {
+  getCableId(provider) {
+    const cableMap = {
+      'GOTV': 1,
+      'DSTV': 2,
+      'STARTIME': 3
+    };
+
+    return cableMap[provider.toUpperCase()] || null;
+  }
+
+  async getDataPlans(networkName) {
+    // This would typically be fetched from Bilal API, but since it's not in the docs,
+    // we'll return common MTN plans as an example
+    const commonPlans = {
+      'MTN': [
+        { id: 1, dataplan: '500MB', amount: '420', validity: '30days to 7days' },
+        { id: 2, dataplan: '1GB', amount: '620', validity: '30 days' },
+        { id: 3, dataplan: '2GB', amount: '1400', validity: 'Monthly' },
+        { id: 4, dataplan: '3GB', amount: '2200', validity: '30days' },
+        { id: 5, dataplan: '5GB', amount: '4500', validity: '30days' }
+      ],
+      'GLO': [
+        { id: 1, dataplan: '500MB', amount: '400', validity: '30 days' },
+        { id: 2, dataplan: '1GB', amount: '600', validity: '30 days' },
+        { id: 3, dataplan: '2GB', amount: '1200', validity: '30 days' },
+        { id: 4, dataplan: '3GB', amount: '1800', validity: '30 days' },
+        { id: 5, dataplan: '5GB', amount: '3000', validity: '30 days' }
+      ],
+      'AIRTEL': [
+        { id: 1, dataplan: '500MB', amount: '450', validity: '30 days' },
+        { id: 2, dataplan: '1GB', amount: '650', validity: '30 days' },
+        { id: 3, dataplan: '2GB', amount: '1300', validity: '30 days' },
+        { id: 4, dataplan: '3GB', amount: '1950', validity: '30 days' },
+        { id: 5, dataplan: '5GB', amount: '3250', validity: '30 days' }
+      ],
+      '9MOBILE': [
+        { id: 1, dataplan: '500MB', amount: '500', validity: '30 days' },
+        { id: 2, dataplan: '1GB', amount: '700', validity: '30 days' },
+        { id: 3, dataplan: '2GB', amount: '1400', validity: '30 days' },
+        { id: 4, dataplan: '3GB', amount: '2100', validity: '30 days' },
+        { id: 5, dataplan: '5GB', amount: '3500', validity: '30 days' }
+      ]
+    };
+
+    return commonPlans[networkName] || commonPlans['MTN'];
+  }
+
+  async makeRequest(method, endpoint, data = null, token = null) {
     try {
       const config = {
         method,
         url: `${this.baseURL}${endpoint}`,
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       };
+
+      if (token) {
+        config.headers['Authorization'] = `Token ${token}`;
+      }
 
       if (data) {
         if (method === 'GET') {
@@ -394,7 +493,6 @@ class BilalService {
 
       const response = await axios(config);
 
-      // Bilal API returns success/error in response body
       return response.data;
     } catch (error) {
       if (error.response) {
@@ -406,65 +504,58 @@ class BilalService {
   }
 
   // Handle webhook responses from Bilal
-  async handleBilalSuccess(webhookData, serviceType) {
+  async handleBilalCallback(webhookData) {
     try {
-      const { reference, phone, amount, network } = webhookData;
+      const { status, 'request-id': requestId, response: message } = webhookData;
       
-      logger.info('Bilal service successful', {
-        serviceType,
-        reference,
-        phone,
-        amount,
-        network
+      logger.info('Bilal callback received', {
+        status,
+        requestId,
+        message
       });
 
-      // Update transaction status if needed
-      // This is already handled in the initial purchase, but webhook confirms it
-      
-    } catch (error) {
-      logger.error('Failed to handle Bilal success webhook', {
-        error: error.message,
-        webhookData,
-        serviceType
-      });
-    }
-  }
+      // Process the callback based on status
+      if (status === 'success') {
+        logger.info('Bilal service successful via callback', {
+          requestId,
+          message
+        });
+        // Transaction was successful - already processed in initial request
+      } else {
+        logger.error('Bilal service failed via callback', {
+          requestId,
+          message
+        });
+        // Handle failed transaction - could implement refund logic here
+      }
 
-  async handleBilalFailed(webhookData, serviceType) {
-    try {
-      const { reference, phone, amount, network, reason } = webhookData;
-      
-      logger.error('Bilal service failed', {
-        serviceType,
-        reference,
-        phone,
-        amount,
-        network,
-        reason
-      });
-
-      // Refund user if payment was already debited
-      // Implementation would depend on your transaction tracking
-      
-    } catch (error) {
-      logger.error('Failed to handle Bilal failure webhook', {
-        error: error.message,
-        webhookData,
-        serviceType
-      });
-    }
-  }
-
-  // Get account balance from Bilal
-  async getBalance() {
-    try {
-      const response = await this.makeRequest('GET', '/balance');
       return {
-        balance: parseFloat(response.data.balance),
-        currency: 'NGN'
+        processed: true,
+        status,
+        requestId
       };
     } catch (error) {
-      logger.error('Failed to get Bilal balance', { error: error.message });
+      logger.error('Failed to handle Bilal callback', {
+        error: error.message,
+        webhookData
+      });
+      throw error;
+    }
+  }
+
+  // Test method for checking service availability
+  async testConnection() {
+    try {
+      const tokenData = await this.generateToken();
+      
+      return {
+        success: true,
+        balance: tokenData.balance,
+        username: tokenData.username,
+        message: 'Bilal API connection successful'
+      };
+    } catch (error) {
+      logger.error('Bilal connection test failed', { error: error.message });
       throw error;
     }
   }
