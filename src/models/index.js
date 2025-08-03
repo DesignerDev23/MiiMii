@@ -3,6 +3,7 @@ const Wallet = require('./Wallet');
 const Transaction = require('./Transaction');
 const WebhookLog = require('./WebhookLog');
 const SupportTicket = require('./SupportTicket');
+const VirtualCard = require('./VirtualCard');
 
 // Define associations
 User.hasOne(Wallet, {
@@ -45,10 +46,21 @@ SupportTicket.belongsTo(Transaction, {
   as: 'transaction'
 });
 
+User.hasMany(VirtualCard, {
+  foreignKey: 'userId',
+  as: 'virtualCards'
+});
+
+VirtualCard.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
 module.exports = {
   User,
   Wallet,
   Transaction,
   WebhookLog,
-  SupportTicket
+  SupportTicket,
+  VirtualCard
 };
