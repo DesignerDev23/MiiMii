@@ -141,21 +141,62 @@ DATA_PURCHASE_FEE=10
 
 ## 🚀 Deployment
 
-### DigitalOcean App Platform
+### DigitalOcean App Platform (Recommended)
 
-1. **Push to GitHub**
-```bash
-git push origin main
-```
+This application is optimized for DigitalOcean App Platform with Managed Databases.
 
-2. **Deploy via App Platform**
-- Use the provided `.digitalocean/app.yaml`
-- Set environment variables in DigitalOcean dashboard
-- Database and Redis are auto-provisioned
+1. **Prerequisites**
+   - GitHub repository with your code
+   - DigitalOcean account
 
-3. **Post-Deployment Setup**
-- Configure WhatsApp webhook URL: `https://your-app.ondigitalocean.app/webhook/whatsapp`
-- Set up other provider webhooks as needed
+2. **Create App**
+   ```bash
+   # Push your code to GitHub
+   git push origin main
+   ```
+
+3. **Deploy via App Platform**
+   - Go to DigitalOcean App Platform console
+   - Create new app from GitHub repository
+   - Use the provided `.digitalocean/app.yaml` configuration
+   - App Platform will automatically:
+     - Create PostgreSQL managed database
+     - Create Redis managed database
+     - Set up autoscaling (1-5 instances)
+     - Configure health checks
+
+4. **Environment Variables**
+   Set these in DigitalOcean App Platform dashboard:
+   ```env
+   JWT_SECRET=your-secure-jwt-secret
+   WHATSAPP_ACCESS_TOKEN=your-whatsapp-token
+   WHATSAPP_PHONE_NUMBER_ID=your-phone-id
+   WHATSAPP_BUSINESS_ACCOUNT_ID=your-business-id
+   WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-verify-token
+   BELLBANK_API_URL=https://api.bellbank.com
+   BELLBANK_API_KEY=your-bellbank-key
+   BELLBANK_MERCHANT_ID=your-merchant-id
+   BILAL_API_URL=https://api.bilal.com
+   BILAL_API_KEY=your-bilal-key
+   BILAL_MERCHANT_ID=your-bilal-merchant-id
+   DOJAH_API_URL=https://api.dojah.io
+   DOJAH_APP_ID=your-dojah-app-id
+   DOJAH_SECRET_KEY=your-dojah-secret
+   OPENAI_API_KEY=your-openai-key
+   WEBHOOK_SECRET=your-webhook-secret
+   ADMIN_EMAIL=admin@yourdomain.com
+   ADMIN_PASSWORD=secure-admin-password
+   ```
+
+5. **Post-Deployment Setup**
+   - Configure WhatsApp webhook URL: `https://your-app.ondigitalocean.app/webhook/whatsapp`
+   - Set up other provider webhooks as needed
+   - Test application health: `https://your-app.ondigitalocean.app/health`
+
+6. **Monitoring**
+   - App Platform provides built-in monitoring
+   - Redis and PostgreSQL have separate monitoring dashboards
+   - Check logs in App Platform console
 
 ### Docker Deployment
 ```bash
