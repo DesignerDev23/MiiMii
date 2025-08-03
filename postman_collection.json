@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "MiiMii Fintech Platform API",
-    "description": "Complete API collection for MiiMii WhatsApp-based fintech platform with AI integration",
+    "name": "MiiMii Fintech Platform API - Complete Testing Suite",
+    "description": "Complete API collection for MiiMii WhatsApp-based fintech platform with AI integration. Includes step-by-step testing workflows for user onboarding, account creation, and all services.",
     "version": "1.0.0",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -20,9 +20,508 @@
       "key": "testPin",
       "value": "1234",
       "type": "string"
+    },
+    {
+      "key": "recipientPhone",
+      "value": "08087654321",
+      "type": "string"
+    },
+    {
+      "key": "testBvn",
+      "value": "12345678901",
+      "type": "string"
+    },
+    {
+      "key": "transactionRef",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
+    {
+      "name": "🚀 Quick Start - User Onboarding Workflow",
+      "description": "Follow this workflow to create a complete user account and test core functionality",
+      "item": [
+        {
+          "name": "Step 1: Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "First, verify the API is running correctly"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 2: Register New User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "register"]
+            },
+            "description": "Create a new user account. This will create a user and initialize their wallet."
+          },
+          "response": []
+        },
+        {
+          "name": "Step 3: Set Transaction PIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"pin\": \"{{testPin}}\",\n  \"confirmPin\": \"{{testPin}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/set-pin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "set-pin"]
+            },
+            "description": "Set a 4-digit PIN for transactions. Required before making any purchases or transfers."
+          },
+          "response": []
+        },
+        {
+          "name": "Step 4: Update Profile Information",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"gender\": \"male\",\n  \"address\": \"123 Main Street, Lagos, Nigeria\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/profile/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "profile", "{{testPhone}}"]
+            },
+            "description": "Complete user profile with additional information"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 5: Start KYC Process",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"middleName\": \"Smith\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"gender\": \"male\",\n  \"address\": \"123 Main Street, Lagos, Nigeria\",\n  \"bvn\": \"{{testBvn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/kyc/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "kyc", "start"]
+            },
+            "description": "Submit KYC information for account verification"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 6: Check Onboarding Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/onboarding/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "onboarding", "{{testPhone}}"]
+            },
+            "description": "Check user onboarding progress and what steps remain"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 7: Fund Wallet (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"amount\": 10000,\n  \"description\": \"Initial wallet funding for testing\",\n  \"adminNote\": \"Test account setup funding\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/credit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "credit"]
+            },
+            "description": "Add money to wallet for testing transactions (Admin function)"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 8: Check Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/balance/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "balance", "{{testPhone}}"]
+            },
+            "description": "Verify wallet has been funded successfully"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 9: Test Data Purchase",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"network\": \"mtn\",\n  \"planId\": \"mtn-1gb-300\",\n  \"pin\": \"{{testPin}}\",\n  \"userPhone\": \"{{testPhone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/purchase",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "purchase"]
+            },
+            "description": "Test purchasing data for your own number"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 10: Check Transaction History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/transactions/{{testPhone}}?limit=5&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "transactions", "{{testPhone}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Review transaction history to confirm all operations"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🧪 Testing Scenarios",
+      "description": "Pre-configured testing scenarios for different use cases",
+      "item": [
+        {
+          "name": "Create Second Test User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{recipientPhone}}\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "register"]
+            },
+            "description": "Create a second user for testing transfers between users"
+          },
+          "response": []
+        },
+        {
+          "name": "Set PIN for Second User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{recipientPhone}}\",\n  \"pin\": \"{{testPin}}\",\n  \"confirmPin\": \"{{testPin}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/set-pin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "set-pin"]
+            },
+            "description": "Set PIN for the second test user"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Error: Wrong PIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"network\": \"mtn\",\n  \"planId\": \"mtn-1gb-300\",\n  \"pin\": \"0000\",\n  \"userPhone\": \"{{testPhone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/purchase",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "purchase"]
+            },
+            "description": "Test error handling with wrong PIN - should return 401 error"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Error: Invalid Phone Format",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"123456789\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/detect-network",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "detect-network"]
+            },
+            "description": "Test error handling with invalid phone number format"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Error: User Not Found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/balance/08099999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "balance", "08099999999"]
+            },
+            "description": "Test error handling when user doesn't exist"
+          },
+          "response": []
+        },
+        {
+          "name": "Purchase Airtime for Friend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{recipientPhone}}\",\n  \"network\": \"mtn\",\n  \"amount\": 500,\n  \"pin\": \"{{testPin}}\",\n  \"userPhone\": \"{{testPhone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/purchase",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "purchase"]
+            },
+            "description": "Purchase airtime for another person using your account"
+          },
+          "response": []
+        },
+        {
+          "name": "Purchase Data for Friend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{recipientPhone}}\",\n  \"network\": \"mtn\",\n  \"planId\": \"mtn-500mb-200\",\n  \"pin\": \"{{testPin}}\",\n  \"userPhone\": \"{{testPhone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/purchase",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "purchase"]
+            },
+            "description": "Purchase data bundle for another person using your account"
+          },
+          "response": []
+        },
+        {
+          "name": "Check Multiple Network Detection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"08021234567\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/detect-network",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "detect-network"]
+            },
+            "description": "Test network detection with Airtel number"
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Different Utility Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"cable\",\n  \"provider\": \"dstv\",\n  \"customerNumber\": \"1234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/validate-customer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "validate-customer"]
+            },
+            "description": "Test utility customer validation for cable TV"
+          },
+          "response": []
+        }
+      ]
+    },
     {
       "name": "Health Check",
       "item": [
@@ -901,7 +1400,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"senderPhone\": \"{{testPhone}}\",\n  \"recipientPhone\": \"08087654321\",\n  \"amount\": 1000,\n  \"description\": \"Test transfer\",\n  \"pin\": \"{{testPin}}\"\n}"
+              "raw": "{\n  \"senderPhone\": \"{{testPhone}}\",\n  \"recipientPhone\": \"{{recipientPhone}}\",\n  \"amount\": 1000,\n  \"description\": \"Test transfer\",\n  \"pin\": \"{{testPin}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/transactions/transfer",
