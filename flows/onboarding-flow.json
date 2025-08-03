@@ -1,0 +1,493 @@
+{
+  "version": "3.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "terminal": "ONBOARDING_COMPLETE"
+  },
+  "screens": [
+    {
+      "id": "WELCOME",
+      "title": "Welcome to MiiMii",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "🚀 Welcome to MiiMii Financial Services!\n\nYour AI-powered financial assistant is ready to help you manage money, invest smartly, and achieve your financial goals.\n\nLet's get you set up in just 2 minutes."
+          },
+          {
+            "type": "Form",
+            "name": "welcome_form",
+            "children": [
+              {
+                "type": "RadioButtonsGroup",
+                "name": "user_type",
+                "label": "I'm signing up as:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "individual",
+                    "title": "🧑‍💼 Individual",
+                    "description": "Personal banking and investment"
+                  },
+                  {
+                    "id": "business",
+                    "title": "🏢 Business",
+                    "description": "Business banking and corporate services"
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "PERSONAL_INFO"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "PERSONAL_INFO",
+      "title": "Personal Information",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "📝 Tell us about yourself\n\nWe need some basic information to create your secure MiiMii account."
+          },
+          {
+            "type": "Form",
+            "name": "personal_form",
+            "children": [
+              {
+                "type": "TextInput",
+                "name": "first_name",
+                "label": "First Name",
+                "required": true,
+                "input-type": "text",
+                "helper-text": "Enter your legal first name"
+              },
+              {
+                "type": "TextInput",
+                "name": "last_name",
+                "label": "Last Name", 
+                "required": true,
+                "input-type": "text",
+                "helper-text": "Enter your legal last name"
+              },
+              {
+                "type": "TextInput",
+                "name": "email",
+                "label": "Email Address",
+                "required": true,
+                "input-type": "email",
+                "helper-text": "We'll send important updates here"
+              },
+              {
+                "type": "DatePicker",
+                "name": "date_of_birth",
+                "label": "Date of Birth",
+                "required": true,
+                "helper-text": "Must be 18 years or older"
+              },
+              {
+                "type": "Dropdown",
+                "name": "gender",
+                "label": "Gender",
+                "required": false,
+                "data-source": [
+                  {"id": "male", "title": "Male"},
+                  {"id": "female", "title": "Female"},
+                  {"id": "other", "title": "Other"},
+                  {"id": "prefer_not_to_say", "title": "Prefer not to say"}
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "CONTACT_INFO"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "CONTACT_INFO",
+      "title": "Contact Information",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "📍 Where can we reach you?\n\nYour contact information helps us provide better service and comply with financial regulations."
+          },
+          {
+            "type": "Form",
+            "name": "contact_form",
+            "children": [
+              {
+                "type": "TextInput",
+                "name": "phone_number",
+                "label": "Phone Number",
+                "required": true,
+                "input-type": "phone",
+                "helper-text": "Include country code (e.g., +1234567890)"
+              },
+              {
+                "type": "TextInput",
+                "name": "street_address",
+                "label": "Street Address",
+                "required": true,
+                "input-type": "text",
+                "helper-text": "Your residential address"
+              },
+              {
+                "type": "TextInput",
+                "name": "city",
+                "label": "City",
+                "required": true,
+                "input-type": "text"
+              },
+              {
+                "type": "TextInput",
+                "name": "state",
+                "label": "State/Province",
+                "required": true,
+                "input-type": "text"
+              },
+              {
+                "type": "TextInput",
+                "name": "postal_code",
+                "label": "Postal Code",
+                "required": true,
+                "input-type": "text"
+              },
+              {
+                "type": "Dropdown",
+                "name": "country",
+                "label": "Country",
+                "required": true,
+                "data-source": [
+                  {"id": "US", "title": "United States"},
+                  {"id": "CA", "title": "Canada"},
+                  {"id": "UK", "title": "United Kingdom"},
+                  {"id": "NG", "title": "Nigeria"},
+                  {"id": "KE", "title": "Kenya"},
+                  {"id": "GH", "title": "Ghana"},
+                  {"id": "ZA", "title": "South Africa"},
+                  {"id": "IN", "title": "India"},
+                  {"id": "AU", "title": "Australia"},
+                  {"id": "OTHER", "title": "Other"}
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "FINANCIAL_INFO"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "FINANCIAL_INFO",
+      "title": "Financial Information",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "💼 Tell us about your finances\n\nThis helps us provide personalized recommendations and services."
+          },
+          {
+            "type": "Form",
+            "name": "financial_form",
+            "children": [
+              {
+                "type": "Dropdown",
+                "name": "employment_status",
+                "label": "Employment Status",
+                "required": true,
+                "data-source": [
+                  {"id": "employed", "title": "👔 Employed Full-time"},
+                  {"id": "self_employed", "title": "💼 Self Employed"},
+                  {"id": "part_time", "title": "⏰ Part-time"},
+                  {"id": "student", "title": "🎓 Student"},
+                  {"id": "unemployed", "title": "📝 Unemployed"},
+                  {"id": "retired", "title": "🏖️ Retired"}
+                ]
+              },
+              {
+                "type": "Dropdown",
+                "name": "annual_income",
+                "label": "Annual Income (USD)",
+                "required": true,
+                "data-source": [
+                  {"id": "under_25k", "title": "Under $25,000"},
+                  {"id": "25k_50k", "title": "$25,000 - $50,000"},
+                  {"id": "50k_100k", "title": "$50,000 - $100,000"},
+                  {"id": "100k_250k", "title": "$100,000 - $250,000"},
+                  {"id": "250k_500k", "title": "$250,000 - $500,000"},
+                  {"id": "over_500k", "title": "Over $500,000"}
+                ]
+              },
+              {
+                "type": "Dropdown",
+                "name": "primary_purpose",
+                "label": "Primary Purpose for MiiMii",
+                "required": true,
+                "data-source": [
+                  {"id": "personal_banking", "title": "💳 Personal Banking"},
+                  {"id": "investments", "title": "📈 Investments"},
+                  {"id": "money_transfers", "title": "💸 Money Transfers"},
+                  {"id": "bill_payments", "title": "🧾 Bill Payments"},
+                  {"id": "business_banking", "title": "🏢 Business Banking"},
+                  {"id": "savings", "title": "🏦 Savings & Planning"}
+                ]
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "interested_services",
+                "label": "I'm interested in: (Select all that apply)",
+                "required": false,
+                "data-source": [
+                  {"id": "mobile_banking", "title": "📱 Mobile Banking"},
+                  {"id": "investment_advice", "title": "📊 Investment Advice"},
+                  {"id": "crypto_trading", "title": "₿ Cryptocurrency"},
+                  {"id": "international_transfers", "title": "🌍 International Transfers"},
+                  {"id": "business_loans", "title": "💰 Business Loans"},
+                  {"id": "insurance", "title": "🛡️ Insurance Products"}
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "SECURITY_SETUP"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SECURITY_SETUP",
+      "title": "Security Setup",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "🔐 Secure your account\n\nSet up additional security measures to protect your financial data."
+          },
+          {
+            "type": "Form",
+            "name": "security_form",
+            "children": [
+              {
+                "type": "TextInput",
+                "name": "security_pin",
+                "label": "Transaction PIN (4-6 digits)",
+                "required": true,
+                "input-type": "password",
+                "helper-text": "You'll use this for transactions and account access"
+              },
+              {
+                "type": "TextInput",
+                "name": "confirm_pin",
+                "label": "Confirm PIN",
+                "required": true,
+                "input-type": "password",
+                "helper-text": "Re-enter your PIN to confirm"
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "security_preferences",
+                "label": "Enable Security Features:",
+                "required": false,
+                "data-source": [
+                  {"id": "sms_alerts", "title": "📱 SMS Transaction Alerts"},
+                  {"id": "email_alerts", "title": "📧 Email Notifications"},
+                  {"id": "biometric_auth", "title": "👆 Biometric Authentication"},
+                  {"id": "two_factor_auth", "title": "🔐 Two-Factor Authentication"}
+                ]
+              },
+              {
+                "type": "TextInput",
+                "name": "security_question",
+                "label": "Security Question: What was your first pet's name?",
+                "required": true,
+                "input-type": "text",
+                "helper-text": "This helps us verify your identity if needed"
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "TERMS_AGREEMENT"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "TERMS_AGREEMENT",
+      "title": "Terms & Agreement",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "📋 Review and Accept\n\nPlease review our terms and privacy policy before completing your registration."
+          },
+          {
+            "type": "Form",
+            "name": "terms_form",
+            "children": [
+              {
+                "type": "CheckboxGroup",
+                "name": "agreements",
+                "label": "Required Agreements:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "terms_of_service",
+                    "title": "I agree to the Terms of Service",
+                    "description": "Read our full terms and conditions"
+                  },
+                  {
+                    "id": "privacy_policy",
+                    "title": "I agree to the Privacy Policy",
+                    "description": "Understand how we protect your data"
+                  },
+                  {
+                    "id": "electronic_communications",
+                    "title": "I consent to electronic communications",
+                    "description": "Receive important updates via email/SMS"
+                  }
+                ]
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "optional_consents",
+                "label": "Optional (You can change these later):",
+                "required": false,
+                "data-source": [
+                  {
+                    "id": "marketing_emails",
+                    "title": "Marketing emails",
+                    "description": "Receive tips, offers, and product updates"
+                  },
+                  {
+                    "id": "sms_marketing",
+                    "title": "SMS marketing",
+                    "description": "Get exclusive offers and alerts via SMS"
+                  },
+                  {
+                    "id": "data_analytics",
+                    "title": "Anonymous analytics",
+                    "description": "Help us improve our services"
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Complete Registration",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "ONBOARDING_COMPLETE"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ONBOARDING_COMPLETE",
+      "title": "Welcome to MiiMii!",
+      "terminal": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "🎉 Congratulations!\n\nYour MiiMii account has been successfully created. You're now ready to:\n\n✅ Access your dashboard\n✅ Start making transactions\n✅ Explore investment options\n✅ Use AI-powered financial insights\n\nNext steps:\n1. Complete identity verification (KYC)\n2. Add your first payment method\n3. Explore our services\n\nWelcome to the future of finance!"
+          },
+          {
+            "type": "Form",
+            "name": "completion_form",
+            "children": [
+              {
+                "type": "Footer",
+                "label": "Get Started",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "completion_status": "success",
+                    "next_action": "kyc_verification"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,577 @@
+{
+  "version": "3.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "terminal": "KYC_COMPLETE"
+  },
+  "screens": [
+    {
+      "id": "KYC_INTRO",
+      "title": "Identity Verification",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "🛡️ Identity Verification Required\n\nTo ensure the security of your account and comply with financial regulations, we need to verify your identity.\n\nThis process is:\n✅ Secure and encrypted\n✅ Takes 2-3 minutes\n✅ Required only once\n✅ Bank-grade security\n\nYou'll need:\n📄 Government-issued ID\n📱 Phone for photos\n📍 Current address proof"
+          },
+          {
+            "type": "Form",
+            "name": "intro_form",
+            "children": [
+              {
+                "type": "RadioButtonsGroup",
+                "name": "verification_level",
+                "label": "Choose verification level:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "basic",
+                    "title": "🔵 Basic Verification",
+                    "description": "ID document only • $10,000 limits"
+                  },
+                  {
+                    "id": "enhanced",
+                    "title": "🟢 Enhanced Verification", 
+                    "description": "ID + Address proof • $50,000 limits"
+                  },
+                  {
+                    "id": "premium",
+                    "title": "🔶 Premium Verification",
+                    "description": "Full verification • Unlimited access"
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Start Verification",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "DOCUMENT_TYPE"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "DOCUMENT_TYPE",
+      "title": "Select ID Document",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "📄 Choose Your ID Document\n\nSelect the government-issued ID you'd like to use for verification. Make sure it's valid and not expired."
+          },
+          {
+            "type": "Form",
+            "name": "document_form",
+            "children": [
+              {
+                "type": "RadioButtonsGroup",
+                "name": "document_type",
+                "label": "Document Type:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "passport",
+                    "title": "🛂 Passport",
+                    "description": "International travel document"
+                  },
+                  {
+                    "id": "drivers_license",
+                    "title": "🚗 Driver's License",
+                    "description": "State/Provincial driving license"
+                  },
+                  {
+                    "id": "national_id",
+                    "title": "🏛️ National ID Card",
+                    "description": "Government ID card"
+                  },
+                  {
+                    "id": "military_id",
+                    "title": "⭐ Military ID",
+                    "description": "Military identification"
+                  },
+                  {
+                    "id": "residence_permit",
+                    "title": "🏠 Residence Permit",
+                    "description": "Permanent residence card"
+                  }
+                ]
+              },
+              {
+                "type": "TextInput",
+                "name": "document_number",
+                "label": "Document Number",
+                "required": true,
+                "input-type": "text",
+                "helper-text": "Enter the ID number exactly as shown on document"
+              },
+              {
+                "type": "DatePicker",
+                "name": "expiry_date",
+                "label": "Expiry Date",
+                "required": true,
+                "helper-text": "When does this document expire?"
+              },
+              {
+                "type": "Dropdown",
+                "name": "issuing_country",
+                "label": "Issuing Country",
+                "required": true,
+                "data-source": [
+                  {"id": "US", "title": "🇺🇸 United States"},
+                  {"id": "CA", "title": "🇨🇦 Canada"},
+                  {"id": "UK", "title": "🇬🇧 United Kingdom"},
+                  {"id": "NG", "title": "🇳🇬 Nigeria"},
+                  {"id": "KE", "title": "🇰🇪 Kenya"},
+                  {"id": "GH", "title": "🇬🇭 Ghana"},
+                  {"id": "ZA", "title": "🇿🇦 South Africa"},
+                  {"id": "IN", "title": "🇮🇳 India"},
+                  {"id": "AU", "title": "🇦🇺 Australia"},
+                  {"id": "DE", "title": "🇩🇪 Germany"},
+                  {"id": "FR", "title": "🇫🇷 France"},
+                  {"id": "OTHER", "title": "🌍 Other"}
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "DOCUMENT_PHOTOS"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "DOCUMENT_PHOTOS",
+      "title": "Upload ID Photos",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "📸 Take Clear Photos\n\nFor best results:\n✅ Use good lighting\n✅ Keep document flat\n✅ Ensure all text is readable\n✅ No glare or shadows\n✅ Take photos directly above document"
+          },
+          {
+            "type": "Form",
+            "name": "photos_form",
+            "children": [
+              {
+                "type": "PhotoPicker",
+                "name": "document_front",
+                "label": "Front of Document",
+                "required": true,
+                "helper-text": "Photo of the front side showing your photo and details"
+              },
+              {
+                "type": "PhotoPicker",
+                "name": "document_back",
+                "label": "Back of Document",
+                "required": true,
+                "helper-text": "Photo of the back side (if applicable)"
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "photo_quality_check",
+                "label": "Confirm photo quality:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "clear_readable",
+                    "title": "All text is clear and readable"
+                  },
+                  {
+                    "id": "no_glare",
+                    "title": "No glare or reflections"
+                  },
+                  {
+                    "id": "full_document",
+                    "title": "Full document is visible"
+                  },
+                  {
+                    "id": "authentic_document",
+                    "title": "This is my authentic government ID"
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "SELFIE_VERIFICATION"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SELFIE_VERIFICATION",
+      "title": "Selfie Verification",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "🤳 Take a Selfie\n\nWe need to verify that you're the same person in the ID document.\n\nSelfie tips:\n✅ Face the camera directly\n✅ Remove glasses/hats if possible\n✅ Use good front-facing light\n✅ Keep a neutral expression\n✅ Hold still for clear photo"
+          },
+          {
+            "type": "Form",
+            "name": "selfie_form",
+            "children": [
+              {
+                "type": "PhotoPicker",
+                "name": "selfie_photo",
+                "label": "Take Selfie",
+                "required": true,
+                "helper-text": "Clear photo of your face for identity matching"
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "selfie_confirmation",
+                "label": "Confirm:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "clear_face",
+                    "title": "My face is clearly visible"
+                  },
+                  {
+                    "id": "same_person",
+                    "title": "I am the same person as in the ID document"
+                  },
+                  {
+                    "id": "consent_biometric",
+                    "title": "I consent to biometric verification"
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "ADDRESS_VERIFICATION"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ADDRESS_VERIFICATION",
+      "title": "Address Verification",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "🏠 Verify Your Address\n\nPlease provide proof of your current residential address. This document should be recent (within 3 months)."
+          },
+          {
+            "type": "Form",
+            "name": "address_form",
+            "children": [
+              {
+                "type": "RadioButtonsGroup",
+                "name": "address_document_type",
+                "label": "Address Proof Document:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "utility_bill",
+                    "title": "⚡ Utility Bill",
+                    "description": "Electricity, gas, water, or internet bill"
+                  },
+                  {
+                    "id": "bank_statement",
+                    "title": "🏦 Bank Statement",
+                    "description": "Official statement from your bank"
+                  },
+                  {
+                    "id": "rental_agreement",
+                    "title": "🏡 Rental Agreement",
+                    "description": "Lease or rental contract"
+                  },
+                  {
+                    "id": "tax_document",
+                    "title": "📋 Tax Document",
+                    "description": "Government tax statement"
+                  },
+                  {
+                    "id": "insurance_statement",
+                    "title": "🛡️ Insurance Statement",
+                    "description": "Home or auto insurance document"
+                  }
+                ]
+              },
+              {
+                "type": "DatePicker",
+                "name": "document_date",
+                "label": "Document Date",
+                "required": true,
+                "helper-text": "When was this document issued?"
+              },
+              {
+                "type": "PhotoPicker",
+                "name": "address_proof_photo",
+                "label": "Upload Address Proof",
+                "required": true,
+                "helper-text": "Clear photo showing your name and address"
+              },
+              {
+                "type": "TextInput",
+                "name": "current_address",
+                "label": "Current Address",
+                "required": true,
+                "input-type": "text",
+                "helper-text": "Full address as shown on the document"
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "ADDITIONAL_INFO"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ADDITIONAL_INFO",
+      "title": "Additional Information",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "ℹ️ Additional Details\n\nPlease provide some additional information to complete your verification profile."
+          },
+          {
+            "type": "Form",
+            "name": "additional_form",
+            "children": [
+              {
+                "type": "Dropdown",
+                "name": "nationality",
+                "label": "Nationality",
+                "required": true,
+                "data-source": [
+                  {"id": "US", "title": "🇺🇸 American"},
+                  {"id": "CA", "title": "🇨🇦 Canadian"},
+                  {"id": "UK", "title": "🇬🇧 British"},
+                  {"id": "NG", "title": "🇳🇬 Nigerian"},
+                  {"id": "KE", "title": "🇰🇪 Kenyan"},
+                  {"id": "GH", "title": "🇬🇭 Ghanaian"},
+                  {"id": "ZA", "title": "🇿🇦 South African"},
+                  {"id": "IN", "title": "🇮🇳 Indian"},
+                  {"id": "OTHER", "title": "🌍 Other"}
+                ]
+              },
+              {
+                "type": "TextInput",
+                "name": "place_of_birth",
+                "label": "Place of Birth",
+                "required": true,
+                "input-type": "text",
+                "helper-text": "City and country where you were born"
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "tax_residency",
+                "label": "Tax Residency:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "single_country",
+                    "title": "Single Country",
+                    "description": "I'm a tax resident of only one country"
+                  },
+                  {
+                    "id": "multiple_countries",
+                    "title": "Multiple Countries",
+                    "description": "I have tax obligations in multiple countries"
+                  }
+                ]
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "politically_exposed",
+                "label": "Are you a Politically Exposed Person (PEP)?",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "no",
+                    "title": "No",
+                    "description": "I am not in a prominent public position"
+                  },
+                  {
+                    "id": "yes",
+                    "title": "Yes",
+                    "description": "I hold or held a prominent public position"
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "REVIEW_SUBMIT"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "REVIEW_SUBMIT",
+      "title": "Review & Submit",
+      "terminal": false,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "👀 Review Your Information\n\nPlease review all the information you've provided. Make sure everything is accurate before submitting.\n\n⏱️ Processing Time: 1-3 business days\n📧 Updates: We'll notify you via email and WhatsApp\n🔒 Security: Your documents are encrypted and secure"
+          },
+          {
+            "type": "Form",
+            "name": "review_form",
+            "children": [
+              {
+                "type": "CheckboxGroup",
+                "name": "final_confirmations",
+                "label": "Final Confirmations:",
+                "required": true,
+                "data-source": [
+                  {
+                    "id": "information_accurate",
+                    "title": "All information provided is accurate and truthful"
+                  },
+                  {
+                    "id": "documents_authentic",
+                    "title": "All documents are authentic and belong to me"
+                  },
+                  {
+                    "id": "consent_processing",
+                    "title": "I consent to processing of my personal data for verification"
+                  },
+                  {
+                    "id": "understand_consequences",
+                    "title": "I understand that false information may result in account closure"
+                  }
+                ]
+              },
+              {
+                "type": "TextInput",
+                "name": "additional_notes",
+                "label": "Additional Notes (Optional)",
+                "required": false,
+                "input-type": "text",
+                "helper-text": "Any additional information for our verification team"
+              },
+              {
+                "type": "Footer",
+                "label": "Submit for Verification",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "KYC_COMPLETE"
+                  },
+                  "payload": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "KYC_COMPLETE",
+      "title": "Verification Submitted",
+      "terminal": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Text",
+            "text": "✅ Verification Submitted Successfully!\n\nThank you for completing your identity verification. Here's what happens next:\n\n📋 **Review Process**\n• Our verification team will review your documents\n• Processing time: 1-3 business days\n• You'll receive updates via email and WhatsApp\n\n🔍 **What We Check**\n• Document authenticity\n• Identity matching\n• Address verification\n• Compliance screening\n\n📱 **Next Steps**\n• Continue using MiiMii with current limits\n• Enhanced features unlock after approval\n• Check verification status in your profile\n\n📞 **Need Help?**\nContact our support team anytime at support@miimii.com\n\nReference ID: #KYC-${Date.now()}"
+          },
+          {
+            "type": "Form",
+            "name": "completion_form",
+            "children": [
+              {
+                "type": "Footer",
+                "label": "Return to Dashboard",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "verification_status": "submitted",
+                    "reference_id": "KYC-${Date.now()}",
+                    "next_action": "dashboard_redirect"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
