@@ -129,7 +129,7 @@ class OCRService {
     
     return rawText
       .replace(/\s+/g, ' ') // Multiple spaces to single space
-      .replace(/[^\w\s.,;:!?-()[\]{}@#$%&*+=/_|~`"']/g, '') // Remove invalid characters
+      .replace(/[^\w\s.,;:!?()\[\]{}@#$%&*+=/_|~`"'-]/g, '') // Remove invalid characters
       .trim();
   }
 

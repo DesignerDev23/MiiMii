@@ -13,8 +13,8 @@ class RedisClient {
     try {
       const redisUrl = process.env.REDIS_URL;
       
-      if (!redisUrl) {
-        logger.warn('Redis URL not provided, Redis features will be disabled');
+      if (!redisUrl || typeof redisUrl !== 'string') {
+        logger.warn('Redis URL not provided or invalid, Redis features will be disabled');
         return false;
       }
 
@@ -25,7 +25,7 @@ class RedisClient {
           reconnectDelay: 1000,
           timeout: 5000,
         },
-        retry_strategy: (times) => {
+        retryStrategy: (times) => {
           if (times > this.maxReconnectAttempts) {
             logger.error('Redis max reconnection attempts reached');
             return null;
