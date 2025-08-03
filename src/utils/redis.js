@@ -13,8 +13,9 @@ class RedisClient {
     try {
       const redisUrl = process.env.REDIS_URL;
       
-      if (!redisUrl || typeof redisUrl !== 'string') {
-        logger.warn('Redis URL not provided or invalid, Redis features will be disabled');
+      if (!redisUrl || typeof redisUrl !== 'string' || redisUrl.includes('localhost')) {
+        logger.info('Redis URL not provided, invalid, or pointing to localhost - Redis features will be disabled');
+        this.isConnected = false;
         return false;
       }
 
@@ -28,7 +29,7 @@ class RedisClient {
         },
         retryStrategy: (times) => {
           if (times > this.maxReconnectAttempts) {
-            logger.error('Redis max reconnection attempts reached - disabling Redis');
+            logger.info('Redis max reconnection attempts reached - disabling Redis');
             this.isConnected = false;
             return null;
           }
@@ -49,7 +50,7 @@ class RedisClient {
       });
 
       this.client.on('error', (err) => {
-        logger.error('Redis client error:', err);
+        logger.info('Redis client error (Redis features disabled):', err.message);
         this.isConnected = false;
       });
 
@@ -72,7 +73,7 @@ class RedisClient {
       
       return true;
     } catch (error) {
-      logger.error('Failed to connect to Redis:', error);
+      logger.info('Failed to connect to Redis (Redis features disabled):', error.message);
       this.isConnected = false;
       return false;
     }

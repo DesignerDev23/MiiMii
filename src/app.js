@@ -149,10 +149,19 @@ async function startServer() {
       logger.warn('Redis connection error - continuing without Redis features:', error.message);
     }
 
-    // Sync database models (use { force: true } only in development to recreate tables)
-    if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ alter: true });
+    // Sync database models (ensure tables exist)
+    try {
+      await sequelize.sync({ force: false, alter: false });
       logger.info('Database models synchronized');
+    } catch (error) {
+      logger.warn('Database sync failed, retrying with alter:', error.message);
+      try {
+        await sequelize.sync({ force: false, alter: true });
+        logger.info('Database models synchronized with alter');
+      } catch (retryError) {
+        logger.error('Database sync failed completely:', retryError.message);
+        throw retryError;
+      }
     }
 
     // Start server
