@@ -144,4 +144,4 @@ uploads/
 !uploads/.gitkeep
 gcp-service-account.json
 *.pem
-*.key
+*.key.env
