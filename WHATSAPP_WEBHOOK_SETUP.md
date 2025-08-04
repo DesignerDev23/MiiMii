@@ -4,10 +4,47 @@ This guide will help you configure the WhatsApp Business Cloud API webhook for y
 
 ## 🔗 Current Webhook Configuration
 
-Your webhook is already properly implemented with:
-- **Webhook URL**: `https://miimii-app-p8gzu.ondigitalocean.app/webhook/whatsapp`
+Your webhook is properly implemented with:
+- **Webhook URL**: `https://api.chatmiimii.com/webhook/whatsapp`
 - **Verify Token**: `Verify_MiiMii`
 - **Direct Meta API Integration** (not third-party)
+
+## ⚠️ URGENT: Current Issue & Solution
+
+### Issue Identified
+The WhatsApp webhook verification is failing with "403 Forbidden" because:
+1. The production environment has `WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token` (placeholder)
+2. But Meta WhatsApp is configured to use `Verify_MiiMii`
+
+### ✅ Solution Steps
+
+#### Step 1: Update DigitalOcean Environment Variables
+1. **Go to**: [DigitalOcean App Platform Dashboard](https://cloud.digitalocean.com/apps)
+2. **Select**: Your MiiMii application
+3. **Go to**: Settings > App-level environment variables
+4. **Find**: `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+5. **Update value to**: `Verify_MiiMii`
+6. **Save changes**
+
+#### Step 2: Deploy Updated Configuration
+After updating the environment variable:
+1. **Trigger a deployment** (either through git push or manual deploy)
+2. **Wait for deployment** to complete (5-10 minutes)
+
+#### Step 3: Configure Meta Developer Console
+1. **Go to**: https://developers.facebook.com/
+2. **Navigate to**: Your WhatsApp Business App
+3. **Go to**: WhatsApp > Configuration
+4. **Set Webhook URL**: `https://api.chatmiimii.com/webhook/whatsapp`
+5. **Set Verify Token**: `Verify_MiiMii`
+6. **Click "Verify and Save"**
+
+### ✅ Verification Test
+After deployment, test the webhook:
+```bash
+curl -X GET "https://api.chatmiimii.com/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=Verify_MiiMii&hub.challenge=test123"
+# Should return: test123
+```
 
 ## 📋 Prerequisites
 
