@@ -43,17 +43,50 @@ class MessageProcessor {
       return await this.handleCompletedUserMessage(user, message, messageType);
 
     } catch (error) {
-      logger.error('Message processing failed', { error: error.message, messageData });
+      logger.error('Message processing failed', { 
+        error: error.message, 
+        messageData,
+        service: 'miimii-api'
+      });
       
-      // Send error message to user
-      try {
-        await whatsappService.sendTextMessage(
-          messageData.from,
-          "I'm experiencing technical difficulties. Please try again in a moment or contact support if the issue persists."
-        );
-      } catch (sendError) {
-        logger.error('Failed to send error message', { error: sendError.message });
+      // Send error message to user with improved error handling
+      await this.handleProcessingError(messageData.from, error);
+    }
+  }
+
+  async handleProcessingError(phoneNumber, error) {
+    try {
+      // Only send error message if WhatsApp service is configured
+      if (!whatsappService.isConfigured()) {
+        logger.error('Cannot send error message - WhatsApp service not configured', {
+          phoneNumber,
+          service: 'miimii-api'
+        });
+        return;
       }
+
+      const isAuthError = error.message?.includes('Authentication failed') ||
+                         error.message?.includes('invalid or expired access token') ||
+                         error.message?.includes('Invalid OAuth access token');
+      
+      if (isAuthError) {
+        logger.error('Cannot send error message due to authentication issues', {
+          phoneNumber,
+          service: 'miimii-api'
+        });
+        return;
+      }
+
+      await whatsappService.sendTextMessage(
+        phoneNumber,
+        "I'm experiencing technical difficulties. Please try again in a moment or contact support if the issue persists."
+      );
+    } catch (sendError) {
+      logger.error('Failed to send error message', { 
+        error: sendError.message, 
+        phoneNumber,
+        service: 'miimii-api'
+      });
     }
   }
 

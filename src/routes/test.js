@@ -380,6 +380,27 @@ if (process.env.NODE_ENV !== 'production') {
     });
   });
 
+  // WhatsApp service health check
+  router.get('/whatsapp-health', async (req, res) => {
+    try {
+      const whatsappService = require('../services/whatsapp');
+      const healthCheck = await whatsappService.healthCheck();
+      
+      res.json({
+        success: true,
+        whatsappHealth: healthCheck,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error('WhatsApp health check error', { error: error.message });
+      res.status(500).json({ 
+        success: false,
+        error: 'WhatsApp health check failed',
+        details: error.message
+      });
+    }
+  });
+
 } else {
   // In production, return 404 for all test routes
   router.use('*', (req, res) => {

@@ -56,8 +56,11 @@ class OnboardingService {
 
   async handleGreeting(user, message) {
     const greetingKeywords = ['hi', 'hello', 'hey', 'start', '/start', 'good morning', 'good afternoon', 'good evening'];
+    
+    // Ensure message is a string before calling toLowerCase
+    const messageText = typeof message === 'string' ? message : (message?.text || '');
     const isGreeting = greetingKeywords.some(keyword => 
-      message.toLowerCase().includes(keyword)
+      messageText.toLowerCase().includes(keyword)
     );
 
     if (!isGreeting && !user.firstName) {
