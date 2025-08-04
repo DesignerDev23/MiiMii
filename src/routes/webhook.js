@@ -61,11 +61,21 @@ router.get('/whatsapp', (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
+  logger.info('WhatsApp webhook verification attempt', { 
+    mode, 
+    token, 
+    challenge,
+    expectedToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+    fallbackToken: 'Verify_MiiMii'
+  });
+
   const result = whatsappService.verifyWebhook(mode, token, challenge);
   
   if (result) {
+    logger.info('WhatsApp webhook verification successful');
     res.status(200).send(challenge);
   } else {
+    logger.warn('WhatsApp webhook verification failed');
     res.status(403).send('Forbidden');
   }
 });

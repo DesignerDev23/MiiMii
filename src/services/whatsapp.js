@@ -6,7 +6,7 @@ class WhatsAppService {
     this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
     this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     this.baseURL = `https://graph.facebook.com/v18.0/${this.phoneNumberId}`;
-    this.verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    this.verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'Verify_MiiMii';
   }
 
   async sendMessage(to, message, type = 'text') {
