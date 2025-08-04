@@ -104,7 +104,9 @@ class OnboardingService {
   }
 
   async handleNameCollection(user, message) {
-    const nameParts = message.trim().split(/\s+/);
+    // Ensure message is a string before calling trim
+    const messageText = typeof message === 'string' ? message : (message?.text || '');
+    const nameParts = messageText.trim().split(/\s+/);
     
     if (nameParts.length < 2) {
       await whatsappService.sendTextMessage(
@@ -320,7 +322,9 @@ class OnboardingService {
   }
 
   async handlePinSetup(user, message) {
-    const pin = message.trim().replace(/\s+/g, '');
+    // Ensure message is a string before calling trim
+    const messageText = typeof message === 'string' ? message : (message?.text || '');
+    const pin = messageText.trim().replace(/\s+/g, '');
     
     // Validate PIN
     if (!/^\d{4}$/.test(pin)) {
@@ -404,13 +408,15 @@ class OnboardingService {
   }
 
   parseKycData(message) {
-    const lines = message.split('\n').map(line => line.trim()).filter(line => line);
+    // Ensure message is a string before processing
+    const messageText = typeof message === 'string' ? message : (message?.text || '');
+    const lines = messageText.split('\n').map(line => line.trim()).filter(line => line);
     const data = {};
     const missing = [];
 
     // Try to extract date of birth
     const dateRegex = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/;
-    const dateMatch = message.match(dateRegex);
+    const dateMatch = messageText.match(dateRegex);
     if (dateMatch) {
       data.dateOfBirth = `${dateMatch[1].padStart(2, '0')}/${dateMatch[2].padStart(2, '0')}/${dateMatch[3]}`;
     } else {
@@ -419,7 +425,7 @@ class OnboardingService {
 
     // Try to extract gender
     const genderRegex = /\b(male|female|man|woman|m|f)\b/i;
-    const genderMatch = message.match(genderRegex);
+    const genderMatch = messageText.match(genderRegex);
     if (genderMatch) {
       const g = genderMatch[1].toLowerCase();
       data.gender = (g === 'male' || g === 'man' || g === 'm') ? 'male' : 'female';
@@ -429,7 +435,7 @@ class OnboardingService {
 
     // Try to extract BVN
     const bvnRegex = /\b(\d{11})\b/;
-    const bvnMatch = message.match(bvnRegex);
+    const bvnMatch = messageText.match(bvnRegex);
     if (bvnMatch) {
       data.bvn = bvnMatch[1];
     } else {
