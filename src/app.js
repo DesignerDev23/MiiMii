@@ -45,7 +45,7 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-admin-domain.com'] 
+    ? ['https://api.chatmiimii.com'] 
     : ['http://localhost:3000', 'http://localhost:3001'],
   credentials: true
 }));
