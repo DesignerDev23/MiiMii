@@ -1,13 +1,66 @@
 #!/bin/bash
 
-# MiiMii Deployment Verification Script
-# Run this after deploying to DigitalOcean
+# MiiMii API Deployment Verification Script
+# This script verifies that all critical services are running correctly
 
-echo "🚀 MiiMii Deployment Verification"
-echo "================================="
+echo "🔍 MiiMii API Deployment Verification"
+echo "======================================"
+
+API_URL="${1:-http://localhost:3000}"
+echo "Testing API at: $API_URL"
 echo ""
 
-BASE_URL="miimii-app-p8gzu.ondigitalocean.app"
+# Test basic health endpoint
+echo "1. Testing basic health endpoint..."
+HEALTH_RESPONSE=$(curl -s "$API_URL/health" 2>/dev/null)
+if echo "$HEALTH_RESPONSE" | grep -q "healthy"; then
+    echo "✅ Basic health check passed"
+else
+    echo "❌ Basic health check failed"
+    echo "Response: $HEALTH_RESPONSE"
+fi
+echo ""
+
+# Test WhatsApp service health
+echo "2. Testing WhatsApp service health..."
+if [ "$NODE_ENV" != "production" ]; then
+    WA_HEALTH_RESPONSE=$(curl -s "$API_URL/api/test/whatsapp-health" 2>/dev/null)
+    if echo "$WA_HEALTH_RESPONSE" | grep -q "success"; then
+        echo "✅ WhatsApp service health check passed"
+        echo "Response: $WA_HEALTH_RESPONSE"
+    else
+        echo "❌ WhatsApp service health check failed"
+        echo "Response: $WA_HEALTH_RESPONSE"
+    fi
+else
+    echo "⚠️  WhatsApp health check only available in development mode"
+fi
+echo ""
+
+# Test system info
+echo "3. Testing system info endpoint..."
+if [ "$NODE_ENV" != "production" ]; then
+    SYSTEM_RESPONSE=$(curl -s "$API_URL/api/test/system-info" 2>/dev/null)
+    if echo "$SYSTEM_RESPONSE" | grep -q "success"; then
+        echo "✅ System info endpoint working"
+        # Check if critical environment variables are set
+        if echo "$SYSTEM_RESPONSE" | grep -q '"WHATSAPP_ACCESS_TOKEN":"Set"'; then
+            echo "✅ WhatsApp access token is configured"
+        else
+            echo "❌ WhatsApp access token is NOT configured"
+        fi
+    else
+        echo "❌ System info endpoint failed"
+        echo "Response: $SYSTEM_RESPONSE"
+    fi
+else
+    echo "⚠️  System info only available in development mode"
+fi
+echo ""
+
+# Test 2: Webhook Verification
+echo "2️⃣ Testing Webhook Verification..."
+CHALLENGE="test_$(date +%s)"
 WEBHOOK_URL="https://${BASE_URL}/webhook/whatsapp"
 VERIFY_TOKEN="Verify_MiiMii"
 
@@ -17,21 +70,6 @@ echo "   Webhook URL: ${WEBHOOK_URL}"
 echo "   Verify Token: ${VERIFY_TOKEN}"
 echo ""
 
-# Test 1: Health Check
-echo "1️⃣ Testing Server Health..."
-HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${BASE_URL}/health" 2>/dev/null)
-
-if [ "$HEALTH_STATUS" = "200" ]; then
-    echo "   ✅ Server is healthy (HTTP $HEALTH_STATUS)"
-else
-    echo "   ❌ Server health check failed (HTTP $HEALTH_STATUS)"
-    echo "   💡 Check DigitalOcean App Platform logs"
-fi
-echo ""
-
-# Test 2: Webhook Verification
-echo "2️⃣ Testing Webhook Verification..."
-CHALLENGE="test_$(date +%s)"
 WEBHOOK_RESPONSE=$(curl -s "${WEBHOOK_URL}?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=${CHALLENGE}" 2>/dev/null)
 
 if [ "$WEBHOOK_RESPONSE" = "$CHALLENGE" ]; then

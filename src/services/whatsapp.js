@@ -7,10 +7,50 @@ class WhatsAppService {
     this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     this.baseURL = `https://graph.facebook.com/v18.0/${this.phoneNumberId}`;
     this.verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    
+    // Validate required configuration on startup
+    this.validateConfiguration();
+  }
+
+  validateConfiguration() {
+    const requiredEnvVars = [
+      'WHATSAPP_ACCESS_TOKEN',
+      'WHATSAPP_PHONE_NUMBER_ID',
+      'WHATSAPP_WEBHOOK_VERIFY_TOKEN'
+    ];
+
+    const missing = requiredEnvVars.filter(envVar => !process.env[envVar]);
+    
+    if (missing.length > 0) {
+      logger.error('Missing required WhatsApp configuration', { 
+        missing,
+        service: 'whatsapp-service'
+      });
+    }
+
+    if (!this.accessToken) {
+      logger.error('WhatsApp access token is not configured', {
+        service: 'whatsapp-service'
+      });
+    }
+  }
+
+  isConfigured() {
+    return !!(this.accessToken && this.phoneNumberId && this.verifyToken);
   }
 
   async sendMessage(to, message, type = 'text') {
     try {
+      // Check if service is properly configured
+      if (!this.isConfigured()) {
+        logger.error('WhatsApp service not properly configured', {
+          hasToken: !!this.accessToken,
+          hasPhoneId: !!this.phoneNumberId,
+          hasVerifyToken: !!this.verifyToken
+        });
+        throw new Error('WhatsApp service not properly configured');
+      }
+
       const payload = {
         messaging_product: 'whatsapp',
         to: to,
@@ -32,22 +72,44 @@ class WhatsAppService {
           headers: {
             'Authorization': `Bearer ${this.accessToken}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 30000 // 30 second timeout
         }
       );
 
       logger.info('WhatsApp message sent successfully', {
         to,
-        messageId: response.data.messages[0].id
+        messageId: response.data.messages[0].id,
+        service: 'miimii-api'
       });
 
       return response.data;
     } catch (error) {
+      // Enhanced error handling for OAuth issues
+      const isAuthError = error.response?.status === 401 || 
+                         error.response?.data?.error?.code === 190;
+      
+      if (isAuthError) {
+        logger.error('WhatsApp OAuth authentication failed', {
+          error: error.response?.data || error.message,
+          errorCode: error.response?.data?.error?.code,
+          errorType: error.response?.data?.error?.type,
+          to,
+          service: 'miimii-api'
+        });
+        
+        // Don't retry auth errors immediately
+        throw new Error('Authentication failed - invalid or expired access token');
+      }
+
       logger.error('Failed to send WhatsApp message', {
         error: error.response?.data || error.message,
+        status: error.response?.status,
         to,
-        message
+        message,
+        service: 'miimii-api'
       });
+      
       throw error;
     }
   }
@@ -101,6 +163,14 @@ class WhatsAppService {
 
   async markMessageAsRead(messageId) {
     try {
+      if (!this.isConfigured()) {
+        logger.warn('Cannot mark message as read - WhatsApp service not configured', {
+          messageId,
+          service: 'miimii-api'
+        });
+        return;
+      }
+
       await axios.post(
         `${this.baseURL}/messages`,
         {
@@ -112,23 +182,50 @@ class WhatsAppService {
           headers: {
             'Authorization': `Bearer ${this.accessToken}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 15000 // 15 second timeout
         }
       );
+      
+      logger.debug('Message marked as read successfully', {
+        messageId,
+        service: 'miimii-api'
+      });
     } catch (error) {
-      logger.error('Failed to mark message as read', { error: error.message, messageId });
+      const isAuthError = error.response?.status === 401 || 
+                         error.response?.data?.error?.code === 190;
+      
+      if (isAuthError) {
+        logger.error('Failed to mark message as read - authentication error', {
+          error: error.response?.data?.error?.message || error.message,
+          errorCode: error.response?.data?.error?.code,
+          messageId,
+          service: 'miimii-api'
+        });
+      } else {
+        logger.error('Failed to mark message as read', {
+          error: error.response?.data || error.message,
+          messageId,
+          service: 'miimii-api'
+        });
+      }
     }
   }
 
   async downloadMedia(mediaId) {
     try {
+      if (!this.isConfigured()) {
+        throw new Error('WhatsApp service not properly configured');
+      }
+
       // First get media URL
       const mediaResponse = await axios.get(
         `https://graph.facebook.com/v18.0/${mediaId}`,
         {
           headers: {
             'Authorization': `Bearer ${this.accessToken}`
-          }
+          },
+          timeout: 30000
         }
       );
 
@@ -139,7 +236,8 @@ class WhatsAppService {
         headers: {
           'Authorization': `Bearer ${this.accessToken}`
         },
-        responseType: 'stream'
+        responseType: 'stream',
+        timeout: 60000
       });
 
       return {
@@ -148,9 +246,91 @@ class WhatsAppService {
         fileSize: mediaResponse.data.file_size
       };
     } catch (error) {
-      logger.error('Failed to download media', { error: error.message, mediaId });
+      const isAuthError = error.response?.status === 401 || 
+                         error.response?.data?.error?.code === 190;
+      
+      if (isAuthError) {
+        logger.error('Media download failed - authentication error', {
+          error: error.response?.data?.error?.message || error.message,
+          mediaId,
+          service: 'miimii-api'
+        });
+        throw new Error('Authentication failed - invalid or expired access token');
+      }
+
+      logger.error('Failed to download media', { 
+        error: error.message, 
+        mediaId,
+        service: 'miimii-api'
+      });
       throw error;
     }
+  }
+
+  // Token validation method
+  async validateToken() {
+    try {
+      if (!this.accessToken) {
+        return { valid: false, error: 'No access token configured' };
+      }
+
+      // Test the token by making a simple API call
+      const response = await axios.get(
+        `https://graph.facebook.com/v18.0/${this.phoneNumberId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`
+          },
+          timeout: 10000
+        }
+      );
+
+      logger.info('WhatsApp token validation successful', {
+        phoneNumberId: this.phoneNumberId,
+        service: 'miimii-api'
+      });
+
+      return { valid: true, data: response.data };
+    } catch (error) {
+      const isAuthError = error.response?.status === 401 || 
+                         error.response?.data?.error?.code === 190;
+
+      if (isAuthError) {
+        logger.error('WhatsApp token validation failed', {
+          error: error.response?.data?.error || error.message,
+          service: 'miimii-api'
+        });
+        return { 
+          valid: false, 
+          error: 'Invalid or expired access token',
+          authError: true
+        };
+      }
+
+      logger.error('Token validation request failed', {
+        error: error.message,
+        service: 'miimii-api'
+      });
+      return { 
+        valid: false, 
+        error: 'Token validation request failed',
+        authError: false
+      };
+    }
+  }
+
+  // Health check method for the service
+  async healthCheck() {
+    const config = this.isConfigured();
+    const tokenValidation = config ? await this.validateToken() : { valid: false, error: 'Service not configured' };
+
+    return {
+      configured: config,
+      tokenValid: tokenValidation.valid,
+      error: tokenValidation.error,
+      timestamp: new Date().toISOString(),
+      service: 'whatsapp'
+    };
   }
 
   verifyWebhook(mode, token, challenge) {
