@@ -1,21 +1,69 @@
 const aiAssistantService = require('./aiAssistant');
 const whatsappService = require('./whatsapp');
 const userService = require('./user');
+const onboardingService = require('./onboarding');
 const ocrService = require('./ocr');
 const transcriptionService = require('./transcription');
 const logger = require('../utils/logger');
+const { ActivityLog } = require('../models');
 
 class MessageProcessor {
   async processIncomingMessage(messageData) {
     try {
       const { from, messageType, message, contact } = messageData;
       
+      // Log incoming message
+      await ActivityLog.logUserActivity(
+        null, // We'll update with userId after getting user
+        'whatsapp_message_received',
+        'message_received',
+        {
+          source: 'whatsapp',
+          description: `Received ${messageType} message`,
+          messageType,
+          contactName: contact?.name
+        }
+      );
+
       // Get or create user
-      const user = await userService.getOrCreateUser(from, contact.name);
+      const user = await userService.getOrCreateUser(from, contact?.name);
       
       // Update last seen
-      await user.update({ lastSeen: new Date() });
+      await user.update({ 
+        lastSeen: new Date(),
+        lastActivityType: `whatsapp_message_${messageType}`
+      });
 
+      // Check if user needs onboarding
+      if (user.onboardingStep !== 'completed') {
+        return await this.handleOnboardingFlow(user, message, messageType);
+      }
+
+      // Process message for completed users
+      return await this.handleCompletedUserMessage(user, message, messageType);
+
+    } catch (error) {
+      logger.error('Message processing failed', { error: error.message, messageData });
+      
+      // Send error message to user
+      try {
+        await whatsappService.sendTextMessage(
+          messageData.from,
+          "I'm experiencing technical difficulties. Please try again in a moment or contact support if the issue persists."
+        );
+      } catch (sendError) {
+        logger.error('Failed to send error message', { error: sendError.message });
+      }
+    }
+  }
+
+  async handleOnboardingFlow(user, message, messageType) {
+    // Use onboarding service for new users
+    return await onboardingService.handleOnboarding(user.whatsappNumber, message, messageType);
+  }
+
+  async handleCompletedUserMessage(user, message, messageType) {
+    try {
       // Process different message types
       let processedText = '';
       let extractedData = null;
@@ -26,17 +74,17 @@ class MessageProcessor {
           break;
           
         case 'audio':
-          processedText = await this.processVoiceMessage(message.mediaId);
+          processedText = await this.processVoiceMessage(message.mediaId, user);
           break;
           
         case 'image':
-          const { text, data } = await this.processImageMessage(message.mediaId, message.caption);
+          const { text, data } = await this.processImageMessage(message.mediaId, message.caption, user);
           processedText = text;
           extractedData = data;
           break;
           
         case 'document':
-          processedText = await this.processDocumentMessage(message.mediaId, message.filename);
+          processedText = await this.processDocumentMessage(message.mediaId, message.filename, user);
           break;
           
         case 'interactive':
@@ -45,7 +93,7 @@ class MessageProcessor {
           
         default:
           await whatsappService.sendTextMessage(
-            from, 
+            user.whatsappNumber, 
             "I can understand text, voice notes, and images. Please send your request in one of these formats."
           );
           return;
@@ -53,492 +101,380 @@ class MessageProcessor {
 
       if (!processedText) {
         await whatsappService.sendTextMessage(
-          from,
+          user.whatsappNumber,
           "I couldn't understand your message. Please try again or type 'help' for assistance."
         );
         return;
       }
 
+      // Log processed message
+      await ActivityLog.logUserActivity(
+        user.id,
+        'whatsapp_message_received',
+        'message_processed',
+        {
+          source: 'whatsapp',
+          description: `Processed ${messageType} message successfully`,
+          messageType,
+          hasExtractedData: !!extractedData
+        }
+      );
+
       // Process with AI Assistant for intent recognition and response
-      const aiProcessingResult = await aiAssistantService.processUserMessage(from, processedText, messageType);
+      const aiProcessingResult = await aiAssistantService.processUserMessage(
+        user.whatsappNumber, 
+        processedText, 
+        messageType,
+        extractedData
+      );
 
       // Handle the AI processing result
-      if (aiProcessingResult.result) {
+      if (aiProcessingResult.success) {
         const { result } = aiProcessingResult;
         
         // Send response message
-        await whatsappService.sendTextMessage(from, result.message);
+        if (result.message) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
+          
+          // Log outgoing message
+          await ActivityLog.logUserActivity(
+            user.id,
+            'whatsapp_message_sent',
+            'response_sent',
+            {
+              source: 'whatsapp',
+              description: 'Sent AI response to user',
+              responseType: result.intent || 'general'
+            }
+          );
+        }
         
         // Handle specific response types
         if (result.awaitingInput) {
           // Store conversation state for next message
-          await this.storeConversationState(from, result);
+          await this.storeConversationState(user, result);
         }
         
         if (result.transactionDetails) {
           // Send transaction receipt
-          await this.sendTransactionReceipt(from, result.transactionDetails);
+          await this.sendTransactionReceipt(user, result.transactionDetails);
         }
         
-        if (result.requiresAction === 'COMPLETE_REGISTRATION') {
-          // Send registration flow
-          await this.sendRegistrationFlow(from);
+        if (result.requiresAction) {
+          await this.handleSpecialActions(user, result);
         }
+
       } else if (aiProcessingResult.error) {
         // Send error response
-        await whatsappService.sendTextMessage(from, aiProcessingResult.userFriendlyResponse);
+        await whatsappService.sendTextMessage(user.whatsappNumber, aiProcessingResult.userFriendlyResponse);
+        
+        // Log error
+        await ActivityLog.logUserActivity(
+          user.id,
+          'whatsapp_message_sent',
+          'error_response_sent',
+          {
+            source: 'whatsapp',
+            description: 'Sent error response to user',
+            errorType: aiProcessingResult.errorType || 'general'
+          }
+        );
       } else {
         // Fallback response
-        await whatsappService.sendTextMessage(from, "I'm here to help! Type 'help' to see what I can do for you.");
-      }
-
-    } catch (error) {
-      logger.error('Message processing failed', { error: error.message, messageData });
-      
-      // Send error message to user
-      try {
         await whatsappService.sendTextMessage(
-          messageData.from,
-          "Sorry, I'm having trouble processing your request right now. Please try again in a few moments."
+          user.whatsappNumber, 
+          "I'm here to help! Type 'help' to see what I can do for you."
         );
-      } catch (sendError) {
-        logger.error('Failed to send error message', { sendError: sendError.message });
       }
-    }
-  }
 
-  async processVoiceMessage(mediaId) {
-    try {
-      const media = await whatsappService.downloadMedia(mediaId);
-      const transcription = await transcriptionService.transcribeAudio(media.stream, media.mimeType);
-      return transcription;
     } catch (error) {
-      logger.error('Voice message processing failed', { error: error.message, mediaId });
-      throw new Error('Could not process voice message');
-    }
-  }
-
-  async processImageMessage(mediaId, caption = '') {
-    try {
-      const media = await whatsappService.downloadMedia(mediaId);
-      const ocrResult = await ocrService.extractText(media.stream);
-      
-      // Combine caption and OCR text
-      const combinedText = [caption, ocrResult.text].filter(Boolean).join(' ');
-      
-      return {
-        text: combinedText,
-        data: {
-          ocrData: ocrResult,
-          caption
-        }
-      };
-    } catch (error) {
-      logger.error('Image processing failed', { error: error.message, mediaId });
-      return { text: caption || '', data: null };
-    }
-  }
-
-  async processDocumentMessage(mediaId, filename) {
-    try {
-      // For now, just process as image if it's an image document
-      if (filename && /\.(jpg|jpeg|png|gif|bmp)$/i.test(filename)) {
-        const { text } = await this.processImageMessage(mediaId);
-        return text;
-      }
-      
-      // For other documents, return filename for now
-      return `Document received: ${filename}`;
-    } catch (error) {
-      logger.error('Document processing failed', { error: error.message, mediaId });
-      return `Document received: ${filename}`;
-    }
-  }
-
-  processInteractiveMessage(message) {
-    if (message.buttonReply) {
-      return `Button clicked: ${message.buttonReply.title}`;
-    } else if (message.listReply) {
-      return `List item selected: ${message.listReply.title}`;
-    }
-    return '';
-  }
-
-  async executeAction(intent, user, phoneNumber, originalText, extractedData) {
-    try {
-      switch (intent.action) {
-        case 'welcome':
-          await this.handleWelcome(phoneNumber, user);
-          break;
-          
-        case 'balance_inquiry':
-          await this.handleBalanceInquiry(phoneNumber, user);
-          break;
-          
-        case 'transfer_money':
-          await this.handleTransferMoney(phoneNumber, user, intent.parameters);
-          break;
-          
-        case 'buy_airtime':
-          await this.handleBuyAirtime(phoneNumber, user, intent.parameters);
-          break;
-          
-        case 'buy_data':
-          await this.handleBuyData(phoneNumber, user, intent.parameters);
-          break;
-          
-        case 'pay_utility':
-          await this.handlePayUtility(phoneNumber, user, intent.parameters);
-          break;
-          
-        case 'transaction_history':
-          await this.handleTransactionHistory(phoneNumber, user, intent.parameters);
-          break;
-          
-        case 'start_kyc':
-          await this.handleStartKyc(phoneNumber, user, extractedData);
-          break;
-          
-        case 'set_pin':
-          await this.handleSetPin(phoneNumber, user, intent.parameters);
-          break;
-          
-        case 'menu':
-          await this.handleMenu(phoneNumber, user);
-          break;
-          
-        case 'help':
-          await this.handleHelp(phoneNumber, user);
-          break;
-          
-        case 'complaint':
-          await this.handleComplaint(phoneNumber, user, originalText);
-          break;
-          
-        default:
-          await this.handleUnknownIntent(phoneNumber, user, originalText, intent);
-      }
-    } catch (error) {
-      logger.error('Action execution failed', { 
+      logger.error('Completed user message processing failed', { 
         error: error.message, 
-        action: intent.action, 
         userId: user.id 
       });
       
       await whatsappService.sendTextMessage(
-        phoneNumber,
-        "I encountered an error while processing your request. Our team has been notified. Please try again or contact support."
+        user.whatsappNumber,
+        "I encountered an error processing your request. Please try again or contact support."
       );
     }
   }
 
-  async handleWelcome(phoneNumber, user) {
-    if (user.isKycComplete()) {
-      const menuData = whatsappService.getMenuMessage();
-      await whatsappService.sendButtonMessage(phoneNumber, menuData.text, menuData.buttons);
-    } else {
-      await whatsappService.sendTextMessage(phoneNumber, whatsappService.getWelcomeMessage());
-    }
-  }
-
-  async handleBalanceInquiry(phoneNumber, user) {
-    if (!user.canPerformTransactions()) {
-      await this.sendKycRequiredMessage(phoneNumber, user);
-      return;
-    }
-
-    const walletService = require('./wallet');
-    const wallet = await walletService.getUserWallet(user.id);
-    
-    await whatsappService.sendTextMessage(
-      phoneNumber,
-      `💰 *Your Balance*\n\n` +
-      `Available: ₦${parseFloat(wallet.balance).toLocaleString()}\n` +
-      `Account: ${wallet.virtualAccountNumber || 'Setting up...'}\n\n` +
-      `💡 Send money by typing: "Send 5000 to John 08012345678"`
-    );
-  }
-
-  async handleTransferMoney(phoneNumber, user, parameters) {
-    if (!user.canPerformTransactions()) {
-      await this.sendKycRequiredMessage(phoneNumber, user);
-      return;
-    }
-
-    const { amount, recipient, phoneNumber: recipientPhone } = parameters;
-    
-    if (!amount || !recipientPhone) {
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        "Please provide the amount and recipient's phone number.\n\n" +
-        "Example: 'Send 5000 to 08012345678' or 'Transfer 10000 to John 08098765432'"
-      );
-      return;
-    }
-
-    // Start transfer process
-    const transactionService = require('./transaction');
-    await transactionService.initiateTransfer(user, {
-      amount: parseFloat(amount),
-      recipientPhone,
-      recipientName: recipient,
-      description: `Transfer to ${recipient || recipientPhone}`
-    }, phoneNumber);
-  }
-
-  async handleBuyAirtime(phoneNumber, user, parameters) {
-    if (!user.canPerformTransactions()) {
-      await this.sendKycRequiredMessage(phoneNumber, user);
-      return;
-    }
-
-    const { amount, phoneNumber: targetPhone } = parameters;
-    
-    if (!amount) {
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        "Please specify the airtime amount.\n\n" +
-        "Example: 'Buy 1000 airtime' or 'Buy 500 airtime for 08012345678'"
-      );
-      return;
-    }
-
-    const bilalService = require('./bilal');
-    await bilalService.purchaseAirtime(user, {
-      amount: parseFloat(amount),
-      phoneNumber: targetPhone || phoneNumber
-    }, phoneNumber);
-  }
-
-  async handleBuyData(phoneNumber, user, parameters) {
-    if (!user.canPerformTransactions()) {
-      await this.sendKycRequiredMessage(phoneNumber, user);
-      return;
-    }
-
-    const { amount, dataSize, phoneNumber: targetPhone } = parameters;
-    
-    if (!dataSize && !amount) {
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        "Please specify the data bundle.\n\n" +
-        "Example: 'Buy 2GB data' or 'Buy 1GB data for 08012345678'"
-      );
-      return;
-    }
-
-    const bilalService = require('./bilal');
-    await bilalService.purchaseData(user, {
-      dataSize,
-      amount: amount ? parseFloat(amount) : null,
-      phoneNumber: targetPhone || phoneNumber
-    }, phoneNumber);
-  }
-
-  async handlePayUtility(phoneNumber, user, parameters) {
-    if (!user.canPerformTransactions()) {
-      await this.sendKycRequiredMessage(phoneNumber, user);
-      return;
-    }
-
-    const { utilityType, meterNumber, amount } = parameters;
-    
-    if (!utilityType || !meterNumber) {
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        "Please provide utility type and meter/account number.\n\n" +
-        "Example: 'Pay PHCN bill for meter 12345678' or 'Pay DStv bill for 1234567890'"
-      );
-      return;
-    }
-
-    const bilalService = require('./bilal');
-    await bilalService.payUtilityBill(user, {
-      utilityType,
-      meterNumber,
-      amount: amount ? parseFloat(amount) : null
-    }, phoneNumber);
-  }
-
-  async handleTransactionHistory(phoneNumber, user, parameters) {
-    if (!user.canPerformTransactions()) {
-      await this.sendKycRequiredMessage(phoneNumber, user);
-      return;
-    }
-
-    const transactionService = require('./transaction');
-    await transactionService.sendTransactionHistory(user, phoneNumber, parameters.limit || 5);
-  }
-
-  async handleStartKyc(phoneNumber, user, extractedData) {
-    const kycService = require('./kyc');
-    await kycService.startKycProcess(user, phoneNumber, extractedData);
-  }
-
-  async handleSetPin(phoneNumber, user, parameters) {
-    const { pin } = parameters;
-    
-    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        "Please provide a 4-digit PIN.\n\nExample: 'Set PIN 1234'"
-      );
-      return;
-    }
-
-    await user.update({ pin });
-    await whatsappService.sendTextMessage(
-      phoneNumber,
-      "✅ Your PIN has been set successfully! You can now perform transactions."
-    );
-  }
-
-  async handleMenu(phoneNumber, user) {
-    if (user.isKycComplete()) {
-      const menuData = whatsappService.getMenuMessage();
-      await whatsappService.sendButtonMessage(phoneNumber, menuData.text, menuData.buttons);
-    } else {
-      await whatsappService.sendTextMessage(phoneNumber, whatsappService.getWelcomeMessage());
-    }
-  }
-
-  async handleHelp(phoneNumber, user) {
-    const helpText = `🆘 *MiiMii Help*\n\n` +
-      `*Available Commands:*\n` +
-      `• "Balance" - Check your wallet balance\n` +
-      `• "Send 5000 to John 08012345678" - Transfer money\n` +
-      `• "Buy 1000 airtime" - Purchase airtime\n` +
-      `• "Buy 2GB data" - Purchase data bundle\n` +
-      `• "Pay PHCN bill for 12345" - Pay utility bills\n` +
-      `• "Transactions" - View transaction history\n` +
-      `• "Menu" - Show main menu\n` +
-      `• "Start KYC" - Begin verification process\n\n` +
-      `*Need Support?*\n` +
-      `Just describe your issue and we'll help you!\n\n` +
-      `📞 Support: Call us for urgent matters`;
-
-    await whatsappService.sendTextMessage(phoneNumber, helpText);
-  }
-
-  async handleComplaint(phoneNumber, user, originalText) {
-    const supportService = require('./support');
-    await supportService.createSupportTicket(user, {
-      type: 'complaint',
-      subject: 'User Complaint',
-      description: originalText,
-      priority: 'medium'
-    });
-
-    await whatsappService.sendTextMessage(
-      phoneNumber,
-      "📝 Your complaint has been recorded. Our support team will contact you within 24 hours.\n\n" +
-      "Ticket ID: #" + Date.now().toString().slice(-6)
-    );
-  }
-
-  async handleUnknownIntent(phoneNumber, user, originalText, intent) {
-    // Log unknown intents for improvement
-    logger.info('Unknown intent detected', { 
-      originalText, 
-      intent, 
-      userId: user.id,
-      confidence: intent.confidence 
-    });
-
-    if (intent.confidence < 0.3) {
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        "I didn't quite understand that. Type 'help' to see what I can do, or try rephrasing your request."
-      );
-    } else {
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        "I'm still learning! I think you want to " + intent.action + 
-        ", but I'm not sure how to help with that yet. Type 'help' for available commands."
-      );
-    }
-  }
-
-  async sendKycRequiredMessage(phoneNumber, user) {
-    const message = `🔐 *Verification Required*\n\n` +
-      `To use MiiMii services, please complete your verification first.\n\n` +
-      `📄 Send a photo of your ID card or\n` +
-      `💬 Type "Start KYC" to begin\n\n` +
-      `This is required by CBN regulations to keep your money safe.`;
-
-    await whatsappService.sendTextMessage(phoneNumber, message);
-  }
-
-  // Store conversation state for multi-step interactions
-  async storeConversationState(phoneNumber, result) {
+  async processVoiceMessage(mediaId, user) {
     try {
-      // Store conversation state in Redis or database
-      // For now, we'll use the user's metadata field
-      const user = await userService.getUserByPhoneNumber(phoneNumber);
-      if (user) {
-        const conversationState = {
-          awaitingInput: result.awaitingInput,
-          pendingTransaction: result.pendingTransaction,
-          timestamp: new Date()
-        };
-        
-        await user.update({
-          metadata: {
-            ...user.metadata,
-            conversationState
+      logger.info('Processing voice message', { mediaId, userId: user.id });
+      
+      // Download and transcribe the voice message
+      const transcription = await transcriptionService.transcribeAudio(mediaId);
+      
+      if (transcription && transcription.text) {
+        // Log successful transcription
+        await ActivityLog.logUserActivity(
+          user.id,
+          'whatsapp_message_received',
+          'voice_transcribed',
+          {
+            source: 'whatsapp',
+            description: 'Voice message transcribed successfully',
+            transcriptionConfidence: transcription.confidence,
+            duration: transcription.duration
           }
-        });
+        );
+
+        // Send confirmation to user
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `🎤 I heard: "${transcription.text}"\n\nProcessing your request...`
+        );
+        
+        return transcription.text;
+      } else {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          "I couldn't understand your voice message. Please try sending it as text or speak more clearly."
+        );
+        return null;
       }
     } catch (error) {
-      logger.error('Failed to store conversation state', { error: error.message, phoneNumber });
+      logger.error('Voice message processing failed', { error: error.message, mediaId });
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        "I couldn't process your voice message. Please try sending it as text instead."
+      );
+      return null;
     }
   }
 
-  // Send transaction receipt
-  async sendTransactionReceipt(phoneNumber, transactionDetails) {
+  async processImageMessage(mediaId, caption, user) {
     try {
-      let receiptMessage = `🧾 *Transaction Receipt*\n\n`;
+      logger.info('Processing image message', { mediaId, userId: user.id });
       
-      if (transactionDetails.reference) {
-        receiptMessage += `📄 Reference: ${transactionDetails.reference}\n`;
-      }
-      
-      if (transactionDetails.amount) {
-        receiptMessage += `💰 Amount: ₦${parseFloat(transactionDetails.amount).toLocaleString()}\n`;
-      }
-      
-      if (transactionDetails.fee && transactionDetails.fee > 0) {
-        receiptMessage += `💳 Fee: ₦${parseFloat(transactionDetails.fee).toLocaleString()}\n`;
-      }
-      
-      if (transactionDetails.recipient || transactionDetails.accountNumber) {
-        receiptMessage += `👤 Recipient: ${transactionDetails.recipient || transactionDetails.accountNumber}\n`;
-      }
-      
-      receiptMessage += `✅ Status: Successful\n`;
-      receiptMessage += `⏰ Time: ${new Date().toLocaleString()}\n\n`;
-      receiptMessage += `Thank you for using MiiMii! 💚`;
+      let processedText = caption || '';
+      let extractedData = null;
 
-      await whatsappService.sendTextMessage(phoneNumber, receiptMessage);
+      // Try to extract text/data from the image
+      try {
+        const ocrResult = await ocrService.extractTextFromImage(mediaId);
+        
+        if (ocrResult.text) {
+          processedText += (processedText ? '\n' : '') + ocrResult.text;
+          extractedData = ocrResult.data;
+          
+          // Log successful OCR
+          await ActivityLog.logUserActivity(
+            user.id,
+            'whatsapp_message_received',
+            'image_ocr_processed',
+            {
+              source: 'whatsapp',
+              description: 'Image OCR processed successfully',
+              extractedTextLength: ocrResult.text.length,
+              hasStructuredData: !!ocrResult.data
+            }
+          );
+
+          // Inform user about extracted text
+          if (ocrResult.text.length > 10) {
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              `📷 I can see text in your image:\n"${ocrResult.text.substring(0, 200)}${ocrResult.text.length > 200 ? '...' : '"}"\n\nProcessing your request...`
+            );
+          }
+        }
+      } catch (ocrError) {
+        logger.warn('OCR processing failed', { error: ocrError.message, mediaId });
+      }
+
+      // If no text extracted and no caption, ask for clarification
+      if (!processedText) {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          "I can see your image, but I need more information. Please tell me what you'd like me to help you with."
+        );
+        return { text: null, data: null };
+      }
+
+      return { text: processedText, data: extractedData };
     } catch (error) {
-      logger.error('Failed to send transaction receipt', { error: error.message, phoneNumber });
+      logger.error('Image message processing failed', { error: error.message, mediaId });
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        "I couldn't process your image. Please try sending it again or describe what you need as text."
+      );
+      return { text: null, data: null };
     }
   }
 
-  // Send registration flow
-  async sendRegistrationFlow(phoneNumber) {
+  async processDocumentMessage(mediaId, filename, user) {
     try {
-      const registrationMessage = `🚀 *Complete Your Registration*\n\n` +
-        `To enjoy all MiiMii services:\n\n` +
-        `1️⃣ Complete your profile\n` +
-        `2️⃣ Set your transaction PIN\n` +
-        `3️⃣ Verify your identity (KYC)\n\n` +
-        `Type "register" to start the process!`;
-
-      await whatsappService.sendTextMessage(phoneNumber, registrationMessage);
+      logger.info('Processing document message', { mediaId, filename, userId: user.id });
+      
+      // For now, we'll just acknowledge the document and ask for text
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `📄 I received your document "${filename}". Please tell me how I can help you with it, or send the information as text for faster processing.`
+      );
+      
+      return filename || 'Document received';
     } catch (error) {
-      logger.error('Failed to send registration flow', { error: error.message, phoneNumber });
+      logger.error('Document processing failed', { error: error.message, mediaId });
+      return null;
     }
+  }
+
+  processInteractiveMessage(message) {
+    try {
+      // Handle button responses and list selections
+      if (message.button_reply) {
+        return message.button_reply.title;
+      } else if (message.list_reply) {
+        return message.list_reply.title;
+      } else {
+        return 'Interactive message received';
+      }
+    } catch (error) {
+      logger.error('Interactive message processing failed', { error: error.message });
+      return null;
+    }
+  }
+
+  async storeConversationState(user, result) {
+    try {
+      const conversationState = {
+        awaitingInput: result.awaitingInput,
+        intent: result.intent,
+        context: result.context,
+        step: result.step || 1,
+        data: result.data || {},
+        timestamp: new Date()
+      };
+
+      await user.updateConversationState(conversationState);
+      
+      logger.info('Conversation state stored', { 
+        userId: user.id, 
+        intent: result.intent,
+        step: result.step 
+      });
+    } catch (error) {
+      logger.error('Failed to store conversation state', { error: error.message, userId: user.id });
+    }
+  }
+
+  async sendTransactionReceipt(user, transactionDetails) {
+    try {
+      const receipt = this.formatTransactionReceipt(transactionDetails);
+      await whatsappService.sendTextMessage(user.whatsappNumber, receipt);
+      
+      // Log receipt sent
+      await ActivityLog.logUserActivity(
+        user.id,
+        'whatsapp_message_sent',
+        'transaction_receipt_sent',
+        {
+          source: 'whatsapp',
+          description: 'Transaction receipt sent to user',
+          transactionId: transactionDetails.id,
+          transactionType: transactionDetails.type
+        }
+      );
+    } catch (error) {
+      logger.error('Failed to send transaction receipt', { error: error.message, userId: user.id });
+    }
+  }
+
+  formatTransactionReceipt(transaction) {
+    const status = transaction.status === 'completed' ? '✅' : 
+                  transaction.status === 'failed' ? '❌' : 
+                  transaction.status === 'pending' ? '⏳' : '🔄';
+
+    return `${status} *Transaction Receipt*\n\n` +
+           `📄 Reference: ${transaction.reference}\n` +
+           `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
+           `💳 Fee: ₦${parseFloat(transaction.fee || 0).toLocaleString()}\n` +
+           `💵 Total: ₦${parseFloat(transaction.totalAmount).toLocaleString()}\n` +
+           `📊 Status: ${transaction.status.toUpperCase()}\n` +
+           `📅 Date: ${new Date(transaction.createdAt).toLocaleString()}\n` +
+           `📝 Description: ${transaction.description}\n` +
+           `${transaction.recipientDetails ? `👤 Recipient: ${transaction.recipientDetails.name || transaction.recipientDetails.phoneNumber}\n` : ''}` +
+           `\nThank you for using MiiMii! 🎉`;
+  }
+
+  async handleSpecialActions(user, result) {
+    try {
+      switch (result.requiresAction) {
+        case 'VERIFY_PIN':
+          await this.requestPinVerification(user, result);
+          break;
+        case 'SHOW_BALANCE':
+          await this.sendBalanceInfo(user);
+          break;
+        case 'SHOW_HELP':
+          await this.sendHelpMenu(user);
+          break;
+        default:
+          logger.warn('Unknown special action', { action: result.requiresAction, userId: user.id });
+      }
+    } catch (error) {
+      logger.error('Failed to handle special action', { error: error.message, userId: user.id });
+    }
+  }
+
+  async requestPinVerification(user, result) {
+    await whatsappService.sendTextMessage(
+      user.whatsappNumber,
+      "🔐 Please enter your 4-digit PIN to authorize this transaction.\n\nYour PIN is secure and will not be stored in chat history."
+    );
+  }
+
+  async sendBalanceInfo(user) {
+    try {
+      const walletService = require('./wallet');
+      const wallet = await walletService.getUserWallet(user.id);
+      const summary = wallet.getWalletSummary();
+
+      const balanceMessage = `💰 *Wallet Balance*\n\n` +
+                           `💵 Available: ₦${summary.availableBalance.toLocaleString()}\n` +
+                           `⏳ Pending: ₦${summary.pendingBalance.toLocaleString()}\n` +
+                           `📊 Total: ₦${summary.balance.toLocaleString()}\n\n` +
+                           `📈 Daily Limit: ₦${summary.dailyLimit.toLocaleString()}\n` +
+                           `💸 Today's Spending: ₦${summary.dailySpent.toLocaleString()}\n` +
+                           `✅ Available Today: ₦${summary.dailyRemaining.toLocaleString()}\n\n` +
+                           `💳 Account: ${summary.virtualAccount.number}\n` +
+                           `🏦 Bank: ${summary.virtualAccount.bank}`;
+
+      await whatsappService.sendTextMessage(user.whatsappNumber, balanceMessage);
+    } catch (error) {
+      logger.error('Failed to send balance info', { error: error.message, userId: user.id });
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        "I couldn't retrieve your balance at the moment. Please try again later."
+      );
+    }
+  }
+
+  async sendHelpMenu(user) {
+    const helpMessage = `🤖 *MiiMii Help Center*\n\n` +
+                       `💰 *Money Transfer*\n` +
+                       `• "Send 5000 to John 08123456789"\n` +
+                       `• "Transfer 2000 to GTB 0123456789"\n\n` +
+                       `📱 *Airtime & Data*\n` +
+                       `• "Buy 1000 airtime for 08123456789"\n` +
+                       `• "Buy 1GB data for 08123456789"\n\n` +
+                       `⚡ *Bill Payments*\n` +
+                       `• "Pay 5000 electricity EKEDC 12345"\n` +
+                       `• "Pay 3000 cable DStv 123456789"\n\n` +
+                       `📊 *Account Management*\n` +
+                       `• "Check balance"\n` +
+                       `• "Show transactions"\n` +
+                       `• "Account details"\n\n` +
+                       `🎯 *Tips*\n` +
+                       `• Send voice notes - I understand speech!\n` +
+                       `• Send images of bills - I can read them!\n` +
+                       `• Just type naturally - I'm smart! 😊\n\n` +
+                       `Need human help? Type "support" 💬`;
+
+    await whatsappService.sendTextMessage(user.whatsappNumber, helpMessage);
   }
 }
 

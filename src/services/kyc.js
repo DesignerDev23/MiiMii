@@ -2,6 +2,8 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 const userService = require('./user');
 const whatsappService = require('./whatsapp');
+const ocrService = require('./ocr');
+const { ActivityLog, User } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 
 class KYCService {
@@ -11,12 +13,25 @@ class KYCService {
     this.baseURL = process.env.NODE_ENV === 'production' ? this.productionURL : this.sandboxURL;
     this.appId = process.env.DOJAH_APP_ID;
     this.secretKey = process.env.DOJAH_SECRET_KEY;
+    this.publicKey = process.env.DOJAH_PUBLIC_KEY;
+    
+    // Rate limiting
+    this.lastRequestTime = 0;
+    this.requestsThisMinute = 0;
+    this.rateLimitWindow = 60000; // 1 minute
+    this.maxRequestsPerMinute = 100;
   }
 
   async startKycProcess(user, phoneNumber, kycData, extractedData = null) {
     try {
       const { firstName, lastName, middleName, dateOfBirth, gender, address, bvn } = kycData;
       
+      logger.info('Starting KYC process', { 
+        userId: user.id, 
+        phoneNumber,
+        hasExtractedData: !!extractedData 
+      });
+
       // Update user with KYC data
       await userService.updateUser(user.id, {
         firstName,
@@ -32,653 +47,997 @@ class KYCService {
           extractedData,
           verificationSteps: {
             bvnVerification: false,
-            phoneVerification: false
+            phoneVerification: false,
+            documentVerification: false,
+            facialVerification: false
+          },
+          verificationReference: uuidv4(),
+          complianceChecks: {
+            sanctionsList: false,
+            watchList: false,
+            pepCheck: false
           }
         }
       });
 
-      // Start BVN verification if provided
-      let bvnVerification = { verified: false };
-      if (bvn) {
-        bvnVerification = await this.verifyBvn(bvn, user);
-      }
-
+      // Start comprehensive verification process
+      const verificationResults = await this.performComprehensiveVerification(user, kycData);
+      
+      // Generate verification reference
       const reference = `KYC_${Date.now()}_${uuidv4().slice(0, 8)}`;
 
-      await whatsappService.sendTextMessage(
-        phoneNumber,
-        `✅ *KYC Process Started*\n\n` +
-        `Reference: ${reference}\n\n` +
-        `✅ Personal details recorded\n` +
-        `${bvnVerification.verified ? '✅' : '⏳'} BVN verification ${bvn ? '(processing)' : '(pending)'}\n` +
-        `⏳ Phone verification pending\n\n` +
-        `${!bvn ? 'Please provide your 11-digit BVN.\n' : ''}` +
-        `Send a clear photo of your ID card, driver's license, or passport to complete verification.`
+      // Log KYC initiation
+      await ActivityLog.logUserActivity(
+        user.id,
+        'kyc_submission',
+        'kyc_process_started',
+        {
+          source: 'whatsapp',
+          description: 'Comprehensive KYC verification process initiated',
+          reference,
+          verificationSteps: Object.keys(verificationResults),
+          hasExtractedData: !!extractedData
+        }
       );
 
-      logger.info('KYC process started', {
-        userId: user.id,
-        reference,
-        bvnVerified: bvnVerification.verified
-      });
+      // Send detailed status to user
+      await this.sendKycStatusUpdate(user, phoneNumber, verificationResults, reference);
 
       return {
         reference,
         kycStatus: 'pending',
-        verificationSteps: {
-          bvnVerification: bvnVerification.verified,
-          phoneVerification: false
-        }
+        verificationSteps: verificationResults,
+        success: true
       };
+
     } catch (error) {
-      logger.error('Failed to start KYC process', { error: error.message, userId: user.id });
+      logger.error('Failed to start KYC process', { 
+        error: error.message, 
+        userId: user.id,
+        stack: error.stack
+      });
+      
+      await ActivityLog.logUserActivity(
+        user.id,
+        'kyc_submission',
+        'kyc_process_failed',
+        {
+          source: 'whatsapp',
+          description: 'KYC process initiation failed',
+          error: error.message,
+          severity: 'error'
+        }
+      );
+
+      throw new Error(`KYC process failed: ${error.message}`);
+    }
+  }
+
+  async performComprehensiveVerification(user, kycData) {
+    const results = {
+      bvnVerification: { verified: false, details: null, error: null },
+      phoneVerification: { verified: false, details: null, error: null },
+      complianceCheck: { passed: false, details: null, flags: [] },
+      riskAssessment: { score: 0, level: 'unknown', factors: [] }
+    };
+
+    try {
+      // 1. BVN Verification
+      if (kycData.bvn) {
+        results.bvnVerification = await this.verifyBvnAdvanced(kycData.bvn, user);
+      }
+
+      // 2. Phone Number Verification
+      results.phoneVerification = await this.verifyPhoneNumber(user.whatsappNumber, user);
+
+      // 3. Compliance Checks (Sanctions, PEP, Watch List)
+      results.complianceCheck = await this.performComplianceChecks(user);
+
+      // 4. Risk Assessment
+      results.riskAssessment = await this.calculateRiskScore(user, results);
+
+      // Update user's KYC data with results
+      await this.updateKycResults(user, results);
+
+      return results;
+
+    } catch (error) {
+      logger.error('Comprehensive verification failed', { 
+        error: error.message, 
+        userId: user.id 
+      });
       throw error;
     }
   }
 
-  async verifyBvn(bvn, user) {
+  async verifyBvnAdvanced(bvn, user) {
     try {
-      if (!bvn || bvn.length !== 11) {
-        throw new Error('BVN must be 11 digits');
-      }
+      logger.info('Starting advanced BVN verification', { 
+        userId: user.id, 
+        bvnMasked: `***${bvn.slice(-4)}` 
+      });
 
-      // Build query parameters for BVN validation
+      // Build comprehensive query parameters
       const params = {
-        bvn: bvn
+        bvn: bvn.toString().trim()
       };
 
-      // Add optional parameters if available
-      if (user.firstName) {
-        params.first_name = user.firstName;
-      }
-      if (user.lastName) {
-        params.last_name = user.lastName;
-      }
+      // Add user details for enhanced verification
+      if (user.firstName) params.first_name = user.firstName.trim();
+      if (user.lastName) params.last_name = user.lastName.trim();
       if (user.dateOfBirth) {
-        // Convert to YYYY-MM-DD format if needed
-        const dobFormatted = new Date(user.dateOfBirth).toISOString().split('T')[0];
+        const dobFormatted = this.formatDateForDojah(user.dateOfBirth);
         params.dob = dobFormatted;
+      }
+      if (user.whatsappNumber) {
+        params.phone = this.formatPhoneForDojah(user.whatsappNumber);
       }
 
       const response = await this.makeRequest('GET', '/api/v1/kyc/bvn', params);
 
       if (response.entity) {
-        const entity = response.entity;
+        const bvnData = response.entity;
         
-        // Process validation results
-        const validationResult = this.processBvnValidation(entity, user);
-        
-        if (validationResult.isValid) {
-          // Update user KYC data
-          await userService.updateUser(user.id, {
-            kycData: {
-              ...user.kycData,
-              bvnVerification: {
-                verified: true,
-                verifiedAt: new Date(),
-                confidence: validationResult.overallConfidence,
-                validationDetails: entity,
-                matchedFields: validationResult.matchedFields
-              }
-            }
-          });
+        // Comprehensive data analysis
+        const verification = {
+          verified: true,
+          matchScore: this.calculateBvnMatchScore(user, bvnData),
+          details: {
+            fullName: `${bvnData.firstname} ${bvnData.middlename || ''} ${bvnData.lastname}`.trim(),
+            dateOfBirth: bvnData.date_of_birth,
+            phoneNumber: bvnData.phone_number1,
+            gender: bvnData.gender,
+            enrollmentDate: bvnData.enrollment_date,
+            enrollmentBank: bvnData.enrollment_bank,
+            maritalStatus: bvnData.marital_status,
+            stateOfOrigin: bvnData.state_of_origin,
+            lgaOfOrigin: bvnData.lga_of_origin,
+            watchListed: bvnData.watch_listed,
+            email: bvnData.email,
+            nin: bvnData.nin,
+            levelOfAccount: bvnData.level_of_account,
+            residentialAddress: bvnData.residential_address,
+            base64Image: bvnData.base64image ? 'present' : 'absent'
+          },
+          validationChecks: {
+            nameMatch: this.validateNameMatch(user, bvnData),
+            dobMatch: this.validateDobMatch(user, bvnData),
+            phoneMatch: this.validatePhoneMatch(user, bvnData),
+            genderMatch: this.validateGenderMatch(user, bvnData),
+            isWatchListed: bvnData.watch_listed === 'NO'
+          }
+        };
 
-          logger.info('BVN verification successful', {
-            userId: user.id,
-            bvn: '***' + bvn.slice(-4),
-            confidence: validationResult.overallConfidence,
-            matchedFields: validationResult.matchedFields
-          });
+        // Calculate overall verification status
+        const checks = verification.validationChecks;
+        verification.overallMatch = checks.nameMatch && checks.dobMatch && 
+                                  checks.isWatchListed && 
+                                  (checks.phoneMatch || checks.genderMatch);
 
-          return {
-            verified: true,
-            confidence: validationResult.overallConfidence,
-            matchedFields: validationResult.matchedFields,
-            details: entity
-          };
-        } else {
-          throw new Error(`BVN verification failed - ${validationResult.reason}`);
-        }
+        // Log successful verification
+        await ActivityLog.logUserActivity(
+          user.id,
+          'kyc_verification',
+          'bvn_verified',
+          {
+            source: 'system',
+            description: 'BVN verification completed successfully',
+            matchScore: verification.matchScore,
+            overallMatch: verification.overallMatch,
+            watchListed: !checks.isWatchListed
+          }
+        );
+
+        logger.info('BVN verification completed', {
+          userId: user.id,
+          verified: verification.verified,
+          matchScore: verification.matchScore,
+          overallMatch: verification.overallMatch
+        });
+
+        return verification;
+
       } else {
-        throw new Error('BVN verification failed - invalid response');
+        const errorMsg = response.error?.message || 'BVN not found or invalid';
+        
+        await ActivityLog.logUserActivity(
+          user.id,
+          'kyc_verification',
+          'bvn_verification_failed',
+          {
+            source: 'system',
+            description: 'BVN verification failed',
+            error: errorMsg,
+            severity: 'warning'
+          }
+        );
+
+        return {
+          verified: false,
+          error: errorMsg,
+          details: null
+        };
       }
+
     } catch (error) {
       logger.error('BVN verification failed', { 
         error: error.message, 
-        userId: user.id,
-        bvn: '***' + bvn.slice(-4)
+        userId: user.id 
       });
-      
+
+      await ActivityLog.logUserActivity(
+        user.id,
+        'kyc_verification',
+        'bvn_verification_error',
+        {
+          source: 'system',
+          description: 'BVN verification encountered an error',
+          error: error.message,
+          severity: 'error'
+        }
+      );
+
       return {
         verified: false,
-        error: error.message
+        error: error.message,
+        details: null
       };
     }
   }
 
-  processBvnValidation(entity, user) {
-    let overallConfidence = 0;
-    let matchedFields = [];
-    let totalChecks = 0;
-
-    // Check BVN status
-    if (entity.bvn && entity.bvn.status === true) {
-      overallConfidence += 40; // BVN exists and is valid
-      matchedFields.push('bvn_valid');
-      totalChecks++;
-    } else {
-      return {
-        isValid: false,
-        reason: 'BVN not found or invalid',
-        overallConfidence: 0,
-        matchedFields: []
-      };
-    }
-
-    // Check first name if provided
-    if (entity.first_name && user.firstName) {
-      totalChecks++;
-      if (entity.first_name.status === true) {
-        const confidence = entity.first_name.confidence_value || 0;
-        overallConfidence += (confidence / 100) * 30; // Weight: 30%
-        matchedFields.push(`first_name_${confidence}%`);
-      }
-    }
-
-    // Check last name if provided  
-    if (entity.last_name && user.lastName) {
-      totalChecks++;
-      if (entity.last_name.status === true) {
-        const confidence = entity.last_name.confidence_value || 0;
-        overallConfidence += (confidence / 100) * 30; // Weight: 30%
-        matchedFields.push(`last_name_${confidence}%`);
-      }
-    }
-
-    // Check date of birth if provided
-    if (entity.dob && user.dateOfBirth) {
-      totalChecks++;
-      if (entity.dob.status === true) {
-        const confidence = entity.dob.confidence_value || 0;
-        overallConfidence += (confidence / 100) * 20; // Weight: 20%
-        matchedFields.push(`dob_${confidence}%`);
-      }
-    }
-
-    // Calculate final confidence (normalize if less than 4 checks)
-    if (totalChecks > 1) {
-      overallConfidence = Math.min(100, overallConfidence);
-    }
-
-    const isValid = overallConfidence >= 70; // Minimum 70% confidence required
-    const reason = isValid ? 'Verification successful' : 
-                   overallConfidence < 40 ? 'BVN validation failed' : 
-                   'Insufficient confidence in matching details';
-
-    return {
-      isValid,
-      overallConfidence: Math.round(overallConfidence),
-      reason,
-      matchedFields
-    };
-  }
-
-  async verifyNin(nin, user) {
+  async verifyPhoneNumber(phoneNumber, user) {
     try {
-      if (!nin || nin.length !== 11) {
-        throw new Error('NIN must be 11 digits');
-      }
+      logger.info('Starting phone verification', { 
+        userId: user.id, 
+        phoneNumber: phoneNumber.replace(/\d(?=\d{4})/g, '*') 
+      });
 
-      const response = await this.makeRequest('GET', '/api/v1/kyc/nin', { nin });
+      const formattedPhone = this.formatPhoneForDojah(phoneNumber);
+      
+      const response = await this.makeRequest('GET', '/api/v1/kyc/phone_number', {
+        phone_number: formattedPhone
+      });
 
       if (response.entity) {
-        const entity = response.entity;
+        const phoneData = response.entity;
         
-        // Cross-check names for verification
-        const nameMatch = this.crossCheckNames(user, entity);
-        
-        if (nameMatch.isValid) {
-          // Update user KYC data
-          await userService.updateUser(user.id, {
-            kycData: {
-              ...user.kycData,
-              ninVerification: {
-                verified: true,
-                verifiedAt: new Date(),
-                confidence: nameMatch.confidence,
-                details: {
-                  fullName: `${entity.first_name} ${entity.middle_name || ''} ${entity.last_name}`.trim(),
-                  dateOfBirth: entity.date_of_birth,
-                  phoneNumber: entity.phone_number,
-                  gender: entity.gender,
-                  email: entity.email,
-                  employmentStatus: entity.employment_status,
-                  maritalStatus: entity.marital_status,
-                  photo: entity.photo ? 'Available' : 'Not available'
-                }
-              }
-            }
-          });
+        const verification = {
+          verified: true,
+          details: {
+            carrier: phoneData.carrier,
+            type: phoneData.type,
+            ported: phoneData.ported,
+            portedDate: phoneData.ported_date,
+            lastSeen: phoneData.last_seen,
+            network: phoneData.network,
+            countryCode: phoneData.country_code,
+            valid: phoneData.valid,
+            reachable: phoneData.reachable
+          },
+          validationChecks: {
+            isValid: phoneData.valid,
+            isReachable: phoneData.reachable,
+            isActiveLine: phoneData.type !== 'landline'
+          }
+        };
 
-          logger.info('NIN verification successful', {
-            userId: user.id,
-            nin: '***' + nin.slice(-4),
-            confidence: nameMatch.confidence
-          });
+        verification.overallValid = verification.validationChecks.isValid && 
+                                  verification.validationChecks.isReachable;
 
-          return {
-            verified: true,
-            confidence: nameMatch.confidence,
-            details: entity
-          };
-        } else {
-          throw new Error(`NIN verification failed - ${nameMatch.reason}`);
-        }
+        await ActivityLog.logUserActivity(
+          user.id,
+          'kyc_verification',
+          'phone_verified',
+          {
+            source: 'system',
+            description: 'Phone number verification completed',
+            carrier: phoneData.carrier,
+            valid: verification.overallValid
+          }
+        );
+
+        return verification;
+
       } else {
-        throw new Error('NIN verification failed - invalid response');
+        return {
+          verified: false,
+          error: 'Phone number verification failed',
+          details: null
+        };
       }
+
     } catch (error) {
-      logger.error('NIN verification failed', { 
+      logger.error('Phone verification failed', { 
         error: error.message, 
-        userId: user.id,
-        nin: '***' + nin.slice(-4)
+        userId: user.id 
       });
-      
+
       return {
         verified: false,
-        error: error.message
+        error: error.message,
+        details: null
       };
     }
   }
 
-  crossCheckNames(user, entity) {
-    const userFirstName = (user.firstName || '').toLowerCase().trim();
-    const userLastName = (user.lastName || '').toLowerCase().trim();
-    const userMiddleName = (user.middleName || '').toLowerCase().trim();
-
-    const entityFirstName = (entity.first_name || '').toLowerCase().trim();
-    const entityLastName = (entity.last_name || '').toLowerCase().trim();
-    const entityMiddleName = (entity.middle_name || '').toLowerCase().trim();
-
-    let confidence = 0;
-    let matchedFields = [];
-
-    // Check first name match
-    if (userFirstName && entityFirstName && userFirstName === entityFirstName) {
-      confidence += 40;
-      matchedFields.push('first_name');
-    } else if (userFirstName && entityFirstName && this.isSimilarName(userFirstName, entityFirstName)) {
-      confidence += 25;
-      matchedFields.push('first_name_similar');
-    }
-
-    // Check last name match
-    if (userLastName && entityLastName && userLastName === entityLastName) {
-      confidence += 40;
-      matchedFields.push('last_name');
-    } else if (userLastName && entityLastName && this.isSimilarName(userLastName, entityLastName)) {
-      confidence += 25;
-      matchedFields.push('last_name_similar');
-    }
-
-    // Check middle name match (optional)
-    if (userMiddleName && entityMiddleName && userMiddleName === entityMiddleName) {
-      confidence += 20;
-      matchedFields.push('middle_name');
-    }
-
-    // Date of birth check if available
-    if (user.dateOfBirth && entity.date_of_birth) {
-      const userDob = new Date(user.dateOfBirth).toISOString().split('T')[0];
-      const entityDob = new Date(entity.date_of_birth).toISOString().split('T')[0];
-      
-      if (userDob === entityDob) {
-        confidence += 20;
-        matchedFields.push('date_of_birth');
-      }
-    }
-
-    const isValid = confidence >= 60; // Minimum 60% confidence required
-    const reason = isValid ? 'Verification successful' : 
-                   confidence < 30 ? 'Names do not match' : 
-                   'Insufficient confidence in name matching';
-
-    return {
-      isValid,
-      confidence,
-      reason,
-      matchedFields
-    };
-  }
-
-  isSimilarName(name1, name2) {
-    // Simple similarity check (can be enhanced with fuzzy matching)
-    if (Math.abs(name1.length - name2.length) > 3) return false;
-    
-    // Check if one name contains the other
-    if (name1.includes(name2) || name2.includes(name1)) return true;
-    
-    // Check for common abbreviations/variations
-    const variations = {
-      'muhammad': ['mohammed', 'mohamed', 'ahmad'],
-      'ibrahim': ['abraham'],
-      'fatima': ['fatimah'],
-      'aisha': ['aishah'],
-      'abdul': ['abdullahi'],
-      'emmanuel': ['emeka'],
-      'oluwaseun': ['seun'],
-      'oluwasegun': ['segun']
-    };
-
-    for (const [key, values] of Object.entries(variations)) {
-      if ((name1 === key && values.includes(name2)) || 
-          (name2 === key && values.includes(name1))) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  async checkKycCompletion(user) {
+  async performComplianceChecks(user) {
     try {
-      const kycData = user.kycData || {};
+      logger.info('Starting compliance checks', { userId: user.id });
 
-      const allVerified = 
-        kycData.bvnVerification?.verified &&
-        kycData.phoneVerification?.verified;
+      const results = {
+        passed: true,
+        details: {},
+        flags: []
+      };
 
-      if (allVerified) {
-        await userService.updateUser(user.id, {
-          kycStatus: 'verified',
-          kycData: {
-            ...kycData,
-            completedAt: new Date(),
-            verifiedBy: 'dojah_automated'
-          }
-        });
-
-        // Create virtual account now that KYC is complete
-        const walletService = require('./wallet');
-        await walletService.createVirtualAccountForWallet(user.id);
-
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          `🎉 *KYC Verification Complete!*\n\n` +
-          `Your account has been fully verified.\n\n` +
-          `✅ All verification steps completed\n` +
-          `✅ Virtual account created\n` +
-          `✅ All MiiMii services now available\n\n` +
-          `You can now:\n` +
-          `• Send and receive money\n` +
-          `• Buy airtime and data\n` +
-          `• Pay utility bills\n\n` +
-          `Welcome to MiiMii! 🚀`
-        );
-
-        logger.info('KYC verification completed', { userId: user.id });
+      // 1. Sanctions List Check
+      try {
+        const sanctionsCheck = await this.checkSanctionsList(user);
+        results.details.sanctions = sanctionsCheck;
+        if (!sanctionsCheck.clear) {
+          results.flags.push('sanctions_match');
+          results.passed = false;
+        }
+      } catch (error) {
+        logger.warn('Sanctions check failed', { error: error.message, userId: user.id });
+        results.details.sanctions = { error: error.message };
       }
+
+      // 2. PEP (Politically Exposed Person) Check
+      try {
+        const pepCheck = await this.checkPoliticalExposure(user);
+        results.details.pep = pepCheck;
+        if (pepCheck.isPep) {
+          results.flags.push('pep_match');
+          // PEP doesn't automatically fail, but requires enhanced due diligence
+        }
+      } catch (error) {
+        logger.warn('PEP check failed', { error: error.message, userId: user.id });
+        results.details.pep = { error: error.message };
+      }
+
+      // 3. Watch List Check
+      try {
+        const watchListCheck = await this.checkWatchList(user);
+        results.details.watchList = watchListCheck;
+        if (!watchListCheck.clear) {
+          results.flags.push('watchlist_match');
+          results.passed = false;
+        }
+      } catch (error) {
+        logger.warn('Watch list check failed', { error: error.message, userId: user.id });
+        results.details.watchList = { error: error.message };
+      }
+
+      await ActivityLog.logUserActivity(
+        user.id,
+        'compliance_check',
+        'compliance_screening_completed',
+        {
+          source: 'system',
+          description: 'Compliance screening completed',
+          passed: results.passed,
+          flags: results.flags,
+          checksPerformed: Object.keys(results.details)
+        }
+      );
+
+      return results;
+
     } catch (error) {
-      logger.error('Failed to check KYC completion', { error: error.message, userId: user.id });
-    }
-  }
-
-  async reviewKycApplication(user, action, reason = null) {
-    try {
-      if (action === 'approve') {
-        await userService.updateUser(user.id, {
-          kycStatus: 'verified',
-          kycData: {
-            ...user.kycData,
-            reviewedAt: new Date(),
-            reviewedBy: 'admin',
-            reviewAction: action,
-            reviewReason: reason
-          }
-        });
-
-        // Create virtual account
-        const walletService = require('./wallet');
-        await walletService.createVirtualAccountForWallet(user.id);
-
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          `🎉 *KYC Approved!*\n\n` +
-          `Your verification has been approved by our team.\n\n` +
-          `✅ All MiiMii services are now available\n` +
-          `✅ Virtual account created\n\n` +
-          `Welcome to MiiMii! 🚀`
-        );
-      } else if (action === 'reject') {
-        await userService.updateUser(user.id, {
-          kycStatus: 'rejected',
-          kycData: {
-            ...user.kycData,
-            reviewedAt: new Date(),
-            reviewedBy: 'admin',
-            reviewAction: action,
-            reviewReason: reason
-          }
-        });
-
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          `❌ *KYC Verification Rejected*\n\n` +
-          `Unfortunately, your verification could not be completed.\n\n` +
-          `Reason: ${reason || 'Additional documentation required'}\n\n` +
-          `Please contact support for assistance:\n` +
-          `📞 Support: +234-XXX-XXX-XXXX\n` +
-          `📧 Email: support@miimii.com`
-        );
-      }
-
-      logger.info('KYC application reviewed', {
-        userId: user.id,
-        action,
-        reason
+      logger.error('Compliance checks failed', { 
+        error: error.message, 
+        userId: user.id 
       });
 
       return {
-        kycStatus: action === 'approve' ? 'verified' : 'rejected'
+        passed: false,
+        error: error.message,
+        details: {},
+        flags: ['compliance_check_error']
       };
-    } catch (error) {
-      logger.error('Failed to review KYC application', { 
-        error: error.message, 
-        userId: user.id,
-        action 
+    }
+  }
+
+  async checkSanctionsList(user) {
+    try {
+      const response = await this.makeRequest('POST', '/api/v1/aml/screening/sanctions', {
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        country: 'NG',
+        dob: user.dateOfBirth
       });
+
+      if (response.entity) {
+        const sanctionsData = response.entity;
+        return {
+          clear: sanctionsData.hits === 0,
+          hitCount: sanctionsData.hits,
+          matches: sanctionsData.results || [],
+          screeningId: sanctionsData.screening_id
+        };
+      }
+
+      return { clear: true, hitCount: 0, matches: [] };
+    } catch (error) {
+      logger.error('Sanctions list check failed', { error: error.message, userId: user.id });
       throw error;
     }
   }
 
-  async handleKycVerified(webhookData) {
+  async checkPoliticalExposure(user) {
     try {
-      const { user_id, verification_type, details } = webhookData;
-      
-      const user = await userService.getUserById(user_id);
-      if (!user) {
-        logger.warn('User not found for KYC webhook', { user_id });
-        return;
+      const response = await this.makeRequest('POST', '/api/v1/aml/screening/pep', {
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        country: 'NG'
+      });
+
+      if (response.entity) {
+        const pepData = response.entity;
+        return {
+          isPep: pepData.hits > 0,
+          hitCount: pepData.hits,
+          matches: pepData.results || [],
+          riskLevel: pepData.hits > 0 ? 'high' : 'low'
+        };
       }
 
-      // Update verification status based on type
-      const updateData = {
-        kycData: {
-          ...user.kycData,
-          [`${verification_type}Verification`]: {
-            verified: true,
-            verifiedAt: new Date(),
-            details,
-            source: 'dojah_webhook'
-          }
+      return { isPep: false, hitCount: 0, matches: [], riskLevel: 'low' };
+    } catch (error) {
+      logger.error('PEP check failed', { error: error.message, userId: user.id });
+      throw error;
+    }
+  }
+
+  async checkWatchList(user) {
+    try {
+      const response = await this.makeRequest('POST', '/api/v1/aml/screening/watchlist', {
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        country: 'NG'
+      });
+
+      if (response.entity) {
+        const watchListData = response.entity;
+        return {
+          clear: watchListData.hits === 0,
+          hitCount: watchListData.hits,
+          matches: watchListData.results || []
+        };
+      }
+
+      return { clear: true, hitCount: 0, matches: [] };
+    } catch (error) {
+      logger.error('Watch list check failed', { error: error.message, userId: user.id });
+      throw error;
+    }
+  }
+
+  async calculateRiskScore(user, verificationResults) {
+    try {
+      let riskScore = 0;
+      const factors = [];
+
+      // BVN verification contributes to risk score
+      if (verificationResults.bvnVerification.verified) {
+        if (verificationResults.bvnVerification.overallMatch) {
+          riskScore -= 0.3; // Lower risk
+          factors.push('bvn_verified_match');
+        } else {
+          riskScore += 0.2; // Higher risk
+          factors.push('bvn_verified_no_match');
+        }
+      } else {
+        riskScore += 0.4; // Higher risk
+        factors.push('bvn_not_verified');
+      }
+
+      // Phone verification
+      if (verificationResults.phoneVerification.verified) {
+        riskScore -= 0.1;
+        factors.push('phone_verified');
+      } else {
+        riskScore += 0.1;
+        factors.push('phone_not_verified');
+      }
+
+      // Compliance checks
+      if (!verificationResults.complianceCheck.passed) {
+        riskScore += 0.5; // Significant risk increase
+        factors.push(...verificationResults.complianceCheck.flags);
+      } else {
+        riskScore -= 0.1;
+        factors.push('compliance_clean');
+      }
+
+      // Additional risk factors
+      if (user.whatsappNumber && !user.whatsappNumber.startsWith('+234')) {
+        riskScore += 0.1;
+        factors.push('foreign_number');
+      }
+
+      // Ensure score is between 0 and 1
+      riskScore = Math.max(0, Math.min(1, riskScore + 0.5)); // Base score of 0.5
+
+      const riskLevel = riskScore < 0.3 ? 'low' : 
+                       riskScore < 0.7 ? 'medium' : 'high';
+
+      await ActivityLog.logUserActivity(
+        user.id,
+        'kyc_verification',
+        'risk_assessment_completed',
+        {
+          source: 'system',
+          description: 'Risk assessment completed',
+          riskScore,
+          riskLevel,
+          factors: factors.join(', ')
+        }
+      );
+
+      return {
+        score: riskScore,
+        level: riskLevel,
+        factors
+      };
+
+    } catch (error) {
+      logger.error('Risk calculation failed', { error: error.message, userId: user.id });
+      return {
+        score: 0.5,
+        level: 'medium',
+        factors: ['calculation_error']
+      };
+    }
+  }
+
+  async updateKycResults(user, results) {
+    try {
+      const kycData = {
+        ...user.kycData,
+        verificationResults: results,
+        lastUpdated: new Date(),
+        verificationSteps: {
+          bvnVerification: results.bvnVerification.verified,
+          phoneVerification: results.phoneVerification.verified,
+          complianceCheck: results.complianceCheck.passed,
+          riskAssessment: true
         }
       };
 
-      await userService.updateUser(user_id, updateData);
+      // Determine overall KYC status
+      let kycStatus = 'pending';
       
-      // Check if all verifications are complete
-      await this.checkKycCompletion(user);
-
-      logger.info('KYC verification webhook processed', {
-        userId: user_id,
-        verificationType: verification_type
-      });
-    } catch (error) {
-      logger.error('Failed to handle KYC verified webhook', {
-        error: error.message,
-        webhookData
-      });
-    }
-  }
-
-  async handleKycRejected(webhookData) {
-    try {
-      const { user_id, verification_type, reason } = webhookData;
-      
-      const user = await userService.getUserById(user_id);
-      if (!user) {
-        logger.warn('User not found for KYC rejection webhook', { user_id });
-        return;
+      if (results.bvnVerification.verified && 
+          results.phoneVerification.verified && 
+          results.complianceCheck.passed && 
+          results.riskAssessment.level !== 'high') {
+        kycStatus = 'verified';
+      } else if (results.complianceCheck.flags.includes('sanctions_match') ||
+                results.complianceCheck.flags.includes('watchlist_match') ||
+                results.riskAssessment.level === 'high') {
+        kycStatus = 'rejected';
       }
 
-      await userService.updateUser(user_id, {
-        kycStatus: 'rejected',
-        kycData: {
-          ...user.kycData,
-          rejectedAt: new Date(),
-          rejectionReason: reason,
-          rejectedVerification: verification_type
-        }
+      await user.update({
+        kycData,
+        kycStatus,
+        riskScore: results.riskAssessment.score
       });
 
-      await whatsappService.sendTextMessage(
-        user.whatsappNumber,
-        `❌ *Verification Issue*\n\n` +
-        `There was an issue with your ${verification_type} verification.\n\n` +
-        `Reason: ${reason}\n\n` +
-        `Please try again or contact support for assistance.`
-      );
+      return { kycStatus, kycData };
 
-      logger.info('KYC rejection webhook processed', {
-        userId: user_id,
-        verificationType: verification_type,
-        reason
-      });
     } catch (error) {
-      logger.error('Failed to handle KYC rejected webhook', {
-        error: error.message,
-        webhookData
+      logger.error('Failed to update KYC results', { error: error.message, userId: user.id });
+      throw error;
+    }
+  }
+
+  async sendKycStatusUpdate(user, phoneNumber, verificationResults, reference) {
+    try {
+      const { bvnVerification, phoneVerification, complianceCheck, riskAssessment } = verificationResults;
+
+      let statusMessage = `🔍 *KYC Verification Update*\n\n`;
+      statusMessage += `📄 Reference: ${reference}\n\n`;
+
+      // BVN Status
+      if (bvnVerification.verified) {
+        statusMessage += `✅ BVN Verification: Completed\n`;
+        if (bvnVerification.overallMatch) {
+          statusMessage += `   ✅ All details match perfectly\n`;
+        } else {
+          statusMessage += `   ⚠️ Some details need review\n`;
+        }
+      } else {
+        statusMessage += `❌ BVN Verification: Failed\n`;
+        statusMessage += `   ${bvnVerification.error || 'Invalid BVN'}\n`;
+      }
+
+      // Phone Status
+      if (phoneVerification.verified) {
+        statusMessage += `✅ Phone Verification: Completed\n`;
+      } else {
+        statusMessage += `❌ Phone Verification: Failed\n`;
+      }
+
+      // Compliance Status
+      if (complianceCheck.passed) {
+        statusMessage += `✅ Compliance Check: Passed\n`;
+      } else {
+        statusMessage += `⚠️ Compliance Check: Requires Review\n`;
+        if (complianceCheck.flags.length > 0) {
+          statusMessage += `   Flags: ${complianceCheck.flags.join(', ')}\n`;
+        }
+      }
+
+      // Risk Assessment
+      const riskEmoji = riskAssessment.level === 'low' ? '🟢' : 
+                       riskAssessment.level === 'medium' ? '🟡' : '🔴';
+      statusMessage += `${riskEmoji} Risk Level: ${riskAssessment.level.toUpperCase()}\n\n`;
+
+      // Overall Status
+      if (user.kycStatus === 'verified') {
+        statusMessage += `🎉 *Verification Complete!*\n\nYour account is now fully verified and you can access all MiiMii services.\n\n`;
+      } else if (user.kycStatus === 'rejected') {
+        statusMessage += `❌ *Verification Failed*\n\nYour verification could not be completed due to compliance requirements. Please contact support.\n\n`;
+      } else {
+        statusMessage += `⏳ *Verification Pending*\n\nWe're reviewing your information. This may take 24-48 hours.\n\n`;
+      }
+
+      statusMessage += `Need help? Contact our support team.`;
+
+      await whatsappService.sendTextMessage(phoneNumber, statusMessage);
+
+    } catch (error) {
+      logger.error('Failed to send KYC status update', { 
+        error: error.message, 
+        userId: user.id 
       });
     }
   }
 
-  async makeRequest(method, endpoint, params = null) {
+  async processIdDocument(imageData, documentType = 'any') {
     try {
+      logger.info('Processing ID document', { documentType });
+
+      // First, extract text using OCR
+      const ocrResults = await ocrService.extractDataFromImage(imageData, 'identity_document');
+      
+      if (!ocrResults.text) {
+        throw new Error('Could not extract text from document');
+      }
+
+      // Use Dojah for document verification if supported
+      try {
+        const response = await this.makeRequest('POST', '/api/v1/kyc/document', {
+          document_type: documentType,
+          image: imageData // Base64 encoded image
+        });
+
+        if (response.entity) {
+          return {
+            success: true,
+            documentType: response.entity.document_type,
+            extractedData: {
+              firstName: response.entity.first_name,
+              lastName: response.entity.last_name,
+              middleName: response.entity.middle_name,
+              dateOfBirth: response.entity.date_of_birth,
+              gender: response.entity.gender,
+              documentNumber: response.entity.document_number,
+              issuedDate: response.entity.issued_date,
+              expiryDate: response.entity.expiry_date,
+              issuingAuthority: response.entity.issuing_authority
+            },
+            ocrResults,
+            confidence: response.entity.confidence || 0.8
+          };
+        }
+      } catch (dojahError) {
+        logger.warn('Dojah document verification failed, using OCR only', { 
+          error: dojahError.message 
+        });
+      }
+
+      // Fallback to OCR-only extraction
+      return {
+        success: true,
+        documentType: 'unknown',
+        extractedData: ocrResults.data || {},
+        ocrResults,
+        confidence: 0.6,
+        method: 'ocr_only'
+      };
+
+    } catch (error) {
+      logger.error('Document processing failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Utility methods for validation
+  calculateBvnMatchScore(user, bvnData) {
+    let score = 0;
+    let totalChecks = 0;
+
+    // Name matching
+    if (this.validateNameMatch(user, bvnData)) score += 0.3;
+    totalChecks += 0.3;
+
+    // Date of birth matching
+    if (this.validateDobMatch(user, bvnData)) score += 0.3;
+    totalChecks += 0.3;
+
+    // Phone matching
+    if (this.validatePhoneMatch(user, bvnData)) score += 0.2;
+    totalChecks += 0.2;
+
+    // Gender matching
+    if (this.validateGenderMatch(user, bvnData)) score += 0.1;
+    totalChecks += 0.1;
+
+    // Watch list status
+    if (bvnData.watch_listed === 'NO') score += 0.1;
+    totalChecks += 0.1;
+
+    return totalChecks > 0 ? score / totalChecks : 0;
+  }
+
+  validateNameMatch(user, bvnData) {
+    const userFirstName = user.firstName?.toLowerCase().trim();
+    const userLastName = user.lastName?.toLowerCase().trim();
+    const bvnFirstName = bvnData.firstname?.toLowerCase().trim();
+    const bvnLastName = bvnData.lastname?.toLowerCase().trim();
+
+    if (!userFirstName || !userLastName || !bvnFirstName || !bvnLastName) {
+      return false;
+    }
+
+    // Exact match or similar match (allowing for minor differences)
+    const firstNameMatch = userFirstName === bvnFirstName || 
+                          this.calculateSimilarity(userFirstName, bvnFirstName) > 0.8;
+    const lastNameMatch = userLastName === bvnLastName || 
+                         this.calculateSimilarity(userLastName, bvnLastName) > 0.8;
+
+    return firstNameMatch && lastNameMatch;
+  }
+
+  validateDobMatch(user, bvnData) {
+    if (!user.dateOfBirth || !bvnData.date_of_birth) {
+      return false;
+    }
+
+    const userDob = new Date(user.dateOfBirth);
+    const bvnDob = new Date(bvnData.date_of_birth);
+
+    return userDob.getTime() === bvnDob.getTime();
+  }
+
+  validatePhoneMatch(user, bvnData) {
+    if (!user.whatsappNumber || !bvnData.phone_number1) {
+      return false;
+    }
+
+    const userPhone = this.normalizePhoneNumber(user.whatsappNumber);
+    const bvnPhone = this.normalizePhoneNumber(bvnData.phone_number1);
+
+    return userPhone === bvnPhone;
+  }
+
+  validateGenderMatch(user, bvnData) {
+    if (!user.gender || !bvnData.gender) {
+      return true; // Don't penalize if data is missing
+    }
+
+    return user.gender.toLowerCase() === bvnData.gender.toLowerCase();
+  }
+
+  calculateSimilarity(str1, str2) {
+    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+
+    for (let i = 0; i <= str1.length; i += 1) {
+      matrix[0][i] = i;
+    }
+
+    for (let j = 0; j <= str2.length; j += 1) {
+      matrix[j][0] = j;
+    }
+
+    for (let j = 1; j <= str2.length; j += 1) {
+      for (let i = 1; i <= str1.length; i += 1) {
+        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j][i - 1] + 1,
+          matrix[j - 1][i] + 1,
+          matrix[j - 1][i - 1] + indicator
+        );
+      }
+    }
+
+    const distance = matrix[str2.length][str1.length];
+    const maxLength = Math.max(str1.length, str2.length);
+    return maxLength === 0 ? 1 : (maxLength - distance) / maxLength;
+  }
+
+  // Utility methods
+  async makeRequest(method, endpoint, data = {}) {
+    try {
+      // Rate limiting
+      await this.enforceRateLimit();
+
       const config = {
         method,
         url: `${this.baseURL}${endpoint}`,
         headers: {
           'AppId': this.appId,
           'Authorization': this.secretKey,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+          'User-Agent': 'MiiMii/1.0'
+        },
+        timeout: 30000,
+        validateStatus: (status) => status < 500
       };
 
-      if (params) {
-        if (method === 'GET') {
-          config.params = params;
-        } else {
-          config.data = params;
-        }
+      if (method === 'GET') {
+        config.params = data;
+      } else {
+        config.data = data;
       }
 
       const response = await axios(config);
 
+      if (response.status >= 400) {
+        throw new Error(`Dojah API error: ${response.data?.error || response.statusText}`);
+      }
+
       return response.data;
+
     } catch (error) {
-      if (error.response) {
-        const apiError = error.response.data;
-        throw new Error(apiError.error || `Dojah API Error: ${error.response.status}`);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Dojah API timeout');
+      } else if (error.response) {
+        throw new Error(`Dojah API error: ${error.response.data?.error || error.response.statusText}`);
+      } else {
+        throw new Error(`Request failed: ${error.message}`);
       }
-      throw error;
     }
   }
 
-  // Utility method to extract KYC data from OCR results
-  extractKycDataFromOCR(ocrResult) {
-    const text = ocrResult.text || '';
-    const extractedData = ocrResult.extractedData || {};
-
-    return {
-      names: extractedData.names || [],
-      dates: extractedData.dates || [],
-      bvnNumbers: this.extractBvnNumbers(text),
-      documentNumbers: this.extractDocumentNumbers(text),
-      confidence: ocrResult.confidence || 0
-    };
-  }
-
-  extractBvnNumbers(text) {
-    // Extract BVN pattern (11 digits)
-    const bvnPattern = /\b\d{11}\b/g;
-    const matches = text.match(bvnPattern);
-    return matches || [];
-  }
-
-  extractDocumentNumbers(text) {
-    // Extract various Nigerian document number patterns
-    const patterns = {
-      bvn: /\b\d{11}\b/g, // BVN format (11 digits)
-      driversLicense: /\b[A-Z]{3}\s?\d{8}\b/g, // Driver's license
-      passport: /\b[A-Z]\d{8}\b/g, // Passport number
-      votersCard: /\b\d{19}\b/g // Voter's card
-    };
-
-    const results = {};
+  async enforceRateLimit() {
+    const now = Date.now();
     
-    for (const [type, pattern] of Object.entries(patterns)) {
-      const matches = text.match(pattern);
-      if (matches) {
-        results[type] = matches;
+    // Reset counter if window has passed
+    if (now - this.lastRequestTime > this.rateLimitWindow) {
+      this.requestsThisMinute = 0;
+    }
+
+    // Check if we've exceeded the limit
+    if (this.requestsThisMinute >= this.maxRequestsPerMinute) {
+      const waitTime = this.rateLimitWindow - (now - this.lastRequestTime);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      this.requestsThisMinute = 0;
+    }
+
+    this.requestsThisMinute++;
+    this.lastRequestTime = now;
+  }
+
+  formatDateForDojah(dateString) {
+    try {
+      const date = new Date(dateString);
+      return date.toISOString().split('T')[0]; // YYYY-MM-DD
+    } catch (error) {
+      return dateString;
+    }
+  }
+
+  formatPhoneForDojah(phoneNumber) {
+    let cleaned = phoneNumber.replace(/\D/g, '');
+    
+    if (cleaned.startsWith('234')) {
+      return `+${cleaned}`;
+    } else if (cleaned.startsWith('0')) {
+      return `+234${cleaned.substring(1)}`;
+    } else if (cleaned.length === 10) {
+      return `+234${cleaned}`;
+    } else {
+      return `+234${cleaned}`;
+    }
+  }
+
+  normalizePhoneNumber(phoneNumber) {
+    return phoneNumber.replace(/\D/g, '').slice(-10);
+  }
+
+  // Webhook handlers
+  async handleKycVerified(data) {
+    try {
+      const { user_id, verification_status, details } = data;
+      
+      const user = await User.findByPk(user_id);
+      if (!user) {
+        logger.warn('User not found for KYC verification webhook', { user_id });
+        return;
       }
-    }
 
-    return results;
+      await user.update({
+        kycStatus: 'verified',
+        kycData: {
+          ...user.kycData,
+          webhookVerification: details,
+          verifiedAt: new Date()
+        }
+      });
+
+      await ActivityLog.logUserActivity(
+        user.id,
+        'kyc_verification',
+        'kyc_verified_webhook',
+        {
+          source: 'webhook',
+          description: 'KYC verification completed via webhook',
+          verificationStatus: verification_status
+        }
+      );
+
+      // Notify user
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `🎉 *Account Verified!*\n\nYour identity verification is now complete. You can access all MiiMii services!\n\nWelcome to the future of digital banking! 💰`
+      );
+
+    } catch (error) {
+      logger.error('Failed to handle KYC verified webhook', { error: error.message, data });
+    }
   }
 
-  // Test methods for sandbox environment
-  async testBvnLookup() {
+  async handleKycRejected(data) {
     try {
-      // Use test BVN from documentation
-      const testBvn = '22222222222';
-      const response = await this.makeRequest('GET', '/api/v1/kyc/bvn', { bvn: testBvn });
+      const { user_id, rejection_reason, details } = data;
       
-      logger.info('Test BVN lookup successful', { response });
-      return response;
+      const user = await User.findByPk(user_id);
+      if (!user) {
+        logger.warn('User not found for KYC rejection webhook', { user_id });
+        return;
+      }
+
+      await user.update({
+        kycStatus: 'rejected',
+        kycData: {
+          ...user.kycData,
+          rejectionReason: rejection_reason,
+          rejectionDetails: details,
+          rejectedAt: new Date()
+        }
+      });
+
+      await ActivityLog.logUserActivity(
+        user.id,
+        'kyc_verification',
+        'kyc_rejected_webhook',
+        {
+          source: 'webhook',
+          description: 'KYC verification rejected via webhook',
+          rejectionReason: rejection_reason
+        }
+      );
+
+      // Notify user
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `❌ *Verification Unsuccessful*\n\nWe couldn't complete your identity verification.\n\nReason: ${rejection_reason}\n\nPlease contact our support team for assistance.`
+      );
+
     } catch (error) {
-      logger.error('Test BVN lookup failed', { error: error.message });
-      throw error;
+      logger.error('Failed to handle KYC rejected webhook', { error: error.message, data });
     }
   }
 
-  async testBvnValidation(firstName = 'John', lastName = 'Doe', dateOfBirth = '1990-01-01') {
+  // Health check
+  async healthCheck() {
     try {
-      // Use test BVN with validation parameters
-      const testBvn = '22222222222';
-      const params = {
-        bvn: testBvn,
-        first_name: firstName,
-        last_name: lastName,
-        dob: dateOfBirth
-      };
-      
-      const response = await this.makeRequest('GET', '/api/v1/kyc/bvn', params);
-      
-      logger.info('Test BVN validation successful', { response, params });
-      return response;
+      const response = await this.makeRequest('GET', '/api/v1/general/keywords');
+      return { healthy: true, responseTime: Date.now() };
     } catch (error) {
-      logger.error('Test BVN validation failed', { error: error.message });
-      throw error;
+      return { healthy: false, error: error.message };
     }
   }
 }
