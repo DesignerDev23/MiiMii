@@ -277,7 +277,7 @@ class MessageProcessor {
           if (ocrResult.text.length > 10) {
             await whatsappService.sendTextMessage(
               user.whatsappNumber,
-              `📷 I can see text in your image:\n"${ocrResult.text.substring(0, 200)}${ocrResult.text.length > 200 ? '...' : '"}"\n\nProcessing your request...`
+              `📷 I can see text in your image:\n"${ocrResult.text.substring(0, 200)}${ocrResult.text.length > 200 ? '...' : ''}"\n\nProcessing your request...`
             );
           }
         }
