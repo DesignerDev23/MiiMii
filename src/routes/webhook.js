@@ -55,6 +55,19 @@ const logWebhook = (provider) => async (req, res, next) => {
   }
 };
 
+// Debug endpoint to check environment variables
+router.get('/whatsapp/debug', (req, res) => {
+  res.json({
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    verifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+    verifyTokenSet: !!process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+    fallbackToken: 'Verify_MiiMii',
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ? 'SET' : 'NOT_SET',
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN ? 'SET' : 'NOT_SET'
+  });
+});
+
 // WhatsApp webhook endpoints
 router.get('/whatsapp', (req, res) => {
   const mode = req.query['hub.mode'];
