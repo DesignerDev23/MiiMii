@@ -356,6 +356,15 @@ async function initializeDatabaseConnection() {
     // Sync database models only after successful connection
     await sequelize.sync({ force: false, alter: false });
     logger.info('✅ Database models synchronized');
+    
+    // Self-healing: attempt to add missing lastWelcomedAt column if it doesn't exist
+    try {
+      const { attemptColumnAddition } = require('../fix_missing_column');
+      await attemptColumnAddition();
+    } catch (error) {
+      logger.warn('Self-healing column addition failed (non-critical):', error.message);
+    }
+    
   } catch (error) {
     logger.warn('⚠️ Database connection failed - continuing without database features:', {
       error: error.message,
