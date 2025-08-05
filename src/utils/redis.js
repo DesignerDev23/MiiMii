@@ -13,8 +13,15 @@ class RedisClient {
     try {
       const redisUrl = process.env.REDIS_URL;
       
-      if (!redisUrl || typeof redisUrl !== 'string' || redisUrl.includes('localhost')) {
-        logger.info('Redis URL not provided, invalid, or pointing to localhost - Redis features will be disabled');
+      if (!redisUrl || typeof redisUrl !== 'string') {
+        logger.info('Redis URL not provided - Redis features will be disabled');
+        this.isConnected = false;
+        return false;
+      }
+
+      // For production, check if it's a proper external Redis URL
+      if (process.env.NODE_ENV === 'production' && redisUrl.includes('localhost')) {
+        logger.warn('Redis URL points to localhost in production - Redis features will be disabled');
         this.isConnected = false;
         return false;
       }
