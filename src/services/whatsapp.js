@@ -26,6 +26,7 @@ class WhatsAppService {
   }
 
   validateConfiguration() {
+    // Use exact environment variable names from Digital Ocean configuration
     const requiredEnvVars = [
       'BOT_ACCESS_TOKEN',
       'BOT_PHONE_NUMBER_ID',

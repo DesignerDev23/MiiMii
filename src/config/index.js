@@ -17,7 +17,7 @@ class Config {
       password: process.env.DB_PASSWORD
     };
 
-    // WhatsApp Configuration
+    // WhatsApp Configuration - Use exact variable names from Digital Ocean
     this.whatsapp = {
       accessToken: process.env.BOT_ACCESS_TOKEN,
       phoneNumberId: process.env.BOT_PHONE_NUMBER_ID,
