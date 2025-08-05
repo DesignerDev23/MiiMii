@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { axiosConfig } = require('../utils/httpsAgent');
 const logger = require('../utils/logger');
 const userService = require('./user');
 const walletService = require('./wallet');

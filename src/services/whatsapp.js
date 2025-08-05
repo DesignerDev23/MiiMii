@@ -1,6 +1,7 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const config = require('../config');
+const { axiosConfig } = require('../utils/httpsAgent');
 
 class WhatsAppService {
   constructor() {
@@ -87,11 +88,12 @@ class WhatsAppService {
         `${this.baseURL}/messages`,
         payload,
         {
+          ...axiosConfig,
           headers: {
+            ...axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`,
             'Content-Type': 'application/json'
-          },
-          timeout: 30000 // 30 second timeout
+          }
         }
       );
 
@@ -218,11 +220,12 @@ class WhatsAppService {
           message_id: messageId
         },
         {
+          ...axiosConfig,
           headers: {
+            ...axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`,
             'Content-Type': 'application/json'
-          },
-          timeout: 15000 // 15 second timeout
+          }
         }
       );
       
@@ -261,10 +264,11 @@ class WhatsAppService {
       const mediaResponse = await axios.get(
         `https://graph.facebook.com/v18.0/${mediaId}`,
         {
+          ...axiosConfig,
           headers: {
+            ...axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`
-          },
-          timeout: 30000
+          }
         }
       );
 
@@ -272,11 +276,12 @@ class WhatsAppService {
 
       // Download the actual media
       const downloadResponse = await axios.get(mediaUrl, {
+        ...axiosConfig,
         headers: {
+          ...axiosConfig.headers,
           'Authorization': `Bearer ${this.accessToken}`
         },
-        responseType: 'stream',
-        timeout: 60000
+        responseType: 'stream'
       });
 
       return {
@@ -333,10 +338,11 @@ class WhatsAppService {
       const response = await axios.get(
         `https://graph.facebook.com/v18.0/${this.phoneNumberId}`,
         {
+          ...axiosConfig,
           headers: {
+            ...axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`
-          },
-          timeout: 10000
+          }
         }
       );
 

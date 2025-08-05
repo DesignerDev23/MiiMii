@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { axiosConfig } = require('../utils/httpsAgent');
 const logger = require('../utils/logger');
 const userService = require('./user');
 const walletService = require('./wallet');
@@ -171,11 +172,12 @@ class UtilityService {
         provider,
         customer_number: customerNumber
       }, {
+        ...axiosConfig,
         headers: {
+          ...axiosConfig.headers,
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
-        },
-        timeout: 15000
+        }
       });
 
       if (response.data.success && response.data.customer) {
@@ -403,11 +405,12 @@ class UtilityService {
       }
 
       const response = await axios.post(`${this.baseURL}/api/utility/pay`, payload, {
+        ...axiosConfig,
         headers: {
+          ...axiosConfig.headers,
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
-        },
-        timeout: 45000 // 45 seconds timeout for utility payments
+        }
       });
 
       if (response.data.success || response.data.status === 'success') {

@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { axiosConfig } = require('../utils/httpsAgent');
 const logger = require('../utils/logger');
 const userService = require('./user');
 const whatsappService = require('./whatsapp');
@@ -864,15 +865,15 @@ class KYCService {
       await this.enforceRateLimit();
 
       const config = {
+        ...axiosConfig,
         method,
         url: `${this.baseURL}${endpoint}`,
         headers: {
+          ...axiosConfig.headers,
           'AppId': this.appId,
           'Authorization': this.secretKey,
-          'Content-Type': 'application/json',
-          'User-Agent': 'MiiMii/1.0'
+          'Content-Type': 'application/json'
         },
-        timeout: 30000,
         validateStatus: (status) => status < 500
       };
 

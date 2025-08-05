@@ -23,7 +23,11 @@ if (process.env.DB_CONNECTION_URL) {
       ssl: connectionUrl.includes('sslmode=require') ? {
         require: true,
         rejectUnauthorized: false, // For DigitalOcean managed databases
-        sslmode: 'require'
+        sslmode: 'require',
+        // Additional SSL options to handle certificate issues
+        ca: false,
+        cert: false,
+        key: false
       } : false
     },
     retry: {
@@ -65,7 +69,11 @@ if (process.env.DB_CONNECTION_URL) {
       ssl: isDigitalOceanDB ? {
         require: true,
         rejectUnauthorized: false, // For DigitalOcean managed databases
-        sslmode: 'require'
+        sslmode: 'require',
+        // Additional SSL options to handle certificate issues
+        ca: false,
+        cert: false,
+        key: false
       } : false
     },
     retry: {

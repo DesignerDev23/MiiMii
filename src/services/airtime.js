@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { axiosConfig } = require('../utils/httpsAgent');
 const logger = require('../utils/logger');
 const userService = require('./user');
 const walletService = require('./wallet');
@@ -244,11 +245,12 @@ class AirtimeService {
       };
 
       const response = await axios.post(`${this.baseURL}/api/airtime`, payload, {
+        ...axiosConfig,
         headers: {
+          ...axiosConfig.headers,
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
-        },
-        timeout: 30000 // 30 seconds timeout
+        }
       });
 
       if (response.data.success || response.data.status === 'success') {

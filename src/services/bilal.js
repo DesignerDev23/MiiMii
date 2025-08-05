@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { axiosConfig } = require('../utils/httpsAgent');
 const logger = require('../utils/logger');
 const walletService = require('./wallet');
 const whatsappService = require('./whatsapp');
@@ -21,7 +22,9 @@ class BilalService {
       const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
       
       const response = await axios.post(`${this.baseURL}/user`, {}, {
+        ...axiosConfig,
         headers: {
+          ...axiosConfig.headers,
           'Authorization': `Basic ${credentials}`,
           'Content-Type': 'application/json'
         }
@@ -472,9 +475,11 @@ class BilalService {
   async makeRequest(method, endpoint, data = null, token = null) {
     try {
       const config = {
+        ...axiosConfig,
         method,
         url: `${this.baseURL}${endpoint}`,
         headers: {
+          ...axiosConfig.headers,
           'Content-Type': 'application/json'
         }
       };
