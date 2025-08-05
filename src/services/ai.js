@@ -3,13 +3,35 @@ const logger = require('../utils/logger');
 
 class AIService {
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.AI_API_KEY
-    });
-    this.model = process.env.AI_MODEL || 'gpt-4-turbo';
+    const apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+    
+    if (apiKey) {
+      this.openai = new OpenAI({
+        apiKey: apiKey
+      });
+      this.model = process.env.AI_MODEL || 'gpt-4-turbo';
+      this.isEnabled = true;
+      logger.info('AI service initialized successfully');
+    } else {
+      this.openai = null;
+      this.model = null;
+      this.isEnabled = false;
+      logger.warn('AI service disabled - no API key provided. Set AI_API_KEY or OPENAI_API_KEY environment variable to enable AI features.');
+    }
   }
 
   async analyzeIntent(text, user, extractedData = null) {
+    if (!this.isEnabled) {
+      logger.warn('AI service called but not enabled - returning fallback response');
+      return {
+        intent: 'unknown',
+        confidence: 0,
+        entities: [],
+        parameters: {},
+        fallback: true
+      };
+    }
+    
     try {
       const context = this.buildContext(user, extractedData);
       const prompt = this.buildIntentPrompt(text, context);
@@ -237,6 +259,11 @@ EXAMPLES:
   }
 
   async enhanceErrorMessage(originalError, context) {
+    if (!this.isEnabled) {
+      logger.warn('AI service called but not enabled - returning original error message');
+      return originalError;
+    }
+    
     try {
       const prompt = `A user encountered this error: "${originalError}"
       
@@ -274,6 +301,11 @@ Respond with just the improved message, no quotes.`;
   }
 
   async generateTransactionSummary(transactions) {
+    if (!this.isEnabled) {
+      logger.warn('AI service called but not enabled - returning fallback summary');
+      return 'Here are your recent transactions:';
+    }
+    
     try {
       const prompt = `Generate a brief summary of these transactions for a user:
       
