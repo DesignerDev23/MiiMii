@@ -39,6 +39,10 @@ const app = express();
 // Get server configuration early
 const serverConfig = config.getServerConfig();
 
+// Server configuration for Digital Ocean App Platform
+const PORT = parseInt(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+
 // Trust proxy for DigitalOcean App Platform
 app.set('trust proxy', 1);
 
@@ -76,50 +80,121 @@ if (nodeEnv !== 'test') {
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/admin', express.static(path.join(__dirname, '../admin')));
 
-// Simple health check for Digital Ocean (no database checks)
-app.get('/healthz', (req, res) => {
+// Root endpoint
+app.get('/', (req, res) => {
   res.status(200).json({
-    status: 'OK',
+    message: '🎉 MiiMii Fintech Platform API is running!',
+    version: require('../package.json').version,
+    environment: process.env.NODE_ENV,
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV
+    endpoints: {
+      health: '/health',
+      healthz: '/healthz',
+      api: '/api',
+      admin: '/admin'
+    }
   });
 });
 
-// Health check
+// Simple health check for Digital Ocean App Platform (no database checks)
+app.get('/healthz', (req, res) => {
+  try {
+    const healthResponse = {
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV,
+      port: PORT,
+      host: HOST,
+      version: require('../package.json').version,
+      platform: 'DigitalOcean App Platform'
+    };
+    
+    res.status(200).json(healthResponse);
+    logger.debug('Health check (simple) passed');
+  } catch (error) {
+    logger.error('Health check (simple) failed:', error.message);
+    res.status(503).json({
+      status: 'ERROR',
+      timestamp: new Date().toISOString(),
+      error: 'Health check failed'
+    });
+  }
+});
+
+// Comprehensive health check with service dependencies
 app.get('/health', async (req, res) => {
+  const startTime = Date.now();
   const health = {
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV,
+    port: PORT,
+    host: HOST,
+    version: require('../package.json').version,
+    platform: 'DigitalOcean App Platform',
     services: {
       database: 'unknown',
       redis: 'unknown'
+    },
+    performance: {
+      checkDuration: 0
     }
   };
 
   // Check database
   try {
+    const dbStart = Date.now();
     await sequelize.authenticate();
-    health.services.database = 'healthy';
+    health.services.database = {
+      status: 'healthy',
+      responseTime: Date.now() - dbStart
+    };
+    logger.debug('Database health check passed');
   } catch (error) {
     logger.error('Database health check failed:', error.message);
-    health.services.database = 'unhealthy';
+    health.services.database = {
+      status: 'unhealthy',
+      error: error.message
+    };
     health.status = 'DEGRADED';
   }
 
   // Check Redis
   try {
+    const redisStart = Date.now();
     const redisHealthy = await redisClient.healthCheck();
-    health.services.redis = redisHealthy ? 'healthy' : 'unhealthy';
-    if (!redisHealthy) health.status = 'DEGRADED';
+    health.services.redis = {
+      status: redisHealthy ? 'healthy' : 'unhealthy',
+      responseTime: Date.now() - redisStart
+    };
+    if (!redisHealthy) {
+      health.status = 'DEGRADED';
+      logger.warn('Redis health check failed');
+    } else {
+      logger.debug('Redis health check passed');
+    }
   } catch (error) {
-    health.services.redis = 'unhealthy';
+    logger.error('Redis health check error:', error.message);
+    health.services.redis = {
+      status: 'unhealthy',
+      error: error.message
+    };
     health.status = 'DEGRADED';
   }
 
-  res.status(health.status === 'OK' ? 200 : 503).json(health);
+  // Calculate total check duration
+  health.performance.checkDuration = Date.now() - startTime;
+
+  const statusCode = health.status === 'OK' ? 200 : 503;
+  res.status(statusCode).json(health);
+  
+  logger.info(`Health check completed with status: ${health.status}`, {
+    duration: health.performance.checkDuration,
+    dbStatus: health.services.database.status,
+    redisStatus: health.services.redis.status
+  });
 });
 
 // API Routes
@@ -151,8 +226,6 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // Database connection and server startup
-const PORT = process.env.PORT || 3000;
-
 async function startServer() {
   try {
     // Test database connection
@@ -190,12 +263,14 @@ async function startServer() {
       }
     }
 
-    // Start server
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      logger.info(`Server is running on port ${PORT}`, {
+    // Start server - ensure binding to correct host and port for Digital Ocean App Platform
+    const server = app.listen(PORT, HOST, () => {
+      logger.info(`🚀 Server successfully started and listening on ${HOST}:${PORT}`, {
         port: PORT,
+        host: HOST,
         environment: process.env.NODE_ENV,
-        nodeVersion: process.version
+        nodeVersion: process.version,
+        platform: 'DigitalOcean App Platform'
       });
     });
 

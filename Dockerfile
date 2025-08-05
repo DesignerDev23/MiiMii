@@ -1,5 +1,5 @@
-# Use Node.js 18 LTS
-FROM node:18-alpine
+# Use Node.js 22 LTS for better performance and latest features
+FROM node:22-alpine
 
 # Install system dependencies for image processing and audio/video handling
 RUN apk add --no-cache \
@@ -14,33 +14,33 @@ RUN apk add --no-cache \
 # Create app directory
 WORKDIR /usr/src/app
 
-# Copy package files
+# Copy package files first to leverage Docker layer caching
 COPY package*.json ./
 
-# Install ALL dependencies (not just production) to ensure everything works
-RUN npm install --production=false
+# Install dependencies (production only for smaller image)
+RUN npm ci --only=production && npm cache clean --force
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S miimii -u 1001
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S miimii -u 1001 -G nodejs
 
 # Copy application code
 COPY --chown=miimii:nodejs . .
 
 # Create required directories with proper permissions
-RUN mkdir -p uploads/temp logs admin \
-    && chown -R miimii:nodejs uploads logs admin \
-    && chown -R miimii:nodejs /usr/src/app
+RUN mkdir -p uploads/temp logs admin && \
+    chown -R miimii:nodejs uploads logs admin && \
+    chown -R miimii:nodejs /usr/src/app
 
 # Switch to non-root user
 USER miimii
 
-# Expose port
+# Expose port for Digital Ocean App Platform
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/healthz', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+# Health check optimized for Digital Ocean App Platform
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get({hostname:'localhost',port:3000,path:'/healthz',timeout:8000}, (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
 
 # Start the application
 CMD ["npm", "start"]
