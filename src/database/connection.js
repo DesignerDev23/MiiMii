@@ -6,7 +6,10 @@ let sequelize;
 
 if (process.env.DB_CONNECTION_URL) {
   // Use DB_CONNECTION_URL for connection with SSL configuration
-  sequelize = new Sequelize(process.env.DB_CONNECTION_URL, {
+  // For DigitalOcean managed databases, we need to handle SSL properly
+  const connectionUrl = process.env.DB_CONNECTION_URL;
+  
+  sequelize = new Sequelize(connectionUrl, {
     logging: process.env.NODE_ENV === 'development' 
       ? (msg) => logger.debug(msg) 
       : false,
@@ -17,10 +20,11 @@ if (process.env.DB_CONNECTION_URL) {
       idle: 20000
     },
     dialectOptions: {
-      ssl: {
+      ssl: connectionUrl.includes('sslmode=require') ? {
         require: true,
-        rejectUnauthorized: false
-      }
+        rejectUnauthorized: false, // For DigitalOcean managed databases
+        sslmode: 'require'
+      } : false
     },
     retry: {
       match: [
@@ -29,14 +33,18 @@ if (process.env.DB_CONNECTION_URL) {
         /ECONNREFUSED/,
         /ETIMEDOUT/,
         /EHOSTUNREACH/,
+        /self-signed certificate/,
+        /certificate verify failed/
       ],
-      max: 3,
-      backoffBase: 1000,
+      max: 5,
+      backoffBase: 2000,
       backoffExponent: 1.5,
     }
   });
 } else if (process.env.DB_HOST) {
   // Fallback to individual connection parameters
+  const isDigitalOceanDB = process.env.DB_HOST && process.env.DB_HOST.includes('db.ondigitalocean.com');
+  
   sequelize = new Sequelize({
     database: process.env.DB_NAME,
     username: process.env.DB_USER,
@@ -54,10 +62,11 @@ if (process.env.DB_CONNECTION_URL) {
       idle: 20000
     },
     dialectOptions: {
-      ssl: {
+      ssl: isDigitalOceanDB ? {
         require: true,
-        rejectUnauthorized: false
-      }
+        rejectUnauthorized: false, // For DigitalOcean managed databases
+        sslmode: 'require'
+      } : false
     },
     retry: {
       match: [
@@ -66,9 +75,11 @@ if (process.env.DB_CONNECTION_URL) {
         /ECONNREFUSED/,
         /ETIMEDOUT/,
         /EHOSTUNREACH/,
+        /self-signed certificate/,
+        /certificate verify failed/
       ],
-      max: 3,
-      backoffBase: 1000,
+      max: 5,
+      backoffBase: 2000,
       backoffExponent: 1.5,
     }
   });
