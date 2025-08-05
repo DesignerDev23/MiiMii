@@ -6,10 +6,11 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const config = require('./config');
 
-// Environment variables are loaded from Digital Ocean App Platform
-// No local .env file needed
+// Environment variables are provided by Digital Ocean App Platform
+// No local .env file needed for production deployment
+
+const config = require('./config');
 
 const logger = require('./utils/logger');
 const { sequelize } = require('./database/connection');
@@ -40,8 +41,14 @@ const app = express();
 const serverConfig = config.getServerConfig();
 
 // Server configuration for Digital Ocean App Platform
-const PORT = parseInt(process.env.PORT) || 3000;
+let PORT = parseInt(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Validate port configuration
+if (isNaN(PORT) || PORT <= 0 || PORT > 65535) {
+  logger.error(`Invalid port configuration: ${process.env.PORT}. Using default port 3000.`);
+  PORT = 3000;
+}
 
 // Trust proxy for DigitalOcean App Platform
 app.set('trust proxy', 1);
@@ -83,16 +90,21 @@ app.use('/admin', express.static(path.join(__dirname, '../admin')));
 // Root endpoint
 app.get('/', (req, res) => {
   res.status(200).json({
-    message: '🎉 MiiMii Fintech Platform API is running!',
+    message: '🎉 MiiMii Fintech Platform API is running on Digital Ocean!',
+    service: 'MiiMii Fintech Platform',
     version: require('../package.json').version,
-    environment: process.env.NODE_ENV,
+    environment: process.env.NODE_ENV || 'production',
+    platform: 'DigitalOcean App Platform',
+    nodeVersion: process.version,
     timestamp: new Date().toISOString(),
     endpoints: {
       health: '/health',
       healthz: '/healthz',
       api: '/api',
-      admin: '/admin'
-    }
+      admin: '/admin',
+      webhook: '/webhook'
+    },
+    status: 'operational'
   });
 });
 
@@ -101,13 +113,19 @@ app.get('/healthz', (req, res) => {
   try {
     const healthResponse = {
       status: 'OK',
+      service: 'MiiMii Fintech Platform',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      environment: process.env.NODE_ENV,
+      environment: process.env.NODE_ENV || 'production',
       port: PORT,
       host: HOST,
       version: require('../package.json').version,
-      platform: 'DigitalOcean App Platform'
+      platform: 'DigitalOcean App Platform',
+      nodeVersion: process.version,
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
+      }
     };
     
     res.status(200).json(healthResponse);
@@ -226,13 +244,33 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // Database connection and server startup
+let server; // Declare server variable for graceful shutdown
+
 async function startServer() {
   try {
-    // Test database connection
-    await sequelize.authenticate();
-    logger.info('Database connection established successfully');
+    // Test database connection with retry logic for Digital Ocean
+    let dbRetries = 3;
+    let dbConnected = false;
+    
+    while (dbRetries > 0 && !dbConnected) {
+      try {
+        await sequelize.authenticate();
+        logger.info('✅ Database connection established successfully');
+        dbConnected = true;
+      } catch (dbError) {
+        dbRetries--;
+        logger.warn(`Database connection attempt failed (${3 - dbRetries}/3):`, dbError.message);
+        if (dbRetries > 0) {
+          logger.info('Retrying database connection in 2 seconds...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else {
+          logger.error('❌ All database connection attempts failed - this will likely cause issues');
+          // Continue anyway for Digital Ocean health checks
+        }
+      }
+    }
 
-    // Initialize Redis connection (non-blocking)
+    // Initialize Redis connection (non-blocking, optional for Digital Ocean)
     try {
       const redisConnected = await Promise.race([
         redisClient.connect(),
@@ -240,37 +278,54 @@ async function startServer() {
       ]);
       
       if (redisConnected) {
-        logger.info('Redis connection established successfully');
+        logger.info('✅ Redis connection established successfully');
       } else {
-        logger.warn('Redis connection failed or timed out - continuing without Redis features');
+        logger.warn('⚠️ Redis connection failed or timed out - continuing without Redis features');
       }
     } catch (error) {
-      logger.warn('Redis connection error - continuing without Redis features:', error.message);
+      logger.warn('⚠️ Redis connection error - continuing without Redis features:', error.message);
     }
 
-    // Sync database models (ensure tables exist)
-    try {
-      await sequelize.sync({ force: false, alter: false });
-      logger.info('Database models synchronized');
-    } catch (error) {
-      logger.warn('Database sync failed, retrying with alter:', error.message);
+    // Sync database models (ensure tables exist) - only if database is connected
+    if (dbConnected) {
       try {
-        await sequelize.sync({ force: false, alter: true });
-        logger.info('Database models synchronized with alter');
-      } catch (retryError) {
-        logger.error('Database sync failed completely:', retryError.message);
-        throw retryError;
+        await sequelize.sync({ force: false, alter: false });
+        logger.info('✅ Database models synchronized');
+      } catch (error) {
+        logger.warn('⚠️ Database sync failed, retrying with alter:', error.message);
+        try {
+          await sequelize.sync({ force: false, alter: true });
+          logger.info('✅ Database models synchronized with alter');
+        } catch (retryError) {
+          logger.error('❌ Database sync failed completely:', retryError.message);
+          logger.warn('Continuing anyway - some features may not work properly');
+          // Don't throw error to allow server to start for health checks
+        }
       }
+    } else {
+      logger.warn('⚠️ Skipping database sync due to connection failure');
     }
 
     // Start server - ensure binding to correct host and port for Digital Ocean App Platform
-    const server = app.listen(PORT, HOST, () => {
-      logger.info(`🚀 Server successfully started and listening on ${HOST}:${PORT}`, {
+    server = app.listen(PORT, HOST, (error) => {
+      if (error) {
+        logger.error('Failed to start server:', error);
+        process.exit(1);
+      }
+      
+      logger.info(`🚀 MiiMii Fintech Platform successfully started on Digital Ocean!`, {
+        message: `Server listening on ${HOST}:${PORT}`,
         port: PORT,
         host: HOST,
-        environment: process.env.NODE_ENV,
+        environment: process.env.NODE_ENV || 'production',
         nodeVersion: process.version,
-        platform: 'DigitalOcean App Platform'
+        platform: 'DigitalOcean App Platform',
+        timestamp: new Date().toISOString(),
+        healthEndpoints: {
+          simple: '/healthz',
+          detailed: '/health',
+          root: '/'
+        }
       });
     });
 
@@ -298,7 +353,15 @@ async function startServer() {
       }
     });
   } catch (error) {
-    logger.error('Unable to start server:', error);
+    logger.error('❌ Unable to start server on Digital Ocean App Platform:', {
+      error: error.message,
+      stack: error.stack,
+      port: PORT,
+      host: HOST,
+      environment: process.env.NODE_ENV || 'production',
+      platform: 'DigitalOcean App Platform',
+      timestamp: new Date().toISOString()
+    });
     process.exit(1);
   }
 }
@@ -318,10 +381,26 @@ process.on('uncaughtException', (err) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    logger.info('Server closed');
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+  } else {
     process.exit(0);
-  });
+  }
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
 });
 
 if (require.main === module) {
