@@ -12,6 +12,62 @@ class WhatsAppService {
     this.verifyToken = whatsappConfig.webhookVerifyToken;
   }
 
+  /**
+   * Format phone number to E.164 format required by WhatsApp Business API
+   * @param {string} phoneNumber - Input phone number in various formats
+   * @returns {string} - Phone number in E.164 format (+234xxxxxxxxxx)
+   */
+  formatToE164(phoneNumber) {
+    if (!phoneNumber) {
+      throw new Error('Phone number is required');
+    }
+
+    // Remove all non-digit characters
+    let cleaned = phoneNumber.replace(/\D/g, '');
+    
+    // Handle different input formats
+    if (cleaned.startsWith('234') && cleaned.length === 13) {
+      // Already in +234 format without the +
+      return `+${cleaned}`;
+    } else if (cleaned.startsWith('0') && cleaned.length === 11) {
+      // Nigerian local format (e.g., 08012345678)
+      return `+234${cleaned.slice(1)}`;
+    } else if (cleaned.length === 10 && /^[789]/.test(cleaned)) {
+      // 10-digit Nigerian number without leading 0 (e.g., 8012345678)
+      return `+234${cleaned}`;
+    } else if (phoneNumber.startsWith('+234') && cleaned.length === 13) {
+      // Already properly formatted
+      return phoneNumber;
+    } else if (phoneNumber.startsWith('+') && cleaned.length >= 10 && cleaned.length <= 15) {
+      // Other international numbers already in E.164 format
+      return phoneNumber;
+    }
+    
+    // If none of the above patterns match, assume it's a Nigerian number without country code
+    if (cleaned.length === 10) {
+      return `+234${cleaned}`;
+    }
+    
+    throw new Error(`Invalid phone number format: ${phoneNumber}. Expected Nigerian format (08012345678) or international E.164 format (+234...)`);
+  }
+
+  /**
+   * Validate if phone number is in proper E.164 format
+   * @param {string} phoneNumber - Phone number to validate
+   * @returns {boolean} - True if valid E.164 format
+   */
+  validateE164(phoneNumber) {
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+      return false;
+    }
+    
+    // E.164 format: + followed by 4-14 digits (max 15 total, but our regex ensures max 15)
+    // Must start with +, then 1-9 (no leading zero), then 3-13 more digits
+    const e164Regex = /^\+[1-9]\d{3,13}$/;
+    
+    return e164Regex.test(phoneNumber);
+  }
+
   validateConfiguration() {
     // Use exact environment variable names from Digital Ocean configuration
     const requiredEnvVars = [
@@ -42,9 +98,18 @@ class WhatsAppService {
 
   async sendMessage(to, message, type = 'text') {
     try {
+      // Format phone number to E.164 before sending
+      const formattedNumber = this.formatToE164(to);
+      
+      // Validate the formatted number
+      if (!this.validateE164(formattedNumber)) {
+        throw new Error(`Invalid E.164 phone number format: ${formattedNumber}`);
+      }
+
       // Log the access token being used (first 20 chars for debugging)
       logger.info('WhatsApp sendMessage called', {
-        to,
+        originalNumber: to,
+        formattedNumber,
         messageType: type,
         accessTokenPrefix: this.accessToken ? this.accessToken.substring(0, 20) + '...' : 'none',
         accessTokenLength: this.accessToken ? this.accessToken.length : 0,
@@ -64,7 +129,7 @@ class WhatsAppService {
 
       const payload = {
         messaging_product: 'whatsapp',
-        to: to,
+        to: formattedNumber, // Use E.164 formatted number
         type: type
       };
 
@@ -98,7 +163,7 @@ class WhatsAppService {
       );
 
       logger.info('WhatsApp message sent successfully', {
-        to,
+        to: formattedNumber,
         messageId: response.data.messages[0].id,
         service: 'miimii-api'
       });

@@ -13,12 +13,31 @@ router.post('/send-message', async (req, res) => {
       return res.status(400).json({ error: 'Phone number and message are required' });
     }
 
+    // Validate and format phone number before sending
+    try {
+      const formattedNumber = whatsappService.formatToE164(to);
+      if (!whatsappService.validateE164(formattedNumber)) {
+        return res.status(400).json({ 
+          error: 'Invalid phone number format. Expected E.164 format (+234...) or Nigerian format (08...)',
+          receivedNumber: to,
+          expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+        });
+      }
+    } catch (formatError) {
+      return res.status(400).json({ 
+        error: 'Invalid phone number format', 
+        details: formatError.message,
+        receivedNumber: to,
+        expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+      });
+    }
+
     const result = await whatsappService.sendTextMessage(to, message);
     
     res.json({
       success: true,
       messageId: result.messages[0].id,
-      to
+      to: whatsappService.formatToE164(to) // Return the formatted number
     });
   } catch (error) {
     logger.error('Failed to send WhatsApp message', { error: error.message });
@@ -35,12 +54,31 @@ router.post('/send-button-message', async (req, res) => {
       return res.status(400).json({ error: 'Phone number, text, and buttons are required' });
     }
 
+    // Validate and format phone number before sending
+    try {
+      const formattedNumber = whatsappService.formatToE164(to);
+      if (!whatsappService.validateE164(formattedNumber)) {
+        return res.status(400).json({ 
+          error: 'Invalid phone number format. Expected E.164 format (+234...) or Nigerian format (08...)',
+          receivedNumber: to,
+          expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+        });
+      }
+    } catch (formatError) {
+      return res.status(400).json({ 
+        error: 'Invalid phone number format', 
+        details: formatError.message,
+        receivedNumber: to,
+        expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+      });
+    }
+
     const result = await whatsappService.sendButtonMessage(to, text, buttons);
     
     res.json({
       success: true,
       messageId: result.messages[0].id,
-      to
+      to: whatsappService.formatToE164(to) // Return the formatted number
     });
   } catch (error) {
     logger.error('Failed to send WhatsApp button message', { error: error.message });
@@ -59,12 +97,31 @@ router.post('/send-list-message', async (req, res) => {
       });
     }
 
+    // Validate and format phone number before sending
+    try {
+      const formattedNumber = whatsappService.formatToE164(to);
+      if (!whatsappService.validateE164(formattedNumber)) {
+        return res.status(400).json({ 
+          error: 'Invalid phone number format. Expected E.164 format (+234...) or Nigerian format (08...)',
+          receivedNumber: to,
+          expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+        });
+      }
+    } catch (formatError) {
+      return res.status(400).json({ 
+        error: 'Invalid phone number format', 
+        details: formatError.message,
+        receivedNumber: to,
+        expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+      });
+    }
+
     const result = await whatsappService.sendListMessage(to, text, buttonText, sections);
     
     res.json({
       success: true,
       messageId: result.messages[0].id,
-      to
+      to: whatsappService.formatToE164(to) // Return the formatted number
     });
   } catch (error) {
     logger.error('Failed to send WhatsApp list message', { error: error.message });
