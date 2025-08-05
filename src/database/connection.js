@@ -1,6 +1,27 @@
 const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
 
+// Configure Node.js to handle DigitalOcean SSL certificates
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+// Function to create SSL configuration for DigitalOcean managed databases
+function createDOSSLConfig() {
+  return {
+    require: true,
+    rejectUnauthorized: false,
+    // Accept any certificate from DigitalOcean
+    checkServerIdentity: () => undefined,
+    // Use modern TLS
+    secureProtocol: 'TLSv1_2_method',
+    // Additional options to handle certificate chains
+    servername: undefined,
+    // Disable certificate verification for managed databases
+    ca: undefined,
+    cert: undefined,
+    key: undefined
+  };
+}
+
 // Create Sequelize instance with proper SSL handling for DigitalOcean managed PostgreSQL
 let sequelize;
 
@@ -20,15 +41,7 @@ if (process.env.DB_CONNECTION_URL) {
       idle: 20000
     },
     dialectOptions: {
-      ssl: connectionUrl.includes('sslmode=require') ? {
-        require: true,
-        rejectUnauthorized: false, // For DigitalOcean managed databases
-        sslmode: 'require',
-        // Additional SSL options to handle certificate issues
-        ca: false,
-        cert: false,
-        key: false
-      } : false
+      ssl: connectionUrl.includes('sslmode=require') ? createDOSSLConfig() : false
     },
     retry: {
       match: [
@@ -66,15 +79,7 @@ if (process.env.DB_CONNECTION_URL) {
       idle: 20000
     },
     dialectOptions: {
-      ssl: isDigitalOceanDB ? {
-        require: true,
-        rejectUnauthorized: false, // For DigitalOcean managed databases
-        sslmode: 'require',
-        // Additional SSL options to handle certificate issues
-        ca: false,
-        cert: false,
-        key: false
-      } : false
+      ssl: isDigitalOceanDB ? createDOSSLConfig() : false
     },
     retry: {
       match: [
