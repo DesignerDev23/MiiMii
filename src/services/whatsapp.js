@@ -928,3 +928,6 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        }
      };
    }
+}
+
+module.exports = WhatsAppService;
