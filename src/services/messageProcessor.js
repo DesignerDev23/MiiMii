@@ -57,10 +57,30 @@ class MessageProcessor {
       }
 
       // Send personalized welcome for new users or returning users
-      if (user.onboardingStep === 'initial' || !user.lastWelcomedAt || 
-          (new Date() - user.lastWelcomedAt) > 24 * 60 * 60 * 1000) { // Welcome again after 24h
+      // Handle gracefully if lastWelcomedAt column doesn't exist yet
+      let shouldSendWelcome = user.onboardingStep === 'initial';
+      
+      try {
+        if (!shouldSendWelcome && user.lastWelcomedAt) {
+          shouldSendWelcome = (new Date() - user.lastWelcomedAt) > 24 * 60 * 60 * 1000;
+        } else if (!shouldSendWelcome && !user.lastWelcomedAt) {
+          shouldSendWelcome = true;
+        }
+      } catch (error) {
+        // Handle case where lastWelcomedAt column doesn't exist
+        logger.warn('lastWelcomedAt column access failed, treating as new user', { error: error.message });
+        shouldSendWelcome = true;
+      }
+      
+      if (shouldSendWelcome) {
         await this.sendPersonalizedWelcome(user, message, messageType);
-        await user.update({ lastWelcomedAt: new Date() });
+        
+        // Try to update lastWelcomedAt, but handle gracefully if column doesn't exist
+        try {
+          await user.update({ lastWelcomedAt: new Date() });
+        } catch (error) {
+          logger.warn('Failed to update lastWelcomedAt, column may not exist', { error: error.message });
+        }
       }
 
       // Check if user needs onboarding
