@@ -94,6 +94,7 @@ class Config {
       hasWhatsappPhoneId: !!this.whatsapp.phoneNumberId,
       hasBellbankKey: !!this.bellbank.consumerKey,
       hasOpenAIKey: !!this.openai.apiKey,
+      hasJwtSecret: !!this.server.jwtSecret,
       nodeEnv: this.server.nodeEnv,
       port: this.server.port,
       platform: 'DigitalOcean App Platform',
@@ -101,15 +102,42 @@ class Config {
       timestamp: new Date().toISOString()
     });
 
-    // Warn about critical missing environment variables
-    if (!this.database.url) {
-      logger.warn('DB_CONNECTION_URL environment variable is missing - database connection will fail');
+    // Generate a fallback JWT secret if none provided (for development/testing)
+    if (!this.server.jwtSecret) {
+      if (this.server.nodeEnv === 'production') {
+        logger.error('CRITICAL: APP_SECRET environment variable is required in production');
+      } else {
+        this.server.jwtSecret = 'fallback-jwt-secret-' + Math.random().toString(36).substring(7);
+        logger.warn('Using fallback JWT secret for development - set APP_SECRET for production');
+      }
     }
+
+    // Warn about critical missing environment variables
+    const missingCritical = [];
+    
+    if (!this.database.url && !this.database.host) {
+      missingCritical.push('Database configuration (DB_CONNECTION_URL or DB_HOST)');
+      logger.warn('Database configuration missing - running without database connectivity');
+    }
+    
     if (!this.whatsapp.accessToken) {
+      missingCritical.push('WhatsApp Access Token (BOT_ACCESS_TOKEN)');
       logger.warn('BOT_ACCESS_TOKEN environment variable is missing - WhatsApp functionality will be limited');
     }
-    if (!this.server.jwtSecret) {
-      logger.warn('APP_SECRET environment variable is missing - JWT functionality will fail');
+    
+    if (this.server.nodeEnv === 'production' && !this.server.jwtSecret) {
+      missingCritical.push('JWT Secret (APP_SECRET)');
+      logger.error('APP_SECRET environment variable is required in production');
+    }
+
+    if (missingCritical.length > 0) {
+      logger.warn('Missing critical configuration:', {
+        missing: missingCritical,
+        impact: 'Some features will be disabled or have limited functionality',
+        recommendation: 'Set missing environment variables for full functionality'
+      });
+    } else {
+      logger.info('✅ All critical configuration variables are present');
     }
   }
 
