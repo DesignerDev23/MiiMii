@@ -38,6 +38,10 @@ const verifyWebhookSignature = (provider) => (req, res, next) => {
 // Log all webhook events
 const logWebhook = (provider) => async (req, res, next) => {
   try {
+    // Check if database connection is available before attempting to log
+    const { sequelize } = require('../database/connection');
+    await sequelize.authenticate();
+    
     const webhookLog = await WebhookLog.create({
       provider,
       event: req.body.type || req.body.event || 'unknown',
@@ -50,7 +54,13 @@ const logWebhook = (provider) => async (req, res, next) => {
     req.webhookLogId = webhookLog.id;
     next();
   } catch (error) {
-    logger.error('Failed to log webhook', { error: error.message, provider });
+    // Log error but continue processing webhook - don't let DB issues block webhooks
+    logger.error('Failed to log webhook', { 
+      error: error.message, 
+      provider,
+      note: 'Continuing webhook processing without database logging'
+    });
+    req.webhookLogId = null; // Indicate that logging failed
     next();
   }
 };
@@ -91,10 +101,17 @@ router.post('/whatsapp',
 
         // Update webhook log as processed
         if (req.webhookLogId) {
-          await WebhookLog.update(
-            { processed: true, processedAt: new Date(), responseCode: 200 },
-            { where: { id: req.webhookLogId } }
-          );
+          try {
+            await WebhookLog.update(
+              { processed: true, processedAt: new Date(), responseCode: 200 },
+              { where: { id: req.webhookLogId } }
+            );
+          } catch (error) {
+            logger.warn('Failed to update webhook log status', { 
+              error: error.message, 
+              webhookLogId: req.webhookLogId 
+            });
+          }
         }
       }
 
@@ -104,10 +121,17 @@ router.post('/whatsapp',
       
       // Update webhook log with error
       if (req.webhookLogId) {
-        await WebhookLog.update(
-          { processed: false, errorMessage: error.message, responseCode: 500 },
-          { where: { id: req.webhookLogId } }
-        );
+        try {
+          await WebhookLog.update(
+            { processed: false, errorMessage: error.message, responseCode: 500 },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (dbError) {
+          logger.warn('Failed to update webhook log with error status', { 
+            error: dbError.message, 
+            webhookLogId: req.webhookLogId 
+          });
+        }
       }
 
       res.status(500).json({ error: 'Internal server error' });
@@ -138,10 +162,17 @@ router.post('/bellbank',
       }
 
       if (req.webhookLogId) {
-        await WebhookLog.update(
-          { processed: true, processedAt: new Date(), responseCode: 200 },
-          { where: { id: req.webhookLogId } }
-        );
+        try {
+          await WebhookLog.update(
+            { processed: true, processedAt: new Date(), responseCode: 200 },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (error) {
+          logger.warn('Failed to update webhook log status', { 
+            error: error.message, 
+            webhookLogId: req.webhookLogId 
+          });
+        }
       }
 
       res.status(200).json({ success: true });
@@ -149,10 +180,17 @@ router.post('/bellbank',
       logger.error('BellBank webhook processing failed', { error: error.message });
       
       if (req.webhookLogId) {
-        await WebhookLog.update(
-          { processed: false, errorMessage: error.message, responseCode: 500 },
-          { where: { id: req.webhookLogId } }
-        );
+        try {
+          await WebhookLog.update(
+            { processed: false, errorMessage: error.message, responseCode: 500 },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (dbError) {
+          logger.warn('Failed to update webhook log with error status', { 
+            error: dbError.message, 
+            webhookLogId: req.webhookLogId 
+          });
+        }
       }
 
       res.status(500).json({ error: 'Internal server error' });
@@ -176,10 +214,17 @@ router.post('/bilal',
       }
 
       if (req.webhookLogId) {
-        await WebhookLog.update(
-          { processed: true, processedAt: new Date(), responseCode: 200 },
-          { where: { id: req.webhookLogId } }
-        );
+        try {
+          await WebhookLog.update(
+            { processed: true, processedAt: new Date(), responseCode: 200 },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (error) {
+          logger.warn('Failed to update webhook log status', { 
+            error: error.message, 
+            webhookLogId: req.webhookLogId 
+          });
+        }
       }
 
       res.status(200).json({ success: true });
@@ -187,10 +232,17 @@ router.post('/bilal',
       logger.error('Bilal webhook processing failed', { error: error.message });
       
       if (req.webhookLogId) {
-        await WebhookLog.update(
-          { processed: false, errorMessage: error.message, responseCode: 500 },
-          { where: { id: req.webhookLogId } }
-        );
+        try {
+          await WebhookLog.update(
+            { processed: false, errorMessage: error.message, responseCode: 500 },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (dbError) {
+          logger.warn('Failed to update webhook log with error status', { 
+            error: dbError.message, 
+            webhookLogId: req.webhookLogId 
+          });
+        }
       }
 
       res.status(500).json({ error: 'Internal server error' });
@@ -218,10 +270,17 @@ router.post('/dojah',
       }
 
       if (req.webhookLogId) {
-        await WebhookLog.update(
-          { processed: true, processedAt: new Date(), responseCode: 200 },
-          { where: { id: req.webhookLogId } }
-        );
+        try {
+          await WebhookLog.update(
+            { processed: true, processedAt: new Date(), responseCode: 200 },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (error) {
+          logger.warn('Failed to update webhook log status', { 
+            error: error.message, 
+            webhookLogId: req.webhookLogId 
+          });
+        }
       }
 
       res.status(200).json({ success: true });
@@ -229,10 +288,17 @@ router.post('/dojah',
       logger.error('Dojah webhook processing failed', { error: error.message });
       
       if (req.webhookLogId) {
-        await WebhookLog.update(
-          { processed: false, errorMessage: error.message, responseCode: 500 },
-          { where: { id: req.webhookLogId } }
-        );
+        try {
+          await WebhookLog.update(
+            { processed: false, errorMessage: error.message, responseCode: 500 },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (dbError) {
+          logger.warn('Failed to update webhook log with error status', { 
+            error: dbError.message, 
+            webhookLogId: req.webhookLogId 
+          });
+        }
       }
 
       res.status(500).json({ error: 'Internal server error' });
