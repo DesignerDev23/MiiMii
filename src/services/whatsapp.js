@@ -9,20 +9,6 @@ class WhatsAppService {
     this.phoneNumberId = whatsappConfig.phoneNumberId;
     this.baseURL = `https://graph.facebook.com/v18.0/${this.phoneNumberId}`;
     this.verifyToken = whatsappConfig.webhookVerifyToken;
-    
-    // Log configuration details for debugging
-    logger.info('WhatsApp service configuration loaded', {
-      hasAccessToken: !!this.accessToken,
-      accessTokenLength: this.accessToken ? this.accessToken.length : 0,
-      accessTokenPrefix: this.accessToken ? this.accessToken.substring(0, 10) + '...' : 'none',
-      phoneNumberId: this.phoneNumberId,
-      hasVerifyToken: !!this.verifyToken,
-      baseURL: this.baseURL,
-      service: 'whatsapp-service'
-    });
-    
-    // Validate required configuration on startup
-    this.validateConfiguration();
   }
 
   validateConfiguration() {

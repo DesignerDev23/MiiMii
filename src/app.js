@@ -248,85 +248,30 @@ let server; // Declare server variable for graceful shutdown
 
 async function startServer() {
   try {
-    // Test database connection with retry logic for Digital Ocean
-    let dbRetries = 3;
-    let dbConnected = false;
-    
-    while (dbRetries > 0 && !dbConnected) {
-      try {
-        await sequelize.authenticate();
-        logger.info('✅ Database connection established successfully');
-        dbConnected = true;
-      } catch (dbError) {
-        dbRetries--;
-        logger.warn(`Database connection attempt failed (${3 - dbRetries}/3):`, dbError.message);
-        if (dbRetries > 0) {
-          logger.info('Retrying database connection in 2 seconds...');
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } else {
-          logger.error('❌ All database connection attempts failed - this will likely cause issues');
-          // Continue anyway for Digital Ocean health checks
-        }
-      }
-    }
+    // Test database connection
+    await sequelize.authenticate();
+    logger.info('Database connection established successfully');
 
-    // Initialize Redis connection (non-blocking, optional for Digital Ocean)
+    // Initialize Redis connection
     try {
-      const redisConnected = await Promise.race([
-        redisClient.connect(),
-        new Promise(resolve => setTimeout(() => resolve(false), 5000)) // 5 second timeout
-      ]);
-      
-      if (redisConnected) {
-        logger.info('✅ Redis connection established successfully');
-      } else {
-        logger.warn('⚠️ Redis connection failed or timed out - continuing without Redis features');
-      }
+      await redisClient.connect();
+      logger.info('Redis connection established successfully');
     } catch (error) {
-      logger.warn('⚠️ Redis connection error - continuing without Redis features:', error.message);
+      logger.warn('Redis connection failed, continuing without Redis features:', error.message);
     }
 
-    // Sync database models (ensure tables exist) - only if database is connected
-    if (dbConnected) {
-      try {
-        await sequelize.sync({ force: false, alter: false });
-        logger.info('✅ Database models synchronized');
-      } catch (error) {
-        logger.warn('⚠️ Database sync failed, retrying with alter:', error.message);
-        try {
-          await sequelize.sync({ force: false, alter: true });
-          logger.info('✅ Database models synchronized with alter');
-        } catch (retryError) {
-          logger.error('❌ Database sync failed completely:', retryError.message);
-          logger.warn('Continuing anyway - some features may not work properly');
-          // Don't throw error to allow server to start for health checks
-        }
-      }
-    } else {
-      logger.warn('⚠️ Skipping database sync due to connection failure');
-    }
+    // Sync database models
+    await sequelize.sync({ force: false, alter: false });
+    logger.info('Database models synchronized');
 
-    // Start server - ensure binding to correct host and port for Digital Ocean App Platform
+    // Start server
     server = app.listen(PORT, HOST, (error) => {
       if (error) {
         logger.error('Failed to start server:', error);
         process.exit(1);
       }
       
-      logger.info(`🚀 MiiMii Fintech Platform successfully started on Digital Ocean!`, {
-        message: `Server listening on ${HOST}:${PORT}`,
-        port: PORT,
-        host: HOST,
-        environment: process.env.NODE_ENV || 'production',
-        nodeVersion: process.version,
-        platform: 'DigitalOcean App Platform',
-        timestamp: new Date().toISOString(),
-        healthEndpoints: {
-          simple: '/healthz',
-          detailed: '/health',
-          root: '/'
-        }
-      });
+      logger.info(`MiiMii Fintech Platform started successfully on ${HOST}:${PORT}`);
     });
 
     // Handle server errors
