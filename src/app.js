@@ -6,10 +6,13 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const config = require('./config');
 
-// Environment variables are loaded from Digital Ocean App Platform
-// No local .env file needed
+// Load environment variables if .env file exists (for local development)
+if (require('fs').existsSync(path.join(__dirname, '../.env'))) {
+  require('dotenv').config({ path: path.join(__dirname, '../.env') });
+}
+
+const config = require('./config');
 
 const logger = require('./utils/logger');
 const { sequelize } = require('./database/connection');
@@ -40,8 +43,14 @@ const app = express();
 const serverConfig = config.getServerConfig();
 
 // Server configuration for Digital Ocean App Platform
-const PORT = parseInt(process.env.PORT) || 3000;
+let PORT = parseInt(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Validate port configuration
+if (isNaN(PORT) || PORT <= 0 || PORT > 65535) {
+  logger.error(`Invalid port configuration: ${process.env.PORT}. Using default port 3000.`);
+  PORT = 3000;
+}
 
 // Trust proxy for DigitalOcean App Platform
 app.set('trust proxy', 1);
@@ -226,6 +235,8 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // Database connection and server startup
+let server; // Declare server variable for graceful shutdown
+
 async function startServer() {
   try {
     // Test database connection
@@ -264,13 +275,19 @@ async function startServer() {
     }
 
     // Start server - ensure binding to correct host and port for Digital Ocean App Platform
-    const server = app.listen(PORT, HOST, () => {
+    server = app.listen(PORT, HOST, (error) => {
+      if (error) {
+        logger.error('Failed to start server:', error);
+        process.exit(1);
+      }
+      
       logger.info(`🚀 Server successfully started and listening on ${HOST}:${PORT}`, {
         port: PORT,
         host: HOST,
         environment: process.env.NODE_ENV,
         nodeVersion: process.version,
-        platform: 'DigitalOcean App Platform'
+        platform: 'DigitalOcean App Platform',
+        timestamp: new Date().toISOString()
       });
     });
 
@@ -318,10 +335,26 @@ process.on('uncaughtException', (err) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    logger.info('Server closed');
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+  } else {
     process.exit(0);
-  });
+  }
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
 });
 
 if (require.main === module) {
