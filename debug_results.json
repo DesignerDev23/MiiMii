@@ -1,0 +1,107 @@
+{
+  "timestamp": "2025-08-05T14:59:40.750Z",
+  "tests": [
+    {
+      "name": "Server Health Check",
+      "startTime": 1754405980751,
+      "status": "passed",
+      "result": {
+        "status": 200,
+        "environment": "production",
+        "version": "1.0.0",
+        "nodeVersion": "v22.18.0",
+        "platform": "DigitalOcean App Platform"
+      },
+      "endTime": 1754405981429,
+      "duration": 678
+    },
+    {
+      "name": "Health Endpoint",
+      "startTime": 1754405981429,
+      "status": "passed",
+      "result": {
+        "status": "DEGRADED",
+        "timestamp": "2025-08-05T14:59:41.790Z",
+        "uptime": 477.341863206,
+        "environment": "production",
+        "port": 3000,
+        "host": "0.0.0.0",
+        "version": "1.0.0",
+        "platform": "DigitalOcean App Platform",
+        "services": {
+          "database": {
+            "status": "disconnected",
+            "error": "Database not connected yet or configuration missing",
+            "message": "Service will continue with limited functionality"
+          },
+          "redis": {
+            "status": "disconnected",
+            "responseTime": 0,
+            "message": "Redis caching disabled, using fallback"
+          }
+        },
+        "performance": {
+          "checkDuration": 395
+        },
+        "message": "Service is operational but some features may be limited"
+      },
+      "endTime": 1754405982299,
+      "duration": 870
+    },
+    {
+      "name": "Environment Variables",
+      "startTime": 1754405982299,
+      "status": "passed",
+      "result": {
+        "hasCorrectEnvironment": true,
+        "hasVersion": true,
+        "hasNodeVersion": true,
+        "hasPlatform": true
+      },
+      "endTime": 1754405982521,
+      "duration": 222
+    },
+    {
+      "name": "Database Connection",
+      "startTime": 1754405982522,
+      "status": "failed",
+      "error": "Request failed with status code 404",
+      "endTime": 1754405983024,
+      "duration": 502
+    },
+    {
+      "name": "WhatsApp Webhook Verification",
+      "startTime": 1754405983024,
+      "status": "failed",
+      "error": "Request failed with status code 403",
+      "endTime": 1754405983505,
+      "duration": 481
+    },
+    {
+      "name": "WhatsApp Send Message",
+      "startTime": 1754405983505,
+      "status": "failed",
+      "error": "Please set your actual test phone number in the config",
+      "endTime": 1754405983506,
+      "duration": 1
+    },
+    {
+      "name": "Webhook Logging Test",
+      "startTime": 1754405983506,
+      "status": "passed",
+      "result": {
+        "status": 200,
+        "response": {
+          "success": true
+        }
+      },
+      "endTime": 1754405985842,
+      "duration": 2336
+    }
+  ],
+  "summary": {
+    "passed": 4,
+    "failed": 3,
+    "total": 7
+  }
+}
