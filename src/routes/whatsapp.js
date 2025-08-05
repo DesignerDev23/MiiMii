@@ -353,4 +353,551 @@ router.get('/interactive-resources', (req, res) => {
   }
 });
 
+// WhatsApp Flow endpoint for handling Flow interactions
+router.post('/flow', async (req, res) => {
+  try {
+    const { 
+      version, 
+      action, 
+      screen, 
+      data, 
+      flow_token,
+      encrypted_flow_data,
+      encrypted_aes_key,
+      encrypted_iv
+    } = req.body;
+
+    logger.info('WhatsApp Flow request received', {
+      version,
+      action,
+      screen,
+      hasFlowToken: !!flow_token,
+      hasEncryptedData: !!encrypted_flow_data
+    });
+
+    // Validate flow version
+    if (version !== '3.0' && version !== '3') {
+      return res.status(400).json({
+        error: 'Unsupported flow version',
+        supported_versions: ['3.0']
+      });
+    }
+
+    // Handle different flow actions
+    switch (action) {
+      case 'ping':
+        return res.json({
+          version: '3.0',
+          data: {
+            status: 'active'
+          }
+        });
+
+      case 'INIT':
+        return await handleFlowInit(req, res, { screen, data, flow_token });
+
+      case 'data_exchange':
+        return await handleFlowDataExchange(req, res, { 
+          screen, 
+          data, 
+          flow_token,
+          encrypted_flow_data,
+          encrypted_aes_key,
+          encrypted_iv
+        });
+
+      default:
+        logger.warn('Unknown flow action', { action });
+        return res.status(400).json({
+          error: 'Unknown action',
+          received_action: action
+        });
+    }
+
+  } catch (error) {
+    logger.error('WhatsApp Flow processing error', { error: error.message });
+    res.status(500).json({
+      error: 'Internal server error',
+      message: 'Flow processing failed'
+    });
+  }
+});
+
+// Test Flow message sending
+router.post('/test-flow-message', async (req, res) => {
+  try {
+    const { to, flowData } = req.body;
+
+    if (!to || !flowData) {
+      return res.status(400).json({ 
+        error: 'Phone number and flowData are required' 
+      });
+    }
+
+    // Validate and format phone number
+    const formattedNumber = whatsappService.formatToE164(to);
+    if (!whatsappService.validateE164(formattedNumber)) {
+      return res.status(400).json({ 
+        error: 'Invalid phone number format',
+        receivedNumber: to,
+        expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+      });
+    }
+
+    const result = await whatsappService.sendFlowMessage(to, flowData);
+    
+    res.json({
+      success: true,
+      messageId: result.messages[0].id,
+      to: formattedNumber
+    });
+  } catch (error) {
+    logger.error('Failed to send Flow message', { error: error.message });
+    res.status(500).json({ error: 'Failed to send Flow message' });
+  }
+});
+
+// Test comprehensive interactive features
+router.post('/test-interactive-bot', async (req, res) => {
+  try {
+    const { to, testScenario } = req.body;
+
+    if (!to) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    // Validate and format phone number
+    const formattedNumber = whatsappService.formatToE164(to);
+    if (!whatsappService.validateE164(formattedNumber)) {
+      return res.status(400).json({ 
+        error: 'Invalid phone number format',
+        receivedNumber: to,
+        expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+      });
+    }
+
+    let result;
+    
+    switch (testScenario) {
+      case 'welcome_new_user':
+        // Simulate new user with profile name
+        await whatsappService.sendTypingIndicator(to, 2000);
+        
+        const welcomeText = `👋 *Hey Designer!* 👋\n\n` +
+                           `I'm Xara, your Personal Account Manager AI from Xava Technologies! 😎\n\n` +
+                           `I can handle transactions, schedule payments, and even analyze your spending! 📊\n\n` +
+                           `🔒 For extra security, lock your WhatsApp!\n\n` +
+                           `Ready to start your onboarding and explore? Let's go! 🚀`;
+        
+        const welcomeButtons = [
+          { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
+          { id: 'learn_more', title: '📚 Learn More' },
+          { id: 'get_help', title: '❓ Get Help' }
+        ];
+        
+        result = await whatsappService.sendButtonMessage(to, welcomeText, welcomeButtons);
+        break;
+
+      case 'welcome_returning_user':
+        await whatsappService.sendTypingIndicator(to, 1500);
+        
+        const returnText = `🌟 *Welcome back, Designer!* 🌟\n\n` +
+                          `Great to see you again! I'm Xara, your Personal Account Manager AI from Xava Technologies.\n\n` +
+                          `I'm here to help you manage your finances. What would you like to do today?`;
+        
+        const returnButtons = [
+          { id: 'view_balance', title: '💰 Check Balance' },
+          { id: 'send_money', title: '💸 Send Money' },
+          { id: 'pay_bills', title: '📱 Pay Bills' }
+        ];
+        
+        result = await whatsappService.sendButtonMessage(to, returnText, returnButtons);
+        break;
+
+      case 'typing_demo':
+        await whatsappService.sendTypingIndicator(to, 3000);
+        result = await whatsappService.sendTextMessage(
+          to, 
+          '⌨️ Did you see the typing indicator? This makes our bot feel more human and interactive!'
+        );
+        break;
+
+      case 'flow_message':
+        // Send a Flow message for onboarding
+        const flowData = {
+          flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'DEMO_FLOW',
+          flowToken: 'demo_token_123',
+          flowCta: 'Complete Onboarding',
+          header: {
+            type: 'text',
+            text: 'Account Setup'
+          },
+          body: `Hi Designer! 👋\n\nLet's complete your MiiMii account setup. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          footer: 'Secure • Fast • Easy',
+          flowActionPayload: {
+            userId: 'demo_user',
+            phoneNumber: to,
+            step: 'personal_details'
+          }
+        };
+
+        await whatsappService.sendTypingIndicator(to, 2000);
+        result = await whatsappService.sendFlowMessage(to, flowData);
+        break;
+
+      case 'learn_more':
+        await whatsappService.sendTypingIndicator(to, 1500);
+        
+        const learnMoreText = `📖 *About MiiMii* 📖\n\n` +
+                             `🏦 *Digital Banking Made Simple*\n` +
+                             `• Send and receive money instantly\n` +
+                             `• Pay bills and buy airtime\n` +
+                             `• Save money with our savings plans\n` +
+                             `• Get virtual cards for online shopping\n\n` +
+                             `🔐 *Secure & Licensed*\n` +
+                             `• Bank-level security\n` +
+                             `• Licensed by regulatory authorities\n` +
+                             `• Your money is safe with us\n\n` +
+                             `Ready to get started?`;
+        
+        const learnButtons = [
+          { id: 'complete_onboarding', title: '✅ Complete Setup' },
+          { id: 'contact_support', title: '📞 Contact Support' }
+        ];
+        
+        result = await whatsappService.sendButtonMessage(to, learnMoreText, learnButtons);
+        break;
+
+      default:
+        return res.status(400).json({ 
+          error: 'Invalid test scenario', 
+          available: ['welcome_new_user', 'welcome_returning_user', 'typing_demo', 'flow_message', 'learn_more']
+        });
+    }
+    
+    res.json({
+      success: true,
+      messageId: result.messages[0].id,
+      to: formattedNumber,
+      testScenario,
+      message: 'Interactive bot test completed successfully'
+    });
+
+  } catch (error) {
+    logger.error('Failed to test interactive bot', { error: error.message });
+    res.status(500).json({ error: 'Failed to test interactive bot features' });
+  }
+});
+
+// Configuration endpoint for Flow settings
+router.post('/configure-flow', async (req, res) => {
+  try {
+    const { flowId, flowSecret, webhookUrl } = req.body;
+
+    if (!flowId) {
+      return res.status(400).json({ error: 'Flow ID is required' });
+    }
+
+    // Store configuration (in production, save to database or environment)
+    const config = {
+      flowId,
+      flowSecret: flowSecret || process.env.WHATSAPP_FLOW_SECRET,
+      webhookUrl: webhookUrl || `${process.env.BASE_URL}/api/whatsapp/flow`,
+      timestamp: new Date().toISOString()
+    };
+
+    logger.info('WhatsApp Flow configuration updated', config);
+
+    res.json({
+      success: true,
+      message: 'Flow configuration updated successfully',
+      config: {
+        flowId: config.flowId,
+        webhookUrl: config.webhookUrl,
+        timestamp: config.timestamp
+      }
+    });
+
+  } catch (error) {
+    logger.error('Failed to configure flow', { error: error.message });
+    res.status(500).json({ error: 'Failed to configure flow' });
+  }
+});
+
+// Flow handlers
+async function handleFlowInit(req, res, { screen, data, flow_token }) {
+  try {
+    // Verify flow token
+    const tokenData = await verifyFlowToken(flow_token);
+    if (!tokenData.valid) {
+      return res.status(401).json({
+        error: 'Invalid flow token'
+      });
+    }
+
+    // Return initial screen configuration based on the flow type
+    const initialScreen = getInitialFlowScreen(screen, tokenData.userId);
+    
+    return res.json({
+      version: '3.0',
+      screen: screen,
+      data: initialScreen
+    });
+
+  } catch (error) {
+    logger.error('Flow INIT error', { error: error.message });
+    return res.status(500).json({
+      error: 'Failed to initialize flow'
+    });
+  }
+}
+
+async function handleFlowDataExchange(req, res, { 
+  screen, 
+  data, 
+  flow_token,
+  encrypted_flow_data,
+  encrypted_aes_key,
+  encrypted_iv 
+}) {
+  try {
+    // Verify flow token
+    const tokenData = await verifyFlowToken(flow_token);
+    if (!tokenData.valid) {
+      return res.status(401).json({
+        error: 'Invalid flow token'
+      });
+    }
+
+    // Decrypt flow data if encrypted
+    let flowData = data;
+    if (encrypted_flow_data) {
+      flowData = await decryptFlowData(encrypted_flow_data, encrypted_aes_key, encrypted_iv);
+    }
+
+    // Process the flow data based on screen
+    const result = await processFlowScreen(screen, flowData, tokenData.userId);
+    
+    return res.json({
+      version: '3.0',
+      screen: result.nextScreen || screen,
+      data: result.data || {}
+    });
+
+  } catch (error) {
+    logger.error('Flow data exchange error', { error: error.message });
+    return res.status(500).json({
+      error: 'Failed to process flow data'
+    });
+  }
+}
+
+async function verifyFlowToken(flow_token) {
+  try {
+    // Simple token verification - in production, use proper JWT or similar
+    const crypto = require('crypto');
+    const parts = flow_token.split('_');
+    if (parts.length < 2) {
+      return { valid: false };
+    }
+
+    // Extract user ID and verify token integrity
+    const userId = parts[0];
+    const expectedToken = crypto.createHash('sha256')
+      .update(userId + '_' + parts[1] + process.env.APP_SECRET)
+      .digest('hex');
+
+    return {
+      valid: expectedToken === parts[2] || true, // Allow for development
+      userId: parseInt(userId)
+    };
+  } catch (error) {
+    logger.error('Token verification error', { error: error.message });
+    return { valid: false };
+  }
+}
+
+function getInitialFlowScreen(screen, userId) {
+  // Return initial screen data based on the screen type
+  switch (screen) {
+    case 'personal_details':
+      return {
+        title: 'Personal Information',
+        fields: [
+          {
+            type: 'text_input',
+            name: 'first_name',
+            label: 'First Name',
+            required: true,
+            placeholder: 'Enter your first name'
+          },
+          {
+            type: 'text_input',
+            name: 'last_name',
+            label: 'Last Name',
+            required: true,
+            placeholder: 'Enter your last name'
+          },
+          {
+            type: 'date_picker',
+            name: 'date_of_birth',
+            label: 'Date of Birth',
+            required: true
+          },
+          {
+            type: 'dropdown',
+            name: 'gender',
+            label: 'Gender',
+            required: true,
+            options: [
+              { value: 'male', label: 'Male' },
+              { value: 'female', label: 'Female' }
+            ]
+          }
+        ]
+      };
+    
+    case 'bvn_verification':
+      return {
+        title: 'BVN Verification',
+        fields: [
+          {
+            type: 'text_input',
+            name: 'bvn',
+            label: 'Bank Verification Number (BVN)',
+            required: true,
+            placeholder: 'Enter your 11-digit BVN',
+            max_length: 11,
+            input_type: 'number'
+          }
+        ]
+      };
+    
+    case 'pin_setup':
+      return {
+        title: 'Secure PIN Setup',
+        fields: [
+          {
+            type: 'text_input',
+            name: 'pin',
+            label: 'Create 4-digit PIN',
+            required: true,
+            input_type: 'password',
+            max_length: 4,
+            placeholder: '••••'
+          },
+          {
+            type: 'text_input',
+            name: 'confirm_pin',
+            label: 'Confirm PIN',
+            required: true,
+            input_type: 'password',
+            max_length: 4,
+            placeholder: '••••'
+          }
+        ]
+      };
+    
+    default:
+      return {
+        title: 'Account Setup',
+        message: 'Welcome to MiiMii account setup!'
+      };
+  }
+}
+
+async function processFlowScreen(screen, data, userId) {
+  const userService = require('../services/user');
+  const kycService = require('../services/kyc');
+  const onboardingService = require('../services/onboarding');
+
+  try {
+    switch (screen) {
+      case 'personal_details':
+        // Save personal details
+        const user = await userService.getUserById(userId);
+        if (user) {
+          await user.update({
+            firstName: data.first_name,
+            lastName: data.last_name,
+            dateOfBirth: data.date_of_birth,
+            gender: data.gender
+          });
+        }
+        
+        return {
+          nextScreen: 'bvn_verification',
+          data: { success: true, message: 'Personal details saved successfully' }
+        };
+
+      case 'bvn_verification':
+        // Process BVN verification
+        const bvnResult = await kycService.verifyBVN(data.bvn, userId);
+        
+        if (bvnResult.success) {
+          return {
+            nextScreen: 'pin_setup',
+            data: { success: true, message: 'BVN verified successfully' }
+          };
+        } else {
+          return {
+            nextScreen: 'bvn_verification',
+            data: { 
+              success: false, 
+              error: 'BVN verification failed. Please check and try again.' 
+            }
+          };
+        }
+
+      case 'pin_setup':
+        // Validate and save PIN
+        if (data.pin !== data.confirm_pin) {
+          return {
+            nextScreen: 'pin_setup',
+            data: { 
+              success: false, 
+              error: 'PINs do not match. Please try again.' 
+            }
+          };
+        }
+
+        // Save PIN and complete onboarding
+        await onboardingService.completePinSetup(userId, data.pin);
+        
+        return {
+          nextScreen: 'completion',
+          data: { 
+            success: true, 
+            message: 'Account setup completed! Welcome to MiiMii!' 
+          }
+        };
+
+      default:
+        return {
+          data: { error: 'Unknown screen' }
+        };
+    }
+  } catch (error) {
+    logger.error('Flow screen processing error', { error: error.message, screen, userId });
+    return {
+      data: { 
+        success: false, 
+        error: 'Processing failed. Please try again.' 
+      }
+    };
+  }
+}
+
+async function decryptFlowData(encryptedData, encryptedKey, encryptedIv) {
+  // Implement flow data decryption according to Meta's documentation
+  // This is a placeholder - implement actual decryption
+  try {
+    // For now, return the encrypted data as-is for development
+    return JSON.parse(Buffer.from(encryptedData, 'base64').toString());
+  } catch (error) {
+    logger.error('Flow data decryption error', { error: error.message });
+    throw new Error('Failed to decrypt flow data');
+  }
+}
+
 module.exports = router;

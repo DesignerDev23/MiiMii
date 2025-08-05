@@ -12,7 +12,13 @@ class MessageProcessor {
     try {
       const { from, messageType, message, contact } = messageData;
       
-      // Log incoming message
+      // Show typing indicator immediately for better UX
+      await whatsappService.sendTypingIndicator(from, 2000);
+      
+      // Get user profile name from WhatsApp contact info
+      const profileName = contact?.name || null;
+      
+      // Log incoming message with profile info
       await ActivityLog.logUserActivity(
         null, // We'll update with userId after getting user
         'whatsapp_message_received',
@@ -21,22 +27,45 @@ class MessageProcessor {
           source: 'whatsapp',
           description: `Received ${messageType} message`,
           messageType,
-          contactName: contact?.name
+          contactName: profileName,
+          hasProfileName: !!profileName
         }
       );
 
-      // Get or create user
-      const user = await userService.getOrCreateUser(from, contact?.name);
+      // Get or create user with profile name
+      const user = await userService.getOrCreateUser(from, profileName);
       
-      // Update last seen
-      await user.update({ 
-        lastSeen: new Date(),
-        lastActivityType: `whatsapp_message_${messageType}`
-      });
+      // Update user with profile information if available
+      if (profileName && (!user.fullName || user.fullName !== profileName)) {
+        await user.update({ 
+          fullName: profileName,
+          lastSeen: new Date(),
+          lastActivityType: `whatsapp_message_${messageType}`
+        });
+        
+        logger.info('Updated user profile from WhatsApp contact', {
+          userId: user.id,
+          profileName,
+          phoneNumber: from
+        });
+      } else {
+        // Update last seen
+        await user.update({ 
+          lastSeen: new Date(),
+          lastActivityType: `whatsapp_message_${messageType}`
+        });
+      }
+
+      // Send personalized welcome for new users or returning users
+      if (user.onboardingStep === 'initial' || !user.lastWelcomedAt || 
+          (new Date() - user.lastWelcomedAt) > 24 * 60 * 60 * 1000) { // Welcome again after 24h
+        await this.sendPersonalizedWelcome(user, message, messageType);
+        await user.update({ lastWelcomedAt: new Date() });
+      }
 
       // Check if user needs onboarding
       if (user.onboardingStep !== 'completed') {
-        return await this.handleOnboardingFlow(user, message, messageType, contact?.name);
+        return await this.handleOnboardingFlow(user, message, messageType, profileName);
       }
 
       // Process message for completed users
@@ -51,6 +80,58 @@ class MessageProcessor {
       
       // Send error message to user with improved error handling
       await this.handleProcessingError(messageData.from, error);
+    }
+  }
+
+  async sendPersonalizedWelcome(user, message, messageType) {
+    try {
+      const isReturningUser = user.onboardingStep === 'completed';
+      const userName = user.fullName || 'there';
+      
+      let welcomeText;
+      let buttons;
+      
+      if (isReturningUser) {
+        welcomeText = `🌟 *Welcome back, ${userName}!* 🌟\n\n` +
+                     `Great to see you again! I'm Xara, your Personal Account Manager AI from Xava Technologies.\n\n` +
+                     `I'm here to help you manage your finances. What would you like to do today?`;
+        
+        buttons = [
+          { id: 'view_balance', title: '💰 Check Balance' },
+          { id: 'send_money', title: '💸 Send Money' },
+          { id: 'pay_bills', title: '📱 Pay Bills' }
+        ];
+      } else {
+        welcomeText = `👋 *Hey ${userName}!* 👋\n\n` +
+                     `I'm Xara, your Personal Account Manager AI from Xava Technologies! 😎\n\n` +
+                     `I can handle transactions, schedule payments, and even analyze your spending! 📊\n\n` +
+                     `🔒 For extra security, lock your WhatsApp!\n\n` +
+                     `Ready to start your onboarding and explore? Let's go! 🚀`;
+        
+        buttons = [
+          { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
+          { id: 'learn_more', title: '📚 Learn More' },
+          { id: 'get_help', title: '❓ Get Help' }
+        ];
+      }
+      
+      // Send personalized welcome with typing indicator
+      await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
+      await whatsappService.sendButtonMessage(user.whatsappNumber, welcomeText, buttons);
+      
+      logger.info('Sent personalized welcome message', {
+        userId: user.id,
+        userName: user.fullName,
+        isReturningUser,
+        phoneNumber: user.whatsappNumber
+      });
+      
+    } catch (error) {
+      logger.error('Failed to send personalized welcome', {
+        error: error.message,
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
     }
   }
 

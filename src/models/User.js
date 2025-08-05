@@ -67,10 +67,10 @@ const User = sequelize.define('User', {
   },
   onboardingStep: {
     type: DataTypes.ENUM(
-      'greeting', 'name_collection', 'kyc_data', 'bvn_verification', 
+      'initial', 'greeting', 'name_collection', 'kyc_data', 'bvn_verification', 
       'virtual_account_creation', 'pin_setup', 'completed'
     ),
-    defaultValue: 'greeting'
+    defaultValue: 'initial'
   },
   conversationState: {
     type: DataTypes.JSONB,
@@ -113,6 +113,21 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true,
     comment: 'Last activity performed by user'
+  },
+  lastWelcomedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Last time user received welcome message'
+  },
+  fullName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Full name from WhatsApp profile'
+  },
+  profilePicture: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'WhatsApp profile picture URL'
   },
   registrationSource: {
     type: DataTypes.ENUM('whatsapp', 'api', 'admin'),

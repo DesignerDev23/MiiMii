@@ -98,39 +98,45 @@ class OnboardingService {
     const messageText = typeof message === 'string' ? message : (message?.text || '');
     const isGreeting = greetingKeywords.some(keyword => 
       messageText.toLowerCase().includes(keyword)
-    ) || messageText.toLowerCase().includes('get started');
-
-    // Get user's name from profile or contact
-    const userName = user.firstName || contactName || null;
-
-    if (!isGreeting && !userName) {
-      // Send dynamic welcome message with interactive buttons
-      const welcomeMessage = await whatsappService.getDynamicWelcomeMessage(userName, false);
-      await whatsappService.sendButtonMessage(
-        user.whatsappNumber,
-        welcomeMessage.text,
-        welcomeMessage.buttons
-      );
-      return;
-    }
-
-    // Move to name collection
-    await user.update({ onboardingStep: 'name_collection' });
-    
-    // Log activity
-    await ActivityLog.logUserActivity(
-      user.id, 
-      'user_registration', 
-      'greeting_completed',
-      { 
-        source: 'whatsapp',
-        description: 'User started interactive onboarding process',
-        hasUserName: !!userName
-      }
     );
 
-    // Show personalized greeting and name collection flow
-    await this.showNameCollectionFlow(user, userName);
+    // Handle button responses from welcome message
+    if (message?.buttonReply?.id === 'complete_onboarding') {
+      return await this.startOnboardingFlow(user);
+    }
+    
+    if (message?.buttonReply?.id === 'learn_more') {
+      return await this.sendLearnMoreMessage(user);
+    }
+    
+    if (message?.buttonReply?.id === 'get_help') {
+      return await this.sendHelpMessage(user);
+    }
+
+    // Send an enhanced greeting with the user's name
+    const userName = user.firstName || contactName || 'there';
+    
+    if (isGreeting || !user.firstName) {
+      const greetingMessage = `👋 *Hello ${userName}!* Welcome to MiiMii!\n\n` +
+                             `I'm Xara, your AI assistant. I'll help you set up your account step by step.\n\n` +
+                             `Let's start by collecting some basic information about you.`;
+      
+      const buttons = [
+        { id: 'start_onboarding', title: '🚀 Start Setup' },
+        { id: 'skip_to_flow', title: '⚡ Quick Setup' },
+        { id: 'need_help', title: '❓ I Need Help' }
+      ];
+      
+      await whatsappService.sendButtonMessage(user.whatsappNumber, greetingMessage, buttons);
+      
+      // Move to next step
+      await user.update({ onboardingStep: 'name_collection' });
+      
+      return { success: true, step: 'greeting_sent' };
+    }
+
+    // If they send something else, proceed to name collection
+    return await this.handleInteractiveNameCollection(user, message);
   }
 
   async showNameCollectionFlow(user, existingName = null) {
@@ -819,6 +825,176 @@ class OnboardingService {
       isComplete: missing.length === 0,
       missingFields: missing
     };
+  }
+
+  async startOnboardingFlow(user) {
+    try {
+      // Create and send WhatsApp Flow for account onboarding
+      const flowData = {
+        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'ONBOARDING_FLOW',
+        flowToken: this.generateFlowToken(user.id),
+        flowCta: 'Complete Onboarding',
+        header: {
+          type: 'text',
+          text: 'Account Setup'
+        },
+        body: `Hi ${user.firstName || user.fullName || 'there'}! 👋\n\nLet's complete your MiiMii account setup. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+        footer: 'Secure • Fast • Easy',
+        flowActionPayload: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'personal_details'
+        }
+      };
+
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      // Update user step
+      await user.update({ onboardingStep: 'kyc_data' });
+      
+      logger.info('Started onboarding flow for user', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+      return { success: true, step: 'flow_sent' };
+      
+    } catch (error) {
+      logger.error('Failed to start onboarding flow', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      // Fallback to traditional onboarding
+      return await this.fallbackToTraditionalOnboarding(user);
+    }
+  }
+
+  async sendLearnMoreMessage(user) {
+    const learnMoreText = `📖 *About MiiMii* 📖\n\n` +
+                         `🏦 *Digital Banking Made Simple*\n` +
+                         `• Send and receive money instantly\n` +
+                         `• Pay bills and buy airtime\n` +
+                         `• Save money with our savings plans\n` +
+                         `• Get virtual cards for online shopping\n\n` +
+                         `🔐 *Secure & Licensed*\n` +
+                         `• Bank-level security\n` +
+                         `• Licensed by regulatory authorities\n` +
+                         `• Your money is safe with us\n\n` +
+                         `Ready to get started?`;
+    
+    const buttons = [
+      { id: 'complete_onboarding', title: '✅ Complete Setup' },
+      { id: 'contact_support', title: '📞 Contact Support' }
+    ];
+    
+    await whatsappService.sendButtonMessage(user.whatsappNumber, learnMoreText, buttons);
+    return { success: true, step: 'learn_more_sent' };
+  }
+
+  async sendHelpMessage(user) {
+    const helpText = `❓ *Need Help?* ❓\n\n` +
+                    `I'm here to assist you! Here are some common questions:\n\n` +
+                    `🔹 *What is onboarding?*\n` +
+                    `It's a simple process to verify your identity and set up your account.\n\n` +
+                    `🔹 *Is it safe?*\n` +
+                    `Yes! We use bank-level security to protect your information.\n\n` +
+                    `🔹 *How long does it take?*\n` +
+                    `Usually just 3-5 minutes.\n\n` +
+                    `Still have questions? Contact our support team!`;
+    
+    const buttons = [
+      { id: 'complete_onboarding', title: '✅ I\'m Ready' },
+      { id: 'contact_support', title: '📞 Contact Support' }
+    ];
+    
+    await whatsappService.sendButtonMessage(user.whatsappNumber, helpText, buttons);
+    return { success: true, step: 'help_sent' };
+  }
+
+  async fallbackToTraditionalOnboarding(user) {
+    const fallbackText = `Let's set up your account step by step.\n\n` +
+                        `First, I need to collect some basic information about you.\n\n` +
+                        `What's your full name?`;
+    
+    await whatsappService.sendTextMessage(user.whatsappNumber, fallbackText);
+    await user.update({ onboardingStep: 'name_collection' });
+    
+    return { success: true, step: 'fallback_name_collection' };
+  }
+
+  generateFlowToken(userId) {
+    // Generate a secure token for flow verification
+    const crypto = require('crypto');
+    const timestamp = Date.now();
+    const data = `${userId}_${timestamp}`;
+    return crypto.createHash('sha256').update(data + process.env.APP_SECRET).digest('hex');
+  }
+
+  async completePinSetup(userId, pin) {
+    try {
+      const user = await userService.getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Hash the PIN before storing
+      const bcrypt = require('bcryptjs');
+      const hashedPin = await bcrypt.hash(pin, 10);
+
+      // Update user with PIN and complete onboarding
+      await user.update({
+        pin: hashedPin,
+        onboardingStep: 'completed',
+        kycStatus: 'verified' // Assuming KYC is verified if they reach this step
+      });
+
+      // Create wallet for user if not exists
+      await walletService.getOrCreateWallet(user.id);
+
+      // Send completion message
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `🎉 *Congratulations!* 🎉\n\n` +
+        `Your MiiMii account has been successfully created!\n\n` +
+        `✅ Account verified\n` +
+        `✅ PIN set up\n` +
+        `✅ Wallet created\n\n` +
+        `You can now:\n` +
+        `💰 Send and receive money\n` +
+        `📱 Pay bills and buy airtime\n` +
+        `💳 Get virtual cards\n` +
+        `📊 Track your expenses\n\n` +
+        `Welcome to the future of banking! 🚀`
+      );
+
+      // Send main menu
+      const buttons = [
+        { id: 'check_balance', title: '💰 Check Balance' },
+        { id: 'send_money', title: '💸 Send Money' },
+        { id: 'pay_bills', title: '📱 Pay Bills' }
+      ];
+
+      await whatsappService.sendButtonMessage(
+        user.whatsappNumber,
+        `What would you like to do first?`,
+        buttons
+      );
+
+      logger.info('User onboarding completed successfully', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+
+      return { success: true };
+
+    } catch (error) {
+      logger.error('Failed to complete PIN setup', {
+        error: error.message,
+        userId
+      });
+      throw error;
+    }
   }
 
   // Helper method to check if user needs onboarding
