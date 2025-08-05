@@ -1,6 +1,7 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const { Transaction, ActivityLog, User, Wallet } = require('../models');
+const { axiosConfig } = require('../utils/httpsAgent');
 const walletService = require('./wallet');
 const whatsappService = require('./whatsapp');
 
@@ -861,14 +862,14 @@ class BellBankService {
       this.lastRequestTime = Date.now();
 
       const config = {
+        ...axiosConfig,
         method,
         url: `${this.baseURL}${endpoint}`,
         headers: {
-          'User-Agent': 'MiiMii/1.0',
+          ...axiosConfig.headers,
           'Accept': 'application/json',
           ...headers
         },
-        timeout: 30000, // 30 seconds
         validateStatus: (status) => status < 500 // Don't throw on 4xx errors
       };
 

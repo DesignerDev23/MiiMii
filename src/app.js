@@ -16,6 +16,7 @@ const logger = require('./utils/logger');
 const { sequelize } = require('./database/connection');
 const redisClient = require('./utils/redis');
 const errorHandler = require('./middleware/errorHandler');
+const { testSSLConnections } = require('./utils/sslTest');
 
 // Import models to ensure they are registered with Sequelize
 require('./models');
@@ -316,6 +317,9 @@ async function startServer() {
           process.exit(1);
       }
     });
+
+    // Test SSL connections asynchronously after server starts
+    testSSLConnections();
 
     // Initialize database connection asynchronously after server starts
     initializeDatabaseConnection();

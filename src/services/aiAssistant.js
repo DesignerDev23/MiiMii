@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { axiosConfig } = require('../utils/httpsAgent');
 const logger = require('../utils/logger');
 const userService = require('./user');
 const walletService = require('./wallet');
@@ -206,7 +207,9 @@ Extract intent and data from this message. Consider the user context and any ext
         max_tokens: 1000,
         response_format: { type: "json_object" }
       }, {
+        ...axiosConfig,
         headers: {
+          ...axiosConfig.headers,
           'Authorization': `Bearer ${this.openaiApiKey}`,
           'Content-Type': 'application/json'
         }
