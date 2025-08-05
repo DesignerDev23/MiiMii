@@ -11,11 +11,6 @@ const config = require('./config');
 // Environment variables are loaded from Digital Ocean App Platform
 // No local .env file needed
 
-// Handle SSL certificate issues for DigitalOcean managed databases
-if (process.env.DB_CONNECTION_URL && process.env.DB_CONNECTION_URL.includes('digitalocean.com')) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-}
-
 const logger = require('./utils/logger');
 const { sequelize } = require('./database/connection');
 const redisClient = require('./utils/redis');
@@ -118,7 +113,7 @@ app.get('/health', async (req, res) => {
 });
 
 // API Routes
-app.use('/webhook', webhookRoutes);
+app.use('/api/webhook', webhookRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wallet', walletRoutes);

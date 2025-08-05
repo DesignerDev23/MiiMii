@@ -31,7 +31,14 @@ Based on the error logs and code analysis, the following issues have been identi
 - Updated configuration loading to use exact variable names from Digital Ocean
 - Uses: `BOT_ACCESS_TOKEN`, `BOT_PHONE_NUMBER_ID`, `BOT_BUSINESS_ACCOUNT_ID`, `BOT_WEBHOOK_VERIFY_TOKEN`
 
-### 2. Improved Error Handling
+### 2. Webhook Route Configuration
+
+**File**: `src/app.js`
+- Fixed webhook route registration from `/webhook` to `/api/webhook`
+- Removed insecure TLS configuration that was causing warnings
+- Webhook URL is now: `https://api.chatmiimii.com/api/webhook/whatsapp`
+
+### 3. Improved Error Handling
 
 **File**: `src/services/whatsapp.js`
 - Enhanced error messages to be more specific
