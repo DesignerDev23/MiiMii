@@ -255,17 +255,42 @@ let server; // Declare server variable for graceful shutdown
 
 async function startServer() {
   try {
-    logger.info('Starting MiiMii Fintech Platform...');
+    logger.info('🚀 Starting MiiMii Fintech Platform...');
+    
+    // Log environment information for debugging
+    logger.info('Environment Configuration:', {
+      nodeEnv: process.env.NODE_ENV || 'production',
+      port: PORT,
+      host: HOST,
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage(),
+      timestamp: new Date().toISOString()
+    });
+
+    // Log critical environment variables (without sensitive values)
+    logger.info('Environment Variables Status:', {
+      hasDbConfig: !!(process.env.DB_CONNECTION_URL || process.env.DB_HOST),
+      hasRedisConfig: !!process.env.REDIS_URL,
+      hasWhatsAppConfig: !!(process.env.BOT_ACCESS_TOKEN && process.env.BOT_PHONE_NUMBER_ID),
+      hasJwtSecret: !!process.env.APP_SECRET,
+      hasBankConfig: !!(process.env.BANK_CONSUMER_KEY && process.env.BANK_CONSUMER_SECRET),
+      hasAiConfig: !!process.env.AI_API_KEY,
+      logLevel: process.env.LOG_LEVEL || 'info'
+    });
     
     // Start server first, then establish connections
     server = app.listen(PORT, HOST, (error) => {
       if (error) {
-        logger.error('Failed to start server:', error);
+        logger.error('❌ Failed to start server:', error);
         process.exit(1);
       }
       
-      logger.info(`🚀 MiiMii Fintech Platform server started successfully on ${HOST}:${PORT}`);
-      logger.info('Server is ready to accept connections');
+      logger.info(`✅ MiiMii Fintech Platform server started successfully on ${HOST}:${PORT}`);
+      logger.info('📡 Server is ready to accept connections');
+      logger.info('🏥 Health check available at: /healthz');
     });
 
     // Handle server errors
