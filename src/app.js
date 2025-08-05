@@ -112,6 +112,11 @@ app.get('/health', async (req, res) => {
   res.status(health.status === 'OK' ? 200 : 503).json(health);
 });
 
+// Simple health check for Digital Ocean (responds immediately)
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 // API Routes
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
