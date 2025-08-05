@@ -76,6 +76,16 @@ if (nodeEnv !== 'test') {
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/admin', express.static(path.join(__dirname, '../admin')));
 
+// Simple health check for Digital Ocean (no database checks)
+app.get('/healthz', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV
+  });
+});
+
 // Health check
 app.get('/health', async (req, res) => {
   const health = {
@@ -112,11 +122,6 @@ app.get('/health', async (req, res) => {
   res.status(health.status === 'OK' ? 200 : 503).json(health);
 });
 
-// Simple health check for Digital Ocean (responds immediately)
-app.get('/healthz', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
 // API Routes
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
@@ -146,7 +151,7 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // Database connection and server startup
-const PORT = serverConfig.port;
+const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   try {
@@ -187,10 +192,14 @@ async function startServer() {
 
     // Start server
     const server = app.listen(PORT, '0.0.0.0', () => {
-      logger.info(`MiiMii server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
-      logger.info(`Server bound to 0.0.0.0:${PORT}`);
+      logger.info(`Server is running on port ${PORT}`, {
+        port: PORT,
+        environment: process.env.NODE_ENV,
+        nodeVersion: process.version
+      });
     });
 
+    // Handle server errors
     server.on('error', (error) => {
       if (error.syscall !== 'listen') {
         throw error;
@@ -209,7 +218,8 @@ async function startServer() {
           process.exit(1);
           break;
         default:
-          throw error;
+          logger.error('Server error:', error);
+          process.exit(1);
       }
     });
   } catch (error) {
@@ -231,11 +241,12 @@ process.on('uncaughtException', (err) => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
-  await sequelize.close();
-  await redisClient.disconnect();
-  process.exit(0);
+  server.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
 });
 
 if (require.main === module) {
