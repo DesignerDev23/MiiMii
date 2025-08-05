@@ -246,6 +246,141 @@ class WhatsAppService {
     return this.sendInteractiveMessage(to, interactive);
   }
 
+  // New Advanced Interactive Message Methods
+  async sendFlowMessage(to, flowData) {
+    const interactive = {
+      type: 'flow',
+      header: flowData.header,
+      body: { text: flowData.body },
+      footer: flowData.footer ? { text: flowData.footer } : undefined,
+      action: {
+        name: 'flow',
+        parameters: {
+          flow_message_version: '3',
+          flow_token: flowData.flowToken,
+          flow_id: flowData.flowId,
+          flow_cta: flowData.flowCta || 'Start',
+          flow_action: 'navigate',
+          flow_action_payload: flowData.flowActionPayload || {}
+        }
+      }
+    };
+    return this.sendInteractiveMessage(to, interactive);
+  }
+
+  async sendTypingIndicator(to, duration = 3000) {
+    try {
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: this.formatToE164(to),
+        type: 'typing',
+        typing: { action: 'start' }
+      };
+
+      await axios.post(
+        `${this.baseURL}/messages`,
+        payload,
+        {
+          ...axiosConfig,
+          headers: {
+            ...axiosConfig.headers,
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      // Stop typing after duration
+      if (duration > 0) {
+        setTimeout(async () => {
+          await this.stopTypingIndicator(to);
+        }, duration);
+      }
+
+      logger.debug('Typing indicator sent', { to, duration });
+    } catch (error) {
+      logger.warn('Failed to send typing indicator', { error: error.message, to });
+    }
+  }
+
+  async stopTypingIndicator(to) {
+    try {
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: this.formatToE164(to),
+        type: 'typing',
+        typing: { action: 'stop' }
+      };
+
+      await axios.post(
+        `${this.baseURL}/messages`,
+        payload,
+        {
+          ...axiosConfig,
+          headers: {
+            ...axiosConfig.headers,
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+    } catch (error) {
+      logger.warn('Failed to stop typing indicator', { error: error.message, to });
+    }
+  }
+
+  async sendLocationRequestMessage(to, text) {
+    const interactive = {
+      type: 'location_request_message',
+      body: { text }
+    };
+    return this.sendInteractiveMessage(to, interactive);
+  }
+
+  async sendMediaMessage(to, mediaType, mediaUrl, caption = '') {
+    const payload = {
+      messaging_product: 'whatsapp',
+      to: this.formatToE164(to),
+      type: mediaType
+    };
+
+    payload[mediaType] = {
+      link: mediaUrl,
+      caption: caption
+    };
+
+    return this.sendMessage(to, payload, mediaType);
+  }
+
+  async getContactProfile(phoneNumber) {
+    try {
+      const formattedNumber = this.formatToE164(phoneNumber);
+      
+      // Use WhatsApp Business API to get contact info
+      const response = await axios.get(
+        `https://graph.facebook.com/v18.0/${formattedNumber}?fields=profile`,
+        {
+          ...axiosConfig,
+          headers: {
+            ...axiosConfig.headers,
+            'Authorization': `Bearer ${this.accessToken}`
+          }
+        }
+      );
+
+      return {
+        name: response.data.profile?.name || null,
+        waId: response.data.wa_id,
+        profilePicture: response.data.profile?.profile_pic_url || null
+      };
+    } catch (error) {
+      logger.warn('Failed to get contact profile', { error: error.message, phoneNumber });
+      return { name: null, waId: phoneNumber, profilePicture: null };
+    }
+  }
+
   async markMessageAsRead(messageId) {
     try {
       // Log the access token being used for markMessageAsRead
@@ -545,7 +680,8 @@ class WhatsAppService {
             buttonReply: {
               id: message.interactive.button_reply.id,
               title: message.interactive.button_reply.title
-            }
+            },
+            text: message.interactive.button_reply.title
           };
         } else if (message.interactive.type === 'list_reply') {
           return {
@@ -553,7 +689,17 @@ class WhatsAppService {
               id: message.interactive.list_reply.id,
               title: message.interactive.list_reply.title,
               description: message.interactive.list_reply.description
-            }
+            },
+            text: message.interactive.list_reply.title
+          };
+        } else if (message.interactive.type === 'flow_reply') {
+          return {
+            flowReply: {
+              id: message.interactive.flow_reply.id,
+              title: message.interactive.flow_reply.title,
+              response: message.interactive.flow_reply.response
+            },
+            text: `Flow response: ${message.interactive.flow_reply.title}`
           };
         }
         break;
@@ -614,6 +760,171 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
       ]
     };
   }
-}
 
-module.exports = new WhatsAppService();
+  // Enhanced Dynamic Welcome Message
+  async getDynamicWelcomeMessage(userName = null, isReturningUser = false) {
+    const currentHour = new Date().getHours();
+    let greeting = '';
+
+    if (currentHour < 12) {
+      greeting = '🌅 Good morning';
+    } else if (currentHour < 17) {
+      greeting = '☀️ Good afternoon';
+    } else {
+      greeting = '🌙 Good evening';
+    }
+
+    const personalGreeting = userName ? `${greeting}, ${userName}!` : `${greeting}!`;
+    
+    if (isReturningUser) {
+      return {
+        text: `${personalGreeting}\n\n🎉 Welcome back to *MiiMii*!\n\nI'm ready to help you with your financial needs. What would you like to do today?`,
+        buttons: [
+          { id: 'check_balance', title: '💰 Check Balance' },
+          { id: 'send_money', title: '💸 Send Money' },
+          { id: 'services_menu', title: '📱 View Services' }
+        ]
+      };
+    }
+
+    // Dynamic tips based on time of day
+    let timeTip = '';
+    if (currentHour < 10) {
+      timeTip = '☕ Start your day with smart financial management!';
+    } else if (currentHour >= 17) {
+      timeTip = '🌆 Evening transactions are processed instantly!';
+    }
+
+    return {
+      text: `${personalGreeting}\n\n🎉 Welcome to *MiiMii* - Your Smart Financial Assistant!\n\n` +
+            `I can help you with:\n` +
+                          `💰 Send money to anyone instantly\n` +
+              `📱 Buy airtime & data bundles\n` +
+              `⚡ Pay utility bills seamlessly\n` +
+              `💳 Manage your digital wallet\n` +
+              `🏦 Check account balance & history\n\n` +
+              `${timeTip ? timeTip + '\n\n' : ''}` +
+              `Let's get you set up quickly! 🚀`,
+       buttons: [
+         { id: 'start_onboarding', title: '🚀 Get Started' },
+         { id: 'learn_more', title: '📖 Learn More' },
+         { id: 'help_support', title: '🆘 Need Help?' }
+       ]
+     };
+   }
+
+   // Interactive Onboarding Flow Templates
+   getOnboardingFlowTemplates() {
+     return {
+       nameCollection: {
+         type: 'flow',
+         header: { type: 'text', text: '👤 Personal Information' },
+         body: 'Let\'s start by collecting your basic information for account setup.',
+         footer: 'Your data is secure and encrypted',
+         flowId: 'name_collection_flow',
+         flowCta: 'Enter Details',
+         flowActionPayload: {
+           screen: 'name_input',
+           version: '1.0'
+         }
+       },
+       
+       kycDataCollection: {
+         type: 'list',
+         header: { type: 'text', text: '🆔 Identity Verification' },
+         body: 'Choose how you\'d like to provide your verification documents:',
+         action: {
+           button: 'Select Option',
+           sections: [
+             {
+               title: 'Document Upload',
+               rows: [
+                 { 
+                   id: 'upload_id_card', 
+                   title: '📄 Upload ID Card', 
+                   description: 'Take a photo of your National ID, Driver\'s License, or International Passport' 
+                 },
+                 { 
+                   id: 'upload_bvn_slip', 
+                   title: '🏦 Upload BVN Slip', 
+                   description: 'Take a photo of your Bank Verification Number slip' 
+                 }
+               ]
+             },
+             {
+               title: 'Manual Entry',
+               rows: [
+                 { 
+                   id: 'manual_kyc_entry', 
+                   title: '⌨️ Type Information', 
+                   description: 'Enter your details manually (Date of birth, BVN, Address)' 
+                 },
+                 { 
+                   id: 'guided_kyc_flow', 
+                   title: '🧭 Guided Setup', 
+                   description: 'Step-by-step guided information collection' 
+                 }
+               ]
+             }
+           ]
+         }
+       },
+
+       pinSetup: {
+         type: 'button',
+         body: '🔐 *Secure Your Account*\n\nYour account is almost ready! Create a 4-digit PIN to secure your transactions.\n\n✅ Your PIN will be encrypted\n✅ Used for transaction authorization\n✅ Can be changed anytime',
+         action: {
+           buttons: [
+             { type: 'reply', reply: { id: 'create_pin_flow', title: '🔢 Create PIN' } },
+             { type: 'reply', reply: { id: 'pin_requirements', title: 'ℹ️ PIN Requirements' } },
+             { type: 'reply', reply: { id: 'security_info', title: '🛡️ Security Info' } }
+           ]
+         }
+       }
+     };
+   }
+
+   // Service Selection Menus
+   getServiceMenus() {
+     return {
+       mainServices: {
+         text: "What service would you like to use today?",
+         buttonText: "Choose Service",
+         sections: [
+           {
+             title: "💰 Money Services",
+             rows: [
+               { id: "send_money", title: "💸 Send Money", description: "Transfer to bank accounts or phone numbers" },
+               { id: "request_money", title: "💵 Request Money", description: "Request payment from contacts" },
+               { id: "check_balance", title: "📊 Check Balance", description: "View your wallet balance and limits" }
+             ]
+           },
+           {
+             title: "📱 Mobile Services",
+             rows: [
+               { id: "buy_airtime", title: "📞 Buy Airtime", description: "Purchase airtime for any network" },
+               { id: "buy_data", title: "📶 Buy Data", description: "Purchase data bundles" },
+               { id: "data_gifting", title: "🎁 Gift Data", description: "Send data to friends and family" }
+             ]
+           },
+           {
+             title: "⚡ Bill Payments",
+             rows: [
+               { id: "electricity_bills", title: "💡 Electricity", description: "Pay PHCN/EKEDC/Other electricity bills" },
+               { id: "cable_tv_bills", title: "📺 Cable TV", description: "Pay DStv, GOtv, Startimes" },
+               { id: "internet_bills", title: "🌐 Internet", description: "Pay internet and wifi bills" }
+             ]
+           }
+         ]
+       },
+
+       quickActions: {
+         text: "Quick actions for frequent tasks:",
+         buttons: [
+           { id: "repeat_last_transaction", title: "🔄 Repeat Last" },
+           { id: "favourite_contacts", title: "⭐ Favourites" },
+           { id: "transaction_history", title: "📋 History" }
+         ]
+       }
+     };
+   }

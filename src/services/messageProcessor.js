@@ -36,7 +36,7 @@ class MessageProcessor {
 
       // Check if user needs onboarding
       if (user.onboardingStep !== 'completed') {
-        return await this.handleOnboardingFlow(user, message, messageType);
+        return await this.handleOnboardingFlow(user, message, messageType, contact?.name);
       }
 
       // Process message for completed users
@@ -90,9 +90,9 @@ class MessageProcessor {
     }
   }
 
-  async handleOnboardingFlow(user, message, messageType) {
+  async handleOnboardingFlow(user, message, messageType, contactName = null) {
     // Use onboarding service for new users
-    return await onboardingService.handleOnboarding(user.whatsappNumber, message, messageType);
+    return await onboardingService.handleOnboarding(user.whatsappNumber, message, messageType, contactName);
   }
 
   async handleCompletedUserMessage(user, message, messageType) {
@@ -121,7 +121,29 @@ class MessageProcessor {
           break;
           
         case 'interactive':
-          processedText = this.processInteractiveMessage(message);
+          const interactiveResult = this.processInteractiveMessage(message);
+          if (interactiveResult) {
+            processedText = interactiveResult.text;
+            if (interactiveResult.buttonReply) {
+              // For button replies, we might want to store state or pass data
+              // For now, we'll just pass the text and the button reply
+              await this.storeConversationState(user, {
+                intent: 'button_reply',
+                context: 'button_reply',
+                step: 1,
+                data: { buttonReply: interactiveResult.buttonReply }
+              });
+            } else if (interactiveResult.listReply) {
+              // For list replies, we might want to store state or pass data
+              // For now, we'll just pass the text and the list reply
+              await this.storeConversationState(user, {
+                intent: 'list_reply',
+                context: 'list_reply',
+                step: 1,
+                data: { listReply: interactiveResult.listReply }
+              });
+            }
+          }
           break;
           
         default:
@@ -358,12 +380,21 @@ class MessageProcessor {
   processInteractiveMessage(message) {
     try {
       // Handle button responses and list selections
-      if (message.button_reply) {
-        return message.button_reply.title;
-      } else if (message.list_reply) {
-        return message.list_reply.title;
+      if (message.buttonReply) {
+        return {
+          text: message.buttonReply.title,
+          buttonReply: message.buttonReply
+        };
+      } else if (message.listReply) {
+        return {
+          text: message.listReply.title,
+          listReply: message.listReply
+        };
       } else {
-        return 'Interactive message received';
+        return {
+          text: 'Interactive message received',
+          interactive: true
+        };
       }
     } catch (error) {
       logger.error('Interactive message processing failed', { error: error.message });
