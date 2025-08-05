@@ -1,0 +1,10 @@
+[33mc928b2f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Fix: Remove placeholder OpenAI API key that triggered GitHub secret scanning
+[33m4cdcba3[m hardcodes
+[33maea9dcb[m Update all services to use new environment variable names (AI_API_KEY, BOT_ACCESS_TOKEN, etc.)
+[33m281d8f8[m Update Digital Ocean app.yaml with correct environment variable names
+[33md969188[m Fix serverConfig initialization error - move declaration to top
+[33m9c7b39d[m Fix serverConfig variable declaration and ensure config.getWhatsappConfig() works
+[33ma0f4067[m FINAL FIX: Complete config implementation and fix all environment variable issues
+[33m2f4207e[m[33m ([m[1;31morigin/main[m[33m)[m Fix WhatsApp configuration to use correct environment variable names
+[33m4d9d945[m chnages
+[33m1f9ea0e[m test again

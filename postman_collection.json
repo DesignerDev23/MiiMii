@@ -1,0 +1,1056 @@
+{
+  "info": {
+    "name": "MiiMii Fintech Platform API",
+    "description": "Complete API collection for MiiMii WhatsApp-based fintech platform with AI integration",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://miimii-app-p8gzu.ondigitalocean.app",
+      "type": "string"
+    },
+    {
+      "key": "testPhone",
+      "value": "08123456789",
+      "type": "string"
+    },
+    {
+      "key": "testPin",
+      "value": "1234",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Health Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check User Exists",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/check-exists",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "check-exists"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/profile/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "profile", "{{testPhone}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"gender\": \"male\",\n  \"address\": \"123 Main Street, Lagos, Nigeria\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/profile/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "profile", "{{testPhone}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set PIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"pin\": \"{{testPin}}\",\n  \"confirmPin\": \"{{testPin}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/set-pin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "set-pin"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate PIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"pin\": \"{{testPin}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/validate-pin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "validate-pin"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Onboarding Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/onboarding/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "onboarding", "{{testPhone}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "KYC Management",
+      "item": [
+        {
+          "name": "Start KYC Process",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"middleName\": \"Smith\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"gender\": \"male\",\n  \"address\": \"123 Main Street, Lagos, Nigeria\",\n  \"bvn\": \"12345678901\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/kyc/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "kyc", "start"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get KYC Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/kyc/status/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "kyc", "status", "{{testPhone}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Wallet Management",
+      "item": [
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/balance/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "balance", "{{testPhone}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Wallet Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/transactions/{{testPhone}}?limit=10&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "transactions", "{{testPhone}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Credit Wallet (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\",\n  \"amount\": 5000,\n  \"description\": \"Test credit for wallet\",\n  \"adminNote\": \"Initial funding for testing\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/credit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "credit"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Virtual Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{testPhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/create-virtual-account",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallet", "create-virtual-account"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Data Services",
+      "item": [
+        {
+          "name": "Get Networks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/data/networks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "networks"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Data Plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/data/plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "plans"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get MTN Data Plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/data/plans/mtn",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "plans", "mtn"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detect Network",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"08031234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/detect-network",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "detect-network"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Phone Number",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"08031234567\",\n  \"network\": \"mtn\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/validate-phone",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "validate-phone"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Purchase Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"08031234567\",\n  \"network\": \"mtn\",\n  \"planId\": \"mtn-1gb-300\",\n  \"pin\": \"{{testPin}}\",\n  \"userPhone\": \"{{testPhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/data/purchase",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "purchase"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Data Purchase History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/data/history/{{testPhone}}?limit=10&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "history", "{{testPhone}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Data Purchase Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/data/summary/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "data", "summary", "{{testPhone}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Airtime Services",
+      "item": [
+        {
+          "name": "Get Networks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/networks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "networks"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Airtime Limits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/limits",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "limits"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detect Network",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"08031234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/detect-network",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "detect-network"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/validate-amount",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "validate-amount"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Purchase Airtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"08031234567\",\n  \"network\": \"mtn\",\n  \"amount\": 1000,\n  \"pin\": \"{{testPin}}\",\n  \"userPhone\": \"{{testPhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/purchase",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "purchase"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Airtime Purchase History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/history/{{testPhone}}?limit=10&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "history", "{{testPhone}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Recent Recipients",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/airtime/recent-recipients/{{testPhone}}?limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "airtime", "recent-recipients", "{{testPhone}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Utility Services",
+      "item": [
+        {
+          "name": "Get Utility Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "categories"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Electricity Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/providers/electricity",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "providers", "electricity"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cable TV Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/providers/cable",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "providers", "cable"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get DStv Cable Plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/cable-plans/dstv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "cable-plans", "dstv"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/all-providers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "all-providers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"electricity\",\n  \"provider\": \"ikedc\",\n  \"customerNumber\": \"12345678901\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/validate-customer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "validate-customer"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Estimate Fee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"electricity\",\n  \"amount\": 5000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/estimate-fee",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "estimate-fee"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pay Electricity Bill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userPhone\": \"{{testPhone}}\",\n  \"category\": \"electricity\",\n  \"provider\": \"ikedc\",\n  \"customerNumber\": \"12345678901\",\n  \"amount\": 5000,\n  \"pin\": \"{{testPin}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "pay"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pay Cable TV Bill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userPhone\": \"{{testPhone}}\",\n  \"category\": \"cable\",\n  \"provider\": \"dstv\",\n  \"customerNumber\": \"1234567890\",\n  \"amount\": 5300,\n  \"pin\": \"{{testPin}}\",\n  \"planId\": \"dstv-confam\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "pay"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Utility Payment History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/history/{{testPhone}}?limit=10&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "history", "{{testPhone}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Recent Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/utility/recent-customers/{{testPhone}}?limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "utility", "recent-customers", "{{testPhone}}"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Transaction Management",
+      "item": [
+        {
+          "name": "Get Transaction by Reference",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/TXN123456789",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "TXN123456789"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?phoneNumber={{testPhone}}&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions"],
+              "query": [
+                {
+                  "key": "phoneNumber",
+                  "value": "{{testPhone}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Transactions by Type",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?type=data&status=completed&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "data"
+                },
+                {
+                  "key": "status",
+                  "value": "completed"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Transfer Money",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"senderPhone\": \"{{testPhone}}\",\n  \"recipientPhone\": \"08087654321\",\n  \"amount\": 1000,\n  \"description\": \"Test transfer\",\n  \"pin\": \"{{testPin}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/transfer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "transfer"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Transaction Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/stats/overview",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "stats", "overview"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Operations",
+      "item": [
+        {
+          "name": "Get Dashboard Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/dashboard/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "dashboard", "stats"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{testPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "{{testPhone}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/search?q=john&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "john"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "WhatsApp Integration",
+      "item": [
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"{{testPhone}}\",\n  \"message\": \"Hello from MiiMii!\",\n  \"type\": \"text\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/send-message",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "whatsapp", "send-message"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Process Incoming Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": \"{{testPhone}}\",\n  \"message\": \"balance\",\n  \"messageId\": \"msg_123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/process-message",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "whatsapp", "process-message"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

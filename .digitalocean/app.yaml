@@ -1,0 +1,158 @@
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+
+domains:
+  - domain: api.chatmiimii.com
+    type: PRIMARY
+    zone: chatmiimii.com
+
+envs: []  # Removed local hardcoded secrets from here
+
+features:
+  - buildpack-stack=ubuntu-22
+
+ingress:
+  rules:
+    - component:
+        name: miimii
+      match:
+        authority:
+          exact: ""
+        path:
+          prefix: /
+
+name: miimii-app
+region: fra
+
+services:
+  - name: miimii
+    dockerfile_path: /Dockerfile
+    source_dir: /
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+
+    github:
+      branch: main
+      deploy_on_push: true
+      repo: DesignerDev23/MiiMii
+
+    envs:
+      - key: PORT
+        scope: RUN_AND_BUILD_TIME
+        value: "3000"
+      - key: NODE_ENV
+        scope: RUN_AND_BUILD_TIME
+        value: production
+      - key: DB_CONNECTION_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${DB_CONNECTION_URL}
+      - key: DB_HOST
+        scope: RUN_AND_BUILD_TIME
+        value: ${DB_HOST}
+      - key: DB_PORT
+        scope: RUN_AND_BUILD_TIME
+        value: ${DB_PORT}
+      - key: DB_NAME
+        scope: RUN_AND_BUILD_TIME
+        value: ${DB_NAME}
+      - key: DB_USER
+        scope: RUN_AND_BUILD_TIME
+        value: ${DB_USER}
+      - key: DB_PASSWORD
+        scope: RUN_AND_BUILD_TIME
+        value: ${DB_PASSWORD}
+      - key: APP_SECRET
+        scope: RUN_AND_BUILD_TIME
+        value: ${APP_SECRET}
+      - key: JWT_EXPIRES_IN
+        scope: RUN_AND_BUILD_TIME
+        value: ${JWT_EXPIRES_IN}
+      - key: BOT_ACCESS_TOKEN
+        scope: RUN_AND_BUILD_TIME
+        value: ${BOT_ACCESS_TOKEN}
+      - key: BOT_PHONE_NUMBER_ID
+        scope: RUN_AND_BUILD_TIME
+        value: ${BOT_PHONE_NUMBER_ID}
+      - key: BOT_BUSINESS_ACCOUNT_ID
+        scope: RUN_AND_BUILD_TIME
+        value: ${BOT_BUSINESS_ACCOUNT_ID}
+      - key: BOT_WEBHOOK_VERIFY_TOKEN
+        scope: RUN_AND_BUILD_TIME
+        value: ${BOT_WEBHOOK_VERIFY_TOKEN}
+      - key: BANK_CONSUMER_KEY
+        scope: RUN_AND_BUILD_TIME
+        value: ${BANK_CONSUMER_KEY}
+      - key: BANK_CONSUMER_SECRET
+        scope: RUN_AND_BUILD_TIME
+        value: ${BANK_CONSUMER_SECRET}
+      - key: PROVIDER_USERNAME
+        scope: RUN_AND_BUILD_TIME
+        value: ${PROVIDER_USERNAME}
+      - key: PROVIDER_PASSWORD
+        scope: RUN_AND_BUILD_TIME
+        value: ${PROVIDER_PASSWORD}
+      - key: BILAL_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        value: ${BILAL_API_KEY}
+      - key: DOJAH_APP_ID
+        scope: RUN_AND_BUILD_TIME
+        value: ${DOJAH_APP_ID}
+      - key: DOJAH_SECRET_KEY
+        scope: RUN_AND_BUILD_TIME
+        value: ${DOJAH_SECRET_KEY}
+      - key: DOJAH_PUBLIC_KEY
+        scope: RUN_AND_BUILD_TIME
+        value: ${DOJAH_PUBLIC_KEY}
+      - key: AI_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        value: ${AI_API_KEY}
+      - key: AI_MODEL
+        scope: RUN_AND_BUILD_TIME
+        value: ${AI_MODEL}
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        scope: RUN_AND_BUILD_TIME
+        value: ${GOOGLE_APPLICATION_CREDENTIALS}
+      - key: REDIS_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${REDIS_URL}
+      - key: MAX_FILE_SIZE
+        scope: RUN_AND_BUILD_TIME
+        value: ${MAX_FILE_SIZE}
+      - key: UPLOAD_PATH
+        scope: RUN_AND_BUILD_TIME
+        value: ${UPLOAD_PATH}
+      - key: WEBHOOK_SECRET
+        scope: RUN_AND_BUILD_TIME
+        value: ${WEBHOOK_SECRET}
+      - key: ADMIN_EMAIL
+        scope: RUN_AND_BUILD_TIME
+        value: ${ADMIN_EMAIL}
+      - key: ADMIN_PASSWORD
+        scope: RUN_AND_BUILD_TIME
+        value: ${ADMIN_PASSWORD}
+      - key: TRANSFER_FEE_PERCENTAGE
+        scope: RUN_AND_BUILD_TIME
+        value: ${TRANSFER_FEE_PERCENTAGE}
+      - key: PLATFORM_FEE
+        scope: RUN_AND_BUILD_TIME
+        value: ${PLATFORM_FEE}
+      - key: BELLBANK_FEE
+        scope: RUN_AND_BUILD_TIME
+        value: ${BELLBANK_FEE}
+      - key: MAINTENANCE_FEE
+        scope: RUN_AND_BUILD_TIME
+        value: ${MAINTENANCE_FEE}
+      - key: DATA_PURCHASE_FEE
+        scope: RUN_AND_BUILD_TIME
+        value: ${DATA_PURCHASE_FEE}
+      - key: RATE_LIMIT_WINDOW_MS
+        scope: RUN_AND_BUILD_TIME
+        value: ${RATE_LIMIT_WINDOW_MS}
+      - key: RATE_LIMIT_MAX_REQUESTS
+        scope: RUN_AND_BUILD_TIME
+        value: ${RATE_LIMIT_MAX_REQUESTS}
+      - key: BASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${BASE_URL}
