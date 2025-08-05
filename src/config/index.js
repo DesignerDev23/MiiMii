@@ -88,7 +88,7 @@ class Config {
   }
 
   logConfigurationStatus() {
-    logger.info('Configuration loaded', {
+    logger.info('Configuration loaded for Digital Ocean App Platform', {
       hasDatabaseUrl: !!this.database.url,
       hasWhatsappToken: !!this.whatsapp.accessToken,
       hasWhatsappPhoneId: !!this.whatsapp.phoneNumberId,
@@ -96,8 +96,21 @@ class Config {
       hasOpenAIKey: !!this.openai.apiKey,
       nodeEnv: this.server.nodeEnv,
       port: this.server.port,
-      service: 'config'
+      platform: 'DigitalOcean App Platform',
+      service: 'config',
+      timestamp: new Date().toISOString()
     });
+
+    // Warn about critical missing environment variables
+    if (!this.database.url) {
+      logger.warn('DB_CONNECTION_URL environment variable is missing - database connection will fail');
+    }
+    if (!this.whatsapp.accessToken) {
+      logger.warn('BOT_ACCESS_TOKEN environment variable is missing - WhatsApp functionality will be limited');
+    }
+    if (!this.server.jwtSecret) {
+      logger.warn('APP_SECRET environment variable is missing - JWT functionality will fail');
+    }
   }
 
   getDatabaseUrl() {
