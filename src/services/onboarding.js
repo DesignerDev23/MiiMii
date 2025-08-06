@@ -415,25 +415,25 @@ class OnboardingService {
         phoneNumber: user.whatsappNumber
       });
       
-      // Fallback to traditional text-based flow
+      // Send error message and ask user to try again
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
-        `🧭 *Guided KYC Setup*\n\n` +
-        `I'll walk you through each piece of information step by step.\n\n` +
-        `Let's start with your *date of birth*.\n\n` +
-        `📅 Please enter in DD/MM/YYYY format\n` +
-        `Example: 15/03/1990`
+        `❌ *Flow Message Failed*\n\n` +
+        `I'm having trouble sending the interactive onboarding form. This might be due to:\n\n` +
+        `• Network connectivity issues\n` +
+        `• WhatsApp Flow configuration\n\n` +
+        `Please try saying "hi" again or contact support if the issue persists.`
       );
       
       await user.update({
         conversationState: JSON.stringify({
           flow: 'guided_kyc',
-          step: 'date_of_birth',
+          step: 'flow_error',
           data: {}
         })
       });
       
-      return { success: true, step: 'fallback_text_flow' };
+      return { success: false, step: 'flow_error' };
     }
   }
 
