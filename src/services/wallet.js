@@ -524,6 +524,57 @@ class WalletService {
       throw error;
     }
   }
+
+  async updateTransactionMetadata(userId, requestId, metadata) {
+    try {
+      // Find the transaction by user ID and metadata containing the requestId
+      const transaction = await Transaction.findOne({
+        where: {
+          userId,
+          metadata: {
+            requestId: requestId
+          }
+        },
+        order: [['createdAt', 'DESC']]
+      });
+
+      if (!transaction) {
+        logger.warn('Transaction not found for metadata update', {
+          userId,
+          requestId
+        });
+        return null;
+      }
+
+      // Update metadata by merging with existing metadata
+      const updatedMetadata = {
+        ...transaction.metadata,
+        ...metadata,
+        updatedAt: new Date().toISOString()
+      };
+
+      await transaction.update({
+        metadata: updatedMetadata
+      });
+
+      logger.info('Transaction metadata updated', {
+        userId,
+        requestId,
+        transactionId: transaction.id,
+        updatedFields: Object.keys(metadata)
+      });
+
+      return transaction;
+    } catch (error) {
+      logger.error('Failed to update transaction metadata', {
+        error: error.message,
+        userId,
+        requestId,
+        metadata
+      });
+      throw error;
+    }
+  }
 }
 
 module.exports = new WalletService();

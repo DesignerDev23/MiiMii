@@ -4,6 +4,7 @@ const { Transaction, ActivityLog, User, Wallet } = require('../models');
 const { axiosConfig } = require('../utils/httpsAgent');
 const walletService = require('./wallet');
 const whatsappService = require('./whatsapp');
+const RetryHelper = require('../utils/retryHelper');
 
 class BellBankService {
   constructor() {
@@ -852,7 +853,7 @@ class BellBankService {
 
   // Utility methods
   async makeRequest(method, endpoint, data = {}, headers = {}) {
-    try {
+    return await RetryHelper.retryBankApiCall(async () => {
       // Rate limiting - ensure minimum 100ms between requests
       const now = Date.now();
       const timeSinceLastRequest = now - this.lastRequestTime;
@@ -882,21 +883,15 @@ class BellBankService {
       const response = await axios(config);
       
       if (response.status >= 400) {
-        throw new Error(`HTTP ${response.status}: ${response.data?.message || response.statusText}`);
+        const error = new Error(`HTTP ${response.status}: ${response.data?.message || response.statusText}`);
+        error.response = response;
+        throw error;
       }
 
       return response.data;
-    } catch (error) {
-      if (error.code === 'ECONNABORTED') {
-        throw new Error('Request timeout - BellBank service is slow to respond');
-      } else if (error.response) {
-        throw new Error(`BellBank API error: ${error.response.data?.message || error.response.statusText}`);
-      } else if (error.request) {
-        throw new Error('No response from BellBank service - network error');
-      } else {
-        throw new Error(`Request setup error: ${error.message}`);
-      }
-    }
+    }, {
+      operationName: `bellbank_${method.toLowerCase()}_${endpoint.replace(/\//g, '_')}`
+    });
   }
 
   formatPhoneNumber(phoneNumber) {
