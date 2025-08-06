@@ -607,9 +607,13 @@ class WhatsAppService {
       }
 
       // Check if this is a WhatsApp Business Account webhook
-      if (changes.value?.object !== 'whatsapp_business_account') {
+      // Note: The object field might be in the body or in changes.value
+      const webhookObject = body.object || changes.value?.object;
+      if (webhookObject !== 'whatsapp_business_account') {
         logger.warn('Invalid webhook structure or not a WhatsApp Business Account', {
-          object: changes.value?.object,
+          bodyObject: body.object,
+          changesValueObject: changes.value?.object,
+          webhookObject: webhookObject,
           changes: changes
         });
         return null;
@@ -652,7 +656,8 @@ class WhatsAppService {
         logger.info('Processing regular message webhook', {
           messageId: messages.id,
           from: messages.from,
-          messageType: messageData.type
+          messageType: messageData.type,
+          messageContent: messageData
         });
 
         return {
@@ -696,7 +701,10 @@ class WhatsAppService {
         valueKeys: Object.keys(value),
         hasMessages: !!value.messages,
         hasStatuses: !!value.statuses,
-        hasFlowCompletion: !!value.flow_completion
+        hasFlowCompletion: !!value.flow_completion,
+        messagesLength: value.messages?.length,
+        statusesLength: value.statuses?.length,
+        value: value
       });
       return null;
     } catch (error) {
@@ -710,11 +718,19 @@ class WhatsAppService {
   }
 
   extractMessageContent(message) {
+    logger.debug('Extracting message content', {
+      messageType: message.type,
+      message: message
+    });
+    
     switch (message.type) {
       case 'text':
-        return {
-          text: message.text.body
+        const textContent = {
+          text: message.text.body,
+          type: 'text'
         };
+        logger.debug('Extracted text message', textContent);
+        return textContent;
       case 'image':
         return {
           mediaId: message.image.id,
