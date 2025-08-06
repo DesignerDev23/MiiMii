@@ -1,5 +1,7 @@
 const { User, Wallet } = require('../models');
 const logger = require('../utils/logger');
+const databaseService = require('./database');
+const { Op } = require('sequelize');
 
 class UserService {
   async getOrCreateUser(whatsappNumber, displayName = null) {
@@ -7,19 +9,19 @@ class UserService {
       // Clean phone number
       const cleanNumber = this.cleanPhoneNumber(whatsappNumber);
       
-      // Try to find existing user
-      let user = await User.findOne({
+      // Try to find existing user using retry logic
+      let user = await databaseService.findOneWithRetry(User, {
         where: { whatsappNumber: cleanNumber },
         include: [{ model: Wallet, as: 'wallet' }]
-      });
+      }, { operationName: 'find user by WhatsApp number' });
 
       if (!user) {
-        // Create new user
-        user = await User.create({
+        // Create new user using retry logic
+        user = await databaseService.createWithRetry(User, {
           whatsappNumber: cleanNumber,
           firstName: displayName,
           isActive: true
-        });
+        }, {}, { operationName: 'create new user' });
 
         // Create wallet for new user
         const walletService = require('./wallet');
@@ -29,7 +31,10 @@ class UserService {
       } else {
         // Update display name if provided and not already set
         if (displayName && !user.firstName) {
-          await user.update({ firstName: displayName });
+          await databaseService.executeWithRetry(
+            () => user.update({ firstName: displayName }),
+            { operationName: 'update user display name' }
+          );
         }
       }
 
@@ -42,14 +47,14 @@ class UserService {
 
   async getUserById(userId) {
     try {
-      const user = await User.findByPk(userId, {
+      const user = await databaseService.findByPkWithRetry(User, userId, {
         include: [{ model: Wallet, as: 'wallet' }]
-      });
+      }, { operationName: 'find user by ID' });
       
       if (!user) {
         throw new Error('User not found');
       }
-
+      
       return user;
     } catch (error) {
       logger.error('Failed to get user by ID', { error: error.message, userId });
@@ -57,86 +62,194 @@ class UserService {
     }
   }
 
-  async getUserByPhoneNumber(phoneNumber) {
+  async getUserByWhatsappNumber(whatsappNumber) {
     try {
-      const cleanNumber = this.cleanPhoneNumber(phoneNumber);
+      const cleanNumber = this.cleanPhoneNumber(whatsappNumber);
       
-      const user = await User.findOne({
+      const user = await databaseService.findOneWithRetry(User, {
         where: { whatsappNumber: cleanNumber },
         include: [{ model: Wallet, as: 'wallet' }]
-      });
+      }, { operationName: 'find user by WhatsApp number' });
 
       return user;
     } catch (error) {
-      logger.error('Failed to get user by phone number', { error: error.message, phoneNumber });
+      logger.error('Failed to get user by WhatsApp number', { error: error.message, whatsappNumber });
       throw error;
     }
   }
 
   async updateUser(userId, updateData) {
     try {
-      const user = await User.findByPk(userId);
-      
-      if (!user) {
-        throw new Error('User not found');
+      const [updatedRowsCount] = await databaseService.updateWithRetry(User, updateData, {
+        where: { id: userId }
+      }, { operationName: 'update user' });
+
+      if (updatedRowsCount === 0) {
+        throw new Error('User not found or no changes made');
       }
 
-      await user.update(updateData);
-      
-      logger.info('User updated', { userId, updateData });
-      
-      return user;
+      // Fetch and return the updated user
+      return await this.getUserById(userId);
     } catch (error) {
       logger.error('Failed to update user', { error: error.message, userId, updateData });
       throw error;
     }
   }
 
-  async banUser(userId, reason = null) {
+  async deleteUser(userId) {
     try {
-      const user = await User.findByPk(userId);
-      
-      if (!user) {
+      const deletedRowsCount = await databaseService.destroyWithRetry(User, {
+        where: { id: userId }
+      }, { operationName: 'delete user' });
+
+      if (deletedRowsCount === 0) {
         throw new Error('User not found');
       }
 
-      await user.update({ 
-        isBanned: true,
-        metadata: {
-          ...user.metadata,
-          bannedAt: new Date(),
-          banReason: reason
-        }
-      });
-
-      logger.info('User banned', { userId, reason });
-      
-      return user;
+      logger.info('User deleted successfully', { userId });
+      return true;
     } catch (error) {
-      logger.error('Failed to ban user', { error: error.message, userId });
+      logger.error('Failed to delete user', { error: error.message, userId });
       throw error;
     }
   }
 
-  async unbanUser(userId) {
+  async getAllUsers(options = {}) {
     try {
-      const user = await User.findByPk(userId);
-      
-      if (!user) {
+      const {
+        page = 1,
+        limit = 50,
+        isActive = null,
+        kycStatus = null
+      } = options;
+
+      const offset = (page - 1) * limit;
+      const whereClause = {};
+
+      if (isActive !== null) {
+        whereClause.isActive = isActive;
+      }
+
+      if (kycStatus !== null) {
+        whereClause.kycStatus = kycStatus;
+      }
+
+      const users = await databaseService.findWithRetry(User, {
+        where: whereClause,
+        include: [{ model: Wallet, as: 'wallet' }],
+        limit,
+        offset,
+        order: [['createdAt', 'DESC']]
+      }, { operationName: 'get all users' });
+
+      return users;
+    } catch (error) {
+      logger.error('Failed to get all users', { error: error.message, options });
+      throw error;
+    }
+  }
+
+  async searchUsers(searchTerm, options = {}) {
+    try {
+      const { limit = 20 } = options;
+      const cleanSearchTerm = this.cleanPhoneNumber(searchTerm);
+
+      const users = await databaseService.findWithRetry(User, {
+        where: {
+          [Op.or]: [
+            { whatsappNumber: { [Op.like]: `%${cleanSearchTerm}%` } },
+            { firstName: { [Op.iLike]: `%${searchTerm}%` } },
+            { lastName: { [Op.iLike]: `%${searchTerm}%` } },
+            { email: { [Op.iLike]: `%${searchTerm}%` } }
+          ]
+        },
+        include: [{ model: Wallet, as: 'wallet' }],
+        limit,
+        order: [['createdAt', 'DESC']]
+      }, { operationName: 'search users' });
+
+      return users;
+    } catch (error) {
+      logger.error('Failed to search users', { error: error.message, searchTerm });
+      throw error;
+    }
+  }
+
+  async updateUserKYCStatus(userId, kycStatus, reviewNotes = null) {
+    try {
+      const updateData = { 
+        kycStatus,
+        kycUpdatedAt: new Date()
+      };
+
+      if (reviewNotes) {
+        updateData.kycReviewNotes = reviewNotes;
+      }
+
+      const [updatedRowsCount] = await databaseService.updateWithRetry(User, updateData, {
+        where: { id: userId }
+      }, { operationName: 'update user KYC status' });
+
+      if (updatedRowsCount === 0) {
         throw new Error('User not found');
       }
 
-      await user.update({ 
-        isBanned: false,
-        metadata: {
-          ...user.metadata,
-          unbannedAt: new Date()
-        }
-      });
+      logger.info('User KYC status updated', { userId, kycStatus, reviewNotes });
+      return await this.getUserById(userId);
+    } catch (error) {
+      logger.error('Failed to update user KYC status', { error: error.message, userId, kycStatus });
+      throw error;
+    }
+  }
 
-      logger.info('User unbanned', { userId });
-      
-      return user;
+  async banUser(userId, reason = null, bannedBy = null) {
+    try {
+      const updateData = {
+        isActive: false,
+        isBanned: true,
+        bannedAt: new Date(),
+        banReason: reason,
+        bannedBy: bannedBy
+      };
+
+      const [updatedRowsCount] = await databaseService.updateWithRetry(User, updateData, {
+        where: { id: userId }
+      }, { operationName: 'ban user' });
+
+      if (updatedRowsCount === 0) {
+        throw new Error('User not found');
+      }
+
+      logger.info('User banned', { userId, reason, bannedBy });
+      return await this.getUserById(userId);
+    } catch (error) {
+      logger.error('Failed to ban user', { error: error.message, userId, reason });
+      throw error;
+    }
+  }
+
+  async unbanUser(userId, unbannedBy = null) {
+    try {
+      const updateData = {
+        isActive: true,
+        isBanned: false,
+        bannedAt: null,
+        banReason: null,
+        bannedBy: null,
+        unbannedAt: new Date(),
+        unbannedBy: unbannedBy
+      };
+
+      const [updatedRowsCount] = await databaseService.updateWithRetry(User, updateData, {
+        where: { id: userId }
+      }, { operationName: 'unban user' });
+
+      if (updatedRowsCount === 0) {
+        throw new Error('User not found');
+      }
+
+      logger.info('User unbanned', { userId, unbannedBy });
+      return await this.getUserById(userId);
     } catch (error) {
       logger.error('Failed to unban user', { error: error.message, userId });
       throw error;
@@ -218,37 +331,41 @@ class UserService {
     }
   }
 
-  async getUserStats(userId) {
+  async getUserStats() {
     try {
-      const user = await User.findByPk(userId, {
-        include: [
-          { model: Wallet, as: 'wallet' },
-          { model: require('../models').Transaction, as: 'transactions' }
-        ]
+      const stats = await databaseService.safeExecute(async () => {
+        const [results] = await databaseService.queryWithRetry(`
+          SELECT 
+            COUNT(*) as total_users,
+            COUNT(CASE WHEN "isActive" = true THEN 1 END) as active_users,
+            COUNT(CASE WHEN "isBanned" = true THEN 1 END) as banned_users,
+            COUNT(CASE WHEN "kycStatus" = 'verified' THEN 1 END) as verified_users,
+            COUNT(CASE WHEN "createdAt" >= NOW() - INTERVAL '30 days' THEN 1 END) as new_users_30d
+          FROM "Users"
+        `, { type: require('sequelize').QueryTypes.SELECT });
+
+        return results[0];
+      }, {
+        operationName: 'get user statistics',
+        fallbackValue: {
+          total_users: 0,
+          active_users: 0,
+          banned_users: 0,
+          verified_users: 0,
+          new_users_30d: 0
+        }
       });
-
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      const stats = {
-        totalTransactions: user.transactions.length,
-        successfulTransactions: user.transactions.filter(t => t.status === 'completed').length,
-        totalSpent: user.transactions
-          .filter(t => t.type === 'debit' && t.status === 'completed')
-          .reduce((sum, t) => sum + parseFloat(t.amount), 0),
-        totalReceived: user.transactions
-          .filter(t => t.type === 'credit' && t.status === 'completed')
-          .reduce((sum, t) => sum + parseFloat(t.amount), 0),
-        currentBalance: parseFloat(user.wallet?.balance || 0),
-        accountAge: Math.floor((new Date() - user.createdAt) / (1000 * 60 * 60 * 24)), // days
-        lastActive: user.lastSeen
-      };
 
       return stats;
     } catch (error) {
-      logger.error('Failed to get user stats', { error: error.message, userId });
-      throw error;
+      logger.error('Failed to get user stats', { error: error.message });
+      return {
+        total_users: 0,
+        active_users: 0,
+        banned_users: 0,
+        verified_users: 0,
+        new_users_30d: 0
+      };
     }
   }
 
@@ -284,28 +401,6 @@ class UserService {
       return true;
     } catch (error) {
       return false;
-    }
-  }
-
-  async searchUsers(query, limit = 10) {
-    try {
-      const users = await User.findAll({
-        where: {
-          [require('sequelize').Op.or]: [
-            { firstName: { [require('sequelize').Op.iLike]: `%${query}%` } },
-            { lastName: { [require('sequelize').Op.iLike]: `%${query}%` } },
-            { whatsappNumber: { [require('sequelize').Op.like]: `%${query}%` } }
-          ]
-        },
-        include: [{ model: Wallet, as: 'wallet' }],
-        limit,
-        order: [['lastSeen', 'DESC']]
-      });
-
-      return users;
-    } catch (error) {
-      logger.error('User search failed', { error: error.message, query });
-      throw error;
     }
   }
 }

@@ -5,7 +5,7 @@ const onboardingService = require('./onboarding');
 const ocrService = require('./ocr');
 const transcriptionService = require('./transcription');
 const logger = require('../utils/logger');
-const { ActivityLog } = require('../models');
+const activityLogger = require('./activityLogger');
 
 class MessageProcessor {
   async processIncomingMessage(messageData) {
@@ -23,22 +23,18 @@ class MessageProcessor {
       const profileName = contact?.name || null;
       
       // Log incoming message with profile info - handle gracefully if DB unavailable
-      try {
-        await ActivityLog.logUserActivity(
-          null, // We'll update with userId after getting user
-          'whatsapp_message_received',
-          'message_received',
-          {
-            source: 'whatsapp',
-            description: `Received ${messageType} message`,
-            messageType,
-            contactName: profileName,
-            hasProfileName: !!profileName
-          }
-        );
-      } catch (dbError) {
-        logger.warn('Failed to log activity - continuing without logging', { error: dbError.message });
-      }
+      await activityLogger.logUserActivity(
+        null, // We'll update with userId after getting user
+        'whatsapp_message_received',
+        'message_received',
+        {
+          source: 'whatsapp',
+          description: `Received ${messageType} message`,
+          messageType,
+          contactName: profileName,
+          hasProfileName: !!profileName
+        }
+      );
 
       // Get or create user with profile name
       const user = await userService.getOrCreateUser(from, profileName);
