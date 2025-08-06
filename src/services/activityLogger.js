@@ -8,117 +8,161 @@ class ActivityLoggerService {
    * Log user activity with safe database operations
    */
   async logUserActivity(userId, activityType, action, metadata = {}) {
-    return await databaseService.safeExecute(async () => {
-      return await databaseService.createWithRetry(ActivityLog, {
+    try {
+      // Only log if database is healthy
+      if (databaseService.isConnectionHealthy()) {
+        return await databaseService.create(ActivityLog, {
+          userId,
+          activityType,
+          action,
+          description: metadata.description,
+          metadata,
+          source: metadata.source || 'whatsapp',
+          sessionId: metadata.sessionId,
+          ipAddress: metadata.ipAddress,
+          deviceInfo: metadata.deviceInfo,
+          geolocation: metadata.geolocation
+        });
+      } else {
+        logger.debug('Skipping activity logging - database connection unhealthy');
+        return null;
+      }
+    } catch (error) {
+      logger.debug('Failed to log user activity - continuing without logging', {
+        error: error.message,
         userId,
-        activityType,
-        action,
-        description: metadata.description,
-        metadata,
-        source: metadata.source || 'whatsapp',
-        sessionId: metadata.sessionId,
-        ipAddress: metadata.ipAddress,
-        deviceInfo: metadata.deviceInfo,
-        geolocation: metadata.geolocation
-      }, {}, { operationName: 'log user activity' });
-    }, {
-      operationName: 'user activity logging',
-      fallbackValue: null,
-      logWarning: false // Don't log warnings for activity logging failures to avoid spam
-    });
+        activityType
+      });
+      return null;
+    }
   }
 
   /**
    * Log transaction activity with safe database operations
    */
   async logTransactionActivity(transactionId, userId, activityType, action, metadata = {}) {
-    return await databaseService.safeExecute(async () => {
-      return await databaseService.createWithRetry(ActivityLog, {
-        userId,
-        activityType,
-        action,
-        description: metadata.description,
-        entityType: 'transaction',
-        entityId: transactionId,
-        relatedTransactionId: transactionId,
-        metadata,
-        source: metadata.source || 'system',
-        isSuccessful: metadata.isSuccessful !== false
-      }, {}, { operationName: 'log transaction activity' });
-    }, {
-      operationName: 'transaction activity logging',
-      fallbackValue: null,
-      logWarning: false
-    });
+    try {
+      // Only log if database is healthy
+      if (databaseService.isConnectionHealthy()) {
+        return await databaseService.create(ActivityLog, {
+          userId,
+          activityType,
+          action,
+          description: metadata.description,
+          entityType: 'transaction',
+          entityId: transactionId,
+          relatedTransactionId: transactionId,
+          metadata,
+          source: metadata.source || 'system',
+          isSuccessful: metadata.isSuccessful !== false
+        });
+      } else {
+        logger.debug('Skipping transaction activity logging - database connection unhealthy');
+        return null;
+      }
+    } catch (error) {
+      logger.debug('Failed to log transaction activity - continuing without logging', {
+        error: error.message,
+        transactionId,
+        userId
+      });
+      return null;
+    }
   }
 
   /**
    * Log security event with safe database operations
    */
   async logSecurityEvent(userId, action, severity, metadata = {}) {
-    return await databaseService.safeExecute(async () => {
-      return await databaseService.createWithRetry(ActivityLog, {
+    try {
+      // Only log if database is healthy
+      if (databaseService.isConnectionHealthy()) {
+        return await databaseService.create(ActivityLog, {
+          userId,
+          activityType: 'security_alert',
+          action,
+          description: metadata.description,
+          severity,
+          metadata,
+          source: metadata.source || 'system',
+          requiresAttention: severity === 'critical' || severity === 'error',
+          ipAddress: metadata.ipAddress,
+          deviceInfo: metadata.deviceInfo,
+          tags: ['security', severity]
+        });
+      } else {
+        logger.warn('Skipping security event logging - database connection unhealthy');
+        return null;
+      }
+    } catch (error) {
+      logger.warn('Failed to log security event - continuing without logging', {
+        error: error.message,
         userId,
-        activityType: 'security_alert',
-        action,
-        description: metadata.description,
-        severity,
-        metadata,
-        source: metadata.source || 'system',
-        requiresAttention: severity === 'critical' || severity === 'error',
-        ipAddress: metadata.ipAddress,
-        deviceInfo: metadata.deviceInfo,
-        tags: ['security', severity]
-      }, {}, { operationName: 'log security event' });
-    }, {
-      operationName: 'security event logging',
-      fallbackValue: null,
-      logWarning: true // Security events should log warnings
-    });
+        action
+      });
+      return null;
+    }
   }
 
   /**
    * Log admin action with safe database operations
    */
   async logAdminAction(adminUserId, targetUserId, action, metadata = {}) {
-    return await databaseService.safeExecute(async () => {
-      return await databaseService.createWithRetry(ActivityLog, {
-        userId: targetUserId,
+    try {
+      // Only log if database is healthy
+      if (databaseService.isConnectionHealthy()) {
+        return await databaseService.create(ActivityLog, {
+          userId: targetUserId,
+          adminUserId,
+          activityType: 'admin_action',
+          action,
+          description: metadata.description,
+          oldValues: metadata.oldValues,
+          newValues: metadata.newValues,
+          metadata,
+          source: 'admin',
+          tags: ['admin', 'manual']
+        });
+      } else {
+        logger.warn('Skipping admin action logging - database connection unhealthy');
+        return null;
+      }
+    } catch (error) {
+      logger.warn('Failed to log admin action - continuing without logging', {
+        error: error.message,
         adminUserId,
-        activityType: 'admin_action',
-        action,
-        description: metadata.description,
-        oldValues: metadata.oldValues,
-        newValues: metadata.newValues,
-        metadata,
-        source: 'admin',
-        tags: ['admin', 'manual']
-      }, {}, { operationName: 'log admin action' });
-    }, {
-      operationName: 'admin action logging',
-      fallbackValue: null,
-      logWarning: true // Admin actions should log warnings
-    });
+        targetUserId
+      });
+      return null;
+    }
   }
 
   /**
    * Log system event with safe database operations
    */
   async logSystemEvent(action, metadata = {}) {
-    return await databaseService.safeExecute(async () => {
-      return await databaseService.createWithRetry(ActivityLog, {
-        activityType: 'system_maintenance',
-        action,
-        description: metadata.description,
-        metadata,
-        source: 'system',
-        severity: metadata.severity || 'info'
-      }, {}, { operationName: 'log system event' });
-    }, {
-      operationName: 'system event logging',
-      fallbackValue: null,
-      logWarning: false
-    });
+    try {
+      // Only log if database is healthy
+      if (databaseService.isConnectionHealthy()) {
+        return await databaseService.create(ActivityLog, {
+          activityType: 'system_maintenance',
+          action,
+          description: metadata.description,
+          metadata,
+          source: 'system',
+          severity: metadata.severity || 'info'
+        });
+      } else {
+        logger.debug('Skipping system event logging - database connection unhealthy');
+        return null;
+      }
+    } catch (error) {
+      logger.debug('Failed to log system event - continuing without logging', {
+        error: error.message,
+        action
+      });
+      return null;
+    }
   }
 
   /**
@@ -170,40 +214,54 @@ class ActivityLoggerService {
   async getActivityStats(options = {}) {
     const { userId = null, days = 30 } = options;
 
-    return await databaseService.safeExecute(async () => {
-      const whereClause = {
-        createdAt: {
-          [Op.gte]: new Date(Date.now() - (days * 24 * 60 * 60 * 1000))
-        }
-      };
+    try {
+      // Only query if database is healthy
+      if (databaseService.isConnectionHealthy()) {
+        const whereClause = {
+          createdAt: {
+            [Op.gte]: new Date(Date.now() - (days * 24 * 60 * 60 * 1000))
+          }
+        };
 
-      if (userId) whereClause.userId = userId;
+        if (userId) whereClause.userId = userId;
 
-      const stats = await databaseService.queryWithRetry(`
-        SELECT 
-          COUNT(*) as total_activities,
-          COUNT(CASE WHEN "activityType" = 'whatsapp_message_received' THEN 1 END) as messages_received,
-          COUNT(CASE WHEN "activityType" = 'transaction' THEN 1 END) as transactions,
-          COUNT(CASE WHEN "severity" = 'critical' THEN 1 END) as critical_events,
-          COUNT(CASE WHEN "requiresAttention" = true THEN 1 END) as requires_attention
-        FROM "ActivityLogs"
-        WHERE "createdAt" >= $1 ${userId ? 'AND "userId" = $2' : ''}
-      `, {
-        bind: userId ? [new Date(Date.now() - (days * 24 * 60 * 60 * 1000)), userId] : [new Date(Date.now() - (days * 24 * 60 * 60 * 1000))],
-        type: require('sequelize').QueryTypes.SELECT
+        const stats = await databaseService.query(`
+          SELECT 
+            COUNT(*) as total_activities,
+            COUNT(CASE WHEN "activityType" = 'whatsapp_message_received' THEN 1 END) as messages_received,
+            COUNT(CASE WHEN "activityType" = 'transaction' THEN 1 END) as transactions,
+            COUNT(CASE WHEN "severity" = 'critical' THEN 1 END) as critical_events,
+            COUNT(CASE WHEN "requiresAttention" = true THEN 1 END) as requires_attention
+          FROM "ActivityLogs"
+          WHERE "createdAt" >= $1 ${userId ? 'AND "userId" = $2' : ''}
+        `, {
+          bind: userId ? [new Date(Date.now() - (days * 24 * 60 * 60 * 1000)), userId] : [new Date(Date.now() - (days * 24 * 60 * 60 * 1000))],
+          type: require('sequelize').QueryTypes.SELECT
+        });
+
+        return stats[0];
+      } else {
+        logger.debug('Skipping activity stats - database connection unhealthy');
+        return {
+          total_activities: 0,
+          messages_received: 0,
+          transactions: 0,
+          critical_events: 0,
+          requires_attention: 0
+        };
+      }
+    } catch (error) {
+      logger.debug('Failed to get activity stats - returning default values', {
+        error: error.message
       });
-
-      return stats[0];
-    }, {
-      operationName: 'get activity statistics',
-      fallbackValue: {
+      return {
         total_activities: 0,
         messages_received: 0,
         transactions: 0,
         critical_events: 0,
         requires_attention: 0
-      }
-    });
+      };
+    }
   }
 
   /**
