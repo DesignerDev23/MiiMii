@@ -490,7 +490,7 @@ router.post('/test-interactive-bot', async (req, res) => {
                            `Ready to start your onboarding and explore? Let's go! 🚀`;
         
         const welcomeButtons = [
-          { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
+          { id: 'complete_onboarding', title: '✅ Get Started' },
           { id: 'learn_more', title: '📚 Learn More' },
           { id: 'get_help', title: '❓ Get Help' }
         ];

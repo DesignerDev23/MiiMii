@@ -287,7 +287,7 @@ class MessageProcessor {
                          `Ready to get started? Let's set up your account! 🚀`;
         
       const buttons = [
-        { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
+        { id: 'complete_onboarding', title: '✅ Get Started' },
         { id: 'learn_more', title: '📚 Learn More' },
         { id: 'get_help', title: '❓ Get Help' }
       ];
