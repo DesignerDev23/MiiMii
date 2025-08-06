@@ -146,7 +146,7 @@ router.get('/whatsapp', (req, res) => {
   }
 });
 
-router.post('/whatsapp', 
+router.post('/whatsapp',
   verifyWebhookSignature('whatsapp'),
   logWebhook('whatsapp'),
   async (req, res) => {
@@ -154,12 +154,26 @@ router.post('/whatsapp',
       const parsedMessage = whatsappService.parseWebhookMessage(req.body);
       
       if (parsedMessage) {
+        // Handle webhook verification requests
+        if (parsedMessage.type === 'verification') {
+          logger.info('Handling webhook verification request');
+          const challenge = parsedMessage.challenge;
+          res.status(200).send(challenge);
+          return;
+        }
+
         if (parsedMessage.type === 'message') {
           // Mark message as read
           await whatsappService.markMessageAsRead(parsedMessage.messageId);
           
           // Check if this is a Flow webhook
           if (parsedMessage.flowData) {
+            logger.info('Processing Flow webhook data', {
+              messageId: parsedMessage.messageId,
+              flowToken: parsedMessage.flowData.flow_token,
+              screen: parsedMessage.flowData.screen
+            });
+            
             const whatsappFlowService = require('../services/whatsappFlowService');
             const flowResult = await whatsappFlowService.handleFlowWebhook(parsedMessage.flowData);
             
@@ -177,6 +191,22 @@ router.post('/whatsapp',
         } else if (parsedMessage.type === 'status') {
           // Handle message status updates
           logger.info('WhatsApp message status update', parsedMessage.statuses);
+        } else if (parsedMessage.type === 'flow_completion') {
+          // Handle Flow completion webhooks
+          logger.info('Processing Flow completion webhook', {
+            flowToken: parsedMessage.flowData.flow_token,
+            screen: parsedMessage.flowData.screen
+          });
+          
+          const whatsappFlowService = require('../services/whatsappFlowService');
+          const flowResult = await whatsappFlowService.handleFlowWebhook(parsedMessage.flowData);
+          
+          if (flowResult.success) {
+            const user = await userService.getUserById(flowResult.userId);
+            if (user && flowResult.result.message) {
+              await whatsappService.sendTextMessage(user.whatsappNumber, flowResult.result.message);
+            }
+          }
         }
 
         // Update webhook log as processed
@@ -193,11 +223,21 @@ router.post('/whatsapp',
             });
           }
         }
+      } else {
+        logger.warn('No valid message parsed from webhook', {
+          bodyKeys: Object.keys(req.body),
+          hasEntry: !!req.body.entry,
+          hasChanges: !!req.body.entry?.[0]?.changes
+        });
       }
 
       res.status(200).json({ success: true });
     } catch (error) {
-      logger.error('WhatsApp webhook processing failed', { error: error.message });
+      logger.error('WhatsApp webhook processing failed', { 
+        error: error.message,
+        stack: error.stack,
+        bodyKeys: Object.keys(req.body || {})
+      });
       
       // Update webhook log with error
       if (req.webhookLogId) {
