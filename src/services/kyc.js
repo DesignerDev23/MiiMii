@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const userService = require('./user');
 const whatsappService = require('./whatsapp');
 const ocrService = require('./ocr');
+const fincraService = require('./fincra');
 const { ActivityLog, User } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 
@@ -61,8 +62,28 @@ class KYCService {
         }
       });
 
+      // Start BVN verification with Fincra before other verifications
+      const bvnVerification = await this.verifyBVNWithFincra(bvn, {
+        firstName,
+        lastName,
+        dateOfBirth,
+        phoneNumber
+      });
+
+      // Update user with BVN verification result
+      await userService.updateUser(user.id, {
+        'kycData.verificationSteps.bvnVerification': bvnVerification.verified,
+        'kycData.bvnVerificationData': bvnVerification
+      });
+
+      // Only proceed with virtual account creation if BVN is verified
+      if (!bvnVerification.verified) {
+        throw new Error(`BVN validation failed: ${bvnVerification.error}`);
+      }
+
       // Start comprehensive verification process
       const verificationResults = await this.performComprehensiveVerification(user, kycData);
+      verificationResults.bvnVerification = bvnVerification;
       
       // Generate verification reference
       const reference = `KYC_${Date.now()}_${uuidv4().slice(0, 8)}`;
@@ -74,10 +95,12 @@ class KYCService {
         'kyc_process_started',
         {
           source: 'whatsapp',
-          description: 'Comprehensive KYC verification process initiated',
+          description: 'Comprehensive KYC verification process initiated with Fincra BVN validation',
           reference,
           verificationSteps: Object.keys(verificationResults),
-          hasExtractedData: !!extractedData
+          hasExtractedData: !!extractedData,
+          bvnVerified: bvnVerification.verified,
+          bvnProvider: 'fincra'
         }
       );
 
@@ -123,9 +146,14 @@ class KYCService {
     };
 
     try {
-      // 1. BVN Verification
+      // 1. BVN Verification - Using Fincra instead of Dojah
       if (kycData.bvn) {
-        results.bvnVerification = await this.verifyBvnAdvanced(kycData.bvn, user);
+        results.bvnVerification = await this.verifyBVNWithFincra(kycData.bvn, {
+          firstName: kycData.firstName,
+          lastName: kycData.lastName,
+          dateOfBirth: kycData.dateOfBirth,
+          phoneNumber: user.whatsappNumber
+        });
       }
 
       // 2. Phone Number Verification
@@ -1029,6 +1057,133 @@ class KYCService {
 
     } catch (error) {
       logger.error('Failed to handle KYC rejected webhook', { error: error.message, data });
+    }
+  }
+
+  // New Fincra BVN verification method
+  async verifyBVNWithFincra(bvn, userData) {
+    try {
+      logger.info('Starting Fincra BVN verification', {
+        bvnMasked: `***${bvn.slice(-4)}`,
+        hasUserData: !!userData
+      });
+
+      const bvnData = {
+        bvn: bvn.toString().trim(),
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        dateOfBirth: userData.dateOfBirth,
+        phoneNumber: userData.phoneNumber
+      };
+
+      const verification = await fincraService.validateBVN(bvnData);
+
+      if (verification.verified) {
+        logger.info('Fincra BVN verification successful', {
+          bvnMasked: `***${bvn.slice(-4)}`,
+          matchScore: verification.matchScore,
+          overallMatch: verification.overallMatch
+        });
+
+        return {
+          verified: true,
+          status: 'verified',
+          details: verification.data,
+          matchScore: verification.matchScore,
+          validationChecks: verification.validationChecks,
+          overallMatch: verification.overallMatch,
+          provider: 'fincra',
+          verifiedAt: verification.verifiedAt,
+          error: null
+        };
+      } else {
+        logger.warn('Fincra BVN verification failed', {
+          bvnMasked: `***${bvn.slice(-4)}`,
+          error: verification.error
+        });
+
+        return {
+          verified: false,
+          status: verification.status,
+          details: null,
+          error: verification.error,
+          provider: 'fincra',
+          verifiedAt: verification.verifiedAt
+        };
+      }
+
+    } catch (error) {
+      logger.error('Fincra BVN verification error', {
+        error: error.message,
+        bvnMasked: `***${bvn.slice(-4)}`,
+        stack: error.stack
+      });
+
+      return {
+        verified: false,
+        status: 'error',
+        details: null,
+        error: error.message,
+        provider: 'fincra',
+        verifiedAt: new Date()
+      };
+    }
+  }
+
+  // Updated verifyBVN method to use Fincra
+  async verifyBVN(bvn, userId) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const verification = await this.verifyBVNWithFincra(bvn, {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        dateOfBirth: user.dateOfBirth,
+        phoneNumber: user.whatsappNumber
+      });
+
+      // Log BVN verification attempt
+      await ActivityLog.logUserActivity(
+        userId,
+        'kyc_verification',
+        verification.verified ? 'bvn_verified' : 'bvn_verification_failed',
+        {
+          source: 'api',
+          description: `BVN verification ${verification.verified ? 'successful' : 'failed'} via Fincra`,
+          provider: 'fincra',
+          verified: verification.verified,
+          matchScore: verification.matchScore,
+          error: verification.error
+        }
+      );
+
+      return {
+        success: verification.verified,
+        verified: verification.verified,
+        data: verification.details,
+        matchScore: verification.matchScore,
+        validationChecks: verification.validationChecks,
+        overallMatch: verification.overallMatch,
+        error: verification.error,
+        provider: 'fincra'
+      };
+
+    } catch (error) {
+      logger.error('BVN verification failed', {
+        error: error.message,
+        userId,
+        bvnMasked: `***${bvn.slice(-4)}`
+      });
+
+      return {
+        success: false,
+        verified: false,
+        error: error.message,
+        provider: 'fincra'
+      };
     }
   }
 

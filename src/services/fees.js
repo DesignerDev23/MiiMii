@@ -36,7 +36,7 @@ class FeesService {
       
       // Other service fees
       airtime: {
-        fee: 0, // Free airtime purchases
+        additionalFee: 10, // Add ₦10 markup on every airtime purchase
         percentage: 0
       },
       
@@ -140,6 +140,22 @@ class FeesService {
         bellBankFee: this.feeStructure.bellBankTransfers.bellBankFee,
         platformFee: this.feeStructure.bellBankTransfers.platformFee,
         totalFee: this.feeStructure.bellBankTransfers.totalFee
+      }
+    };
+  }
+
+  // Calculate airtime purchase fee
+  calculateAirtimePurchaseFee(amount) {
+    const baseAmount = parseFloat(amount);
+    const additionalFee = this.feeStructure.airtime.additionalFee;
+    
+    return {
+      fee: additionalFee,
+      reason: 'Fixed markup on airtime purchases',
+      breakdown: {
+        amount: baseAmount,
+        additionalFee,
+        totalCost: baseAmount + additionalFee
       }
     };
   }

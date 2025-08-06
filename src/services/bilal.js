@@ -3,6 +3,9 @@ const { axiosConfig } = require('../utils/httpsAgent');
 const logger = require('../utils/logger');
 const walletService = require('./wallet');
 const whatsappService = require('./whatsapp');
+const bellbankService = require('./bellbank');
+const feesService = require('./fees');
+const RetryHelper = require('../utils/retryHelper');
 
 class BilalService {
   constructor() {
@@ -11,6 +14,14 @@ class BilalService {
     this.password = process.env.BILAL_PASSWORD;
     this.token = null;
     this.tokenExpiry = null;
+    
+    // Bilal's virtual account details for payments
+    this.bilalAccount = {
+      accountNumber: '5212208183',
+      bankCode: '000027', // 9PSB bank code
+      bankName: '9PSB',
+      accountName: 'BILALSADASUB'
+    };
   }
 
   async generateToken() {
@@ -67,6 +78,55 @@ class BilalService {
     }
   }
 
+  async transferToBilalAccount(user, amount, narration, requestId) {
+    try {
+      logger.info('Transferring funds to Bilal account', {
+        userId: user.id,
+        amount,
+        requestId
+      });
+
+      const transferData = {
+        amount: parseFloat(amount),
+        accountNumber: this.bilalAccount.accountNumber,
+        bankCode: this.bilalAccount.bankCode,
+        narration: narration.substring(0, 30), // BellBank limit
+        reference: `BILAL_${requestId}`,
+        sessionId: `SESSION_${Date.now()}`,
+        userId: user.id,
+        transactionId: requestId
+      };
+
+      const transferResult = await bellbankService.transferFunds(transferData);
+
+      if (transferResult.success) {
+        logger.info('Transfer to Bilal account successful', {
+          userId: user.id,
+          amount,
+          requestId,
+          providerReference: transferResult.providerReference
+        });
+
+        return {
+          success: true,
+          transferReference: transferResult.providerReference,
+          bilalReference: `BILAL_${requestId}`
+        };
+      } else {
+        throw new Error(`Transfer to Bilal account failed: ${transferResult.message}`);
+      }
+
+    } catch (error) {
+      logger.error('Failed to transfer funds to Bilal account', {
+        error: error.message,
+        userId: user.id,
+        amount,
+        requestId
+      });
+      throw error;
+    }
+  }
+
   async purchaseAirtime(user, purchaseData, userPhoneNumber) {
     try {
       const { amount, phoneNumber } = purchaseData;
@@ -74,7 +134,8 @@ class BilalService {
       
       // Check user balance first
       const wallet = await walletService.getUserWallet(user.id);
-      const totalCost = parseFloat(amount) + parseFloat(process.env.DATA_PURCHASE_FEE || 10);
+      const airtimeFeeCalculation = feesService.calculateAirtimePurchaseFee(amount);
+      const totalCost = parseFloat(amount) + airtimeFeeCalculation.fee;
       
       if (!wallet.canDebit(totalCost)) {
         await whatsappService.sendTextMessage(
@@ -87,7 +148,32 @@ class BilalService {
       // Generate unique request ID
       const requestId = `Airtime_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-      // Get token
+      // Step 1: Debit user wallet first
+      await walletService.debitWallet(
+        user.id,
+        totalCost,
+        `Airtime purchase - ${network.name} ₦${amount} for ${phoneNumber}`,
+        {
+          category: 'airtime_purchase',
+          network: network.name,
+          phoneNumber,
+          originalAmount: amount,
+          fee: airtimeFeeCalculation.fee,
+          requestId,
+          provider: 'bilal',
+          status: 'initiated'
+        }
+      );
+
+      // Step 2: Transfer equivalent amount to Bilal's virtual account
+      const transferResult = await this.transferToBilalAccount(
+        user,
+        amount, // Only transfer the original amount, not including our fee
+        `Airtime ${network.name} ${phoneNumber}`,
+        requestId
+      );
+
+      // Step 3: Get token and make API call to Bilal
       const tokenData = await this.generateToken();
 
       // Purchase airtime via Bilal API
@@ -103,20 +189,15 @@ class BilalService {
       const response = await this.makeRequest('POST', '/topup', payload, tokenData.token);
 
       if (response.status === 'success') {
-        // Debit user wallet
-        await walletService.debitWallet(
+        // Update transaction with success status
+        await walletService.updateTransactionMetadata(
           user.id,
-          totalCost,
-          `Airtime purchase - ${network.name} ₦${amount} for ${phoneNumber}`,
+          requestId,
           {
-            category: 'airtime_purchase',
-            network: network.name,
-            phoneNumber,
-            originalAmount: amount,
-            fee: process.env.DATA_PURCHASE_FEE || 10,
             providerReference: response['request-id'],
-            provider: 'bilal',
-            bilalResponse: response
+            bilalResponse: response,
+            transferReference: transferResult.transferReference,
+            status: 'completed'
           }
         );
 
@@ -143,6 +224,31 @@ class BilalService {
         return response;
 
       } else {
+        // API call failed, but we already debited user and transferred to Bilal
+        // We should reverse the user's wallet debit since the purchase failed
+        await walletService.creditWallet(
+          user.id,
+          totalCost,
+          `Airtime purchase refund - ${network.name} failed`,
+          {
+            category: 'airtime_refund',
+            originalRequestId: requestId,
+            reason: 'bilal_api_failed',
+            originalError: response.message || 'Airtime purchase failed'
+          }
+        );
+
+        // Update transaction status
+        await walletService.updateTransactionMetadata(
+          user.id,
+          requestId,
+          {
+            status: 'failed',
+            error: response.message || 'Airtime purchase failed',
+            refunded: true
+          }
+        );
+
         throw new Error(response.message || 'Airtime purchase failed');
       }
 
@@ -206,7 +312,8 @@ class BilalService {
       // Check user balance (we'll get the actual cost from the plan)
       const wallet = await walletService.getUserWallet(user.id);
       const estimatedCost = amount ? parseFloat(amount) : 500; // Estimate if no amount provided
-      const totalCost = estimatedCost + parseFloat(process.env.DATA_PURCHASE_FEE || 10);
+      const dataFeeCalculation = feesService.calculateDataPurchaseFee(estimatedCost);
+      const totalCost = estimatedCost + dataFeeCalculation.fee;
       
       if (!wallet.canDebit(totalCost)) {
         await whatsappService.sendTextMessage(
@@ -219,7 +326,34 @@ class BilalService {
       // Generate unique request ID
       const requestId = `Data_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-      // Get token
+      // Step 1: Debit user wallet first with estimated cost
+      await walletService.debitWallet(
+        user.id,
+        totalCost,
+        `Data purchase - ${network.name} ${dataSize || 'plan'} for ${phoneNumber}`,
+        {
+          category: 'data_purchase',
+          network: network.name,
+          phoneNumber,
+          planId,
+          dataSize: dataSize,
+          originalAmount: estimatedCost,
+          fee: dataFeeCalculation.fee,
+          requestId,
+          provider: 'bilal',
+          status: 'initiated'
+        }
+      );
+
+      // Step 2: Transfer estimated amount to Bilal's virtual account
+      const transferResult = await this.transferToBilalAccount(
+        user,
+        estimatedCost, // Only transfer the original amount, not including our fee
+        `Data ${network.name} ${phoneNumber}`,
+        requestId
+      );
+
+      // Step 3: Get token and make API call to Bilal
       const tokenData = await this.generateToken();
 
       // Purchase data via Bilal API
@@ -234,25 +368,52 @@ class BilalService {
       const response = await this.makeRequest('POST', '/data', payload, tokenData.token);
 
       if (response.status === 'success') {
-        // Debit user wallet with actual amount
+        // Check if actual amount differs from estimated
         const actualAmount = parseFloat(response.amount);
-        const actualTotalCost = actualAmount + parseFloat(process.env.DATA_PURCHASE_FEE || 10);
+        const actualDataFeeCalculation = feesService.calculateDataPurchaseFee(actualAmount);
+        const actualTotalCost = actualAmount + actualDataFeeCalculation.fee;
         
-        await walletService.debitWallet(
+        if (actualTotalCost !== totalCost) {
+          // Adjust wallet balance if there's a difference
+          const difference = actualTotalCost - totalCost;
+          if (difference > 0) {
+            // Need to debit more
+            await walletService.debitWallet(
+              user.id,
+              difference,
+              `Data purchase adjustment - additional ${difference}`,
+              {
+                category: 'data_purchase_adjustment',
+                originalRequestId: requestId,
+                adjustmentAmount: difference
+              }
+            );
+          } else if (difference < 0) {
+            // Need to credit back
+            await walletService.creditWallet(
+              user.id,
+              Math.abs(difference),
+              `Data purchase adjustment - refund ${Math.abs(difference)}`,
+              {
+                category: 'data_purchase_adjustment',
+                originalRequestId: requestId,
+                adjustmentAmount: difference
+              }
+            );
+          }
+        }
+
+        // Update transaction with success status
+        await walletService.updateTransactionMetadata(
           user.id,
-          actualTotalCost,
-          `Data purchase - ${network.name} ${response.dataplan} for ${phoneNumber}`,
+          requestId,
           {
-            category: 'data_purchase',
-            network: network.name,
-            phoneNumber,
-            planId,
             dataSize: response.dataplan,
-            originalAmount: actualAmount,
-            fee: process.env.DATA_PURCHASE_FEE || 10,
+            actualAmount: actualAmount,
             providerReference: response['request-id'],
-            provider: 'bilal',
-            bilalResponse: response
+            bilalResponse: response,
+            transferReference: transferResult.transferReference,
+            status: 'completed'
           }
         );
 
@@ -279,6 +440,31 @@ class BilalService {
         return response;
 
       } else {
+        // API call failed, but we already debited user and transferred to Bilal
+        // We should reverse the user's wallet debit since the purchase failed
+        await walletService.creditWallet(
+          user.id,
+          totalCost,
+          `Data purchase refund - ${network.name} failed`,
+          {
+            category: 'data_refund',
+            originalRequestId: requestId,
+            reason: 'bilal_api_failed',
+            originalError: response.message || 'Data purchase failed'
+          }
+        );
+
+        // Update transaction status
+        await walletService.updateTransactionMetadata(
+          user.id,
+          requestId,
+          {
+            status: 'failed',
+            error: response.message || 'Data purchase failed',
+            refunded: true
+          }
+        );
+
         throw new Error(response.message || 'Data purchase failed');
       }
 
@@ -473,7 +659,7 @@ class BilalService {
   }
 
   async makeRequest(method, endpoint, data = null, token = null) {
-    try {
+    return await RetryHelper.executeWithRetry(async () => {
       const config = {
         ...axiosConfig,
         method,
@@ -499,13 +685,19 @@ class BilalService {
       const response = await axios(config);
 
       return response.data;
-    } catch (error) {
-      if (error.response) {
-        const apiError = error.response.data;
-        throw new Error(apiError.message || `Bilal API Error: ${error.response.status}`);
+    }, {
+      maxAttempts: 3,
+      baseDelay: 1500,
+      operationName: `bilal_${method.toLowerCase()}_${endpoint.replace(/\//g, '_')}`,
+      shouldRetry: (error, attempt) => {
+        // Don't retry authentication errors
+        if (error.response && [401, 403].includes(error.response.status)) {
+          return false;
+        }
+        // Retry on network errors and 5xx errors
+        return !error.response || error.response.status >= 500;
       }
-      throw error;
-    }
+    });
   }
 
   // Handle webhook responses from Bilal
