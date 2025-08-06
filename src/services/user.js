@@ -370,29 +370,42 @@ class UserService {
   }
 
   cleanPhoneNumber(phoneNumber) {
+    if (!phoneNumber) {
+      throw new Error('Phone number is required');
+    }
+
     // Remove all non-digit characters
     let cleaned = phoneNumber.replace(/\D/g, '');
     
-    // Convert +234 format to 0 format
+    // Handle different input formats and convert to E.164
     if (cleaned.startsWith('234') && cleaned.length === 13) {
-      cleaned = '0' + cleaned.slice(3);
+      // Already in +234 format without the +
+      return `+${cleaned}`;
+    } else if (cleaned.startsWith('0') && cleaned.length === 11) {
+      // Nigerian local format (e.g., 08012345678)
+      return `+234${cleaned.slice(1)}`;
+    } else if (cleaned.length === 10 && /^[789]/.test(cleaned)) {
+      // 10-digit Nigerian number without leading 0 (e.g., 8012345678)
+      return `+234${cleaned}`;
+    } else if (phoneNumber.startsWith('+234') && cleaned.length === 13) {
+      // Already properly formatted
+      return phoneNumber;
+    } else if (phoneNumber.startsWith('+') && cleaned.length >= 10 && cleaned.length <= 15) {
+      // Other international numbers already in E.164 format
+      return phoneNumber;
     }
     
-    // Ensure it starts with 0 and is 11 digits
-    if (!cleaned.startsWith('0') && cleaned.length === 10) {
-      cleaned = '0' + cleaned;
+    // If none of the above patterns match, assume it's a Nigerian number without country code
+    if (cleaned.length === 10) {
+      return `+234${cleaned}`;
     }
     
-    if (cleaned.length !== 11 || !cleaned.startsWith('0')) {
-      throw new Error('Invalid phone number format');
-    }
-    
-    return cleaned;
+    throw new Error(`Invalid phone number format: ${phoneNumber}. Expected Nigerian format (08012345678) or international E.164 format (+234...)`);
   }
 
   formatPhoneNumber(phoneNumber) {
-    const cleaned = this.cleanPhoneNumber(phoneNumber);
-    return `+234${cleaned.slice(1)}`;
+    // cleanPhoneNumber now returns E.164 format, so just return it
+    return this.cleanPhoneNumber(phoneNumber);
   }
 
   validatePhoneNumber(phoneNumber) {
