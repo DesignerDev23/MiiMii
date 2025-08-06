@@ -112,22 +112,31 @@ const verifyWebhookSignature = (provider) => (req, res, next) => {
 
 // Log all webhook events
 const logWebhook = (provider) => async (req, res, next) => {
-  const webhookLog = await databaseService.safeExecute(async () => {
-    return await databaseService.createWithRetry(WebhookLog, {
-      provider,
-      event: req.body.type || req.body.event || 'unknown',
-      headers: req.headers,
-      payload: req.body,
-      signature: req.headers['x-webhook-signature'] || req.headers['x-signature'],
-      verified: true // Will be false if signature verification fails
-    }, {}, { operationName: 'log webhook' });
-  }, {
-    operationName: 'webhook logging',
-    fallbackValue: null,
-    logWarning: true
-  });
-
-  req.webhookLogId = webhookLog?.id || null;
+  try {
+    // Only log if database is healthy
+    if (databaseService.isConnectionHealthy()) {
+      const webhookLog = await databaseService.create(WebhookLog, {
+        provider,
+        event: req.body.type || req.body.event || 'unknown',
+        headers: req.headers,
+        payload: req.body,
+        signature: req.headers['x-webhook-signature'] || req.headers['x-signature'],
+        verified: true // Will be false if signature verification fails
+      });
+      
+      req.webhookLogId = webhookLog?.id || null;
+    } else {
+      logger.warn('Skipping webhook logging - database connection unhealthy');
+      req.webhookLogId = null;
+    }
+  } catch (error) {
+    logger.warn('Failed to log webhook - continuing without logging', {
+      error: error.message,
+      provider
+    });
+    req.webhookLogId = null;
+  }
+  
   next();
 };
 
@@ -212,7 +221,7 @@ router.post('/whatsapp',
         // Update webhook log as processed
         if (req.webhookLogId) {
           try {
-            await WebhookLog.update(
+            await databaseService.update(WebhookLog,
               { processed: true, processedAt: new Date(), responseCode: 200 },
               { where: { id: req.webhookLogId } }
             );
@@ -242,7 +251,7 @@ router.post('/whatsapp',
       // Update webhook log with error
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: false, errorMessage: error.message, responseCode: 500 },
             { where: { id: req.webhookLogId } }
           );
@@ -283,7 +292,7 @@ router.post('/bellbank',
 
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: true, processedAt: new Date(), responseCode: 200 },
             { where: { id: req.webhookLogId } }
           );
@@ -301,7 +310,7 @@ router.post('/bellbank',
       
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: false, errorMessage: error.message, responseCode: 500 },
             { where: { id: req.webhookLogId } }
           );
@@ -335,7 +344,7 @@ router.post('/bilal',
 
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: true, processedAt: new Date(), responseCode: 200 },
             { where: { id: req.webhookLogId } }
           );
@@ -353,7 +362,7 @@ router.post('/bilal',
       
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: false, errorMessage: error.message, responseCode: 500 },
             { where: { id: req.webhookLogId } }
           );
@@ -391,7 +400,7 @@ router.post('/fincra',
 
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: true, processedAt: new Date(), responseCode: 200 },
             { where: { id: req.webhookLogId } }
           );
@@ -409,7 +418,7 @@ router.post('/fincra',
       
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: false, errorMessage: error.message, responseCode: 500 },
             { where: { id: req.webhookLogId } }
           );
@@ -447,7 +456,7 @@ router.post('/dojah',
 
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: true, processedAt: new Date(), responseCode: 200 },
             { where: { id: req.webhookLogId } }
           );
@@ -465,7 +474,7 @@ router.post('/dojah',
       
       if (req.webhookLogId) {
         try {
-          await WebhookLog.update(
+          await databaseService.update(WebhookLog,
             { processed: false, errorMessage: error.message, responseCode: 500 },
             { where: { id: req.webhookLogId } }
           );
