@@ -121,6 +121,69 @@ class DatabaseService {
       return await this.sequelize.query(sql, options);
     });
   }
+
+  // Enhanced retry methods for UserService compatibility
+  async findOneWithRetry(model, options, retryOptions = {}) {
+    const { maxRetries = 3, operationName = 'findOne' } = retryOptions;
+    return this.executeWithRetry(async () => {
+      return await model.findOne(options);
+    }, maxRetries);
+  }
+
+  async findWithRetry(model, options, retryOptions = {}) {
+    const { maxRetries = 3, operationName = 'findAll' } = retryOptions;
+    return this.executeWithRetry(async () => {
+      return await model.findAll(options);
+    }, maxRetries);
+  }
+
+  async findByPkWithRetry(model, id, options, retryOptions = {}) {
+    const { maxRetries = 3, operationName = 'findByPk' } = retryOptions;
+    return this.executeWithRetry(async () => {
+      return await model.findByPk(id, options);
+    }, maxRetries);
+  }
+
+  async createWithRetry(model, data, options = {}, retryOptions = {}) {
+    const { maxRetries = 3, operationName = 'create' } = retryOptions;
+    return this.executeWithRetry(async () => {
+      return await model.create(data, options);
+    }, maxRetries);
+  }
+
+  async updateWithRetry(model, data, options, retryOptions = {}) {
+    const { maxRetries = 3, operationName = 'update' } = retryOptions;
+    return this.executeWithRetry(async () => {
+      return await model.update(data, options);
+    }, maxRetries);
+  }
+
+  async destroyWithRetry(model, options, retryOptions = {}) {
+    const { maxRetries = 3, operationName = 'destroy' } = retryOptions;
+    return this.executeWithRetry(async () => {
+      return await model.destroy(options);
+    }, maxRetries);
+  }
+
+  async queryWithRetry(sql, options, retryOptions = {}) {
+    const { maxRetries = 3, operationName = 'query' } = retryOptions;
+    return this.executeWithRetry(async () => {
+      return await this.sequelize.query(sql, options);
+    }, maxRetries);
+  }
+
+  async safeExecute(operation, options = {}) {
+    const { maxRetries = 3, operationName = 'operation', fallbackValue = null } = options;
+    try {
+      return await this.executeWithRetry(operation, maxRetries);
+    } catch (error) {
+      logger.error(`Safe execute failed for ${operationName}`, { error: error.message });
+      if (fallbackValue !== null) {
+        return fallbackValue;
+      }
+      throw error;
+    }
+  }
 }
 
 // Create singleton instance
