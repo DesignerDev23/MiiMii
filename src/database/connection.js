@@ -74,11 +74,28 @@ class DatabaseManager {
           backoffBase: 2000,
           backoffExponent: 1.5,
         },
-        // Disable automatic reconnection - we'll handle it manually
+        // Use hooks instead of connectionManager events
         hooks: {
           beforeConnect: () => {
             if (this.isShuttingDown) {
               throw new Error('Database is shutting down, cannot create new connections');
+            }
+            logger.debug('Attempting database connection...');
+          },
+          afterConnect: () => {
+            logger.info('Database connection established');
+            this.isConnected = true;
+            this.reconnectAttempts = 0;
+            this.reconnectDelay = 5000; // Reset delay
+          },
+          beforeDisconnect: () => {
+            logger.info('Database connection closing...');
+          },
+          afterDisconnect: () => {
+            logger.warn('Database connection lost');
+            this.isConnected = false;
+            if (!this.isShuttingDown) {
+              this.scheduleReconnect();
             }
           }
         }
@@ -130,6 +147,23 @@ class DatabaseManager {
             if (this.isShuttingDown) {
               throw new Error('Database is shutting down, cannot create new connections');
             }
+            logger.debug('Attempting database connection...');
+          },
+          afterConnect: () => {
+            logger.info('Database connection established');
+            this.isConnected = true;
+            this.reconnectAttempts = 0;
+            this.reconnectDelay = 5000; // Reset delay
+          },
+          beforeDisconnect: () => {
+            logger.info('Database connection closing...');
+          },
+          afterDisconnect: () => {
+            logger.warn('Database connection lost');
+            this.isConnected = false;
+            if (!this.isShuttingDown) {
+              this.scheduleReconnect();
+            }
           }
         }
       });
@@ -143,36 +177,7 @@ class DatabaseManager {
       return;
     }
 
-    this.setupEventListeners();
     this.startHealthCheck();
-  }
-
-  setupEventListeners() {
-    // Handle connection errors
-    this.sequelize.connectionManager.on('error', (error) => {
-      logger.error('Database connection error:', error);
-      this.isConnected = false;
-      if (!this.isShuttingDown) {
-        this.scheduleReconnect();
-      }
-    });
-
-    // Handle successful connections
-    this.sequelize.connectionManager.on('connect', () => {
-      logger.info('Database connection established');
-      this.isConnected = true;
-      this.reconnectAttempts = 0;
-      this.reconnectDelay = 5000; // Reset delay
-    });
-
-    // Handle connection pool errors
-    this.sequelize.connectionManager.on('disconnect', () => {
-      logger.warn('Database connection lost');
-      this.isConnected = false;
-      if (!this.isShuttingDown) {
-        this.scheduleReconnect();
-      }
-    });
   }
 
   async connect() {
