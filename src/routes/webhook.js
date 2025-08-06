@@ -4,6 +4,7 @@ const { WebhookLog } = require('../models');
 const whatsappService = require('../services/whatsapp');
 const messageProcessor = require('../services/messageProcessor');
 const logger = require('../utils/logger');
+const databaseService = require('../services/database');
 
 const router = express.Router();
 
@@ -37,44 +38,23 @@ const verifyWebhookSignature = (provider) => (req, res, next) => {
 
 // Log all webhook events
 const logWebhook = (provider) => async (req, res, next) => {
-  try {
-    // Check if database connection is available before attempting to log
-    const { sequelize } = require('../database/connection');
-    
-    // Check if sequelize is properly initialized
-    if (!sequelize || sequelize.dialect.name === 'sqlite') {
-      logger.warn('Database not available for webhook logging', { 
-        provider,
-        note: 'Continuing webhook processing without database logging'
-      });
-      req.webhookLogId = null;
-      return next();
-    }
-    
-    // Test the connection before using it
-    await sequelize.authenticate();
-    
-    const webhookLog = await WebhookLog.create({
+  const webhookLog = await databaseService.safeExecute(async () => {
+    return await databaseService.createWithRetry(WebhookLog, {
       provider,
       event: req.body.type || req.body.event || 'unknown',
       headers: req.headers,
       payload: req.body,
       signature: req.headers['x-webhook-signature'] || req.headers['x-signature'],
       verified: true // Will be false if signature verification fails
-    });
+    }, {}, { operationName: 'log webhook' });
+  }, {
+    operationName: 'webhook logging',
+    fallbackValue: null,
+    logWarning: true
+  });
 
-    req.webhookLogId = webhookLog.id;
-    next();
-  } catch (error) {
-    // Log error but continue processing webhook - don't let DB issues block webhooks
-    logger.error('Failed to log webhook', { 
-      error: error.message, 
-      provider,
-      note: 'Continuing webhook processing without database logging'
-    });
-    req.webhookLogId = null; // Indicate that logging failed
-    next();
-  }
+  req.webhookLogId = webhookLog?.id || null;
+  next();
 };
 
 // WhatsApp webhook endpoints

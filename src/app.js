@@ -13,7 +13,7 @@ const path = require('path');
 const config = require('./config');
 
 const logger = require('./utils/logger');
-const { sequelize } = require('./database/connection');
+const { sequelize, databaseManager } = require('./database/connection');
 const redisClient = require('./utils/redis');
 const errorHandler = require('./middleware/errorHandler');
 const { testSSLConnections } = require('./utils/sslTest');
@@ -403,29 +403,37 @@ process.on('uncaughtException', (err) => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  if (server) {
-    server.close(() => {
-      logger.info('Server closed');
-      process.exit(0);
-    });
-  } else {
-    process.exit(0);
-  }
-});
+async function gracefulShutdown(signal) {
+  logger.info(`${signal} received, shutting down gracefully`);
+  
+  try {
+    // Close HTTP server first
+    if (server) {
+      await new Promise((resolve) => {
+        server.close(resolve);
+      });
+      logger.info('✅ HTTP server closed');
+    }
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  if (server) {
-    server.close(() => {
-      logger.info('Server closed');
-      process.exit(0);
-    });
-  } else {
+    // Close database connections
+    await databaseManager.gracefulShutdown();
+
+    // Close Redis connection
+    if (redisClient && typeof redisClient.disconnect === 'function') {
+      await redisClient.disconnect();
+      logger.info('✅ Redis connection closed');
+    }
+
+    logger.info('✅ Graceful shutdown completed');
     process.exit(0);
+  } catch (error) {
+    logger.error('❌ Error during graceful shutdown:', error);
+    process.exit(1);
   }
-});
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 if (require.main === module) {
   startServer();
