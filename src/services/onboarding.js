@@ -371,22 +371,70 @@ class OnboardingService {
   }
 
   async startGuidedKycFlow(user) {
-    await whatsappService.sendTextMessage(
-      user.whatsappNumber,
-      `🧭 *Guided KYC Setup*\n\n` +
-      `I'll walk you through each piece of information step by step.\n\n` +
-      `Let's start with your *date of birth*.\n\n` +
-      `📅 Please enter in DD/MM/YYYY format\n` +
-      `Example: 15/03/1990`
-    );
-    
-    await user.update({
-      conversationState: JSON.stringify({
-        flow: 'guided_kyc',
-        step: 'date_of_birth',
-        data: {}
-      })
-    });
+    try {
+      // Create and send WhatsApp Flow for guided KYC setup
+      const whatsappFlowService = require('./whatsappFlowService');
+      const flowData = {
+        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowToken: whatsappFlowService.generateFlowToken(user.id),
+        flowCta: 'Start Guided Setup',
+        header: {
+          type: 'text',
+          text: 'KYC Information Setup'
+        },
+        body: `🧭 *Guided KYC Setup*\n\nI'll walk you through each piece of information step by step.\n\nThis interactive form will collect:\n📅 Date of Birth\n👤 Gender\n🆔 BVN Number\n🏠 Address\n\nReady to start?`,
+        footer: 'Secure • Step-by-step • Easy',
+        flowActionPayload: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'personal_details'
+        }
+      };
+
+      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      // Update user state to indicate flow was sent
+      await user.update({
+        conversationState: JSON.stringify({
+          flow: 'guided_kyc',
+          step: 'flow_sent',
+          data: {}
+        })
+      });
+
+      logger.info('Started guided KYC flow for user', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+      return { success: true, step: 'flow_sent' };
+    } catch (error) {
+      logger.error('Failed to start guided KYC flow', {
+        error: error.message,
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+      // Fallback to traditional text-based flow
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `🧭 *Guided KYC Setup*\n\n` +
+        `I'll walk you through each piece of information step by step.\n\n` +
+        `Let's start with your *date of birth*.\n\n` +
+        `📅 Please enter in DD/MM/YYYY format\n` +
+        `Example: 15/03/1990`
+      );
+      
+      await user.update({
+        conversationState: JSON.stringify({
+          flow: 'guided_kyc',
+          step: 'date_of_birth',
+          data: {}
+        })
+      });
+      
+      return { success: true, step: 'fallback_text_flow' };
+    }
   }
 
   async processKycDocument(user, message) {
