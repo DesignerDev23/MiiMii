@@ -16,6 +16,12 @@ class AIAssistantService {
     this.openaiBaseUrl = 'https://api.openai.com/v1';
     this.model = process.env.AI_MODEL || 'gpt-4-turbo-preview';
     
+    // Validate OpenAI configuration
+    this.isConfigured = !!this.openaiApiKey;
+    if (!this.isConfigured) {
+      logger.warn('OpenAI API key not configured - AI features will use fallback processing');
+    }
+    
     // Enhanced intent patterns for better recognition
     this.intentPatterns = {
       TRANSFER_MONEY: {
@@ -179,6 +185,15 @@ Be helpful, secure, and always ask for PIN verification for transactions.`;
 
   async getAIResponse(message, user, extractedData = null) {
     try {
+      // Check if OpenAI is configured
+      if (!this.isConfigured) {
+        logger.info('OpenAI not configured, using fallback processing', { 
+          phoneNumber: user.whatsappNumber,
+          messageType: 'text'
+        });
+        return this.fallbackProcessing(message, user);
+      }
+
       // Build context for the AI
       const context = await this.buildUserContext(user);
       
@@ -212,31 +227,41 @@ Extract intent and data from this message. Consider the user context and any ext
           ...axiosConfig.headers,
           'Authorization': `Bearer ${this.openaiApiKey}`,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 30000 // 30 second timeout
       });
 
       const aiResult = JSON.parse(response.data.choices[0].message.content);
       
-      // Log AI response for monitoring
-      await ActivityLog.logUserActivity(
-        user.id,
-        'ai_processing',
-        'intent_extracted',
-        {
-          source: 'system',
-          description: 'AI extracted intent from user message',
-          intent: aiResult.intent,
-          confidence: aiResult.confidence,
-          hasExtractedData: !!extractedData
-        }
-      );
+      // Log AI response for monitoring - handle gracefully if DB unavailable
+      try {
+        await ActivityLog.logUserActivity(
+          user.id,
+          'ai_processing',
+          'intent_extracted',
+          {
+            source: 'system',
+            description: 'AI extracted intent from user message',
+            intent: aiResult.intent,
+            confidence: aiResult.confidence,
+            hasExtractedData: !!extractedData
+          }
+        );
+      } catch (dbError) {
+        logger.warn('Failed to log AI activity - continuing without logging', { error: dbError.message });
+      }
 
       return aiResult;
 
     } catch (error) {
-      logger.error('OpenAI API call failed', { error: error.message });
+      logger.error('OpenAI API call failed', { 
+        error: error.message, 
+        phoneNumber: user.whatsappNumber,
+        errorType: error.response?.status || 'unknown'
+      });
       
       // Fallback to rule-based processing if AI fails
+      logger.info('Using fallback processing due to AI failure', { phoneNumber: user.whatsappNumber });
       return this.fallbackProcessing(message, user);
     }
   }
@@ -275,6 +300,13 @@ Extract intent and data from this message. Consider the user context and any ext
 
       // Process based on intent
       switch (intent) {
+        case 'GREETING':
+          return {
+            intent: 'GREETING',
+            message: aiResponse.message || `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`,
+            requiresAction: 'NONE'
+          };
+          
         case 'TRANSFER_MONEY':
           return await this.handleMoneyTransfer(user, extractedData, aiResponse);
           
@@ -299,8 +331,13 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'HELP':
           return this.handleHelp(user);
           
+        case 'UNKNOWN':
         default:
-          return this.handleUnknownIntent(user, originalMessage, confidence);
+          return {
+            intent: 'UNKNOWN',
+            message: aiResponse.message || "I didn't quite understand that. Could you please rephrase or type 'help' for assistance?",
+            requiresAction: 'NONE'
+          };
       }
     } catch (error) {
       logger.error('Intent processing failed', { error: error.message, userId: user.id });
@@ -672,19 +709,71 @@ Extract intent and data from this message. Consider the user context and any ext
 
   // Fallback processing when AI is unavailable
   fallbackProcessing(message, user) {
-    const lowerMessage = message.toLowerCase();
+    const lowerMessage = message.toLowerCase().trim();
     
-    // Simple keyword matching
-    if (lowerMessage.includes('balance')) {
+    // Handle greetings and welcome messages
+    const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'start', 'begin'];
+    if (greetings.some(greeting => lowerMessage.includes(greeting)) || lowerMessage.length < 10) {
+      return { 
+        success: true, 
+        intent: 'GREETING', 
+        extractedData: {}, 
+        confidence: 0.9,
+        message: `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`
+      };
+    }
+    
+    // Simple keyword matching for common commands
+    if (lowerMessage.includes('balance') || lowerMessage.includes('wallet')) {
       return { success: true, intent: 'CHECK_BALANCE', extractedData: {}, confidence: 0.8 };
-    } else if (lowerMessage.includes('help')) {
-      return { success: true, intent: 'HELP', extractedData: {}, confidence: 0.9 };
+    } else if (lowerMessage.includes('help') || lowerMessage.includes('assist') || lowerMessage.includes('support')) {
+      return { 
+        success: true, 
+        intent: 'HELP', 
+        extractedData: {}, 
+        confidence: 0.9,
+        message: "Here's what I can help you with:\n\n💰 Check your wallet balance\n💸 Send money to other users\n🏦 Transfer money to bank accounts\n📱 Buy airtime for any network\n📊 Buy data bundles\n💡 Pay utility bills\n📈 View transaction history\n\nJust tell me what you'd like to do in simple terms!"
+      };
     } else if (lowerMessage.includes('send') || lowerMessage.includes('transfer')) {
-      return { success: true, intent: 'TRANSFER_MONEY', extractedData: {}, confidence: 0.6 };
-    } else if (lowerMessage.includes('airtime')) {
-      return { success: true, intent: 'BUY_AIRTIME', extractedData: {}, confidence: 0.7 };
-    } else if (lowerMessage.includes('data')) {
-      return { success: true, intent: 'BUY_DATA', extractedData: {}, confidence: 0.7 };
+      return { 
+        success: true, 
+        intent: 'TRANSFER_MONEY', 
+        extractedData: {}, 
+        confidence: 0.6,
+        message: "I can help you send money! Please provide:\n\n💰 Amount\n📱 Recipient's phone number\n👤 Recipient's name (optional)\n\nExample: 'Send 5000 to John 08123456789'"
+      };
+    } else if (lowerMessage.includes('airtime') || lowerMessage.includes('recharge')) {
+      return { 
+        success: true, 
+        intent: 'BUY_AIRTIME', 
+        extractedData: {}, 
+        confidence: 0.7,
+        message: "I can help you buy airtime! Please provide:\n\n💰 Amount\n📱 Phone number (optional, defaults to yours)\n\nExample: 'Buy 1000 airtime' or 'Buy 1000 airtime for 08123456789'"
+      };
+    } else if (lowerMessage.includes('data') || lowerMessage.includes('internet')) {
+      return { 
+        success: true, 
+        intent: 'BUY_DATA', 
+        extractedData: {}, 
+        confidence: 0.7,
+        message: "I can help you buy data! Please provide:\n\n📊 Data size (e.g., 1GB, 2GB) or amount\n📱 Phone number (optional, defaults to yours)\n\nExample: 'Buy 1GB data' or 'Buy 2000 worth of data'"
+      };
+    } else if (lowerMessage.includes('bill') || lowerMessage.includes('electric') || lowerMessage.includes('cable')) {
+      return { 
+        success: true, 
+        intent: 'PAY_BILL', 
+        extractedData: {}, 
+        confidence: 0.7,
+        message: "I can help you pay bills! Please provide:\n\n💰 Amount\n🏢 Utility provider (e.g., EKEDC, DStv)\n🔢 Meter/Account number\n\nExample: 'Pay 5000 electricity EKEDC 12345678901'"
+      };
+    } else if (lowerMessage.includes('history') || lowerMessage.includes('transaction')) {
+      return { 
+        success: true, 
+        intent: 'TRANSACTION_HISTORY', 
+        extractedData: {}, 
+        confidence: 0.8,
+        message: "Let me get your recent transaction history..."
+      };
     }
     
     return { 
@@ -692,7 +781,7 @@ Extract intent and data from this message. Consider the user context and any ext
       intent: 'UNKNOWN', 
       extractedData: {}, 
       confidence: 0.1,
-      message: "I'm having trouble with my AI processing right now. Please use simple commands like 'balance', 'help', or try again later."
+      message: `I'm sorry, I didn't quite understand that. I'm currently running in simplified mode.\n\nTry using simple commands like:\n• "balance" - Check wallet balance\n• "help" - Get assistance\n• "send money" - Transfer funds\n• "buy airtime" - Purchase airtime\n• "buy data" - Purchase data\n\nOr type "help" for more options!`
     };
   }
 }

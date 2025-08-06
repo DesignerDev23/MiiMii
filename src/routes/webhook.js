@@ -40,6 +40,18 @@ const logWebhook = (provider) => async (req, res, next) => {
   try {
     // Check if database connection is available before attempting to log
     const { sequelize } = require('../database/connection');
+    
+    // Check if sequelize is properly initialized
+    if (!sequelize || sequelize.dialect.name === 'sqlite') {
+      logger.warn('Database not available for webhook logging', { 
+        provider,
+        note: 'Continuing webhook processing without database logging'
+      });
+      req.webhookLogId = null;
+      return next();
+    }
+    
+    // Test the connection before using it
     await sequelize.authenticate();
     
     const webhookLog = await WebhookLog.create({

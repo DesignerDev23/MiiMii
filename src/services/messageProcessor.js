@@ -12,48 +12,64 @@ class MessageProcessor {
     try {
       const { from, messageType, message, contact } = messageData;
       
-      // Show typing indicator immediately for better UX
-      await whatsappService.sendTypingIndicator(from, 2000);
+      // Show typing indicator immediately for better UX (but don't fail if it doesn't work)
+      try {
+        await whatsappService.sendTypingIndicator(from, 2000);
+      } catch (typingError) {
+        logger.debug('Typing indicator failed, continuing with message processing', { error: typingError.message });
+      }
       
       // Get user profile name from WhatsApp contact info
       const profileName = contact?.name || null;
       
-      // Log incoming message with profile info
-      await ActivityLog.logUserActivity(
-        null, // We'll update with userId after getting user
-        'whatsapp_message_received',
-        'message_received',
-        {
-          source: 'whatsapp',
-          description: `Received ${messageType} message`,
-          messageType,
-          contactName: profileName,
-          hasProfileName: !!profileName
-        }
-      );
+      // Log incoming message with profile info - handle gracefully if DB unavailable
+      try {
+        await ActivityLog.logUserActivity(
+          null, // We'll update with userId after getting user
+          'whatsapp_message_received',
+          'message_received',
+          {
+            source: 'whatsapp',
+            description: `Received ${messageType} message`,
+            messageType,
+            contactName: profileName,
+            hasProfileName: !!profileName
+          }
+        );
+      } catch (dbError) {
+        logger.warn('Failed to log activity - continuing without logging', { error: dbError.message });
+      }
 
       // Get or create user with profile name
       const user = await userService.getOrCreateUser(from, profileName);
       
       // Update user with profile information if available
       if (profileName && (!user.fullName || user.fullName !== profileName)) {
-        await user.update({ 
-          fullName: profileName,
-          lastSeen: new Date(),
-          lastActivityType: `whatsapp_message_${messageType}`
-        });
-        
-        logger.info('Updated user profile from WhatsApp contact', {
-          userId: user.id,
-          profileName,
-          phoneNumber: from
-        });
+        try {
+          await user.update({ 
+            fullName: profileName,
+            lastSeen: new Date(),
+            lastActivityType: `whatsapp_message_${messageType}`
+          });
+          
+          logger.info('Updated user profile from WhatsApp contact', {
+            userId: user.id,
+            profileName,
+            phoneNumber: from
+          });
+        } catch (updateError) {
+          logger.warn('Failed to update user profile, continuing', { error: updateError.message });
+        }
       } else {
         // Update last seen
-        await user.update({ 
-          lastSeen: new Date(),
-          lastActivityType: `whatsapp_message_${messageType}`
-        });
+        try {
+          await user.update({ 
+            lastSeen: new Date(),
+            lastActivityType: `whatsapp_message_${messageType}`
+          });
+        } catch (updateError) {
+          logger.warn('Failed to update user last seen, continuing', { error: updateError.message });
+        }
       }
 
       // Send personalized welcome for new users or returning users
@@ -94,6 +110,7 @@ class MessageProcessor {
     } catch (error) {
       logger.error('Message processing failed', { 
         error: error.message, 
+        stack: error.stack,
         messageData,
         service: 'miimii-api'
       });
@@ -482,14 +499,78 @@ class MessageProcessor {
     try {
       // Handle button responses and list selections
       if (message.buttonReply) {
+        const buttonId = message.buttonReply.id;
+        const buttonTitle = message.buttonReply.title;
+        
+        // Map button IDs to specific commands for better processing
+        let processedText = buttonTitle;
+        
+        switch (buttonId) {
+          case 'view_balance':
+          case 'check_balance':
+            processedText = 'check balance';
+            break;
+          case 'send_money':
+          case 'transfer_money':
+            processedText = 'send money';
+            break;
+          case 'pay_bills':
+          case 'bill_payment':
+            processedText = 'pay bills';
+            break;
+          case 'buy_airtime':
+            processedText = 'buy airtime';
+            break;
+          case 'buy_data':
+            processedText = 'buy data';
+            break;
+          case 'transaction_history':
+            processedText = 'transaction history';
+            break;
+          case 'complete_onboarding':
+            processedText = 'complete onboarding';
+            break;
+          case 'learn_more':
+            processedText = 'help';
+            break;
+          case 'get_help':
+            processedText = 'help';
+            break;
+          default:
+            processedText = buttonTitle;
+        }
+        
         return {
-          text: message.buttonReply.title,
-          buttonReply: message.buttonReply
+          text: processedText,
+          buttonReply: message.buttonReply,
+          originalText: buttonTitle
         };
       } else if (message.listReply) {
+        const listId = message.listReply.id;
+        const listTitle = message.listReply.title;
+        
+        // Map list IDs to specific commands
+        let processedText = listTitle;
+        
+        // Handle list selections based on common patterns
+        if (listId.includes('balance')) {
+          processedText = 'check balance';
+        } else if (listId.includes('transfer') || listId.includes('send')) {
+          processedText = 'send money';
+        } else if (listId.includes('airtime')) {
+          processedText = 'buy airtime';
+        } else if (listId.includes('data')) {
+          processedText = 'buy data';
+        } else if (listId.includes('bill')) {
+          processedText = 'pay bills';
+        } else if (listId.includes('history')) {
+          processedText = 'transaction history';
+        }
+        
         return {
-          text: message.listReply.title,
-          listReply: message.listReply
+          text: processedText,
+          listReply: message.listReply,
+          originalText: listTitle
         };
       } else {
         return {
@@ -499,7 +580,10 @@ class MessageProcessor {
       }
     } catch (error) {
       logger.error('Interactive message processing failed', { error: error.message });
-      return null;
+      return {
+        text: 'help', // Fallback to help command
+        error: true
+      };
     }
   }
 
