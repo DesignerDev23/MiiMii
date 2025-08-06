@@ -68,30 +68,50 @@ class MessageProcessor {
         }
       }
 
-      // Send personalized welcome for new users or returning users
+      // Determine user type and send appropriate flow
       // Handle gracefully if lastWelcomedAt column doesn't exist yet
-      let shouldSendWelcome = user.onboardingStep === 'initial';
+      let isNewUser = false;
+      let isReturningUser = false;
       
       try {
-        if (!shouldSendWelcome && user.lastWelcomedAt) {
-          shouldSendWelcome = (new Date() - user.lastWelcomedAt) > 24 * 60 * 60 * 1000;
-        } else if (!shouldSendWelcome && !user.lastWelcomedAt) {
-          shouldSendWelcome = true;
+        // Check if user has been welcomed before
+        if (user.lastWelcomedAt) {
+          isReturningUser = true;
+        } else {
+          isNewUser = true;
         }
       } catch (error) {
         // Handle case where lastWelcomedAt column doesn't exist
         logger.warn('lastWelcomedAt column access failed, treating as new user', { error: error.message });
-        shouldSendWelcome = true;
+        isNewUser = true;
       }
       
-      if (shouldSendWelcome) {
+      // For returning users who are completed, send login flow
+      if (isReturningUser && user.onboardingStep === 'completed') {
         await this.sendPersonalizedWelcome(user, message, messageType);
         
-        // Try to update lastWelcomedAt, but handle gracefully if column doesn't exist
+        // Update lastWelcomedAt
         try {
           await user.update({ lastWelcomedAt: new Date() });
         } catch (error) {
           logger.warn('Failed to update lastWelcomedAt, column may not exist', { error: error.message });
+        }
+        
+        // Exit early since login flow was sent
+        return;
+      }
+      
+      // For new users or incomplete users, send onboarding flow
+      if (isNewUser || user.onboardingStep !== 'completed') {
+        await this.sendPersonalizedWelcome(user, message, messageType);
+        
+        // Update lastWelcomedAt for new users
+        if (isNewUser) {
+          try {
+            await user.update({ lastWelcomedAt: new Date() });
+          } catch (error) {
+            logger.warn('Failed to update lastWelcomedAt, column may not exist', { error: error.message });
+          }
         }
       }
 
@@ -132,40 +152,13 @@ class MessageProcessor {
         userName = message.contact.name;
       }
       
-      let welcomeText;
-      let buttons;
-      
       if (isReturningUser) {
-        welcomeText = `🌟 *Welcome back, ${userName}!* 🌟\n\n` +
-                     `Great to see you again! I'm your Personal Financial Assistant from MiiMii.\n\n` +
-                     `I'm here to help you manage your finances. What would you like to do today?`;
-        
-        buttons = [
-          { id: 'view_balance', title: '💰 Check Balance' },
-          { id: 'send_money', title: '💸 Send Money' },
-          { id: 'pay_bills', title: '📱 Pay Bills' }
-        ];
+        // For returning users, send login flow
+        await this.sendLoginFlow(user, userName);
       } else {
-        welcomeText = `👋 *Hey ${userName}!* 👋\n\n` +
-                     `Welcome to MiiMii - your personal financial assistant! 😎\n\n` +
-                     `I can help you with:\n` +
-                     `• 💰 Virtual account management\n` +
-                     `• 💸 Money transfers\n` +
-                     `• 📱 Airtime & data purchases\n` +
-                     `• 💡 Bill payments\n` +
-                     `• 📊 Financial insights\n\n` +
-                     `Ready to get started? Let's set up your account! 🚀`;
-        
-        buttons = [
-          { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
-          { id: 'learn_more', title: '📚 Learn More' },
-          { id: 'get_help', title: '❓ Get Help' }
-        ];
+        // For new users, send onboarding flow
+        await this.sendOnboardingFlow(user, userName);
       }
-      
-      // Send personalized welcome with typing indicator
-      await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
-      await whatsappService.sendButtonMessage(user.whatsappNumber, welcomeText, buttons);
       
       logger.info('Sent personalized welcome message', {
         userId: user.id,
@@ -181,6 +174,125 @@ class MessageProcessor {
         userId: user.id,
         phoneNumber: user.whatsappNumber
       });
+    }
+  }
+
+  async sendLoginFlow(user, userName) {
+    try {
+      const whatsappFlowService = require('./whatsappFlowService');
+      
+      // Generate a secure flow token
+      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      
+      // Create the login flow data
+      const flowData = {
+        flowId: process.env.WHATSAPP_LOGIN_FLOW_ID || 'miimii_login_flow',
+        flowToken: flowToken,
+        flowCta: 'Login with PIN',
+        header: {
+          type: 'text',
+          text: 'Welcome Back!'
+        },
+        body: `🌟 *Welcome back, ${userName}!* 🌟\n\nGreat to see you again! I'm your Personal Financial Assistant from MiiMii.\n\nPlease enter your 4-digit PIN to access your account securely.`,
+        footer: 'Secure Login',
+        flowActionPayload: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'pin_verification'
+        }
+      };
+
+      // Send the Flow message
+      await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
+      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      logger.info('Sent login flow to returning user', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+    } catch (error) {
+      logger.error('Failed to send login flow', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      // Fallback to button message if flow fails
+      const welcomeText = `🌟 *Welcome back, ${userName}!* 🌟\n\n` +
+                         `Great to see you again! I'm your Personal Financial Assistant from MiiMii.\n\n` +
+                         `I'm here to help you manage your finances. What would you like to do today?`;
+      
+      const buttons = [
+        { id: 'view_balance', title: '💰 Check Balance' },
+        { id: 'send_money', title: '💸 Send Money' },
+        { id: 'pay_bills', title: '📱 Pay Bills' }
+      ];
+      
+      await whatsappService.sendButtonMessage(user.whatsappNumber, welcomeText, buttons);
+    }
+  }
+
+  async sendOnboardingFlow(user, userName) {
+    try {
+      const whatsappFlowService = require('./whatsappFlowService');
+      
+      // Generate a secure flow token
+      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      
+      // Create the onboarding flow data
+      const flowData = {
+        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowToken: flowToken,
+        flowCta: 'Complete Onboarding',
+        header: {
+          type: 'text',
+          text: 'Welcome to MiiMii!'
+        },
+        body: `👋 *Hey ${userName}!* 👋\n\nWelcome to MiiMii - your personal financial assistant! 😎\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+        footer: 'Secure • Fast • Easy',
+        flowActionPayload: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'personal_details'
+        }
+      };
+
+      // Send the Flow message
+      await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
+      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      // Update user onboarding step
+      await user.update({ onboardingStep: 'flow_onboarding' });
+      
+      logger.info('Sent onboarding flow to new user', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+    } catch (error) {
+      logger.error('Failed to send onboarding flow', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      // Fallback to button message if flow fails
+      const welcomeText = `👋 *Hey ${userName}!* 👋\n\n` +
+                         `Welcome to MiiMii - your personal financial assistant! 😎\n\n` +
+                         `I can help you with:\n` +
+                         `• 💰 Virtual account management\n` +
+                         `• 💸 Money transfers\n` +
+                         `• 📱 Airtime & data purchases\n` +
+                         `• 💡 Bill payments\n` +
+                         `• 📊 Financial insights\n\n` +
+                         `Ready to get started? Let's set up your account! 🚀`;
+        
+      const buttons = [
+        { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
+        { id: 'learn_more', title: '📚 Learn More' },
+        { id: 'get_help', title: '❓ Get Help' }
+      ];
+      
+      await whatsappService.sendButtonMessage(user.whatsappNumber, welcomeText, buttons);
     }
   }
 
@@ -226,7 +338,14 @@ class MessageProcessor {
       const buttonId = message?.buttonReply?.id || message?.listReply?.id;
       
       if (buttonId === 'complete_onboarding') {
-        return await this.startFlowBasedOnboarding(user);
+        // Get user name for flow
+        let userName = 'there';
+        if (user.fullName) {
+          userName = user.fullName;
+        } else if (user.firstName) {
+          userName = user.firstName;
+        }
+        return await this.sendOnboardingFlow(user, userName);
       }
       
       if (buttonId === 'learn_more') {
