@@ -303,7 +303,7 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'GREETING':
           return {
             intent: 'GREETING',
-            message: aiResponse.message || `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`,
+            message: aiResponse.message || `Hello ${user.fullName || user.firstName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`,
             requiresAction: 'NONE'
           };
           
@@ -719,7 +719,7 @@ Extract intent and data from this message. Consider the user context and any ext
         intent: 'GREETING', 
         extractedData: {}, 
         confidence: 0.9,
-        message: `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`
+        message: `Hello ${user.fullName || user.firstName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`
       };
     }
     

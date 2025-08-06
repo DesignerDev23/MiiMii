@@ -119,15 +119,21 @@ class MessageProcessor {
   async sendPersonalizedWelcome(user, message, messageType) {
     try {
       const isReturningUser = user.onboardingStep === 'completed';
-      const userName = user.fullName || 'there';
+      const userName = user.fullName || user.firstName || 'there';
       
       let welcomeText;
       let buttons;
       
       if (isReturningUser) {
-        welcomeText = `🌟 *Welcome back, ${userName}!* 🌟\n\n` +
-                     `Great to see you again! I'm Xara, your Personal Account Manager AI from Xava Technologies.\n\n` +
-                     `I'm here to help you manage your finances. What would you like to do today?`;
+        // Varied welcome messages for returning users
+        const returningWelcomes = [
+          `🌟 *Welcome back, ${userName}!* 🌟\n\nGreat to see you again! I'm Xara, your AI assistant from MiiMii.\n\nWhat would you like to do today?`,
+          `🎉 *Hey ${userName}, you're back!* 🎉\n\nReady to continue your financial journey? I'm here to help!`,
+          `✨ *${userName}, welcome back!* ✨\n\nI'm Xara, and I'm excited to assist you today. What can I help you with?`,
+          `🚀 *Great to see you again, ${userName}!* 🚀\n\nYour AI assistant Xara is ready to help with all your financial needs!`
+        ];
+        
+        welcomeText = returningWelcomes[Math.floor(Math.random() * returningWelcomes.length)];
         
         buttons = [
           { id: 'view_balance', title: '💰 Check Balance' },
@@ -135,11 +141,15 @@ class MessageProcessor {
           { id: 'pay_bills', title: '📱 Pay Bills' }
         ];
       } else {
-        welcomeText = `👋 *Hey ${userName}!* 👋\n\n` +
-                     `I'm Xara, your Personal Account Manager AI from Xava Technologies! 😎\n\n` +
-                     `I can handle transactions, schedule payments, and even analyze your spending! 📊\n\n` +
-                     `🔒 For extra security, lock your WhatsApp!\n\n` +
-                     `Ready to start your onboarding and explore? Let's go! 🚀`;
+        // Varied onboarding messages for new users
+        const onboardingWelcomes = [
+          `👋 *Hey ${userName}!* 👋\n\nI'm Xara, your Personal Account Manager AI! 😎\n\nBefore we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`,
+          `🌟 *Hi there, ${userName}!* 🌟\n\nWelcome to MiiMii! I'm Xara, your AI financial assistant.\n\nLet's get you set up with a personalized account that will make managing your money a breeze! Ready to start? 🚀`,
+          `🎊 *Welcome ${userName}!* 🎊\n\nI'm Xara from MiiMii! I'll be your personal finance companion.\n\nFirst, let's complete your onboarding so I can provide you with the best possible service. It'll only take a few minutes! ⚡`,
+          `💫 *Hello ${userName}!* 💫\n\nI'm Xara, and I'm thrilled to meet you! I'm here to make your financial life easier.\n\nBefore we begin our journey together, let's get your account properly set up. Ready to get started? 🔥`
+        ];
+        
+        welcomeText = onboardingWelcomes[Math.floor(Math.random() * onboardingWelcomes.length)];
         
         buttons = [
           { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
@@ -154,9 +164,10 @@ class MessageProcessor {
       
       logger.info('Sent personalized welcome message', {
         userId: user.id,
-        userName: user.fullName,
+        userName: user.fullName || user.firstName,
         isReturningUser,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        messageVariation: isReturningUser ? 'returning_user' : 'new_user'
       });
       
     } catch (error) {

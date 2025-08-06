@@ -838,7 +838,7 @@ class OnboardingService {
           type: 'text',
           text: 'Account Setup'
         },
-        body: `Hi ${user.firstName || user.fullName || 'there'}! 👋\n\nLet's complete your MiiMii account setup. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+        body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
           userId: user.id,
