@@ -119,14 +119,25 @@ class MessageProcessor {
   async sendPersonalizedWelcome(user, message, messageType) {
     try {
       const isReturningUser = user.onboardingStep === 'completed';
-      const userName = user.fullName || 'there';
+      
+      // Get the user's name from WhatsApp profile or stored data
+      let userName = 'there';
+      
+      // Priority: WhatsApp profile name > stored fullName > firstName > contact name
+      if (user.fullName) {
+        userName = user.fullName;
+      } else if (user.firstName) {
+        userName = user.firstName;
+      } else if (message?.contact?.name) {
+        userName = message.contact.name;
+      }
       
       let welcomeText;
       let buttons;
       
       if (isReturningUser) {
         welcomeText = `🌟 *Welcome back, ${userName}!* 🌟\n\n` +
-                     `Great to see you again! I'm Xara, your Personal Account Manager AI from Xava Technologies.\n\n` +
+                     `Great to see you again! I'm your Personal Financial Assistant from MiiMii.\n\n` +
                      `I'm here to help you manage your finances. What would you like to do today?`;
         
         buttons = [
@@ -136,10 +147,14 @@ class MessageProcessor {
         ];
       } else {
         welcomeText = `👋 *Hey ${userName}!* 👋\n\n` +
-                     `I'm Xara, your Personal Account Manager AI from Xava Technologies! 😎\n\n` +
-                     `I can handle transactions, schedule payments, and even analyze your spending! 📊\n\n` +
-                     `🔒 For extra security, lock your WhatsApp!\n\n` +
-                     `Ready to start your onboarding and explore? Let's go! 🚀`;
+                     `Welcome to MiiMii - your personal financial assistant! 😎\n\n` +
+                     `I can help you with:\n` +
+                     `• 💰 Virtual account management\n` +
+                     `• 💸 Money transfers\n` +
+                     `• 📱 Airtime & data purchases\n` +
+                     `• 💡 Bill payments\n` +
+                     `• 📊 Financial insights\n\n` +
+                     `Ready to get started? Let's set up your account! 🚀`;
         
         buttons = [
           { id: 'complete_onboarding', title: '✅ Complete Onboarding' },
@@ -154,9 +169,10 @@ class MessageProcessor {
       
       logger.info('Sent personalized welcome message', {
         userId: user.id,
-        userName: user.fullName,
+        userName: userName,
         isReturningUser,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        source: 'whatsapp_profile'
       });
       
     } catch (error) {
@@ -205,8 +221,145 @@ class MessageProcessor {
   }
 
   async handleOnboardingFlow(user, message, messageType, contactName = null) {
-    // Use onboarding service for new users
-    return await onboardingService.handleOnboarding(user.whatsappNumber, message, messageType, contactName);
+    try {
+      // Check if this is a button response for onboarding
+      const buttonId = message?.buttonReply?.id || message?.listReply?.id;
+      
+      if (buttonId === 'complete_onboarding') {
+        return await this.startFlowBasedOnboarding(user);
+      }
+      
+      if (buttonId === 'learn_more') {
+        return await this.sendLearnMoreMessage(user);
+      }
+      
+      if (buttonId === 'get_help') {
+        return await this.sendHelpMessage(user);
+      }
+
+      // For new users, send the welcome message with Flow onboarding option
+      if (user.onboardingStep === 'initial' || user.onboardingStep === 'greeting') {
+        return await this.sendPersonalizedWelcome(user, message, messageType);
+      }
+
+      // For users in traditional onboarding, continue with existing flow
+      return await onboardingService.handleOnboarding(user.whatsappNumber, message, messageType, contactName);
+    } catch (error) {
+      logger.error('Onboarding flow error', { error: error.message, userId: user.id });
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        "I'm experiencing technical difficulties. Please try again in a moment."
+      );
+    }
+  }
+
+  async startFlowBasedOnboarding(user) {
+    try {
+      const whatsappFlowService = require('./whatsappFlowService');
+      
+      // Generate a secure flow token
+      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      
+      // Create the flow data
+      const flowData = {
+        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowToken: flowToken,
+        flowCta: 'Complete Onboarding',
+        header: {
+          type: 'text',
+          text: 'MiiMii Account Setup'
+        },
+        body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+        footer: 'Secure • Fast • Easy',
+        flowActionPayload: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'personal_details'
+        }
+      };
+
+      // Send the Flow message
+      await whatsappService.sendTypingIndicator(user.whatsappNumber, 2000);
+      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      // Update user onboarding step
+      await user.update({ onboardingStep: 'flow_onboarding' });
+      
+      logger.info('Started Flow-based onboarding', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+    } catch (error) {
+      logger.error('Failed to start Flow-based onboarding', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      // Fallback to traditional onboarding
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        "I'll help you set up your account step by step. Let's start with your name."
+      );
+    }
+  }
+
+  async sendLearnMoreMessage(user) {
+    try {
+      const learnMoreText = `📖 *About MiiMii* 📖\n\n` +
+                           `🏦 *Digital Banking Made Simple*\n` +
+                           `• Send and receive money instantly\n` +
+                           `• Pay bills and buy airtime\n` +
+                           `• Save money with our savings plans\n` +
+                           `• Get virtual cards for online shopping\n\n` +
+                           `🔐 *Secure & Licensed*\n` +
+                           `• Bank-level security\n` +
+                           `• Licensed by regulatory authorities\n` +
+                           `• Your money is safe with us\n\n` +
+                           `Ready to get started?`;
+      
+      const learnButtons = [
+        { id: 'complete_onboarding', title: '✅ Complete Setup' },
+        { id: 'contact_support', title: '📞 Contact Support' }
+      ];
+      
+      await whatsappService.sendButtonMessage(user.whatsappNumber, learnMoreText, learnButtons);
+      
+    } catch (error) {
+      logger.error('Failed to send learn more message', {
+        error: error.message,
+        userId: user.id
+      });
+    }
+  }
+
+  async sendHelpMessage(user) {
+    try {
+      const helpText = `❓ *Need Help?* ❓\n\n` +
+                      `I'm here to help you with:\n\n` +
+                      `📞 *Contact Support*\n` +
+                      `• WhatsApp: +234 XXX XXX XXXX\n` +
+                      `• Email: support@miimii.com\n` +
+                      `• Hours: 8AM - 8PM (WAT)\n\n` +
+                      `📚 *Quick Start Guide*\n` +
+                      `• Complete onboarding to get started\n` +
+                      `• Add money to your wallet\n` +
+                      `• Start sending and receiving money\n\n` +
+                      `Would you like to continue with setup?`;
+      
+      const helpButtons = [
+        { id: 'complete_onboarding', title: '✅ Continue Setup' },
+        { id: 'contact_support', title: '📞 Contact Support' }
+      ];
+      
+      await whatsappService.sendButtonMessage(user.whatsappNumber, helpText, helpButtons);
+      
+    } catch (error) {
+      logger.error('Failed to send help message', {
+        error: error.message,
+        userId: user.id
+      });
+    }
   }
 
   async handleCompletedUserMessage(user, message, messageType) {

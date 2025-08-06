@@ -5,6 +5,7 @@ const whatsappService = require('../services/whatsapp');
 const messageProcessor = require('../services/messageProcessor');
 const logger = require('../utils/logger');
 const databaseService = require('../services/database');
+const userService = require('../services/user');
 
 const router = express.Router();
 
@@ -157,8 +158,22 @@ router.post('/whatsapp',
           // Mark message as read
           await whatsappService.markMessageAsRead(parsedMessage.messageId);
           
-          // Process the message with AI/NLP
-          await messageProcessor.processIncomingMessage(parsedMessage);
+          // Check if this is a Flow webhook
+          if (parsedMessage.flowData) {
+            const whatsappFlowService = require('../services/whatsappFlowService');
+            const flowResult = await whatsappFlowService.handleFlowWebhook(parsedMessage.flowData);
+            
+            if (flowResult.success) {
+              // Send appropriate response based on flow result
+              const user = await userService.getUserById(flowResult.userId);
+              if (user && flowResult.result.message) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, flowResult.result.message);
+              }
+            }
+          } else {
+            // Process the message with AI/NLP
+            await messageProcessor.processIncomingMessage(parsedMessage);
+          }
         } else if (parsedMessage.type === 'status') {
           // Handle message status updates
           logger.info('WhatsApp message status update', parsedMessage.statuses);
@@ -198,8 +213,8 @@ router.post('/whatsapp',
           });
         }
       }
-
-      res.status(500).json({ error: 'Internal server error' });
+      
+      res.status(500).json({ error: 'Webhook processing failed' });
     }
   }
 );

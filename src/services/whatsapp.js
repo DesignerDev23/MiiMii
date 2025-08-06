@@ -584,41 +584,67 @@ class WhatsAppService {
   parseWebhookMessage(body) {
     try {
       const entry = body.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
-
-      if (!value) return null;
-
-      // Handle status updates
-      if (value.statuses) {
-        return {
-          type: 'status',
-          statuses: value.statuses
-        };
+      if (!entry) {
+        logger.warn('No entry found in webhook body');
+        return null;
       }
 
-      // Handle incoming messages
-      if (value.messages) {
-        const message = value.messages[0];
-        const contact = value.contacts?.[0];
+      const changes = entry.changes?.[0];
+      if (!changes || changes.value?.object !== 'whatsapp_business_account') {
+        logger.warn('Invalid webhook structure or not a WhatsApp Business Account');
+        return null;
+      }
+
+      const value = changes.value;
+      const messages = value.messages?.[0];
+      const statuses = value.statuses?.[0];
+
+      if (messages) {
+        const messageData = this.extractMessageContent(messages);
+        
+        // Check if this is a Flow message
+        if (messages.interactive?.type === 'flow') {
+          const flowData = messages.interactive.flow;
+          return {
+            type: 'message',
+            messageId: messages.id,
+            from: messages.from,
+            timestamp: messages.timestamp,
+            flowData: {
+              flow_token: flowData.flow_token,
+              screen: flowData.screen,
+              data: flowData.data,
+              encrypted_flow_data: flowData.encrypted_flow_data,
+              encrypted_aes_key: flowData.encrypted_aes_key,
+              encrypted_iv: flowData.encrypted_iv
+            },
+            messageType: 'flow',
+            contact: value.contacts?.[0]
+          };
+        }
 
         return {
           type: 'message',
-          messageId: message.id,
-          from: message.from,
-          timestamp: message.timestamp,
-          messageType: message.type,
-          contact: {
-            name: contact?.profile?.name,
-            waId: contact?.wa_id
-          },
-          message: this.extractMessageContent(message)
+          messageId: messages.id,
+          from: messages.from,
+          timestamp: messages.timestamp,
+          message: messageData,
+          messageType: messageData.type,
+          contact: value.contacts?.[0]
         };
       }
 
+      if (statuses) {
+        return {
+          type: 'status',
+          statuses: statuses
+        };
+      }
+
+      logger.warn('No messages or statuses found in webhook');
       return null;
     } catch (error) {
-      logger.error('Failed to parse webhook message', { error: error.message, body });
+      logger.error('Failed to parse webhook message', { error: error.message });
       return null;
     }
   }

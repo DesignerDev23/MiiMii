@@ -624,6 +624,148 @@ router.post('/configure-flow', async (req, res) => {
   }
 });
 
+// Create WhatsApp Flow templates
+router.post('/create-flow-templates', async (req, res) => {
+  try {
+    const whatsappFlowService = require('../services/whatsappFlowService');
+    
+    // Create onboarding flow template
+    const onboardingTemplate = await whatsappFlowService.createOnboardingFlowTemplate();
+    
+    // Create login flow template
+    const loginTemplate = await whatsappFlowService.createLoginFlowTemplate();
+    
+    res.json({
+      success: true,
+      message: 'Flow templates created successfully',
+      templates: {
+        onboarding: {
+          id: onboardingTemplate.id,
+          name: onboardingTemplate.name,
+          status: onboardingTemplate.status
+        },
+        login: {
+          id: loginTemplate.id,
+          name: loginTemplate.name,
+          status: loginTemplate.status
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to create Flow templates', { error: error.message });
+    res.status(500).json({ error: 'Failed to create Flow templates' });
+  }
+});
+
+// Send Flow message for testing
+router.post('/send-flow-message', async (req, res) => {
+  try {
+    const { to, flowType } = req.body;
+
+    if (!to || !flowType) {
+      return res.status(400).json({ 
+        error: 'Phone number and flowType are required' 
+      });
+    }
+
+    // Validate and format phone number
+    const formattedNumber = whatsappService.formatToE164(to);
+    if (!whatsappService.validateE164(formattedNumber)) {
+      return res.status(400).json({ 
+        error: 'Invalid phone number format',
+        receivedNumber: to,
+        expectedFormat: 'E.164 (+234XXXXXXXXXX) or Nigerian (08XXXXXXXXX)'
+      });
+    }
+
+    const whatsappFlowService = require('../services/whatsappFlowService');
+    
+    // Get or create user
+    const userService = require('../services/user');
+    const user = await userService.getOrCreateUser(to);
+    
+    let flowData;
+    
+    if (flowType === 'onboarding') {
+      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      flowData = {
+        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowToken: flowToken,
+        flowCta: 'Complete Onboarding',
+        header: {
+          type: 'text',
+          text: 'MiiMii Account Setup'
+        },
+        body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+        footer: 'Secure • Fast • Easy',
+        flowActionPayload: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'personal_details'
+        }
+      };
+    } else if (flowType === 'login') {
+      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      flowData = {
+        flowId: process.env.WHATSAPP_LOGIN_FLOW_ID || 'miimii_login_flow',
+        flowToken: flowToken,
+        flowCta: 'Login with PIN',
+        header: {
+          type: 'text',
+          text: 'Account Login'
+        },
+        body: `Welcome back, ${user.fullName || user.firstName || 'there'}! 👋\n\nPlease enter your 4-digit PIN to access your account securely.`,
+        footer: 'Secure Login',
+        flowActionPayload: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'pin_verification'
+        }
+      };
+    } else {
+      return res.status(400).json({ 
+        error: 'Invalid flowType. Supported: onboarding, login' 
+      });
+    }
+
+    const result = await whatsappFlowService.sendFlowMessage(to, flowData);
+    
+    res.json({
+      success: true,
+      messageId: result.messages[0].id,
+      to: formattedNumber,
+      flowType,
+      flowToken: flowData.flowToken
+    });
+  } catch (error) {
+    logger.error('Failed to send Flow message', { error: error.message });
+    res.status(500).json({ error: 'Failed to send Flow message' });
+  }
+});
+
+// Test Flow webhook handling
+router.post('/test-flow-webhook', async (req, res) => {
+  try {
+    const { flowData } = req.body;
+
+    if (!flowData) {
+      return res.status(400).json({ error: 'Flow data is required' });
+    }
+
+    const whatsappFlowService = require('../services/whatsappFlowService');
+    const result = await whatsappFlowService.handleFlowWebhook(flowData);
+    
+    res.json({
+      success: true,
+      result,
+      message: 'Flow webhook processed successfully'
+    });
+  } catch (error) {
+    logger.error('Failed to test Flow webhook', { error: error.message });
+    res.status(500).json({ error: 'Failed to process Flow webhook' });
+  }
+});
+
 // Flow handlers
 async function handleFlowInit(req, res, { screen, data, flow_token }) {
   try {

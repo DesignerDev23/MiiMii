@@ -8,6 +8,8 @@ BOT_ACCESS_TOKEN=your-whatsapp-access-token
 BOT_PHONE_NUMBER_ID=your-phone-number-id
 BOT_BUSINESS_ACCOUNT_ID=your-business-account-id
 BOT_WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token
+WHATSAPP_ONBOARDING_FLOW_ID=your-onboarding-flow-id
+WHATSAPP_LOGIN_FLOW_ID=your-login-flow-id
 ```
 
 ## Database Configuration
