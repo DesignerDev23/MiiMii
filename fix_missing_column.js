@@ -5,12 +5,83 @@
  * This script should be run on the production environment to add the missing column
  */
 
-const { sequelize } = require('./src/database/connection');
+const { Sequelize } = require('sequelize');
 const logger = require('./src/utils/logger');
 
+// Configure Node.js to handle DigitalOcean SSL certificates
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+// Function to create SSL configuration for DigitalOcean managed databases
+function createDOSSLConfig() {
+  return {
+    require: true,
+    rejectUnauthorized: false,
+    // Accept any certificate from DigitalOcean
+    checkServerIdentity: () => undefined,
+    // Use modern TLS
+    secureProtocol: 'TLSv1_2_method',
+    // Additional options to handle certificate chains
+    servername: undefined,
+    // Disable certificate verification for managed databases
+    ca: undefined,
+    cert: undefined,
+    key: undefined
+  };
+}
+
+// Create a separate Sequelize instance for column addition (don't use shared instance)
+function createSequelizeInstance() {
+  if (process.env.DB_CONNECTION_URL) {
+    // Use DB_CONNECTION_URL for connection with SSL configuration
+    const connectionUrl = process.env.DB_CONNECTION_URL;
+    
+    return new Sequelize(connectionUrl, {
+      logging: false, // Disable logging for this operation
+      pool: {
+        max: 5,
+        min: 1,
+        acquire: 30000,
+        idle: 10000
+      },
+      dialectOptions: {
+        ssl: connectionUrl.includes('sslmode=require') ? createDOSSLConfig() : false
+      }
+    });
+  } else if (process.env.DB_HOST) {
+    // Fallback to individual connection parameters
+    const isDigitalOceanDB = process.env.DB_HOST && process.env.DB_HOST.includes('db.ondigitalocean.com');
+    
+    return new Sequelize({
+      database: process.env.DB_NAME,
+      username: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT) || 5432,
+      dialect: 'postgres',
+      logging: false, // Disable logging for this operation
+      pool: {
+        max: 5,
+        min: 1,
+        acquire: 30000,
+        idle: 10000
+      },
+      dialectOptions: {
+        ssl: isDigitalOceanDB ? createDOSSLConfig() : false
+      }
+    });
+  } else {
+    throw new Error('No database configuration found');
+  }
+}
+
 async function fixMissingColumn() {
+  let sequelize = null;
+  
   try {
     logger.info('Starting production fix for missing lastWelcomedAt column...');
+    
+    // Create our own sequelize instance to avoid interfering with the main application
+    sequelize = createSequelizeInstance();
     
     // Test connection first
     await sequelize.authenticate();
@@ -99,10 +170,14 @@ async function fixMissingColumn() {
     
     throw error;
   } finally {
-    try {
-      await sequelize.close();
-    } catch (error) {
-      logger.warn('Failed to close database connection:', error.message);
+    // Close our own sequelize instance safely
+    if (sequelize) {
+      try {
+        await sequelize.close();
+        logger.debug('Column addition database connection closed');
+      } catch (error) {
+        logger.warn('Failed to close column addition database connection:', error.message);
+      }
     }
   }
 }

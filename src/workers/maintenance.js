@@ -3,7 +3,7 @@ const cron = require('node-cron');
 
 const logger = require('../utils/logger');
 const redisClient = require('../utils/redis');
-const { sequelize } = require('../database/connection');
+const { databaseManager } = require('../database/connection');
 
 class MaintenanceWorker {
   constructor() {
@@ -16,7 +16,7 @@ class MaintenanceWorker {
       logger.info('Starting maintenance worker...');
 
       // Initialize connections
-      await sequelize.authenticate();
+      await databaseManager.connect();
       logger.info('Database connection established');
 
       const redisConnected = await redisClient.connect();
@@ -92,7 +92,7 @@ class MaintenanceWorker {
       logger.info('Processing pending transactions...');
 
       // Check for transactions that might be stuck in pending state
-      const [pendingTransactions] = await sequelize.query(`
+      const [pendingTransactions] = await databaseManager.getSequelize().query(`
         SELECT id, user_id, amount, status, created_at 
         FROM transactions 
         WHERE status = 'pending' 
@@ -109,7 +109,7 @@ class MaintenanceWorker {
             logger.info(`Processing stuck transaction: ${transaction.id}`);
             
             // Example: Mark as failed after 30 minutes
-            await sequelize.query(`
+            await databaseManager.getSequelize().query(`
               UPDATE transactions 
               SET status = 'failed', 
                   updated_at = NOW(),
@@ -141,10 +141,10 @@ class MaintenanceWorker {
       logger.info('Performing database maintenance...');
 
       // Analyze table statistics
-      await sequelize.query('ANALYZE;');
+      await databaseManager.getSequelize().query('ANALYZE;');
       
       // Clean up old transaction logs (older than 1 year)
-      const [result] = await sequelize.query(`
+      const [result] = await databaseManager.getSequelize().query(`
         DELETE FROM transaction_logs 
         WHERE created_at < NOW() - INTERVAL '1 year'
       `);
@@ -154,7 +154,7 @@ class MaintenanceWorker {
       }
 
       // Clean up expired KYC documents (older than 2 years and rejected)
-      const [kycResult] = await sequelize.query(`
+      const [kycResult] = await databaseManager.getSequelize().query(`
         DELETE FROM kyc_documents 
         WHERE status = 'rejected' 
         AND created_at < NOW() - INTERVAL '2 years'
@@ -175,7 +175,7 @@ class MaintenanceWorker {
       logger.info('Cleaning old application logs...');
       
       // Clean up old audit logs (older than 6 months)
-      const [result] = await sequelize.query(`
+      const [result] = await databaseManager.getSequelize().query(`
         DELETE FROM audit_logs 
         WHERE created_at < NOW() - INTERVAL '6 months'
       `);
@@ -197,7 +197,7 @@ class MaintenanceWorker {
       const maintenanceFee = parseFloat(process.env.MAINTENANCE_FEE) || 100;
       
       // Get all active wallets
-      const [activeWallets] = await sequelize.query(`
+      const [activeWallets] = await databaseManager.getSequelize().query(`
         SELECT w.id, w.user_id, w.balance 
         FROM wallets w
         JOIN users u ON w.user_id = u.id
@@ -212,9 +212,9 @@ class MaintenanceWorker {
 
       for (const wallet of activeWallets) {
         try {
-          await sequelize.transaction(async (t) => {
+          await databaseManager.getSequelize().transaction(async (t) => {
             // Deduct maintenance fee
-            await sequelize.query(`
+            await databaseManager.getSequelize().query(`
               UPDATE wallets 
               SET balance = balance - ?,
                   updated_at = NOW()
@@ -225,7 +225,7 @@ class MaintenanceWorker {
             });
 
             // Record transaction
-            await sequelize.query(`
+            await databaseManager.getSequelize().query(`
               INSERT INTO transactions (
                 user_id, type, amount, status, description, created_at
               ) VALUES (?, 'fee', ?, 'completed', 'Monthly maintenance fee', NOW())
@@ -262,8 +262,8 @@ class MaintenanceWorker {
       logger.info(`Stopped job: ${name}`);
     }
 
-    // Close connections
-    await sequelize.close();
+    // Don't close the shared database connection - let the main app handle it
+    // The database manager will handle graceful shutdown
     await redisClient.disconnect();
     
     logger.info('Maintenance worker stopped');

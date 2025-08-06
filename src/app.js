@@ -357,13 +357,15 @@ async function initializeDatabaseConnection() {
     await sequelize.sync({ force: false, alter: false });
     logger.info('✅ Database models synchronized');
     
-    // Self-healing: attempt to add missing lastWelcomedAt column if it doesn't exist
-    try {
-      const { attemptColumnAddition } = require('../fix_missing_column');
-      await attemptColumnAddition();
-    } catch (error) {
-      logger.warn('Self-healing column addition failed (non-critical):', error.message);
-    }
+    // Self-healing: attempt to add missing lastWelcomedAt column if it doesn't exist (async, non-blocking)
+    setTimeout(async () => {
+      try {
+        const { attemptColumnAddition } = require('../fix_missing_column');
+        await attemptColumnAddition();
+      } catch (error) {
+        logger.warn('Self-healing column addition failed (non-critical):', error.message);
+      }
+    }, 5000); // Wait 5 seconds after startup to avoid blocking
     
   } catch (error) {
     logger.warn('⚠️ Database connection failed - continuing without database features:', {
