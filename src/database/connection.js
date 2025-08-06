@@ -267,6 +267,13 @@ class DatabaseManager {
         if (this.isConnected) {
           logger.warn('Database health check failed:', error.message);
           this.isConnected = false;
+          
+          // Handle connection manager closure in health check
+          if (error.message.includes('ConnectionManager.getConnection was called after the connection manager was closed')) {
+            logger.warn('Connection manager closed during health check, reinitializing...');
+            this.initialize();
+          }
+          
           this.scheduleReconnect();
         }
       }
@@ -282,13 +289,32 @@ class DatabaseManager {
           throw new Error('Database is shutting down');
         }
 
-        if (!this.isConnected) {
+        // Check for the specific connection manager closure error and reinitialize if needed
+        if (lastError && lastError.message.includes('ConnectionManager.getConnection was called after the connection manager was closed')) {
+          logger.warn('Connection manager was closed, reinitializing database connection...');
+          this.initialize();
+          await this.connect();
+        } else if (!this.isConnected) {
           await this.connect();
         }
 
         return await operation();
       } catch (error) {
         lastError = error;
+        
+        // Special handling for connection manager closure
+        if (error.message.includes('ConnectionManager.getConnection was called after the connection manager was closed')) {
+          logger.warn('Connection manager closed error detected, will reinitialize on next attempt');
+          this.isConnected = false;
+          
+          if (attempt < maxRetries) {
+            // Force reinitialize the connection on next attempt
+            logger.info('Reinitializing database connection due to closed connection manager...');
+            this.initialize();
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+            continue;
+          }
+        }
         
         if (this.isConnectionError(error) && attempt < maxRetries) {
           logger.warn(`Database operation failed (attempt ${attempt}/${maxRetries}):`, error.message);
@@ -351,8 +377,17 @@ class DatabaseManager {
 
       // Close the connection
       if (this.sequelize) {
-        await this.sequelize.close();
-        logger.info('✅ Database connection closed gracefully');
+        try {
+          await this.sequelize.close();
+          logger.info('✅ Database connection closed gracefully');
+        } catch (closeError) {
+          // Handle case where connection manager is already closed
+          if (closeError.message.includes('ConnectionManager.getConnection was called after the connection manager was closed')) {
+            logger.info('✅ Database connection was already closed');
+          } else {
+            throw closeError;
+          }
+        }
       }
 
       clearTimeout(shutdownTimeout);
