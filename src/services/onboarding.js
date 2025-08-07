@@ -388,6 +388,7 @@ class OnboardingService {
         flowId: flowId,
         flowToken: whatsappFlowService.generateFlowToken(user.id),
         flowCta: 'Start Guided Setup',
+        flowAction: 'navigate',
         header: {
           type: 'text',
           text: 'KYC Information Setup'
@@ -395,9 +396,12 @@ class OnboardingService {
         body: `🧭 *Guided KYC Setup*\n\nI'll walk you through each piece of information step by step.\n\nThis interactive form will collect:\n📅 Date of Birth\n👤 Gender\n🆔 BVN Number\n🏠 Address\n\nReady to start?`,
         footer: 'Secure • Step-by-step • Easy',
         flowActionPayload: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
+          screen: 'WELCOME_SCREEN',
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
         }
       };
 

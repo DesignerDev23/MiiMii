@@ -249,15 +249,23 @@ class MessageProcessor {
       // Create the onboarding flow data
       const flowData = {
         flowId: flowId,
-        flowToken: flowToken,
+        flowToken: flowToken, // Optional - can be removed if not needed
         flowCta: 'Complete Onboarding',
+        flowAction: 'navigate', // Default action
         header: {
           type: 'text',
           text: 'Welcome to MiiMii!'
         },
         body: `👋 *Hey ${userName}!* 👋\n\nWelcome to MiiMii - your personal financial assistant! 😎\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
-        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
+        flowActionPayload: {
+          screen: 'WELCOME_SCREEN', // Entry screen for the flow
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
+        }
       };
 
       // Send the Flow message
@@ -397,6 +405,7 @@ class MessageProcessor {
         flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
+        flowAction: 'navigate',
         header: {
           type: 'text',
           text: 'MiiMii Account Setup'
@@ -404,9 +413,12 @@ class MessageProcessor {
         body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
+          screen: 'WELCOME_SCREEN',
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
         }
       };
 

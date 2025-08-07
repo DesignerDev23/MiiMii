@@ -363,6 +363,35 @@ class WhatsAppFlowService {
    */
   async sendFlowMessage(to, flowData) {
     try {
+      // Build the parameters object according to WhatsApp Flow API documentation
+      const parameters = {
+        flow_message_version: '3',
+        flow_cta: flowData.flowCta || 'Start'
+      };
+
+      // Add flow_id (preferred) or flow_name
+      if (flowData.flowId) {
+        parameters.flow_id = flowData.flowId;
+      } else if (flowData.flowName) {
+        parameters.flow_name = flowData.flowName;
+      } else {
+        throw new Error('Either flowId or flowName must be provided');
+      }
+
+      // Add optional parameters
+      if (flowData.flowToken && flowData.flowToken !== 'unused') {
+        parameters.flow_token = flowData.flowToken;
+      }
+
+      if (flowData.flowAction) {
+        parameters.flow_action = flowData.flowAction;
+      }
+
+      // Handle flow_action_payload correctly according to documentation
+      if (flowData.flowActionPayload) {
+        parameters.flow_action_payload = flowData.flowActionPayload;
+      }
+
       const interactive = {
         type: 'flow',
         header: flowData.header,
@@ -370,14 +399,7 @@ class WhatsAppFlowService {
         footer: flowData.footer ? { text: flowData.footer } : undefined,
         action: {
           name: 'flow',
-          parameters: {
-            flow_message_version: '3',
-            flow_token: flowData.flowToken,
-            flow_id: flowData.flowId,
-            flow_cta: flowData.flowCta || 'Start',
-            flow_action: 'navigate',
-            flow_action_payload: flowData.flowActionPayload || {}
-          }
+          parameters
         }
       };
 

@@ -698,13 +698,21 @@ router.post('/send-flow-message', async (req, res) => {
         flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
+        flowAction: 'navigate',
         header: {
           type: 'text',
           text: 'MiiMii Account Setup'
         },
         body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
-        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
+        flowActionPayload: {
+          screen: 'WELCOME_SCREEN',
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
+        }
       };
     } else if (flowType === 'login') {
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
