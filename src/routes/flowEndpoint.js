@@ -49,10 +49,13 @@ router.post('/endpoint', async (req, res) => {
     // Check if encryption is configured for actual Flow requests
     if (!FLOW_CONFIG.privateKey) {
       logger.error('Flow endpoint called but private key not configured');
-      return res.status(503).json({
-        error: 'Flow encryption not configured',
-        code: 'ENCRYPTION_NOT_CONFIGURED',
-        message: 'Please configure FLOW_PRIVATE_KEY environment variable'
+      return res.status(200).json({
+        version: FLOW_CONFIG.version,
+        screen: 'ERROR_SCREEN',
+        data: {
+          error: 'Flow encryption not configured. Please contact support.',
+          code: 'ENCRYPTION_NOT_CONFIGURED'
+        }
       });
     }
 
@@ -81,9 +84,15 @@ router.post('/endpoint', async (req, res) => {
       logger.error('Failed to decrypt Flow request', {
         error: decryptedData.error
       });
-      return res.status(421).json({
-        error: 'Decryption failed',
-        code: 'DECRYPTION_FAILED'
+      // Return HTTP 200 with error screen as WhatsApp expects
+      return res.status(200).json({
+        version: FLOW_CONFIG.version,
+        screen: 'ERROR_SCREEN',
+        data: {
+          error: 'Unable to process your request. Please try again or contact support.',
+          code: 'DECRYPTION_FAILED',
+          message: 'Flow processing error occurred.'
+        }
       });
     }
 
@@ -101,9 +110,14 @@ router.post('/endpoint', async (req, res) => {
       logger.error('Failed to encrypt Flow response', {
         error: encryptedResponse.error
       });
-      return res.status(500).json({
-        error: 'Encryption failed',
-        code: 'ENCRYPTION_FAILED'
+      // Return HTTP 200 with error response
+      return res.status(200).json({
+        version: FLOW_CONFIG.version,
+        screen: 'ERROR_SCREEN',
+        data: {
+          error: 'Unable to process your request. Please try again.',
+          code: 'ENCRYPTION_FAILED'
+        }
       });
     }
 
@@ -117,9 +131,14 @@ router.post('/endpoint', async (req, res) => {
       stack: error.stack
     });
     
-    res.status(500).json({
-      error: 'Internal server error',
-      code: 'INTERNAL_ERROR'
+    // Always return HTTP 200 for Flow endpoints as WhatsApp expects
+    res.status(200).json({
+      version: FLOW_CONFIG.version,
+      screen: 'ERROR_SCREEN',
+      data: {
+        error: 'Service temporarily unavailable. Please try again later.',
+        code: 'INTERNAL_ERROR'
+      }
     });
   }
 });
@@ -244,6 +263,11 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
       throw new Error('Private key not configured');
     }
 
+    // Validate inputs
+    if (!encryptedFlowData || !encryptedAesKey || !initialVector) {
+      throw new Error('Missing encryption parameters');
+    }
+
     // Decrypt the AES key using RSA
     const aesKeyBytes = crypto.privateDecrypt(
       {
@@ -291,10 +315,23 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
     };
 
   } catch (error) {
-    logger.error('Flow request decryption failed', { error: error.message });
+    logger.error('Flow request decryption failed', { 
+      error: error.message,
+      code: error.code,
+      stack: error.stack
+    });
+    
+    // Handle specific crypto errors
+    if (error.message.includes('interrupted or cancelled')) {
+      return {
+        success: false,
+        error: 'Decryption interrupted - private key may be invalid or missing passphrase'
+      };
+    }
+    
     return {
       success: false,
-      error: error.message
+      error: `Decryption failed: ${error.message}`
     };
   }
 }
