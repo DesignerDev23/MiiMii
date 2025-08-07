@@ -41,17 +41,15 @@ const app = express();
 // Get server configuration early
 const serverConfig = config.getServerConfig();
 
-// Log WhatsApp Flow IDs at startup
-const whatsappConfig = config.getWhatsappConfig();
-logger.info('🚀 SERVER STARTUP: WhatsApp Flow ID Configuration', {
-  onboardingFlowId: whatsappConfig.onboardingFlowId,
-  loginFlowId: whatsappConfig.loginFlowId,
-  hasOnboardingFlowId: !!whatsappConfig.onboardingFlowId,
-  hasLoginFlowId: !!whatsappConfig.loginFlowId,
-  onboardingFlowIdLength: whatsappConfig.onboardingFlowId ? whatsappConfig.onboardingFlowId.length : 0,
-  loginFlowIdLength: whatsappConfig.loginFlowId ? whatsappConfig.loginFlowId.length : 0,
+// Log WhatsApp configuration at startup
+const config = require('./config');
+logger.info('🚀 WhatsApp Flow Configuration', {
+  hasAccessToken: !!config.getWhatsappConfig().accessToken,
+  hasPhoneNumberId: !!config.getWhatsappConfig().phoneNumberId,
+  hasBusinessAccountId: !!config.getWhatsappConfig().businessAccountId,
   environment: process.env.NODE_ENV,
-  platform: 'DigitalOcean App Platform'
+  // Using flow_json approach - no Flow IDs needed
+  flowApproach: 'flow_json'
 });
 
 // Server configuration for Digital Ocean App Platform

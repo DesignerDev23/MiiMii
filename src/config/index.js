@@ -19,12 +19,11 @@ class Config {
 
     // WhatsApp Configuration - Use exact variable names from Digital Ocean
     this.whatsapp = {
-      accessToken: process.env.BOT_ACCESS_TOKEN,
-      phoneNumberId: process.env.BOT_PHONE_NUMBER_ID,
+      accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
       businessAccountId: process.env.BOT_BUSINESS_ACCOUNT_ID,
-      webhookVerifyToken: process.env.BOT_WEBHOOK_VERIFY_TOKEN,
-      onboardingFlowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID,
-      loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID
+      webhookSecret: process.env.WHATSAPP_WEBHOOK_SECRET,
+      // Removed Flow ID dependencies since we're using flow_json approach
     };
 
     // Bellbank Configuration
@@ -158,12 +157,11 @@ class Config {
     // Add runtime logging for Flow ID debugging
     const logger = require('../utils/logger');
     logger.info('🔍 Config: WhatsApp Flow IDs at runtime', {
-      onboardingFlowId: this.whatsapp.onboardingFlowId,
-      loginFlowId: this.whatsapp.loginFlowId,
-      hasOnboardingFlowId: !!this.whatsapp.onboardingFlowId,
-      hasLoginFlowId: !!this.whatsapp.loginFlowId,
-      onboardingFlowIdLength: this.whatsapp.onboardingFlowId ? this.whatsapp.onboardingFlowId.length : 0,
-      loginFlowIdLength: this.whatsapp.loginFlowId ? this.whatsapp.loginFlowId.length : 0,
+      // Removed Flow ID dependencies since we're using flow_json approach
+      hasOnboardingFlowId: false,
+      hasLoginFlowId: false,
+      onboardingFlowIdLength: 0,
+      loginFlowIdLength: 0,
       environment: process.env.NODE_ENV
     });
     

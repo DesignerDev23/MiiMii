@@ -427,52 +427,80 @@ class WhatsAppFlowService {
    */
   async sendFlowMessage(to, flowData) {
     try {
-      // Build the parameters object according to WhatsApp Flow API documentation
-      const parameters = {
-        flow_message_version: '3',
-        flow_cta: flowData.flowCta || 'Start'
-      };
+      // Generate Flow JSON dynamically based on the flowData
+      const flowJson = this.generateDynamicFlowJson(flowData);
+      
+      logger.info('Sending Flow Message', {
+        to,
+        flowJsonLength: flowJson.length,
+        hasHeader: !!flowData.header,
+        hasBody: !!flowData.body,
+        hasFooter: !!flowData.footer,
+        hasActionPayload: !!flowData.flowActionPayload,
+        environment: process.env.NODE_ENV,
+        phoneNumberId: this.phoneNumberId
+      });
 
-      // Add flow_id (preferred) or flow_name
-      if (flowData.flowId) {
-        parameters.flow_id = flowData.flowId;
-      } else if (flowData.flowName) {
-        parameters.flow_name = flowData.flowName;
-      } else {
-        throw new Error('Either flowId or flowName must be provided');
-      }
-
-      // Add optional parameters
-      if (flowData.flowToken && flowData.flowToken !== 'unused') {
-        parameters.flow_token = flowData.flowToken;
-      }
-
-      if (flowData.flowAction) {
-        parameters.flow_action = flowData.flowAction;
-      }
-
-      // Handle flow_action_payload correctly according to documentation
-      if (flowData.flowActionPayload) {
-        parameters.flow_action_payload = flowData.flowActionPayload;
-      }
-
-      const interactive = {
-        type: 'flow',
-        header: flowData.header,
-        body: { text: flowData.body },
-        footer: flowData.footer ? { text: flowData.footer } : undefined,
-        action: {
-          name: 'flow',
-          parameters
+      // Create the interactive message payload using flow_json approach
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: this.formatToE164(to),
+        type: 'interactive',
+        interactive: {
+          type: 'flow',
+          header: flowData.header || {
+            type: 'text',
+            text: 'Welcome to MiiMii!'
+          },
+          body: {
+            text: flowData.body || 'Let\'s get you set up with your account.'
+          },
+          footer: flowData.footer ? {
+            text: flowData.footer
+          } : undefined,
+          action: {
+            name: 'flow',
+            parameters: {
+              flow_message_version: '3',
+              flow_token: flowData.flowToken || 'unused',
+              flow_json: flowJson, // Use flow_json instead of flow_id
+              flow_cta: flowData.flowCta || 'Complete Onboarding',
+              flow_action: flowData.flowAction || 'navigate',
+              flow_action_payload: flowData.flowActionPayload || {
+                screen: 'QUESTION_ONE',
+                data: flowData.flowActionPayload?.data || {}
+              }
+            }
+          }
         }
       };
 
-      const payload = {
-        messaging_product: 'whatsapp',
-        to: this.formatToE164(to),
-        type: 'interactive',
-        interactive
-      };
+      // Remove undefined properties to avoid API errors
+      if (!payload.interactive.footer) {
+        delete payload.interactive.footer;
+      }
+
+      logger.info('🚀 FLOW ID DEBUG: WhatsApp API request payload', {
+        flowJsonLength: flowJson.length,
+        flowJsonType: typeof flowJson,
+        flowTokenLength: flowData.flowToken ? flowData.flowToken.length : 0,
+        interactiveType: 'flow',
+        actionName: 'flow',
+        parameters: {
+          flow_message_version: '3',
+          flow_token: flowData.flowToken || 'unused',
+          flow_json: flowJson.substring(0, 100) + '...', // Log first 100 chars
+          flow_cta: flowData.flowCta || 'Complete Onboarding',
+          flow_action: flowData.flowAction || 'navigate',
+          flow_action_payload: flowData.flowActionPayload || {
+            screen: 'QUESTION_ONE',
+            data: flowData.flowActionPayload?.data || {}
+          }
+        },
+        phoneNumberId: this.phoneNumberId,
+        environment: process.env.NODE_ENV
+      });
 
       const response = await axios.post(
         `${this.baseURL}/messages`,
@@ -487,21 +515,248 @@ class WhatsAppFlowService {
         }
       );
 
-      logger.info('Flow message sent successfully', {
-        to,
-        flowId: flowData.flowId,
-        messageId: response.data.messages[0].id
-      });
+      if (response.data && response.data.messages && response.data.messages[0]) {
+        logger.info('Flow message sent successfully', {
+          to,
+          messageId: response.data.messages[0].id,
+          flowJsonLength: flowJson.length
+        });
+        return response.data.messages[0].id;
+      } else {
+        throw new Error('Invalid response format from WhatsApp API');
+      }
 
-      return response.data;
     } catch (error) {
       logger.error('Failed to send Flow message', {
         error: error.response?.data || error.message,
         to,
-        flowData
+        flowData: {
+          hasHeader: !!flowData.header,
+          hasBody: !!flowData.body,
+          hasFooter: !!flowData.footer,
+          flowCta: flowData.flowCta,
+          flowAction: flowData.flowAction
+        }
       });
       throw error;
     }
+  }
+
+  /**
+   * Generate dynamic Flow JSON based on the provided flowData
+   */
+  generateDynamicFlowJson(flowData) {
+    const userData = flowData.flowActionPayload?.data || {};
+    
+    return JSON.stringify({
+      "version": "5.0",
+      "screens": [
+        {
+          "id": "QUESTION_ONE",
+          "layout": {
+            "type": "SingleColumnLayout",
+            "children": [
+              {
+                "type": "Form",
+                "name": "flow_path",
+                "children": [
+                  {
+                    "type": "TextHeading",
+                    "text": "Personal Details"
+                  },
+                  {
+                    "type": "TextBody",
+                    "text": "Please provide your personal information:"
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_1_First_Name_0",
+                    "label": "First Name",
+                    "input-type": "text",
+                    "required": true
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_1_Last_Name_1",
+                    "label": "Last Name",
+                    "input-type": "text",
+                    "required": true
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_1_Middle_Name_2",
+                    "label": "Middle Name",
+                    "input-type": "text",
+                    "required": false
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_1_Address_3",
+                    "label": "Address",
+                    "input-type": "text",
+                    "required": true
+                  },
+                  {
+                    "type": "RadioButtonsGroup",
+                    "name": "screen_1_Gender_4",
+                    "label": "Gender",
+                    "required": true,
+                    "data-source": [
+                      {
+                        "id": "0_Male",
+                        "title": "Male"
+                      },
+                      {
+                        "id": "1_Female",
+                        "title": "Female"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_1_Date_of_Birth__5",
+                    "label": "Date of Birth",
+                    "input-type": "date",
+                    "required": true
+                  },
+                  {
+                    "type": "Footer",
+                    "label": "Continue",
+                    "on-click-action": {
+                      "name": "navigate",
+                      "next": {
+                        "name": "screen_kswuhq",
+                        "type": "screen"
+                      },
+                      "payload": {
+                        "screen_1_First_Name_0": "${form.screen_1_First_Name_0}",
+                        "screen_1_Last_Name_1": "${form.screen_1_Last_Name_1}",
+                        "screen_1_Middle_Name_2": "${form.screen_1_Middle_Name_2}",
+                        "screen_1_Address_3": "${form.screen_1_Address_3}",
+                        "screen_1_Gender_4": "${form.screen_1_Gender_4}",
+                        "screen_1_Date_of_Birth__5": "${form.screen_1_Date_of_Birth__5}"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "title": "PERSONAL_DETAILS"
+        },
+        {
+          "id": "screen_kswuhq",
+          "layout": {
+            "type": "SingleColumnLayout",
+            "children": [
+              {
+                "type": "Form",
+                "name": "flow_path",
+                "children": [
+                  {
+                    "type": "TextHeading",
+                    "text": "BVN Verification"
+                  },
+                  {
+                    "type": "TextBody",
+                    "text": "Please provide your Bank Verification Number (BVN) for verification:"
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_2_BVN_0",
+                    "label": "BVN",
+                    "input-type": "text",
+                    "required": true,
+                    "helper-text": "Enter your 11-digit BVN"
+                  },
+                  {
+                    "type": "Footer",
+                    "label": "Verify BVN",
+                    "on-click-action": {
+                      "name": "navigate",
+                      "next": {
+                        "name": "screen_wkunnj",
+                        "type": "screen"
+                      },
+                      "payload": {
+                        "screen_2_BVN_0": "${form.screen_2_BVN_0}",
+                        "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
+                        "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
+                        "screen_1_Middle_Name_2": "${data.screen_1_Middle_Name_2}",
+                        "screen_1_Address_3": "${data.screen_1_Address_3}",
+                        "screen_1_Gender_4": "${data.screen_1_Gender_4}",
+                        "screen_1_Date_of_Birth__5": "${data.screen_1_Date_of_Birth__5}"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "title": "BVN_VERIFICATION"
+        },
+        {
+          "id": "screen_wkunnj",
+          "layout": {
+            "type": "SingleColumnLayout",
+            "children": [
+              {
+                "type": "Form",
+                "name": "flow_path",
+                "children": [
+                  {
+                    "type": "TextHeading",
+                    "text": "Set Your PIN"
+                  },
+                  {
+                    "type": "TextBody",
+                    "text": "Create a 4-digit PIN for your account security:"
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_3_4Digit_PIN_0",
+                    "label": "4-Digit PIN",
+                    "input-type": "text",
+                    "required": true
+                  },
+                  {
+                    "type": "TextInput",
+                    "name": "screen_3_Confirm_PIN_1",
+                    "label": "Confirm PIN",
+                    "input-type": "text",
+                    "required": true,
+                    "helper-text": "Must be exactly 4 digits"
+                  },
+                  {
+                    "type": "Footer",
+                    "label": "Complete Setup",
+                    "on-click-action": {
+                      "name": "complete",
+                      "payload": {
+                        "screen_3_4Digit_PIN_0": "${form.screen_3_4Digit_PIN_0}",
+                        "screen_3_Confirm_PIN_1": "${form.screen_3_Confirm_PIN_1}",
+                        "screen_2_BVN_0": "${data.screen_2_BVN_0}",
+                        "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
+                        "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
+                        "screen_1_Middle_Name_2": "${data.screen_1_Middle_Name_2}",
+                        "screen_1_Address_3": "${data.screen_1_Address_3}",
+                        "screen_1_Gender_4": "${data.screen_1_Gender_4}",
+                        "screen_1_Date_of_Birth__5": "${data.screen_1_Date_of_Birth__5}"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "title": "PIN_SETUP"
+        }
+      ],
+      "title": "MiiMii Onboarding",
+      "terminal": true,
+      "success": true,
+      "data": userData
+    });
   }
 
   /**

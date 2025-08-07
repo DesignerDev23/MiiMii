@@ -203,35 +203,6 @@ class MessageProcessor {
     try {
       const whatsappFlowService = require('./whatsappFlowService');
       
-      // Check if we have a valid flow ID configured
-      const config = require('../config');
-      const flowId = config.getWhatsappConfig().onboardingFlowId;
-      
-      // Add detailed logging for Flow ID debugging
-      logger.info('🚀 FLOW ID DEBUG: About to send onboarding flow', {
-        userId: user.id,
-        phoneNumber: user.whatsappNumber,
-        configuredFlowId: flowId,
-        flowIdType: typeof flowId,
-        flowIdLength: flowId ? flowId.length : 0,
-        isFlowIdValid: flowId && flowId !== 'SET_THIS_IN_DO_UI' && flowId !== 'miimii_onboarding_flow' && flowId !== 'DISABLED_FOR_LOCAL_DEV',
-        environment: process.env.NODE_ENV,
-        whatsappConfig: {
-          hasAccessToken: !!config.getWhatsappConfig().accessToken,
-          hasPhoneNumberId: !!config.getWhatsappConfig().phoneNumberId,
-          hasBusinessAccountId: !!config.getWhatsappConfig().businessAccountId
-        }
-      });
-      
-      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
-        logger.warn('WhatsApp Flow ID not configured or disabled, falling back to interactive buttons', {
-          userId: user.id,
-          configuredFlowId: flowId
-        });
-        // Skip flow message and go directly to fallback
-        throw new Error('Flow ID not properly configured or disabled for local development');
-      }
-      
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
       
@@ -239,9 +210,21 @@ class MessageProcessor {
       const aiAssistant = require('./aiAssistant');
       const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
       
+      logger.info('🚀 FLOW ID DEBUG: About to send onboarding flow', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        userName: userName,
+        personalizedMessageLength: personalizedMessage ? personalizedMessage.length : 0,
+        environment: process.env.NODE_ENV,
+        whatsappConfig: {
+          hasAccessToken: !!process.env.WHATSAPP_ACCESS_TOKEN,
+          hasPhoneNumberId: !!process.env.WHATSAPP_PHONE_NUMBER_ID,
+          hasBusinessAccountId: !!process.env.BOT_BUSINESS_ACCOUNT_ID
+        }
+      });
+      
       // Create the onboarding flow data with AI-generated personalized content
       const flowData = {
-        flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
         flowAction: 'navigate',
@@ -262,9 +245,9 @@ class MessageProcessor {
         }
       };
 
-      // Send the Flow message using the configured Flow ID
+      // Send the Flow message using flow_json approach (no Flow ID needed)
       await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
-      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });
@@ -274,7 +257,8 @@ class MessageProcessor {
         phoneNumber: user.whatsappNumber,
         userName: userName,
         personalizedMessage: !!personalizedMessage,
-        messageLength: personalizedMessage ? personalizedMessage.length : 0
+        messageLength: personalizedMessage ? personalizedMessage.length : 0,
+        flowToken: flowToken.substring(0, 20) + '...'
       });
       
     } catch (error) {
