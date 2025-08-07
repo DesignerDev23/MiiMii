@@ -49,14 +49,21 @@ router.post('/endpoint', async (req, res) => {
     // Check if encryption is configured for actual Flow requests
     if (!FLOW_CONFIG.privateKey) {
       logger.error('Flow endpoint called but private key not configured');
-      return res.status(200).json({
+      
+      // Create error response
+      const errorResponse = {
         version: FLOW_CONFIG.version,
         screen: 'ERROR_SCREEN',
         data: {
           error: 'Flow encryption not configured. Please contact support.',
           code: 'ENCRYPTION_NOT_CONFIGURED'
         }
-      });
+      };
+      
+      // Return as Base64 encoded string
+      const errorBase64 = Buffer.from(JSON.stringify(errorResponse)).toString('base64');
+      res.setHeader('Content-Type', 'text/plain');
+      return res.status(200).send(errorBase64);
     }
 
     // Validate required fields for encrypted requests
@@ -84,16 +91,21 @@ router.post('/endpoint', async (req, res) => {
       logger.error('Failed to decrypt Flow request', {
         error: decryptedData.error
       });
-      // Return HTTP 200 with error screen as WhatsApp expects
-      return res.status(200).json({
+      
+      // Create error response and encrypt it
+      const errorResponse = {
         version: FLOW_CONFIG.version,
         screen: 'ERROR_SCREEN',
         data: {
           error: 'Unable to process your request. Please try again or contact support.',
-          code: 'DECRYPTION_FAILED',
-          message: 'Flow processing error occurred.'
+          code: 'DECRYPTION_FAILED'
         }
-      });
+      };
+      
+      // For decryption errors, we can't encrypt the response, so return a basic error
+      const basicErrorBase64 = Buffer.from(JSON.stringify(errorResponse)).toString('base64');
+      res.setHeader('Content-Type', 'text/plain');
+      return res.status(200).send(basicErrorBase64);
     }
 
     // Process the decrypted request
@@ -110,15 +122,21 @@ router.post('/endpoint', async (req, res) => {
       logger.error('Failed to encrypt Flow response', {
         error: encryptedResponse.error
       });
-      // Return HTTP 200 with error response
-      return res.status(200).json({
+      
+      // Create error response
+      const errorResponse = {
         version: FLOW_CONFIG.version,
         screen: 'ERROR_SCREEN',
         data: {
           error: 'Unable to process your request. Please try again.',
           code: 'ENCRYPTION_FAILED'
         }
-      });
+      };
+      
+      // Return as Base64 encoded string
+      const errorBase64 = Buffer.from(JSON.stringify(errorResponse)).toString('base64');
+      res.setHeader('Content-Type', 'text/plain');
+      return res.status(200).send(errorBase64);
     }
 
     // Return encrypted response as plain text (as per WhatsApp spec)
@@ -131,15 +149,20 @@ router.post('/endpoint', async (req, res) => {
       stack: error.stack
     });
     
-    // Always return HTTP 200 for Flow endpoints as WhatsApp expects
-    res.status(200).json({
+    // Create error response
+    const errorResponse = {
       version: FLOW_CONFIG.version,
       screen: 'ERROR_SCREEN',
       data: {
         error: 'Service temporarily unavailable. Please try again later.',
         code: 'INTERNAL_ERROR'
       }
-    });
+    };
+    
+    // Return as Base64 encoded string
+    const errorBase64 = Buffer.from(JSON.stringify(errorResponse)).toString('base64');
+    res.setHeader('Content-Type', 'text/plain');
+    res.status(200).send(errorBase64);
   }
 });
 
