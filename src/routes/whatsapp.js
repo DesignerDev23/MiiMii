@@ -534,11 +534,7 @@ router.post('/test-interactive-bot', async (req, res) => {
           },
           body: `Hi Designer! 👋\n\nLet's complete your MiiMii account setup. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
           footer: 'Secure • Fast • Easy',
-          flowActionPayload: {
-            userId: 'demo_user',
-            phoneNumber: to,
-            step: 'personal_details'
-          }
+          flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
         };
 
         await whatsappService.sendTypingIndicator(to, 2000);
@@ -698,11 +694,7 @@ router.post('/send-flow-message', async (req, res) => {
         },
         body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
-        flowActionPayload: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
-        }
+        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
       };
     } else if (flowType === 'login') {
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
@@ -716,11 +708,7 @@ router.post('/send-flow-message', async (req, res) => {
         },
         body: `Welcome back, ${user.fullName || user.firstName || 'there'}! 👋\n\nPlease enter your 4-digit PIN to access your account securely.`,
         footer: 'Secure Login',
-        flowActionPayload: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'pin_verification'
-        }
+        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
       };
     } else {
       return res.status(400).json({ 

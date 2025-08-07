@@ -182,7 +182,7 @@ class MessageProcessor {
       const whatsappFlowService = require('./whatsappFlowService');
       
       // Generate a secure flow token
-      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      const flowToken = whatsappFlowService.generateFlowToken(user.id, 'pin_verification');
       
       // Create the login flow data
       const flowData = {
@@ -195,11 +195,7 @@ class MessageProcessor {
         },
         body: `🌟 *Welcome back, ${userName}!* 🌟\n\nGreat to see you again! I'm your Personal Financial Assistant from MiiMii.\n\nPlease enter your 4-digit PIN to access your account securely.`,
         footer: 'Secure Login',
-        flowActionPayload: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'pin_verification'
-        }
+        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
       };
 
       // Send the Flow message
@@ -237,7 +233,7 @@ class MessageProcessor {
       const whatsappFlowService = require('./whatsappFlowService');
       
       // Generate a secure flow token
-      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
       
       // Create the onboarding flow data
       const flowData = {
@@ -250,11 +246,7 @@ class MessageProcessor {
         },
         body: `👋 *Hey ${userName}!* 👋\n\nWelcome to MiiMii - your personal financial assistant! 😎\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
-        flowActionPayload: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
-        }
+        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
       };
 
       // Send the Flow message
