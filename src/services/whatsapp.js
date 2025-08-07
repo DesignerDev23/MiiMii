@@ -268,6 +268,74 @@ class WhatsAppService {
     return this.sendInteractiveMessage(to, interactive);
   }
 
+  // Template Flow Message Method
+  async sendTemplateFlowMessage(to, templateName, flowData) {
+    try {
+      if (!this.isConfigured()) {
+        throw new Error('WhatsApp service not configured');
+      }
+
+      const formattedNumber = this.formatToE164(to);
+      
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formattedNumber,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: {
+            code: 'en_US' // Default language, can be parameterized
+          },
+          components: [
+            {
+              type: 'button',
+              sub_type: 'flow',
+              index: '0',
+              parameters: [
+                {
+                  type: 'action',
+                  action: {
+                    flow_token: flowData.flowToken || 'unused',
+                    flow_action_data: flowData.flowActionData || {}
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      };
+
+      const response = await axios.post(
+        `${this.baseURL}/messages`,
+        payload,
+        {
+          ...this.axiosConfig,
+          headers: {
+            ...this.axiosConfig.headers,
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.info('Template flow message sent successfully', {
+        to: formattedNumber,
+        templateName,
+        messageId: response.data.messages[0].id
+      });
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to send template flow message', {
+        error: error.response?.data || error.message,
+        to,
+        templateName
+      });
+      throw error;
+    }
+  }
+
   async sendTypingIndicator(to, duration = 3000) {
     try {
       // Check if service is properly configured

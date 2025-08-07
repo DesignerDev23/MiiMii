@@ -232,26 +232,57 @@ class MessageProcessor {
     try {
       const whatsappFlowService = require('./whatsappFlowService');
       
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        logger.warn('WhatsApp Flow ID not configured, falling back to interactive buttons', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        // Skip flow message and go directly to fallback
+        throw new Error('Flow ID not properly configured');
+      }
+      
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
       
       // Create the onboarding flow data
       const flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
-        flowToken: flowToken,
+        flowId: flowId,
+        flowToken: flowToken, // Optional - can be removed if not needed
         flowCta: 'Complete Onboarding',
+        flowAction: 'navigate', // Default action
         header: {
           type: 'text',
           text: 'Welcome to MiiMii!'
         },
         body: `👋 *Hey ${userName}!* 👋\n\nWelcome to MiiMii - your personal financial assistant! 😎\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
-        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
+        flowActionPayload: {
+          screen: 'WELCOME_SCREEN', // Entry screen for the flow
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
+        }
       };
 
-      // Send the Flow message
+      // Send the Template Flow message
       await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
-      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      // Use template flow instead of interactive flow for business-initiated messages
+      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
+      const templateFlowData = {
+        flowToken: flowToken,
+        flowActionData: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'personal_details'
+        }
+      };
+      
+      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });
@@ -368,14 +399,25 @@ class MessageProcessor {
     try {
       const whatsappFlowService = require('./whatsappFlowService');
       
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        logger.warn('WhatsApp Flow ID not configured for flow-based onboarding, skipping', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        return { success: false, error: 'Flow ID not configured' };
+      }
+      
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
       
       // Create the flow data
       const flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
+        flowAction: 'navigate',
         header: {
           type: 'text',
           text: 'MiiMii Account Setup'
@@ -383,15 +425,30 @@ class MessageProcessor {
         body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
+          screen: 'WELCOME_SCREEN',
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
+        }
+      };
+
+      // Send the Template Flow message
+      await whatsappService.sendTypingIndicator(user.whatsappNumber, 2000);
+      
+      // Use template flow instead of interactive flow for business-initiated messages
+      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
+      const templateFlowData = {
+        flowToken: flowToken,
+        flowActionData: {
           userId: user.id,
           phoneNumber: user.whatsappNumber,
           step: 'personal_details'
         }
       };
-
-      // Send the Flow message
-      await whatsappService.sendTypingIndicator(user.whatsappNumber, 2000);
-      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });

@@ -372,12 +372,23 @@ class OnboardingService {
 
   async startGuidedKycFlow(user) {
     try {
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        logger.warn('WhatsApp Flow ID not configured for guided KYC, falling back to traditional', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        return await this.fallbackToTraditionalOnboarding(user);
+      }
+      
       // Create and send WhatsApp Flow for guided KYC setup
       const whatsappFlowService = require('./whatsappFlowService');
       const flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowId: flowId,
         flowToken: whatsappFlowService.generateFlowToken(user.id),
         flowCta: 'Start Guided Setup',
+        flowAction: 'navigate',
         header: {
           type: 'text',
           text: 'KYC Information Setup'
@@ -385,13 +396,28 @@ class OnboardingService {
         body: `🧭 *Guided KYC Setup*\n\nI'll walk you through each piece of information step by step.\n\nThis interactive form will collect:\n📅 Date of Birth\n👤 Gender\n🆔 BVN Number\n🏠 Address\n\nReady to start?`,
         footer: 'Secure • Step-by-step • Easy',
         flowActionPayload: {
+          screen: 'WELCOME_SCREEN',
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
+        }
+      };
+
+      // Use template flow instead of interactive flow for business-initiated messages
+      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
+      const templateFlowData = {
+        flowToken: whatsappFlowService.generateFlowToken(user.id),
+        flowActionData: {
           userId: user.id,
           phoneNumber: user.whatsappNumber,
           step: 'personal_details'
         }
       };
-
-      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
       
       // Update user state to indicate flow was sent
       await user.update({
@@ -895,7 +921,18 @@ class OnboardingService {
         }
       };
 
-      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      // Use template flow instead of interactive flow for business-initiated messages
+      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
+      const templateFlowData = {
+        flowToken: 'unused', // Can be removed if not needed
+        flowActionData: {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          step: 'personal_details'
+        }
+      };
+      
+      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
       
       // Update user step
       await user.update({ onboardingStep: 'kyc_data' });

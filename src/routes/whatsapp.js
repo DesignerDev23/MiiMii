@@ -683,18 +683,36 @@ router.post('/send-flow-message', async (req, res) => {
     let flowData;
     
     if (flowType === 'onboarding') {
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        return res.status(400).json({
+          success: false,
+          error: 'WhatsApp Flow ID not configured',
+          message: 'Please set WHATSAPP_ONBOARDING_FLOW_ID environment variable'
+        });
+      }
+      
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
       flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
+        flowAction: 'navigate',
         header: {
           type: 'text',
           text: 'MiiMii Account Setup'
         },
         body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
-        flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
+        flowActionPayload: {
+          screen: 'WELCOME_SCREEN',
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
+        }
       };
     } else if (flowType === 'login') {
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
@@ -716,7 +734,18 @@ router.post('/send-flow-message', async (req, res) => {
       });
     }
 
-    const result = await whatsappFlowService.sendFlowMessage(to, flowData);
+    // Use template flow for business-initiated messages
+    const templateName = 'miimii_onboarding_flow';
+    const templateFlowData = {
+      flowToken: flowData.flowToken,
+      flowActionData: {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        step: 'personal_details'
+      }
+    };
+    
+    const result = await whatsappService.sendTemplateFlowMessage(to, templateName, templateFlowData);
     
     res.json({
       success: true,
