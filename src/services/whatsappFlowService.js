@@ -127,187 +127,308 @@ class WhatsAppFlowService {
 
   /**
    * Get the onboarding flow JSON structure
+   * This matches the actual Flow structure from Facebook WhatsApp Manager
    */
   getOnboardingFlowJson() {
     return {
-      version: "3.1",
-      screens: [
+      "screens": [
         {
-          id: "WELCOME_SCREEN",
-          layout: {
-            type: "SingleColumnLayout",
-            children: [
+          "data": {},
+          "id": "QUESTION_ONE",
+          "layout": {
+            "children": [
               {
-                type: "TextHeading",
-                text: "Welcome to MiiMii! 👋"
-              },
-              {
-                type: "TextBody",
-                text: "I'm excited to help you manage your finances through WhatsApp! Let's set up your account securely."
-              },
-              {
-                type: "Footer",
-                label: "Start Setup",
-                "on-click-action": {
-                  name: "navigate",
-                  payload: {
-                    screen: "PERSONAL_DETAILS_SCREEN"
+                "children": [
+                  {
+                    "text": "Welcome to MiiMii",
+                    "type": "TextHeading"
+                  },
+                  {
+                    "type": "TextBody",
+                    "text": "Let's get you set up with your account. This will only take a few minutes"
+                  },
+                  {
+                    "label": "Start Onboarding",
+                    "on-click-action": {
+                      "name": "navigate",
+                      "next": {
+                        "name": "screen_poawge",
+                        "type": "screen"
+                      },
+                      "payload": {}
+                    },
+                    "type": "Footer"
                   }
-                }
+                ],
+                "name": "flow_path",
+                "type": "Form"
               }
-            ]
+            ],
+            "type": "SingleColumnLayout"
           },
-          title: "Welcome",
-          terminal: false
+          "title": "WELCOME_SCREEN"
         },
         {
-          id: "PERSONAL_DETAILS_SCREEN",
-          layout: {
-            type: "SingleColumnLayout",
-            children: [
+          "data": {},
+          "id": "screen_poawge",
+          "layout": {
+            "children": [
               {
-                type: "TextHeading",
-                text: "Personal Information"
-              },
-              {
-                type: "TextBody",
-                text: "Let's start with your basic information."
-              },
-              {
-                type: "FormInput",
-                name: "first_name",
-                label: "First Name",
-                required: true,
-                placeholder: "Enter your first name"
-              },
-              {
-                type: "FormInput",
-                name: "last_name",
-                label: "Last Name",
-                required: true,
-                placeholder: "Enter your last name"
-              },
-              {
-                type: "FormInput",
-                name: "middle_name",
-                label: "Middle Name (Optional)",
-                required: false,
-                placeholder: "Enter your middle name"
-              },
-              {
-                type: "DatePicker",
-                name: "date_of_birth",
-                label: "Date of Birth",
-                required: true
-              },
-              {
-                type: "Dropdown",
-                name: "gender",
-                label: "Gender",
-                required: true,
-                options: [
-                  { value: "male", label: "Male" },
-                  { value: "female", label: "Female" }
-                ]
-              },
-              {
-                type: "Footer",
-                label: "Next",
-                "on-click-action": {
-                  name: "navigate",
-                  payload: {
-                    screen: "BVN_SCREEN"
+                "children": [
+                  {
+                    "text": "Personal Details",
+                    "type": "TextHeading"
+                  },
+                  {
+                    "text": "Please provide your personal information:",
+                    "type": "TextBody"
+                  },
+                  {
+                    "input-type": "text",
+                    "label": "First Name",
+                    "name": "First_Name_abf873",
+                    "required": true,
+                    "type": "TextInput"
+                  },
+                  {
+                    "input-type": "text",
+                    "label": "Last Name",
+                    "name": "Last_Name_5487df",
+                    "required": true,
+                    "type": "TextInput"
+                  },
+                  {
+                    "input-type": "text",
+                    "label": "Middle Name",
+                    "name": "Middle_Name_8abed2",
+                    "required": false,
+                    "type": "TextInput"
+                  },
+                  {
+                    "input-type": "text",
+                    "label": "Address",
+                    "name": "Address_979e9b",
+                    "required": true,
+                    "type": "TextInput"
+                  },
+                  {
+                    "data-source": [
+                      {
+                        "id": "0_Male",
+                        "title": "Male"
+                      },
+                      {
+                        "id": "1_Female",
+                        "title": "Female"
+                      }
+                    ],
+                    "label": "Gender",
+                    "name": "Gender_a12260",
+                    "required": true,
+                    "type": "RadioButtonsGroup"
+                  },
+                  {
+                    "input-type": "text",
+                    "label": "Date of Birth ",
+                    "name": "Date_of_Birth__291d3f",
+                    "required": true,
+                    "type": "TextInput",
+                    "helper-text": "DD/MM/YYYY"
+                  },
+                  {
+                    "label": "Next",
+                    "on-click-action": {
+                      "name": "navigate",
+                      "next": {
+                        "name": "screen_kswuhq",
+                        "type": "screen"
+                      },
+                      "payload": {
+                        "screen_1_First_Name_0": "${form.First_Name_abf873}",
+                        "screen_1_Last_Name_1": "${form.Last_Name_5487df}",
+                        "screen_1_Middle_Name_2": "${form.Middle_Name_8abed2}",
+                        "screen_1_Address_3": "${form.Address_979e9b}",
+                        "screen_1_Gender_4": "${form.Gender_a12260}",
+                        "screen_1_Date_of_Birth__5": "${form.Date_of_Birth__291d3f}"
+                      }
+                    },
+                    "type": "Footer"
                   }
-                }
+                ],
+                "name": "flow_path",
+                "type": "Form"
               }
-            ]
+            ],
+            "type": "SingleColumnLayout"
           },
-          title: "Personal Details",
-          terminal: false
+          "title": "PERSONAL_DETAILS_SCREEN"
         },
         {
-          id: "BVN_SCREEN",
-          layout: {
-            type: "SingleColumnLayout",
-            children: [
-              {
-                type: "TextHeading",
-                text: "BVN Verification"
-              },
-              {
-                type: "TextBody",
-                text: "Please provide your Bank Verification Number (BVN) for security verification."
-              },
-              {
-                type: "FormInput",
-                name: "bvn",
-                label: "BVN",
-                required: true,
-                placeholder: "Enter your 11-digit BVN",
-                input_type: "number",
-                max_length: 11
-              },
-              {
-                type: "Footer",
-                label: "Verify BVN",
-                "on-click-action": {
-                  name: "navigate",
-                  payload: {
-                    screen: "PIN_SETUP_SCREEN"
-                  }
-                }
-              }
-            ]
+          "data": {
+            "screen_1_First_Name_0": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Last_Name_1": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Middle_Name_2": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Address_3": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Gender_4": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Date_of_Birth__5": {
+              "__example__": "Example",
+              "type": "string"
+            }
           },
-          title: "BVN Verification",
-          terminal: false
+          "id": "screen_kswuhq",
+          "layout": {
+            "children": [
+              {
+                "children": [
+                  {
+                    "text": "BVN Verification",
+                    "type": "TextHeading"
+                  },
+                  {
+                    "text": "For security purposes, we need to verify your BVN:",
+                    "type": "TextBody"
+                  },
+                  {
+                    "input-type": "number",
+                    "label": "BVN",
+                    "name": "BVN_217ee8",
+                    "required": true,
+                    "type": "TextInput",
+                    "helper-text": "Must be exactly 11 digits"
+                  },
+                  {
+                    "label": "Verify BVN",
+                    "on-click-action": {
+                      "name": "navigate",
+                      "next": {
+                        "name": "screen_wkunnj",
+                        "type": "screen"
+                      },
+                      "payload": {
+                        "screen_2_BVN_0": "${form.BVN_217ee8}",
+                        "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
+                        "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
+                        "screen_1_Middle_Name_2": "${data.screen_1_Middle_Name_2}",
+                        "screen_1_Address_3": "${data.screen_1_Address_3}",
+                        "screen_1_Gender_4": "${data.screen_1_Gender_4}",
+                        "screen_1_Date_of_Birth__5": "${data.screen_1_Date_of_Birth__5}"
+                      }
+                    },
+                    "type": "Footer"
+                  }
+                ],
+                "name": "flow_path",
+                "type": "Form"
+              }
+            ],
+            "type": "SingleColumnLayout"
+          },
+          "title": "BVN_SCREEN"
         },
         {
-          id: "PIN_SETUP_SCREEN",
-          layout: {
-            type: "SingleColumnLayout",
-            children: [
-              {
-                type: "TextHeading",
-                text: "Secure PIN Setup"
-              },
-              {
-                type: "TextBody",
-                text: "Create a 4-digit PIN to secure your account. This will be required for all transactions."
-              },
-              {
-                type: "FormInput",
-                name: "pin",
-                label: "Create PIN",
-                required: true,
-                input_type: "password",
-                max_length: 4,
-                placeholder: "••••"
-              },
-              {
-                type: "FormInput",
-                name: "confirm_pin",
-                label: "Confirm PIN",
-                required: true,
-                input_type: "password",
-                max_length: 4,
-                placeholder: "••••"
-              },
-              {
-                type: "Footer",
-                label: "Complete Setup",
-                "on-click-action": {
-                  name: "complete",
-                  payload: {}
-                }
-              }
-            ]
+          "data": {
+            "screen_2_BVN_0": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_First_Name_0": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Last_Name_1": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Middle_Name_2": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Address_3": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Gender_4": {
+              "__example__": "Example",
+              "type": "string"
+            },
+            "screen_1_Date_of_Birth__5": {
+              "__example__": "Example",
+              "type": "string"
+            }
           },
-          title: "PIN Setup",
-          terminal: true,
-          success: true
+          "id": "screen_wkunnj",
+          "layout": {
+            "children": [
+              {
+                "children": [
+                  {
+                    "text": "Set Your PIN",
+                    "type": "TextHeading"
+                  },
+                  {
+                    "text": "Create a 4-digit PIN for your account security:",
+                    "type": "TextBody"
+                  },
+                  {
+                    "input-type": "text",
+                    "label": "4-Digit PIN",
+                    "name": "4Digit_PIN_49b72a",
+                    "required": true,
+                    "type": "TextInput"
+                  },
+                  {
+                    "input-type": "text",
+                    "label": "Confirm PIN",
+                    "name": "Confirm_PIN_a9ed34",
+                    "required": true,
+                    "type": "TextInput",
+                    "helper-text": "Must be exactly 4 digits"
+                  },
+                  {
+                    "label": "Complete Setup",
+                    "on-click-action": {
+                      "name": "complete",
+                      "payload": {
+                        "screen_3_4Digit_PIN_0": "${form.4Digit_PIN_49b72a}",
+                        "screen_3_Confirm_PIN_1": "${form.Confirm_PIN_a9ed34}",
+                        "screen_2_BVN_0": "${data.screen_2_BVN_0}",
+                        "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
+                        "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
+                        "screen_1_Middle_Name_2": "${data.screen_1_Middle_Name_2}",
+                        "screen_1_Address_3": "${data.screen_1_Address_3}",
+                        "screen_1_Gender_4": "${data.screen_1_Gender_4}",
+                        "screen_1_Date_of_Birth__5": "${data.screen_1_Date_of_Birth__5}"
+                      }
+                    },
+                    "type": "Footer"
+                  }
+                ],
+                "name": "flow_path",
+                "type": "Form"
+              }
+            ],
+            "type": "SingleColumnLayout"
+          },
+          "terminal": true,
+          "title": "PIN_SETUP_SCREEN"
         }
-      ]
+      ],
+      "version": "7.2"
     };
   }
 
@@ -562,6 +683,7 @@ class WhatsAppFlowService {
 
   /**
    * Process flow screen data
+   * Updated to handle the actual field names from Facebook WhatsApp Manager Flow
    */
   async processFlowScreen(screen, data, userId) {
     const userService = require('./user');
@@ -570,36 +692,83 @@ class WhatsAppFlowService {
 
     try {
       switch (screen) {
-        case 'PERSONAL_DETAILS_SCREEN':
+        case 'screen_poawge': // Personal Details Screen
+          // Extract personal details from the Facebook Flow data structure
+          const firstName = data.screen_1_First_Name_0;
+          const lastName = data.screen_1_Last_Name_1;
+          const middleName = data.screen_1_Middle_Name_2;
+          const address = data.screen_1_Address_3;
+          const gender = data.screen_1_Gender_4;
+          const dateOfBirth = data.screen_1_Date_of_Birth__5;
+
           // Save personal details
           const user = await userService.getUserById(userId);
           if (user) {
+            // Parse gender from radio button format (e.g., "0_Male" -> "male")
+            let parsedGender = 'other';
+            if (gender) {
+              if (gender.toLowerCase().includes('male')) {
+                parsedGender = gender.toLowerCase().includes('female') ? 'female' : 'male';
+              }
+            }
+
+            // Parse date from DD/MM/YYYY format to proper date
+            let parsedDate = null;
+            if (dateOfBirth) {
+              const parts = dateOfBirth.split('/');
+              if (parts.length === 3) {
+                // Convert DD/MM/YYYY to YYYY-MM-DD
+                parsedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+              }
+            }
+
             await user.update({
-              firstName: data.first_name,
-              lastName: data.last_name,
-              middleName: data.middle_name,
-              dateOfBirth: data.date_of_birth,
-              gender: data.gender
+              firstName: firstName,
+              lastName: lastName,
+              middleName: middleName || null,
+              address: address,
+              dateOfBirth: parsedDate,
+              gender: parsedGender
+            });
+
+            logger.info('Personal details saved from Flow', {
+              userId: user.id,
+              firstName,
+              lastName,
+              gender: parsedGender
             });
           }
           
           return {
-            nextScreen: 'BVN_SCREEN',
+            nextScreen: 'screen_kswuhq',
             data: { success: true, message: 'Personal details saved successfully' }
           };
 
-        case 'BVN_SCREEN':
+        case 'screen_kswuhq': // BVN Screen
+          // Extract BVN from the Facebook Flow data structure
+          const bvn = data.screen_2_BVN_0;
+          
+          if (!bvn || bvn.length !== 11) {
+            return {
+              nextScreen: 'screen_kswuhq',
+              data: { 
+                success: false, 
+                error: 'BVN must be exactly 11 digits. Please check and try again.' 
+              }
+            };
+          }
+
           // Process BVN verification
-          const bvnResult = await kycService.verifyBVN(data.bvn, userId);
+          const bvnResult = await kycService.verifyBVN(bvn, userId);
           
           if (bvnResult.success) {
             return {
-              nextScreen: 'PIN_SETUP_SCREEN',
+              nextScreen: 'screen_wkunnj',
               data: { success: true, message: 'BVN verified successfully' }
             };
           } else {
             return {
-              nextScreen: 'BVN_SCREEN',
+              nextScreen: 'screen_kswuhq',
               data: { 
                 success: false, 
                 error: 'BVN verification failed. Please check and try again.' 
@@ -607,11 +776,25 @@ class WhatsAppFlowService {
             };
           }
 
-        case 'PIN_SETUP_SCREEN':
-          // Validate and save PIN
-          if (data.pin !== data.confirm_pin) {
+        case 'screen_wkunnj': // PIN Setup Screen (Final)
+          // Extract PIN data from the Facebook Flow data structure
+          const pin = data.screen_3_4Digit_PIN_0;
+          const confirmPin = data.screen_3_Confirm_PIN_1;
+
+          // Validate PIN
+          if (!pin || !confirmPin) {
             return {
-              nextScreen: 'PIN_SETUP_SCREEN',
+              nextScreen: 'screen_wkunnj',
+              data: { 
+                success: false, 
+                error: 'Both PIN fields are required.' 
+              }
+            };
+          }
+
+          if (pin !== confirmPin) {
+            return {
+              nextScreen: 'screen_wkunnj',
               data: { 
                 success: false, 
                 error: 'PINs do not match. Please try again.' 
@@ -619,19 +802,51 @@ class WhatsAppFlowService {
             };
           }
 
+          if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+            return {
+              nextScreen: 'screen_wkunnj',
+              data: { 
+                success: false, 
+                error: 'PIN must be exactly 4 digits.' 
+              }
+            };
+          }
+
           // Save PIN and complete onboarding
-          await onboardingService.completePinSetup(userId, data.pin);
+          await onboardingService.completePinSetup(userId, pin);
+          
+          // Extract all the data collected throughout the flow for final processing
+          const finalData = {
+            firstName: data.screen_1_First_Name_0,
+            lastName: data.screen_1_Last_Name_1,
+            middleName: data.screen_1_Middle_Name_2,
+            address: data.screen_1_Address_3,
+            gender: data.screen_1_Gender_4,
+            dateOfBirth: data.screen_1_Date_of_Birth__5,
+            bvn: data.screen_2_BVN_0,
+            pin: pin
+          };
+
+          logger.info('Flow onboarding completed', {
+            userId,
+            finalData: {
+              ...finalData,
+              pin: '****', // Don't log the actual PIN
+              bvn: bvn.substring(0, 3) + '********' // Don't log the full BVN
+            }
+          });
           
           return {
             nextScreen: 'COMPLETION_SCREEN',
             data: { 
               success: true, 
-              message: 'Account setup completed! Welcome to MiiMii!' 
+              message: 'Account setup completed! Welcome to MiiMii!',
+              finalData
             }
           };
 
         case 'PIN_INPUT_SCREEN':
-          // Verify PIN for login
+          // Verify PIN for login (this is for the login flow, not onboarding)
           const loginUser = await userService.getUserById(userId);
           if (loginUser && await loginUser.validatePin(data.pin)) {
             return {
@@ -646,12 +861,13 @@ class WhatsAppFlowService {
           }
 
         default:
+          logger.warn('Unknown flow screen received', { screen, userId, data });
           return {
-            data: { error: 'Unknown screen' }
+            data: { error: `Unknown screen: ${screen}` }
           };
       }
     } catch (error) {
-      logger.error('Flow screen processing error', { error: error.message, screen, userId });
+      logger.error('Flow screen processing error', { error: error.message, screen, userId, data });
       return {
         data: { 
           success: false, 
