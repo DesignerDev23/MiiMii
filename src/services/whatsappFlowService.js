@@ -744,11 +744,12 @@ class WhatsAppFlowService {
             data: { success: true, message: 'Personal details saved successfully' }
           };
 
-        case 'screen_kswuhq': // BVN Screen
-          // Extract BVN from the Facebook Flow data structure
+        case 'screen_kswuhq': // BVN Verification Screen
+          // Extract BVN data from the Facebook Flow data structure
           const bvn = data.screen_2_BVN_0;
-          
-          if (!bvn || bvn.length !== 11) {
+
+          // Validate BVN format
+          if (!bvn || bvn.length !== 11 || !/^\d{11}$/.test(bvn)) {
             return {
               nextScreen: 'screen_kswuhq',
               data: { 
@@ -758,20 +759,66 @@ class WhatsAppFlowService {
             };
           }
 
-          // Process BVN verification
-          const bvnResult = await kycService.verifyBVN(bvn, userId);
-          
-          if (bvnResult.success) {
-            return {
-              nextScreen: 'screen_wkunnj',
-              data: { success: true, message: 'BVN verified successfully' }
-            };
-          } else {
+          // Verify BVN with Fincra
+          try {
+            const kycService = require('./kyc');
+            const bvnResult = await kycService.verifyBVNWithFincra(bvn, userId);
+            
+            if (bvnResult.success) {
+              // Update user with BVN and verification status
+              const user = await userService.getUserById(userId);
+              if (user) {
+                await user.update({
+                  bvn: bvn,
+                  kycStatus: 'verified',
+                  kycData: {
+                    bvnVerified: true,
+                    bvnVerifiedAt: new Date().toISOString(),
+                    bvnData: bvnResult.data
+                  }
+                });
+
+                logger.info('BVN verified successfully with Fincra', {
+                  userId,
+                  bvn: bvn.substring(0, 3) + '********',
+                  verificationData: bvnResult.data
+                });
+              }
+              
+              return {
+                nextScreen: 'screen_wkunnj',
+                data: { 
+                  success: true, 
+                  message: 'BVN verified successfully! Please proceed to set up your PIN.' 
+                }
+              };
+            } else {
+              logger.warn('BVN verification failed with Fincra', {
+                userId,
+                bvn: bvn.substring(0, 3) + '********',
+                error: bvnResult.error
+              });
+              
+              return {
+                nextScreen: 'screen_kswuhq',
+                data: { 
+                  success: false, 
+                  error: bvnResult.error || 'BVN verification failed. Please check and try again.' 
+                }
+              };
+            }
+          } catch (bvnError) {
+            logger.error('BVN verification error with Fincra', {
+              error: bvnError.message,
+              userId,
+              bvn: bvn.substring(0, 3) + '********'
+            });
+            
             return {
               nextScreen: 'screen_kswuhq',
               data: { 
                 success: false, 
-                error: 'BVN verification failed. Please check and try again.' 
+                error: 'BVN verification service is temporarily unavailable. Please try again later.' 
               }
             };
           }
@@ -832,7 +879,7 @@ class WhatsAppFlowService {
             finalData: {
               ...finalData,
               pin: '****', // Don't log the actual PIN
-              bvn: bvn.substring(0, 3) + '********' // Don't log the full BVN
+              bvn: finalData.bvn ? finalData.bvn.substring(0, 3) + '********' : 'not_provided' // Don't log the full BVN
             }
           });
           
@@ -840,7 +887,7 @@ class WhatsAppFlowService {
             nextScreen: 'COMPLETION_SCREEN',
             data: { 
               success: true, 
-              message: 'Account setup completed! Welcome to MiiMii!',
+              message: '🎉 Account setup completed! Welcome to MiiMii! Your account is now ready to use.',
               finalData
             }
           };

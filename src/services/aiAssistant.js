@@ -723,66 +723,114 @@ Extract intent and data from this message. Consider the user context and any ext
       };
     }
     
-    // Simple keyword matching for common commands
-    if (lowerMessage.includes('balance') || lowerMessage.includes('wallet')) {
-      return { success: true, intent: 'CHECK_BALANCE', extractedData: {}, confidence: 0.8 };
-    } else if (lowerMessage.includes('help') || lowerMessage.includes('assist') || lowerMessage.includes('support')) {
-      return { 
-        success: true, 
-        intent: 'HELP', 
-        extractedData: {}, 
-        confidence: 0.9,
-        message: "Here's what I can help you with:\n\n💰 Check your wallet balance\n💸 Send money to other users\n🏦 Transfer money to bank accounts\n📱 Buy airtime for any network\n📊 Buy data bundles\n💡 Pay utility bills\n📈 View transaction history\n\nJust tell me what you'd like to do in simple terms!"
-      };
-    } else if (lowerMessage.includes('send') || lowerMessage.includes('transfer')) {
-      return { 
-        success: true, 
-        intent: 'TRANSFER_MONEY', 
-        extractedData: {}, 
-        confidence: 0.6,
-        message: "I can help you send money! Please provide:\n\n💰 Amount\n📱 Recipient's phone number\n👤 Recipient's name (optional)\n\nExample: 'Send 5000 to John 08123456789'"
-      };
-    } else if (lowerMessage.includes('airtime') || lowerMessage.includes('recharge')) {
-      return { 
-        success: true, 
-        intent: 'BUY_AIRTIME', 
-        extractedData: {}, 
-        confidence: 0.7,
-        message: "I can help you buy airtime! Please provide:\n\n💰 Amount\n📱 Phone number (optional, defaults to yours)\n\nExample: 'Buy 1000 airtime' or 'Buy 1000 airtime for 08123456789'"
-      };
-    } else if (lowerMessage.includes('data') || lowerMessage.includes('internet')) {
-      return { 
-        success: true, 
-        intent: 'BUY_DATA', 
-        extractedData: {}, 
-        confidence: 0.7,
-        message: "I can help you buy data! Please provide:\n\n📊 Data size (e.g., 1GB, 2GB) or amount\n📱 Phone number (optional, defaults to yours)\n\nExample: 'Buy 1GB data' or 'Buy 2000 worth of data'"
-      };
-    } else if (lowerMessage.includes('bill') || lowerMessage.includes('electric') || lowerMessage.includes('cable')) {
-      return { 
-        success: true, 
-        intent: 'PAY_BILL', 
-        extractedData: {}, 
-        confidence: 0.7,
-        message: "I can help you pay bills! Please provide:\n\n💰 Amount\n🏢 Utility provider (e.g., EKEDC, DStv)\n🔢 Meter/Account number\n\nExample: 'Pay 5000 electricity EKEDC 12345678901'"
-      };
-    } else if (lowerMessage.includes('history') || lowerMessage.includes('transaction')) {
-      return { 
-        success: true, 
-        intent: 'TRANSACTION_HISTORY', 
-        extractedData: {}, 
-        confidence: 0.8,
-        message: "Let me get your recent transaction history..."
-      };
-    }
-    
-    return { 
-      success: true, 
-      intent: 'UNKNOWN', 
-      extractedData: {}, 
-      confidence: 0.1,
-      message: `I'm sorry, I didn't quite understand that. I'm currently running in simplified mode.\n\nTry using simple commands like:\n• "balance" - Check wallet balance\n• "help" - Get assistance\n• "send money" - Transfer funds\n• "buy airtime" - Purchase airtime\n• "buy data" - Purchase data\n\nOr type "help" for more options!`
+    // Default fallback
+    return {
+      success: true,
+      intent: 'UNKNOWN',
+      extractedData: {},
+      confidence: 0.5,
+      message: `I'm not sure I understood that. You can say:\n\n💰 "Check my balance"\n💸 "Send 5k to John"\n📱 "Buy 1GB data"\n💳 "Pay electricity bill"\n\nOr just say "help" for more options!`
     };
+  }
+
+  // Generate personalized welcome message for new users
+  async generatePersonalizedWelcome(userName, phoneNumber) {
+    try {
+      if (!this.isConfigured) {
+        // Fallback to template-based welcome
+        return this.generateTemplateWelcome(userName);
+      }
+
+      const currentHour = new Date().getHours();
+      let timeGreeting = '';
+      
+      if (currentHour < 12) {
+        timeGreeting = '🌅 Good morning';
+      } else if (currentHour < 17) {
+        timeGreeting = '☀️ Good afternoon';
+      } else {
+        timeGreeting = '🌙 Good evening';
+      }
+
+      const prompt = `Generate a warm, personalized welcome message for a new MiiMii user.
+
+User Details:
+- Name: ${userName || 'there'}
+- Time: ${timeGreeting}
+- Platform: WhatsApp Financial Assistant
+
+Requirements:
+1. Use the user's name naturally in the greeting
+2. Be warm, friendly, and professional
+3. Explain what MiiMii offers (financial services, transfers, airtime, bills, etc.)
+4. Mention the onboarding process briefly
+5. Keep it conversational and engaging
+6. Use emojis appropriately
+7. Keep it under 200 words
+8. End with a call to action about starting the setup
+
+Tone: Friendly, professional, trustworthy, and excited about helping with finances.
+
+Format the response as a WhatsApp message with proper formatting.`;
+
+      const response = await axios.post(
+        `${this.openaiBaseUrl}/chat/completions`,
+        {
+          model: this.model,
+          messages: [
+            { role: 'system', content: 'You are MiiMii, a friendly WhatsApp financial assistant. Create warm, personalized welcome messages.' },
+            { role: 'user', content: prompt }
+          ],
+          max_tokens: 300,
+          temperature: 0.7
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.openaiApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const aiMessage = response.data.choices[0].message.content.trim();
+      
+      logger.info('Generated personalized welcome message', {
+        userName,
+        phoneNumber,
+        messageLength: aiMessage.length,
+        hasAI: true
+      });
+
+      return aiMessage;
+
+    } catch (error) {
+      logger.error('Failed to generate AI welcome message', {
+        error: error.message,
+        userName,
+        phoneNumber
+      });
+      
+      // Fallback to template-based welcome
+      return this.generateTemplateWelcome(userName);
+    }
+  }
+
+  // Generate template-based welcome message as fallback
+  generateTemplateWelcome(userName) {
+    const currentHour = new Date().getHours();
+    let timeGreeting = '';
+    
+    if (currentHour < 12) {
+      timeGreeting = '🌅 Good morning';
+    } else if (currentHour < 17) {
+      timeGreeting = '☀️ Good afternoon';
+    } else {
+      timeGreeting = '🌙 Good evening';
+    }
+
+    const personalGreeting = userName ? `${timeGreeting}, ${userName}!` : `${timeGreeting}!`;
+
+    return `${personalGreeting} 👋\n\n🎉 Welcome to *MiiMii* - Your Smart Financial Assistant!\n\nI'm excited to help you manage your finances effortlessly through WhatsApp! 😎\n\nHere's what I can do for you:\n✅ Send money to anyone instantly\n✅ Buy airtime & data bundles\n✅ Pay utility bills seamlessly\n✅ Manage your digital wallet\n✅ Check account balance & history\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n📝 Personal details\n🏦 BVN for verification\n🔐 Set up your PIN\n\nReady to start? 🚀`;
   }
 }
 

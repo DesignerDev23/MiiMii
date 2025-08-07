@@ -1043,22 +1043,79 @@ class OnboardingService {
       });
 
       // Create wallet for user if not exists
-      await walletService.getOrCreateWallet(user.id);
+      const wallet = await walletService.getOrCreateWallet(user.id);
 
-      // Send completion message
+      // Create virtual account with BellBank
+      let virtualAccountDetails = null;
+      try {
+        const virtualAccountData = await bellbankService.createVirtualAccount({
+          firstName: user.firstName,
+          lastName: user.lastName,
+          middleName: user.middleName,
+          phoneNumber: user.whatsappNumber,
+          address: user.address,
+          bvn: user.bvn,
+          gender: user.gender,
+          dateOfBirth: user.dateOfBirth,
+          userId: user.id
+        });
+
+        if (virtualAccountData.success) {
+          // Update wallet with virtual account details
+          await wallet.update({
+            virtualAccountNumber: virtualAccountData.accountNumber,
+            virtualAccountBank: virtualAccountData.bankName,
+            virtualAccountName: virtualAccountData.accountName,
+            bankCode: virtualAccountData.bankCode,
+            accountReference: virtualAccountData.externalReference
+          });
+
+          virtualAccountDetails = {
+            accountNumber: virtualAccountData.accountNumber,
+            bankName: virtualAccountData.bankName,
+            accountName: virtualAccountData.accountName
+          };
+
+          logger.info('Virtual account created successfully during onboarding', {
+            userId: user.id,
+            accountNumber: virtualAccountData.accountNumber,
+            bankName: virtualAccountData.bankName
+          });
+        }
+      } catch (virtualAccountError) {
+        logger.error('Failed to create virtual account during onboarding', {
+          error: virtualAccountError.message,
+          userId: user.id
+        });
+        // Continue without virtual account - can be created later
+      }
+
+      // Send completion message with account details
+      let completionMessage = `🎉 *Congratulations!* 🎉\n\n` +
+                            `Your MiiMii account has been successfully created!\n\n` +
+                            `✅ Account verified\n` +
+                            `✅ PIN set up\n` +
+                            `✅ Wallet created\n`;
+
+      if (virtualAccountDetails) {
+        completionMessage += `✅ Virtual account created\n\n` +
+                           `💳 *Your Virtual Account Details:*\n` +
+                           `📱 *Account Number:* ${virtualAccountDetails.accountNumber}\n` +
+                           `🏦 *Bank:* ${virtualAccountDetails.bankName}\n` +
+                           `👤 *Account Name:* ${virtualAccountDetails.accountName}\n\n` +
+                           `💰 You can fund your wallet by transferring money to this account from any Nigerian bank.\n\n`;
+      }
+
+      completionMessage += `You can now:\n` +
+                          `💰 Send and receive money\n` +
+                          `📱 Pay bills and buy airtime\n` +
+                          `💳 Get virtual cards\n` +
+                          `📊 Track your expenses\n\n` +
+                          `Welcome to the future of banking! 🚀`;
+
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
-        `🎉 *Congratulations!* 🎉\n\n` +
-        `Your MiiMii account has been successfully created!\n\n` +
-        `✅ Account verified\n` +
-        `✅ PIN set up\n` +
-        `✅ Wallet created\n\n` +
-        `You can now:\n` +
-        `💰 Send and receive money\n` +
-        `📱 Pay bills and buy airtime\n` +
-        `💳 Get virtual cards\n` +
-        `📊 Track your expenses\n\n` +
-        `Welcome to the future of banking! 🚀`
+        completionMessage
       );
 
       // Send main menu
@@ -1074,12 +1131,30 @@ class OnboardingService {
         buttons
       );
 
+      // Log activity
+      await ActivityLog.logUserActivity(
+        user.id, 
+        'onboarding_completed', 
+        'account_setup_completed',
+        { 
+          source: 'whatsapp_flow',
+          description: 'User onboarding completed successfully',
+          hasVirtualAccount: !!virtualAccountDetails,
+          virtualAccountNumber: virtualAccountDetails?.accountNumber
+        }
+      );
+
       logger.info('User onboarding completed successfully', {
         userId: user.id,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        hasVirtualAccount: !!virtualAccountDetails,
+        virtualAccountNumber: virtualAccountDetails?.accountNumber
       });
 
-      return { success: true };
+      return { 
+        success: true, 
+        virtualAccountDetails 
+      };
 
     } catch (error) {
       logger.error('Failed to complete PIN setup', {
