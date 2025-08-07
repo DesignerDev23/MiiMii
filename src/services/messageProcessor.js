@@ -659,6 +659,75 @@ class MessageProcessor {
     }
   }
 
+  async processFlowCompletion(parsedMessage) {
+    try {
+      const { flowToken, screen, data } = parsedMessage;
+      
+      logger.info('Processing Flow completion', {
+        flowToken,
+        screen,
+        hasData: !!data
+      });
+
+      // Get user from flow token or phone number
+      let user = null;
+      if (data?.phoneNumber) {
+        user = await userService.getUserByPhoneNumber(data.phoneNumber);
+      }
+
+      if (!user) {
+        logger.warn('No user found for Flow completion', {
+          flowToken,
+          screen,
+          phoneNumber: data?.phoneNumber
+        });
+        return;
+      }
+
+      // Process the completed flow data
+      const onboardingService = require('./onboarding');
+      const result = await onboardingService.processCompletedFlow(user, {
+        flowToken,
+        screen,
+        data
+      });
+
+      if (result.success) {
+        logger.info('Flow completion processed successfully', {
+          userId: user.id,
+          flowToken,
+          screen
+        });
+
+        // Send completion message
+        const completionMessage = `🎉 Welcome to MiiMii! Your account setup is complete. You can now use all our services including transfers, airtime, data, and bill payments.`;
+        await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
+
+        // Send account details if available
+        if (result.accountDetails) {
+          const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${result.accountDetails.accountNumber}\n🏛️ Bank: ${result.accountDetails.bankName}\n💰 Balance: ₦${result.accountDetails.balance || '0.00'}\n\nYour virtual account is ready for use!`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
+        }
+      } else {
+        logger.error('Flow completion processing failed', {
+          userId: user.id,
+          flowToken,
+          screen,
+          error: result.error
+        });
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Error processing Flow completion', {
+        error: error.message,
+        stack: error.stack,
+        parsedMessage
+      });
+      throw error;
+    }
+  }
+
   async processVoiceMessage(mediaId, user) {
     try {
       logger.info('Processing voice message', { mediaId, userId: user.id });

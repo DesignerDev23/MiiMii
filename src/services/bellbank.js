@@ -95,6 +95,7 @@ class BellBankService {
         environment: process.env.NODE_ENV
       });
 
+      // Use the correct endpoint from BellBank documentation
       const response = await this.makeRequest('POST', '/v1/account/clients/individual', payload, {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
@@ -103,67 +104,74 @@ class BellBankService {
       if (response.success && response.data) {
         const accountData = response.data;
         
-        // Log successful account creation
-        await ActivityLog.logUserActivity(
-          userData.userId,
-          'wallet_funding',
-          'virtual_account_created',
-          {
-            source: 'system',
-            description: 'BellBank virtual account created successfully',
-            accountNumber: accountData.accountNumber,
-            accountName: accountData.accountName,
-            externalReference: accountData.externalReference
-          }
-        );
-
-        logger.info('BellBank virtual account created successfully', {
+        logger.info('Virtual account created successfully', {
           userId: userData.userId,
           accountNumber: accountData.accountNumber,
           accountName: accountData.accountName,
-          externalReference: accountData.externalReference
+          bankName: accountData.bankName
+        });
+
+        // Log activity
+        await ActivityLog.create({
+          userId: userData.userId,
+          action: 'virtual_account_created',
+          details: {
+            accountNumber: accountData.accountNumber,
+            accountName: accountData.accountName,
+            bankName: accountData.bankName,
+            provider: 'bellbank',
+            success: true
+          }
         });
 
         return {
           success: true,
           accountNumber: accountData.accountNumber,
           accountName: accountData.accountName,
-          accountType: accountData.accountType || 'virtual',
-          externalReference: accountData.externalReference,
-          validityType: accountData.validityType || 'permanent',
-          bankCode: '000023', // BellMonie bank code
-          bankName: 'BellMonie MFB',
-          provider: 'bellbank',
-          createdAt: new Date(),
-          metadata: accountData
+          bankName: accountData.bankName,
+          bankCode: accountData.bankCode,
+          reference: accountData.reference,
+          message: 'Virtual account created successfully'
         };
       } else {
-        throw new Error(response.message || 'Account creation failed - no data returned');
+        logger.error('Failed to create virtual account', {
+          userId: userData.userId,
+          error: response.message,
+          response: response
+        });
+
+        // Log activity
+        await ActivityLog.create({
+          userId: userData.userId,
+          action: 'virtual_account_created',
+          details: {
+            provider: 'bellbank',
+            success: false,
+            error: response.message || 'Unknown error'
+          }
+        });
+
+        throw new Error(response.message || 'Failed to create virtual account');
       }
     } catch (error) {
-      logger.error('Virtual account creation failed', { 
-        error: error.message,
+      logger.error('Virtual account creation error', {
         userId: userData.userId,
-        phoneNumber: userData.phoneNumber,
+        error: error.message,
         stack: error.stack
       });
-      
-      // Log failed attempt
-      if (userData.userId) {
-        await ActivityLog.logUserActivity(
-          userData.userId,
-          'wallet_funding',
-          'virtual_account_creation_failed',
-          {
-            source: 'system',
-            description: 'BellBank virtual account creation failed',
-            error: error.message,
-            severity: 'error'
-          }
-        );
-      }
-      
-      throw new Error(`Virtual account creation failed: ${error.message}`);
+
+      // Log activity
+      await ActivityLog.create({
+        userId: userData.userId,
+        action: 'virtual_account_created',
+        details: {
+          provider: 'bellbank',
+          success: false,
+          error: error.message
+        }
+      });
+
+      throw error;
     }
   }
 

@@ -47,6 +47,13 @@ class Config {
       publicKey: process.env.DOJAH_PUBLIC_KEY
     };
 
+    // Fincra Configuration
+    this.fincra = {
+      apiKey: process.env.FINCRA_API_KEY,
+      secretKey: process.env.FINCRA_SECRET_KEY,
+      businessId: process.env.FINCRA_BUSINESS_ID
+    };
+
     // OpenAI Configuration
     this.openai = {
       apiKey: process.env.AI_API_KEY,
@@ -173,6 +180,10 @@ class Config {
 
   getDojahConfig() {
     return this.dojah;
+  }
+
+  getFincraConfig() {
+    return this.fincra;
   }
 
   getOpenAIConfig() {

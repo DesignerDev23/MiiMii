@@ -155,146 +155,125 @@ router.get('/whatsapp', (req, res) => {
   }
 });
 
-router.post('/whatsapp',
-  verifyWebhookSignature('whatsapp'),
-  logWebhook('whatsapp'),
-  async (req, res) => {
-    try {
-      const parsedMessage = whatsappService.parseWebhookMessage(req.body);
+// WhatsApp webhook endpoint
+router.post('/whatsapp', logWebhook('whatsapp'), async (req, res) => {
+  try {
+    logger.info('Received WhatsApp webhook', {
+      bodyKeys: Object.keys(req.body),
+      headers: Object.keys(req.headers)
+    });
+
+    // Parse the webhook message
+    const parsedMessage = whatsappService.parseWebhookMessage(req.body);
+    
+    if (!parsedMessage) {
+      logger.warn('Failed to parse webhook message', {
+        bodyKeys: Object.keys(req.body),
+        body: JSON.stringify(req.body).substring(0, 500)
+      });
+      return res.status(200).json({ status: 'ok', message: 'Message parsed as null' });
+    }
+
+    logger.info('Successfully parsed webhook message', {
+      type: parsedMessage.type,
+      messageId: parsedMessage.messageId,
+      from: parsedMessage.from
+    });
+
+    // Handle verification requests
+    if (parsedMessage.type === 'verification') {
+      const verificationResult = whatsappService.verifyWebhook(
+        parsedMessage.mode,
+        parsedMessage.token,
+        parsedMessage.challenge
+      );
       
-      if (parsedMessage) {
-        // Handle webhook verification requests
-        if (parsedMessage.type === 'verification') {
-          logger.info('Handling webhook verification request');
-          const challenge = parsedMessage.challenge;
-          res.status(200).send(challenge);
-          return;
-        }
-
-        if (parsedMessage.type === 'message') {
-          // Mark message as read
-          await whatsappService.markMessageAsRead(parsedMessage.messageId);
-          
-          // Check if this is a Flow webhook
-          if (parsedMessage.flowData) {
-            logger.info('Processing Flow webhook data', {
-              messageId: parsedMessage.messageId,
-              flowToken: parsedMessage.flowData.flow_token,
-              screen: parsedMessage.flowData.screen
-            });
-            
-            const whatsappFlowService = require('../services/whatsappFlowService');
-            const flowResult = await whatsappFlowService.handleFlowWebhook(parsedMessage.flowData);
-            
-            if (flowResult.success) {
-              // Send appropriate response based on flow result
-              const user = await userService.getUserById(flowResult.userId);
-              if (user && flowResult.result.message) {
-                await whatsappService.sendTextMessage(user.whatsappNumber, flowResult.result.message);
-              }
-            }
-          } else if (parsedMessage.message && parsedMessage.message.interactiveType === 'nfm_reply') {
-            // Handle Flow completion response
-            logger.info('Processing Flow completion response', {
-              messageId: parsedMessage.messageId,
-              flowResponse: parsedMessage.message.flowResponse
-            });
-            
-            const flowResponse = parsedMessage.message.flowResponse;
-            if (flowResponse && flowResponse.flowToken) {
-              // Process the completed flow data
-              const whatsappFlowService = require('../services/whatsappFlowService');
-              const flowResult = await whatsappFlowService.handleFlowCompletion(flowResponse);
-              
-              if (flowResult.success) {
-                const user = await userService.getUserById(flowResult.userId);
-                if (user) {
-                  // Send completion message
-                  const completionMessage = `🎉 Welcome to MiiMii! Your account setup is complete. You can now use all our services including transfers, airtime, data, and bill payments.`;
-                  await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
-                  
-                  // Send account details if available
-                  if (flowResult.accountDetails) {
-                    const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${flowResult.accountDetails.accountNumber}\n🏛️ Bank: ${flowResult.accountDetails.bankName}\n💰 Balance: ₦${flowResult.accountDetails.balance || '0.00'}\n\nYour virtual account is ready for use!`;
-                    await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
-                  }
-                }
-              }
-            }
-          } else {
-            // Process the message with AI/NLP
-            await messageProcessor.processIncomingMessage(parsedMessage);
-          }
-        } else if (parsedMessage.type === 'status') {
-          // Handle message status updates
-          logger.info('WhatsApp message status update', parsedMessage.statuses);
-        } else if (parsedMessage.type === 'flow_completion') {
-          // Handle Flow completion webhooks
-          logger.info('Processing Flow completion webhook', {
-            flowToken: parsedMessage.flowData.flow_token,
-            screen: parsedMessage.flowData.screen
-          });
-          
-          const whatsappFlowService = require('../services/whatsappFlowService');
-          const flowResult = await whatsappFlowService.handleFlowWebhook(parsedMessage.flowData);
-          
-          if (flowResult.success) {
-            const user = await userService.getUserById(flowResult.userId);
-            if (user && flowResult.result.message) {
-              await whatsappService.sendTextMessage(user.whatsappNumber, flowResult.result.message);
-            }
-          }
-        }
-
-        // Update webhook log as processed
-        if (req.webhookLogId) {
-          try {
-            await databaseService.update(WebhookLog,
-              { processed: true, processedAt: new Date(), responseCode: 200 },
-              { where: { id: req.webhookLogId } }
-            );
-          } catch (error) {
-            logger.warn('Failed to update webhook log status', { 
-              error: error.message, 
-              webhookLogId: req.webhookLogId 
-            });
-          }
-        }
+      if (verificationResult) {
+        logger.info('Webhook verification successful');
+        return res.status(200).send(verificationResult);
       } else {
-        logger.warn('No valid message parsed from webhook', {
-          bodyKeys: Object.keys(req.body),
-          hasEntry: !!req.body.entry,
-          hasChanges: !!req.body.entry?.[0]?.changes
-        });
+        logger.warn('Webhook verification failed');
+        return res.status(403).json({ error: 'Verification failed' });
       }
+    }
 
-      res.status(200).json({ success: true });
-    } catch (error) {
-      logger.error('WhatsApp webhook processing failed', { 
-        error: error.message,
-        stack: error.stack,
-        bodyKeys: Object.keys(req.body || {})
+    // Handle status updates
+    if (parsedMessage.type === 'status') {
+      logger.info('Processing status update', {
+        status: parsedMessage.statuses?.status,
+        messageId: parsedMessage.statuses?.id
+      });
+      return res.status(200).json({ status: 'ok', message: 'Status processed' });
+    }
+
+    // Handle flow completion
+    if (parsedMessage.type === 'flow_completion') {
+      logger.info('Processing flow completion', {
+        flowToken: parsedMessage.flowToken,
+        screen: parsedMessage.screen
       });
       
-      // Update webhook log with error
-      if (req.webhookLogId) {
-        try {
-          await databaseService.update(WebhookLog,
-            { processed: false, errorMessage: error.message, responseCode: 500 },
-            { where: { id: req.webhookLogId } }
-          );
-        } catch (dbError) {
-          logger.warn('Failed to update webhook log with error status', { 
-            error: dbError.message, 
-            webhookLogId: req.webhookLogId 
-          });
-        }
+      // Process flow completion data
+      try {
+        await messageProcessor.processFlowCompletion(parsedMessage);
+        return res.status(200).json({ status: 'ok', message: 'Flow completion processed' });
+      } catch (error) {
+        logger.error('Error processing flow completion', { error: error.message });
+        return res.status(200).json({ status: 'ok', message: 'Flow completion error logged' });
       }
-      
-      res.status(500).json({ error: 'Webhook processing failed' });
     }
+
+    // Handle regular messages
+    if (parsedMessage.type === 'message') {
+      logger.info('Processing incoming message', {
+        messageId: parsedMessage.messageId,
+        from: parsedMessage.from,
+        messageType: parsedMessage.messageType
+      });
+
+      // Process the message asynchronously
+      messageProcessor.processIncomingMessage(parsedMessage)
+        .then(() => {
+          logger.info('Message processed successfully', {
+            messageId: parsedMessage.messageId,
+            from: parsedMessage.from
+          });
+        })
+        .catch((error) => {
+          logger.error('Error processing message', {
+            messageId: parsedMessage.messageId,
+            from: parsedMessage.from,
+            error: error.message,
+            stack: error.stack
+          });
+        });
+
+      return res.status(200).json({ status: 'ok', message: 'Message received' });
+    }
+
+    // Handle other webhook types
+    logger.info('Processing other webhook type', {
+      type: parsedMessage.type,
+      valueKeys: parsedMessage.value ? Object.keys(parsedMessage.value) : 'null'
+    });
+    
+    return res.status(200).json({ status: 'ok', message: 'Webhook processed' });
+
+  } catch (error) {
+    logger.error('Error processing WhatsApp webhook', {
+      error: error.message,
+      stack: error.stack,
+      bodyKeys: Object.keys(req.body)
+    });
+    
+    // Always return 200 to WhatsApp to prevent retries
+    return res.status(200).json({ 
+      status: 'error', 
+      message: 'Internal server error',
+      error: error.message 
+    });
   }
-);
+});
 
 // BellBank webhook endpoints
 router.post('/bellbank',

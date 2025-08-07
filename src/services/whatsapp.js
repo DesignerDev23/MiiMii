@@ -703,32 +703,51 @@ class WhatsAppService {
         };
       }
 
+      // Validate body structure
+      if (!body || typeof body !== 'object') {
+        logger.warn('Invalid webhook body structure', { 
+          bodyType: typeof body,
+          bodyKeys: body ? Object.keys(body) : 'null'
+        });
+        return null;
+      }
+
       const entry = body.entry?.[0];
       if (!entry) {
-        logger.warn('No entry found in webhook body', { bodyKeys: Object.keys(body) });
+        logger.warn('No entry found in webhook body', { 
+          bodyKeys: Object.keys(body),
+          body: JSON.stringify(body).substring(0, 500) // Log first 500 chars
+        });
         return null;
       }
 
       const changes = entry.changes?.[0];
       if (!changes) {
-        logger.warn('No changes found in webhook entry', { entry });
+        logger.warn('No changes found in webhook entry', { 
+          entryKeys: Object.keys(entry),
+          entry: JSON.stringify(entry).substring(0, 500)
+        });
         return null;
       }
 
       // Check if this is a WhatsApp Business Account webhook
-      // Note: The object field might be in the body or in changes.value
       const webhookObject = body.object || changes.value?.object;
       if (webhookObject !== 'whatsapp_business_account') {
         logger.warn('Invalid webhook structure or not a WhatsApp Business Account', {
           bodyObject: body.object,
           changesValueObject: changes.value?.object,
           webhookObject: webhookObject,
-          changes: changes
+          changesKeys: changes.value ? Object.keys(changes.value) : 'null'
         });
         return null;
       }
 
       const value = changes.value;
+      if (!value) {
+        logger.warn('No value found in webhook changes', { changes });
+        return null;
+      }
+
       const messages = value.messages?.[0];
       const statuses = value.statuses?.[0];
 
@@ -739,9 +758,9 @@ class WhatsAppService {
         if (messages.interactive?.type === 'flow') {
           const flowData = messages.interactive.flow;
           logger.info('Processing Flow webhook', {
-            flowToken: flowData.flow_token,
-            screen: flowData.screen,
-            hasData: !!flowData.data
+            flowToken: flowData?.flow_token,
+            screen: flowData?.screen,
+            hasData: !!flowData?.data
           });
           
           return {
@@ -750,12 +769,12 @@ class WhatsAppService {
             from: messages.from,
             timestamp: messages.timestamp,
             flowData: {
-              flow_token: flowData.flow_token,
-              screen: flowData.screen,
-              data: flowData.data,
-              encrypted_flow_data: flowData.encrypted_flow_data,
-              encrypted_aes_key: flowData.encrypted_aes_key,
-              encrypted_iv: flowData.encrypted_iv
+              flow_token: flowData?.flow_token,
+              screen: flowData?.screen,
+              data: flowData?.data,
+              encrypted_flow_data: flowData?.encrypted_flow_data,
+              encrypted_aes_key: flowData?.encrypted_aes_key,
+              encrypted_iv: flowData?.encrypted_iv
             },
             messageType: 'flow',
             contact: value.contacts?.[0]
@@ -765,7 +784,7 @@ class WhatsAppService {
         logger.info('Processing regular message webhook', {
           messageId: messages.id,
           from: messages.from,
-          messageType: messageData.type,
+          messageType: messageData?.type,
           messageContent: messageData
         });
 
@@ -775,7 +794,7 @@ class WhatsAppService {
           from: messages.from,
           timestamp: messages.timestamp,
           message: messageData,
-          messageType: messageData.type,
+          messageType: messageData?.type,
           contact: value.contacts?.[0]
         };
       }
@@ -801,26 +820,28 @@ class WhatsAppService {
         
         return {
           type: 'flow_completion',
-          flowData: value.flow_completion,
-          contact: value.contacts?.[0]
+          flowToken: value.flow_completion.flow_token,
+          screen: value.flow_completion.screen,
+          data: value.flow_completion.data
         };
       }
 
-      logger.warn('No messages, statuses, or flow completion found in webhook', {
+      // Handle other webhook types
+      logger.info('Processing other webhook type', {
         valueKeys: Object.keys(value),
-        hasMessages: !!value.messages,
-        hasStatuses: !!value.statuses,
-        hasFlowCompletion: !!value.flow_completion,
-        messagesLength: value.messages?.length,
-        statusesLength: value.statuses?.length,
-        value: value
+        value: JSON.stringify(value).substring(0, 500)
       });
-      return null;
+      
+      return {
+        type: 'other',
+        value: value
+      };
+
     } catch (error) {
-      logger.error('Failed to parse webhook message', { 
+      logger.error('Error parsing webhook message', {
         error: error.message,
-        bodyKeys: Object.keys(body || {}),
-        stack: error.stack
+        stack: error.stack,
+        body: JSON.stringify(body).substring(0, 1000)
       });
       return null;
     }
