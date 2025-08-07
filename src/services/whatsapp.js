@@ -9,7 +9,7 @@ class WhatsAppService {
     this.accessToken = whatsappConfig.accessToken;
     this.phoneNumberId = whatsappConfig.phoneNumberId;
     this.baseURL = `https://graph.facebook.com/v18.0/${this.phoneNumberId}`;
-    this.verifyToken = whatsappConfig.webhookVerifyToken;
+    this.verifyToken = whatsappConfig.webhookSecret; // Changed from webhookVerifyToken to webhookSecret
     this.axiosConfig = axiosConfig;
   }
 
@@ -74,7 +74,7 @@ class WhatsAppService {
     const requiredEnvVars = [
       'BOT_ACCESS_TOKEN',
       'BOT_PHONE_NUMBER_ID',
-      'BOT_WEBHOOK_VERIFY_TOKEN'
+      'WEBHOOK_SECRET'
     ];
 
     const missing = requiredEnvVars.filter(envVar => !process.env[envVar]);

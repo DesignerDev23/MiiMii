@@ -19,10 +19,10 @@ class Config {
 
     // WhatsApp Configuration - Use exact variable names from Digital Ocean
     this.whatsapp = {
-      accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
-      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+      accessToken: process.env.BOT_ACCESS_TOKEN, // Changed from WHATSAPP_ACCESS_TOKEN
+      phoneNumberId: process.env.BOT_PHONE_NUMBER_ID, // Changed from WHATSAPP_PHONE_NUMBER_ID
       businessAccountId: process.env.BOT_BUSINESS_ACCOUNT_ID,
-      webhookSecret: process.env.WHATSAPP_WEBHOOK_SECRET,
+      webhookSecret: process.env.WEBHOOK_SECRET, // Changed from WHATSAPP_WEBHOOK_SECRET
       // Removed Flow ID dependencies since we're using flow_json approach
     };
 

@@ -57,8 +57,8 @@ async function testFlowImplementation() {
     // Test 5: Check Environment Variables
     console.log('5. Testing Environment Variables...');
     const requiredVars = [
-      'WHATSAPP_ACCESS_TOKEN',
-      'WHATSAPP_PHONE_NUMBER_ID',
+      'BOT_ACCESS_TOKEN',
+      'BOT_PHONE_NUMBER_ID',
       'BOT_BUSINESS_ACCOUNT_ID',
       'AI_API_KEY'
     ];

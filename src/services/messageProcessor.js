@@ -217,8 +217,8 @@ class MessageProcessor {
         personalizedMessageLength: personalizedMessage ? personalizedMessage.length : 0,
         environment: process.env.NODE_ENV,
         whatsappConfig: {
-          hasAccessToken: !!process.env.WHATSAPP_ACCESS_TOKEN,
-          hasPhoneNumberId: !!process.env.WHATSAPP_PHONE_NUMBER_ID,
+          hasAccessToken: !!process.env.BOT_ACCESS_TOKEN,
+          hasPhoneNumberId: !!process.env.BOT_PHONE_NUMBER_ID,
           hasBusinessAccountId: !!process.env.BOT_BUSINESS_ACCOUNT_ID
         }
       });
