@@ -396,7 +396,7 @@ class OnboardingService {
         body: `🧭 *Guided KYC Setup*\n\nI'll walk you through each piece of information step by step.\n\nThis interactive form will collect:\n📅 Date of Birth\n👤 Gender\n🆔 BVN Number\n🏠 Address\n\nReady to start?`,
         footer: 'Secure • Step-by-step • Easy',
         flowActionPayload: {
-          screen: 'WELCOME_SCREEN',
+          screen: 'QUESTION_ONE',
           data: {
             userId: user.id,
             phoneNumber: user.whatsappNumber,
@@ -915,9 +915,12 @@ class OnboardingService {
         body: `Hi ${user.firstName || user.fullName || 'there'}! 👋\n\nLet's complete your MiiMii account setup. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
+          screen: 'QUESTION_ONE',
+          data: {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            step: 'personal_details'
+          }
         }
       };
 

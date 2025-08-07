@@ -259,7 +259,7 @@ class MessageProcessor {
         body: `👋 *Hey ${userName}!* 👋\n\nWelcome to MiiMii - your personal financial assistant! 😎\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
-          screen: 'WELCOME_SCREEN', // Entry screen for the flow
+          screen: 'QUESTION_ONE', // Entry screen for the flow (matches actual Flow structure)
           data: {
             userId: user.id,
             phoneNumber: user.whatsappNumber,
@@ -413,7 +413,7 @@ class MessageProcessor {
         body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
-          screen: 'WELCOME_SCREEN',
+          screen: 'QUESTION_ONE',
           data: {
             userId: user.id,
             phoneNumber: user.whatsappNumber,
