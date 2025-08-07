@@ -1,0 +1,319 @@
+{
+    "version": "7.2",
+    "data_api_version": "3.0",
+    "routing_model": {
+        "QUESTION_ONE": [
+            "screen_poawge"
+        ],
+        "screen_poawge": [
+            "screen_kswuhq"
+        ],
+        "screen_kswuhq": [
+            "screen_wkunnj"
+        ],
+        "screen_wkunnj": []
+    },
+    "screens": [
+        {
+            "id": "QUESTION_ONE",
+            "title": "Welcome to MiiMii",
+            "data": {},
+            "layout": {
+                "type": "SingleColumnLayout",
+                "children": [
+                    {
+                        "type": "Form",
+                        "name": "welcome_form",
+                        "children": [
+                            {
+                                "type": "TextHeading",
+                                "text": "Welcome to MiiMii"
+                            },
+                            {
+                                "type": "TextBody",
+                                "text": "Let's get you set up with your account. This will only take a few minutes."
+                            },
+                            {
+                                "type": "Footer",
+                                "label": "Start Onboarding",
+                                "on-click-action": {
+                                    "name": "navigate",
+                                    "next": {
+                                        "type": "screen",
+                                        "name": "screen_poawge"
+                                    },
+                                    "payload": {}
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "screen_poawge",
+            "title": "Personal Details",
+            "data": {},
+            "layout": {
+                "type": "SingleColumnLayout",
+                "children": [
+                    {
+                        "type": "Form",
+                        "name": "personal_details_form",
+                        "children": [
+                            {
+                                "type": "TextHeading",
+                                "text": "Personal Details"
+                            },
+                            {
+                                "type": "TextBody",
+                                "text": "Please provide your personal information:"
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "First Name",
+                                "name": "screen_1_First_Name_0",
+                                "input-type": "text"
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "Last Name",
+                                "name": "screen_1_Last_Name_1",
+                                "input-type": "text"
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": false,
+                                "label": "Middle Name",
+                                "name": "screen_1_Middle_Name_2",
+                                "input-type": "text"
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "Address",
+                                "name": "screen_1_Address_3",
+                                "input-type": "text"
+                            },
+                            {
+                                "type": "RadioButtonsGroup",
+                                "required": true,
+                                "label": "Gender",
+                                "name": "screen_1_Gender_4",
+                                "data-source": [
+                                    {
+                                        "id": "0_Male",
+                                        "title": "Male"
+                                    },
+                                    {
+                                        "id": "1_Female",
+                                        "title": "Female"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "Date of Birth",
+                                "name": "screen_1_Date_of_Birth__5",
+                                "input-type": "text",
+                                "helper-text": "Enter in DD/MM/YYYY format"
+                            },
+                            {
+                                "type": "Footer",
+                                "label": "Continue",
+                                "on-click-action": {
+                                    "name": "data_exchange",
+                                    "payload": {
+                                        "screen_1_First_Name_0": "${form.screen_1_First_Name_0}",
+                                        "screen_1_Last_Name_1": "${form.screen_1_Last_Name_1}",
+                                        "screen_1_Middle_Name_2": "${form.screen_1_Middle_Name_2}",
+                                        "screen_1_Address_3": "${form.screen_1_Address_3}",
+                                        "screen_1_Gender_4": "${form.screen_1_Gender_4}",
+                                        "screen_1_Date_of_Birth__5": "${form.screen_1_Date_of_Birth__5}"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "screen_kswuhq",
+            "title": "BVN Verification",
+            "data": {
+                "screen_1_First_Name_0": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "John"
+                },
+                "screen_1_Last_Name_1": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "Doe"
+                },
+                "screen_1_Middle_Name_2": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "Michael"
+                },
+                "screen_1_Address_3": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "123 Main Street, Lagos"
+                },
+                "screen_1_Gender_4": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "Male"
+                },
+                "screen_1_Date_of_Birth__5": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "15/03/1990"
+                }
+            },
+            "layout": {
+                "type": "SingleColumnLayout",
+                "children": [
+                    {
+                        "type": "Form",
+                        "name": "bvn_verification_form",
+                        "children": [
+                            {
+                                "type": "TextHeading",
+                                "text": "BVN Verification"
+                            },
+                            {
+                                "type": "TextBody",
+                                "text": "Please provide your Bank Verification Number (BVN) for verification:"
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "BVN",
+                                "name": "screen_2_BVN_0",
+                                "input-type": "text",
+                                "helper-text": "Enter your 11-digit BVN"
+                            },
+                            {
+                                "type": "Footer",
+                                "label": "Verify BVN",
+                                "on-click-action": {
+                                    "name": "data_exchange",
+                                    "payload": {
+                                        "screen_2_BVN_0": "${form.screen_2_BVN_0}",
+                                        "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
+                                        "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
+                                        "screen_1_Middle_Name_2": "${data.screen_1_Middle_Name_2}",
+                                        "screen_1_Address_3": "${data.screen_1_Address_3}",
+                                        "screen_1_Gender_4": "${data.screen_1_Gender_4}",
+                                        "screen_1_Date_of_Birth__5": "${data.screen_1_Date_of_Birth__5}"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "screen_wkunnj",
+            "title": "Set Your PIN",
+            "terminal": true,
+            "success": true,
+            "data": {
+                "screen_1_First_Name_0": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "John"
+                },
+                "screen_1_Last_Name_1": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "Doe"
+                },
+                "screen_1_Middle_Name_2": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "Michael"
+                },
+                "screen_1_Address_3": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "123 Main Street, Lagos"
+                },
+                "screen_1_Gender_4": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "Male"
+                },
+                "screen_1_Date_of_Birth__5": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "15/03/1990"
+                },
+                "screen_2_BVN_0": {
+                    "type": "string",
+                    "value": "",
+                    "__example__": "12345678901"
+                }
+            },
+            "layout": {
+                "type": "SingleColumnLayout",
+                "children": [
+                    {
+                        "type": "Form",
+                        "name": "pin_setup_form",
+                        "children": [
+                            {
+                                "type": "TextHeading",
+                                "text": "Set Your PIN"
+                            },
+                            {
+                                "type": "TextBody",
+                                "text": "Create a 4-digit PIN for your account security:"
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "4-Digit PIN",
+                                "name": "screen_3_4Digit_PIN_0",
+                                "input-type": "passcode"
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "Confirm PIN",
+                                "name": "screen_3_Confirm_PIN_1",
+                                "input-type": "passcode",
+                                "helper-text": "Must be exactly 4 digits"
+                            },
+                            {
+                                "type": "Footer",
+                                "label": "Complete Setup",
+                                "on-click-action": {
+                                    "name": "complete",
+                                    "payload": {
+                                        "screen_3_4Digit_PIN_0": "${form.screen_3_4Digit_PIN_0}",
+                                        "screen_3_Confirm_PIN_1": "${form.screen_3_Confirm_PIN_1}",
+                                        "screen_2_BVN_0": "${data.screen_2_BVN_0}",
+                                        "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
+                                        "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
+                                        "screen_1_Middle_Name_2": "${data.screen_1_Middle_Name_2}",
+                                        "screen_1_Address_3": "${data.screen_1_Address_3}",
+                                        "screen_1_Gender_4": "${data.screen_1_Gender_4}",
+                                        "screen_1_Date_of_Birth__5": "${data.screen_1_Date_of_Birth__5}"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}

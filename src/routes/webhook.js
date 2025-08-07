@@ -164,8 +164,8 @@ router.post('/whatsapp', logWebhook('whatsapp'), async (req, res) => {
     });
 
     // Parse the webhook message
-    const parsedMessage = whatsappService.parseWebhookMessage(req.body);
-    
+      const parsedMessage = whatsappService.parseWebhookMessage(req.body);
+      
     if (!parsedMessage) {
       logger.warn('Failed to parse webhook message', {
         bodyKeys: Object.keys(req.body),
@@ -176,7 +176,7 @@ router.post('/whatsapp', logWebhook('whatsapp'), async (req, res) => {
 
     logger.info('Successfully parsed webhook message', {
       type: parsedMessage.type,
-      messageId: parsedMessage.messageId,
+              messageId: parsedMessage.messageId,
       from: parsedMessage.from
     });
 
@@ -243,7 +243,7 @@ router.post('/whatsapp', logWebhook('whatsapp'), async (req, res) => {
           logger.error('Error processing message', {
             messageId: parsedMessage.messageId,
             from: parsedMessage.from,
-            error: error.message,
+              error: error.message, 
             stack: error.stack
           });
         });
@@ -259,10 +259,10 @@ router.post('/whatsapp', logWebhook('whatsapp'), async (req, res) => {
     
     return res.status(200).json({ status: 'ok', message: 'Webhook processed' });
 
-  } catch (error) {
+    } catch (error) {
     logger.error('Error processing WhatsApp webhook', {
-      error: error.message,
-      stack: error.stack,
+        error: error.message,
+        stack: error.stack,
       bodyKeys: Object.keys(req.body)
     });
     

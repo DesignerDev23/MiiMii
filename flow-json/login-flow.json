@@ -1,0 +1,53 @@
+{
+    "version": "7.2",
+    "data_api_version": "3.0",
+    "routing_model": {
+        "PIN_INPUT_SCREEN": []
+    },
+    "screens": [
+        {
+            "id": "PIN_INPUT_SCREEN",
+            "title": "Account Login",
+            "terminal": true,
+            "success": true,
+            "data": {},
+            "layout": {
+                "type": "SingleColumnLayout",
+                "children": [
+                    {
+                        "type": "Form",
+                        "name": "pin_login_form",
+                        "children": [
+                            {
+                                "type": "TextHeading",
+                                "text": "Account Login"
+                            },
+                            {
+                                "type": "TextBody",
+                                "text": "Please enter your 4-digit PIN to access your account."
+                            },
+                            {
+                                "type": "TextInput",
+                                "required": true,
+                                "label": "PIN",
+                                "name": "pin",
+                                "input-type": "passcode",
+                                "placeholder": "••••"
+                            },
+                            {
+                                "type": "Footer",
+                                "label": "Login",
+                                "on-click-action": {
+                                    "name": "data_exchange",
+                                    "payload": {
+                                        "pin": "${form.pin}"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}

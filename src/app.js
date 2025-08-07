@@ -236,6 +236,7 @@ app.get('/health', async (req, res) => {
 // API Routes
 app.use('/webhook', webhookRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/flow', require('./routes/flowEndpoint')); // Add Flow endpoint
 app.use('/api/admin', adminRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transactions', transactionRoutes);

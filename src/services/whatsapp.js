@@ -1190,6 +1190,101 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        }
      };
    }
+
+   /**
+    * Upload public key to WhatsApp Business API for Flow encryption
+    * @param {string} phoneNumberId - The phone number ID
+    * @param {string} publicKey - The public key content
+    * @returns {Promise<Object>} - Response from WhatsApp API
+    */
+   async uploadPublicKey(phoneNumberId, publicKey) {
+     try {
+       logger.info('Uploading public key to WhatsApp Business API', {
+         phoneNumberId,
+         service: 'whatsapp-service'
+       });
+
+       const url = `https://graph.facebook.com/v23.0/${phoneNumberId}/whatsapp_business_encryption`;
+       
+       // Use URLSearchParams for x-www-form-urlencoded format
+       const formData = new URLSearchParams();
+       formData.append('business_public_key', publicKey);
+       
+       const response = await axios.post(url, formData, {
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           'Content-Type': 'application/x-www-form-urlencoded'
+         },
+         ...this.axiosConfig
+       });
+
+       logger.info('Public key uploaded successfully', {
+         phoneNumberId,
+         service: 'whatsapp-service'
+       });
+
+       return {
+         success: true,
+         data: response.data
+       };
+     } catch (error) {
+       logger.error('Failed to upload public key', {
+         error: error.message,
+         phoneNumberId,
+         service: 'whatsapp-service'
+       });
+
+       return {
+         success: false,
+         error: error.response?.data || error.message
+       };
+     }
+   }
+
+   /**
+    * Get current public key from WhatsApp Business API
+    * @param {string} phoneNumberId - The phone number ID
+    * @returns {Promise<Object>} - Response from WhatsApp API
+    */
+   async getPublicKey(phoneNumberId) {
+     try {
+       logger.info('Getting public key from WhatsApp Business API', {
+         phoneNumberId,
+         service: 'whatsapp-service'
+       });
+
+       const url = `https://graph.facebook.com/v23.0/${phoneNumberId}/whatsapp_business_encryption`;
+       
+       const response = await axios.get(url, {
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           'Content-Type': 'application/json'
+         },
+         ...this.axiosConfig
+       });
+
+       logger.info('Public key retrieved successfully', {
+         phoneNumberId,
+         service: 'whatsapp-service'
+       });
+
+       return {
+         success: true,
+         data: response.data
+       };
+     } catch (error) {
+       logger.error('Failed to get public key', {
+         error: error.message,
+         phoneNumberId,
+         service: 'whatsapp-service'
+       });
+
+       return {
+         success: false,
+         error: error.response?.data || error.message
+       };
+     }
+   }
 }
 
 // Export an instance of the service instead of the class
