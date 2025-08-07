@@ -751,7 +751,7 @@ class WhatsAppFlowService {
           const gender = data.screen_1_Gender_4 || data.Gender_a12260;
           const dateOfBirth = data.screen_1_Date_of_Birth__5 || data.Date_of_Birth__291d3f;
 
-          // Save personal details
+          // Save personal details immediately
           const user = await userService.getUserById(userId);
           if (user && (firstName || lastName)) {
             // Parse gender from radio button format (e.g., "0_Male" -> "male")
@@ -778,14 +778,16 @@ class WhatsAppFlowService {
               middleName: middleName || null,
               address: address,
               dateOfBirth: parsedDate,
-              gender: parsedGender
+              gender: parsedGender,
+              onboardingStep: 'bvn_verification'
             });
 
             logger.info('Personal details saved from Flow', {
               userId: user.id,
               firstName,
               lastName,
-              gender: parsedGender
+              gender: parsedGender,
+              onboardingStep: 'bvn_verification'
             });
           }
           
@@ -809,8 +811,13 @@ class WhatsAppFlowService {
             };
           }
 
-          // Verify BVN with Fincra
+          // Verify BVN with Fincra before proceeding
           try {
+            logger.info('Verifying BVN with Fincra', {
+              userId,
+              bvn: bvn.substring(0, 3) + '********'
+            });
+
             const bvnResult = await kycService.verifyBVNWithFincra(bvn, userId);
             
             if (bvnResult.success) {
@@ -824,13 +831,15 @@ class WhatsAppFlowService {
                     bvnVerified: true,
                     bvnVerifiedAt: new Date().toISOString(),
                     bvnData: bvnResult.data
-                  }
+                  },
+                  onboardingStep: 'pin_setup'
                 });
 
                 logger.info('BVN verified successfully with Fincra', {
                   userId,
                   bvn: bvn.substring(0, 3) + '********',
-                  verificationData: bvnResult.data
+                  verificationData: bvnResult.data,
+                  onboardingStep: 'pin_setup'
                 });
               }
               
@@ -908,38 +917,52 @@ class WhatsAppFlowService {
             };
           }
 
-          // Save PIN and complete onboarding
-          await onboardingService.completePinSetup(userId, pin);
-          
-          // Extract all the data collected throughout the flow for final processing
-          const finalData = {
-            firstName: data.screen_1_First_Name_0 || data.First_Name_abf873,
-            lastName: data.screen_1_Last_Name_1 || data.Last_Name_5487df,
-            middleName: data.screen_1_Middle_Name_2 || data.Middle_Name_8abed2,
-            address: data.screen_1_Address_3 || data.Address_979e9b,
-            gender: data.screen_1_Gender_4 || data.Gender_a12260,
-            dateOfBirth: data.screen_1_Date_of_Birth__5 || data.Date_of_Birth__291d3f,
-            bvn: data.screen_2_BVN_0 || data.BVN_217ee8,
-            pin: pin
-          };
-
-          logger.info('Flow onboarding completed', {
-            userId,
-            finalData: {
-              ...finalData,
-              pin: '****', // Don't log the actual PIN
-              bvn: finalData.bvn ? finalData.bvn.substring(0, 3) + '********' : 'not_provided' // Don't log the full BVN
+          // Complete PIN setup and create virtual account
+          try {
+            const pinResult = await onboardingService.completePinSetup(userId, pin);
+            
+            if (pinResult.success) {
+              logger.info('PIN setup completed and virtual account created', {
+                userId,
+                hasAccountDetails: !!pinResult.accountDetails
+              });
+              
+              return {
+                nextScreen: 'COMPLETION_SCREEN',
+                data: { 
+                  success: true, 
+                  message: '🎉 Account setup completed! Welcome to MiiMii! Your account is now ready to use.',
+                  accountDetails: pinResult.accountDetails
+                }
+              };
+            } else {
+              logger.error('Failed to complete PIN setup', {
+                userId,
+                error: pinResult.error
+              });
+              
+              return {
+                nextScreen: 'screen_wkunnj',
+                data: { 
+                  success: false, 
+                  error: 'Failed to complete account setup. Please try again.' 
+                }
+              };
             }
-          });
-          
-          return {
-            nextScreen: 'COMPLETION_SCREEN',
-            data: { 
-              success: true, 
-              message: '🎉 Account setup completed! Welcome to MiiMii! Your account is now ready to use.',
-              finalData
-            }
-          };
+          } catch (pinError) {
+            logger.error('PIN setup error', {
+              error: pinError.message,
+              userId
+            });
+            
+            return {
+              nextScreen: 'screen_wkunnj',
+              data: { 
+                success: false, 
+                error: 'Account setup failed. Please try again.' 
+              }
+            };
+          }
 
         case 'PIN_INPUT_SCREEN':
           // Verify PIN for login (this is for the login flow, not onboarding)

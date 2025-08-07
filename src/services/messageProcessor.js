@@ -8,130 +8,99 @@ const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
 
 class MessageProcessor {
-  async processIncomingMessage(messageData) {
+  async processIncomingMessage(parsedMessage) {
     try {
-      const { from, messageType, message, contact } = messageData;
+      const { from, message, messageType, contact } = parsedMessage;
       
-      // Show typing indicator immediately for better UX (but don't fail if it doesn't work)
-      try {
-        await whatsappService.sendTypingIndicator(from, 2000);
-      } catch (typingError) {
-        logger.debug('Typing indicator failed, continuing with message processing', { error: typingError.message });
-      }
+      // Get or create user
+      const user = await userService.getOrCreateUser(from, contact);
       
-      // Get user profile name from WhatsApp contact info
-      const profileName = contact?.name || null;
+      // Get user's WhatsApp profile name
+      const userName = contact?.profile?.name || user.firstName || 'there';
       
-      // Log incoming message with profile info - handle gracefully if DB unavailable
-      await activityLogger.logUserActivity(
-        null, // We'll update with userId after getting user
-        'whatsapp_message_received',
-        'message_received',
-        {
-          source: 'whatsapp',
-          description: `Received ${messageType} message`,
-          messageType,
-          contactName: profileName,
-          hasProfileName: !!profileName
-        }
-      );
+      // Log the incoming message
+      logger.info('Processing incoming message', {
+        userId: user.id,
+        phoneNumber: from,
+        messageType,
+        userName,
+        messageContent: message?.text || message?.buttonReply?.title || 'No text content'
+      });
 
-      // Get or create user with profile name
-      const user = await userService.getOrCreateUser(from, profileName);
+      // Analyze user message with AI to determine intent
+      const aiAssistant = require('./aiAssistant');
+      const intentAnalysis = await aiAssistant.analyzeUserIntent(message?.text || message?.buttonReply?.title || '', user);
       
-      // Update user with profile information if available
-      if (profileName && (!user.fullName || user.fullName !== profileName)) {
-        try {
-          await user.update({ 
-            fullName: profileName,
-            lastSeen: new Date(),
-            lastActivityType: `whatsapp_message_${messageType}`
-          });
+      logger.info('AI intent analysis result', {
+        userId: user.id,
+        originalMessage: message?.text || message?.buttonReply?.title,
+        detectedIntent: intentAnalysis.intent,
+        confidence: intentAnalysis.confidence,
+        suggestedAction: intentAnalysis.suggestedAction
+      });
+
+      // Route based on AI analysis
+      switch (intentAnalysis.intent) {
+        case 'onboarding':
+        case 'start_onboarding':
+        case 'setup_account':
+          return await this.handleOnboardingIntent(user, userName, message, messageType);
           
-          logger.info('Updated user profile from WhatsApp contact', {
-            userId: user.id,
-            profileName,
-            phoneNumber: from
-          });
-        } catch (updateError) {
-          logger.warn('Failed to update user profile, continuing', { error: updateError.message });
-        }
-      } else {
-        // Update last seen
-        try {
-          await user.update({ 
-            lastSeen: new Date(),
-            lastActivityType: `whatsapp_message_${messageType}`
-          });
-        } catch (updateError) {
-          logger.warn('Failed to update user last seen, continuing', { error: updateError.message });
-        }
-      }
-
-      // Determine user type and send appropriate flow
-      // Handle gracefully if lastWelcomedAt column doesn't exist yet
-      let isNewUser = false;
-      let isReturningUser = false;
-      
-      try {
-        // Check if user has been welcomed before
-        if (user.lastWelcomedAt) {
-          isReturningUser = true;
-        } else {
-          isNewUser = true;
-        }
-      } catch (error) {
-        // Handle case where lastWelcomedAt column doesn't exist
-        logger.warn('lastWelcomedAt column access failed, treating as new user', { error: error.message });
-        isNewUser = true;
-      }
-      
-      // For returning users who are completed, send login flow
-      if (isReturningUser && user.onboardingStep === 'completed') {
-        await this.sendPersonalizedWelcome(user, message, messageType);
-        
-        // Update lastWelcomedAt
-        try {
-          await user.update({ lastWelcomedAt: new Date() });
-        } catch (error) {
-          logger.warn('Failed to update lastWelcomedAt, column may not exist', { error: error.message });
-        }
-        
-        // Exit early since login flow was sent
-        return;
+        case 'balance':
+        case 'check_balance':
+        case 'account_balance':
+          return await this.handleBalanceIntent(user, message, messageType);
+          
+        case 'transfer':
+        case 'send_money':
+        case 'bank_transfer':
+          return await this.handleTransferIntent(user, message, messageType);
+          
+        case 'airtime':
+        case 'buy_airtime':
+        case 'recharge':
+          return await this.handleAirtimeIntent(user, message, messageType);
+          
+        case 'data':
+        case 'buy_data':
+        case 'internet':
+          return await this.handleDataIntent(user, message, messageType);
+          
+        case 'bills':
+        case 'pay_bills':
+        case 'utility':
+          return await this.handleBillsIntent(user, message, messageType);
+          
+        case 'help':
+        case 'support':
+        case 'customer_service':
+          return await this.handleHelpIntent(user, message, messageType);
+          
+        case 'menu':
+        case 'services':
+        case 'options':
+          return await this.handleMenuIntent(user, message, messageType);
+          
+        case 'account_details':
+        case 'virtual_account':
+        case 'account_info':
+          return await this.handleAccountDetailsIntent(user, message, messageType);
+          
+        default:
+          // If AI couldn't determine intent, try traditional processing
+          return await this.processMessageByType(user, userName, message, messageType);
       }
       
-      // For new users or incomplete users, send onboarding flow ONLY (no additional messages)
-      if (isNewUser || user.onboardingStep !== 'completed') {
-        // Update lastWelcomedAt for new users
-        if (isNewUser) {
-          try {
-            await user.update({ lastWelcomedAt: new Date() });
-          } catch (error) {
-            logger.warn('Failed to update lastWelcomedAt, column may not exist', { error: error.message });
-          }
-        }
-        
-        // Send personalized welcome with Flow (no additional messages)
-        await this.sendPersonalizedWelcome(user, message, messageType);
-        
-        // Exit early to prevent additional messages
-        return;
-      }
-
-      // Process message for completed users
-      return await this.handleCompletedUserMessage(user, message, messageType);
-
     } catch (error) {
-      logger.error('Message processing failed', { 
-        error: error.message, 
-        stack: error.stack,
-        messageData,
-        service: 'miimii-api'
+      logger.error('Failed to process incoming message', {
+        error: error.message,
+        parsedMessage
       });
       
-      // Send error message to user with improved error handling
-      await this.handleProcessingError(messageData.from, error);
+      // Send error message to user
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(parsedMessage.from, 
+        "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment.");
     }
   }
 
@@ -263,6 +232,10 @@ class MessageProcessor {
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
       
+      // Get AI-generated personalized welcome message with user's WhatsApp profile name
+      const aiAssistant = require('./aiAssistant');
+      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+      
       // Create the onboarding flow data with custom content
       const flowData = {
         flowId: flowId,
@@ -273,7 +246,7 @@ class MessageProcessor {
           type: 'text',
           text: 'Welcome to MiiMii!'
         },
-        body: `Hey ${userName}! 👋 Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`,
+        body: personalizedMessage || `Hey ${userName}! 👋 I'm MiiMii, your financial assistant. Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
           screen: 'QUESTION_ONE',
@@ -296,7 +269,8 @@ class MessageProcessor {
       logger.info('Sent onboarding flow to new user', {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
-        userName: userName
+        userName: userName,
+        personalizedMessage: !!personalizedMessage
       });
       
     } catch (error) {
@@ -307,7 +281,7 @@ class MessageProcessor {
       });
       
       // Fallback to interactive buttons if flow fails
-      const fallbackText = `Hey ${userName}! 👋 Welcome to MiiMii!\n\nLet's get you set up with your account. This will only take a few minutes.`;
+      const fallbackText = `Hey ${userName}! 👋 I'm MiiMii, your financial assistant. Let's get you set up with your account. This will only take a few minutes.`;
       
       const buttons = [
         { id: 'start_onboarding', title: '🚀 Start Setup' },
@@ -1033,6 +1007,168 @@ class MessageProcessor {
                        `Need human help? Type "support" 💬`;
 
     await whatsappService.sendTextMessage(user.whatsappNumber, helpMessage);
+  }
+
+  /**
+   * Handle onboarding intent
+   */
+  async handleOnboardingIntent(user, userName, message, messageType) {
+    // Check if user needs onboarding
+    if (user.onboardingStep !== 'completed') {
+      await this.sendOnboardingFlow(user, userName);
+    } else {
+      // User is already completed, send welcome back message
+      const welcomeMessage = `Hey ${userName}! 👋 Welcome back to MiiMii! How can I help you today?`;
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
+    }
+  }
+
+  /**
+   * Handle balance check intent
+   */
+  async handleBalanceIntent(user, message, messageType) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Please complete your account setup first before checking your balance.");
+      return;
+    }
+
+    // Get wallet balance
+    const walletService = require('./wallet');
+    const balance = await walletService.getWalletBalance(user.id);
+    
+    const balanceMessage = `💰 *Account Balance*\n\nCurrent Balance: ₦${balance.toFixed(2)}\n\nYour account is ready for transactions!`;
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendTextMessage(user.whatsappNumber, balanceMessage);
+  }
+
+  /**
+   * Handle transfer intent
+   */
+  async handleTransferIntent(user, message, messageType) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Please complete your account setup first before making transfers.");
+      return;
+    }
+
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendTextMessage(user.whatsappNumber, 
+      "💸 *Money Transfer*\n\nTo transfer money, please provide:\n\n• Recipient's phone number\n• Amount\n• Description (optional)\n\nExample: Send 5000 to 08012345678 for groceries");
+  }
+
+  /**
+   * Handle airtime purchase intent
+   */
+  async handleAirtimeIntent(user, message, messageType) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Please complete your account setup first before buying airtime.");
+      return;
+    }
+
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendTextMessage(user.whatsappNumber, 
+      "📱 *Buy Airtime*\n\nTo buy airtime, please provide:\n\n• Phone number\n• Amount\n\nExample: Buy 1000 airtime for 08012345678");
+  }
+
+  /**
+   * Handle data purchase intent
+   */
+  async handleDataIntent(user, message, messageType) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Please complete your account setup first before buying data.");
+      return;
+    }
+
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendTextMessage(user.whatsappNumber, 
+      "📶 *Buy Data*\n\nTo buy data, please provide:\n\n• Phone number\n• Data plan\n\nExample: Buy 2GB data for 08012345678");
+  }
+
+  /**
+   * Handle bills payment intent
+   */
+  async handleBillsIntent(user, message, messageType) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Please complete your account setup first before paying bills.");
+      return;
+    }
+
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendTextMessage(user.whatsappNumber, 
+      "💡 *Pay Bills*\n\nTo pay bills, please provide:\n\n• Bill type (PHCN, Water, etc.)\n• Meter number\n• Amount\n\nExample: Pay PHCN bill for meter 12345");
+  }
+
+  /**
+   * Handle help intent
+   */
+  async handleHelpIntent(user, message, messageType) {
+    const helpMessage = `❓ *Help & Support*\n\nI'm here to help! Here's what I can do:\n\n💰 *Account Management*\n• Check balance\n• View transactions\n• Account details\n\n💸 *Money Services*\n• Send money\n• Buy airtime\n• Buy data\n• Pay bills\n\n📞 *Support*\n• Contact support\n• Report issues\n\nJust tell me what you need!`;
+    
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendTextMessage(user.whatsappNumber, helpMessage);
+  }
+
+  /**
+   * Handle menu intent
+   */
+  async handleMenuIntent(user, message, messageType) {
+    const menuMessage = `📋 *MiiMii Services Menu*\n\n💰 *Money*\n• Check balance\n• Send money\n• Transaction history\n\n📱 *Airtime & Data*\n• Buy airtime\n• Buy data bundles\n\n💡 *Bills & Utilities*\n• Pay electricity\n• Pay water\n• Pay other bills\n\n📊 *Account*\n• Account details\n• Virtual account info\n\n❓ *Support*\n• Get help\n• Contact support\n\nJust say what you need!`;
+    
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendTextMessage(user.whatsappNumber, menuMessage);
+  }
+
+  /**
+   * Handle account details intent
+   */
+  async handleAccountDetailsIntent(user, message, messageType) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Please complete your account setup first to view account details.");
+      return;
+    }
+
+    // Get account details
+    const walletService = require('./wallet');
+    const accountDetails = await walletService.getAccountDetails(user.id);
+    
+    if (accountDetails) {
+      const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${accountDetails.accountNumber}\n🏛️ Bank: ${accountDetails.bankName}\n💰 Balance: ₦${accountDetails.balance.toFixed(2)}\n👤 Name: ${user.firstName} ${user.lastName}\n📱 Phone: ${user.whatsappNumber}`;
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
+    } else {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Account details not available. Please contact support.");
+    }
+  }
+
+  /**
+   * Process message by type (fallback method)
+   */
+  async processMessageByType(user, userName, message, messageType) {
+    // Handle different message types
+    switch (messageType) {
+      case 'text':
+        return await this.handleTextMessage(user, userName, message);
+      case 'interactive':
+        return await this.handleInteractiveMessage(user, userName, message);
+      default:
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm sorry, I don't understand that type of message. Please send a text message.");
+    }
   }
 }
 

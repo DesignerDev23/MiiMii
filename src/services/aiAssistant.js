@@ -736,22 +736,8 @@ Extract intent and data from this message. Consider the user context and any ext
   // Generate personalized welcome message for new users
   async generatePersonalizedWelcome(userName, phoneNumber) {
     try {
-      if (!this.isConfigured) {
-        // Fallback to template-based welcome
-        return this.generateTemplateWelcome(userName);
-      }
-
-      const currentHour = new Date().getHours();
-      let timeGreeting = '';
+      const timeGreeting = this.getTimeGreeting();
       
-      if (currentHour < 12) {
-        timeGreeting = '🌅 Good morning';
-      } else if (currentHour < 17) {
-        timeGreeting = '☀️ Good afternoon';
-      } else {
-        timeGreeting = '🌙 Good evening';
-      }
-
       const prompt = `Generate a short, warm welcome message for a new MiiMii user (around 30 words).
 
 User Details:
@@ -760,15 +746,16 @@ User Details:
 - Platform: WhatsApp Financial Assistant
 
 Requirements:
-1. Start with "Hey [Name]! 👋" using the user's actual name
-2. Keep it under 30 words total
-3. Mention completing onboarding process
-4. Briefly mention what MiiMii can do (payments, transactions, etc.)
-5. Be warm and friendly
-6. Use emojis sparingly but effectively
-7. End with a call to action about starting setup
+1. Start with "Hey [Name]! 👋" using the user's actual WhatsApp profile name
+2. Introduce yourself as "I'm MiiMii, your financial assistant"
+3. Keep it under 30 words total
+4. Mention completing onboarding process
+5. Briefly mention what MiiMii can do (payments, transactions, etc.)
+6. Be warm and friendly
+7. Use emojis sparingly but effectively
+8. End with a call to action about starting setup
 
-Example format: "Hey Designer! 👋 Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨"
+Example format: "Hey Designer! 👋 I'm MiiMii, your financial assistant. Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨"
 
 Tone: Friendly, professional, and excited about helping with finances.
 
@@ -779,8 +766,14 @@ Format the response as a WhatsApp message with proper formatting.`;
         {
           model: this.model,
           messages: [
-            { role: 'system', content: 'You are MiiMii, a friendly WhatsApp financial assistant. Create short, warm welcome messages around 30 words.' },
-            { role: 'user', content: prompt }
+            {
+              role: 'system',
+              content: 'You are MiiMii, a friendly financial assistant. Generate personalized welcome messages that are concise, warm, and professional.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
           ],
           max_tokens: 150,
           temperature: 0.7
@@ -793,45 +786,202 @@ Format the response as a WhatsApp message with proper formatting.`;
         }
       );
 
-      const aiMessage = response.data.choices[0].message.content.trim();
+      const personalizedMessage = response.data.choices[0]?.message?.content?.trim();
       
-      logger.info('Generated personalized welcome message', {
-        userName,
-        phoneNumber,
-        messageLength: aiMessage.length,
-        hasAI: true
-      });
+      if (personalizedMessage) {
+        logger.info('Generated personalized welcome message', {
+          userName,
+          phoneNumber,
+          messageLength: personalizedMessage.length,
+          message: personalizedMessage.substring(0, 100) + '...'
+        });
+        return personalizedMessage;
+      }
 
-      return aiMessage;
-
+      // Fallback to template message
+      return this.generateTemplateWelcome(userName, timeGreeting);
+      
     } catch (error) {
-      logger.error('Failed to generate AI welcome message', {
+      logger.error('Failed to generate personalized welcome message', {
         error: error.message,
         userName,
         phoneNumber
       });
       
-      // Fallback to template-based welcome
-      return this.generateTemplateWelcome(userName);
+      // Fallback to template message
+      return this.generateTemplateWelcome(userName, this.getTimeGreeting());
     }
   }
 
-  // Generate template-based welcome message as fallback
-  generateTemplateWelcome(userName) {
+  generateTemplateWelcome(userName, timeGreeting) {
+    const name = userName || 'there';
+    return `Hey ${name}! 👋 I'm MiiMii, your financial assistant. Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`;
+  }
+
+  getTimeGreeting() {
     const currentHour = new Date().getHours();
-    let timeGreeting = '';
-    
     if (currentHour < 12) {
-      timeGreeting = '🌅 Good morning';
+      return '🌅 Good morning';
     } else if (currentHour < 17) {
-      timeGreeting = '☀️ Good afternoon';
+      return '☀️ Good afternoon';
     } else {
-      timeGreeting = '🌙 Good evening';
+      return '🌙 Good evening';
     }
+  }
 
-    const personalGreeting = userName ? `Hey ${userName}! 👋` : `Hey there! 👋`;
+  /**
+   * Analyze user message to determine intent
+   */
+  async analyzeUserIntent(message, user) {
+    try {
+      if (!this.isConfigured) {
+        // Fallback to basic keyword matching
+        return this.basicIntentAnalysis(message);
+      }
 
-    return `${personalGreeting} Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`;
+      const prompt = `Analyze this WhatsApp message and determine the user's intent.
+
+Message: "${message}"
+
+User Context:
+- Onboarding Status: ${user.onboardingStep || 'unknown'}
+- Account Status: ${user.onboardingStep === 'completed' ? 'completed' : 'incomplete'}
+
+Possible Intents:
+1. onboarding/setup_account - User wants to start or continue account setup
+2. balance/check_balance - User wants to check account balance
+3. transfer/send_money - User wants to transfer money
+4. airtime/buy_airtime - User wants to buy airtime
+5. data/buy_data - User wants to buy data
+6. bills/pay_bills - User wants to pay bills
+7. help/support - User needs help or support
+8. menu/services - User wants to see available services
+9. account_details - User wants account information
+10. greeting - General greeting or hello
+11. unknown - Cannot determine intent
+
+Instructions:
+- Analyze the message content and context
+- Consider user's onboarding status
+- Return the most likely intent
+- Provide confidence level (0-1)
+- Suggest appropriate action
+
+Response format:
+{
+  "intent": "intent_name",
+  "confidence": 0.95,
+  "suggestedAction": "action_description",
+  "reasoning": "why this intent was chosen"
+}`;
+
+      const response = await axios.post(`${this.openaiBaseUrl}/chat/completions`, {
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an AI assistant that analyzes WhatsApp messages to determine user intent for a financial services bot. Be accurate and concise.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 200,
+        temperature: 0.3
+      }, {
+        ...axiosConfig,
+        headers: {
+          ...axiosConfig.headers,
+          'Authorization': `Bearer ${this.openaiApiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const analysisText = response.data.choices[0]?.message?.content?.trim();
+      
+      if (analysisText) {
+        try {
+          const analysis = JSON.parse(analysisText);
+          logger.info('AI intent analysis completed', {
+            message: message.substring(0, 50) + '...',
+            intent: analysis.intent,
+            confidence: analysis.confidence
+          });
+          return analysis;
+        } catch (parseError) {
+          logger.warn('Failed to parse AI intent analysis, using fallback', {
+            error: parseError.message,
+            analysisText
+          });
+          return this.basicIntentAnalysis(message);
+        }
+      }
+
+      return this.basicIntentAnalysis(message);
+      
+    } catch (error) {
+      logger.error('AI intent analysis failed', {
+        error: error.message,
+        message
+      });
+      
+      return this.basicIntentAnalysis(message);
+    }
+  }
+
+  /**
+   * Basic keyword-based intent analysis as fallback
+   */
+  basicIntentAnalysis(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Onboarding keywords
+    if (lowerMessage.includes('start') || lowerMessage.includes('setup') || lowerMessage.includes('onboard') || lowerMessage.includes('account')) {
+      return { intent: 'onboarding', confidence: 0.8, suggestedAction: 'Start onboarding flow' };
+    }
+    
+    // Balance keywords
+    if (lowerMessage.includes('balance') || lowerMessage.includes('money') || lowerMessage.includes('account')) {
+      return { intent: 'balance', confidence: 0.9, suggestedAction: 'Check account balance' };
+    }
+    
+    // Transfer keywords
+    if (lowerMessage.includes('transfer') || lowerMessage.includes('send') || lowerMessage.includes('money')) {
+      return { intent: 'transfer', confidence: 0.9, suggestedAction: 'Initiate money transfer' };
+    }
+    
+    // Airtime keywords
+    if (lowerMessage.includes('airtime') || lowerMessage.includes('recharge') || lowerMessage.includes('credit')) {
+      return { intent: 'airtime', confidence: 0.9, suggestedAction: 'Buy airtime' };
+    }
+    
+    // Data keywords
+    if (lowerMessage.includes('data') || lowerMessage.includes('internet') || lowerMessage.includes('mb') || lowerMessage.includes('gb')) {
+      return { intent: 'data', confidence: 0.9, suggestedAction: 'Buy data bundle' };
+    }
+    
+    // Bills keywords
+    if (lowerMessage.includes('bill') || lowerMessage.includes('pay') || lowerMessage.includes('utility')) {
+      return { intent: 'bills', confidence: 0.8, suggestedAction: 'Pay utility bills' };
+    }
+    
+    // Help keywords
+    if (lowerMessage.includes('help') || lowerMessage.includes('support') || lowerMessage.includes('problem')) {
+      return { intent: 'help', confidence: 0.9, suggestedAction: 'Provide help and support' };
+    }
+    
+    // Menu keywords
+    if (lowerMessage.includes('menu') || lowerMessage.includes('service') || lowerMessage.includes('option')) {
+      return { intent: 'menu', confidence: 0.8, suggestedAction: 'Show available services' };
+    }
+    
+    // Greeting keywords
+    if (lowerMessage.includes('hi') || lowerMessage.includes('hello') || lowerMessage.includes('hey')) {
+      return { intent: 'greeting', confidence: 0.9, suggestedAction: 'Send welcome message' };
+    }
+    
+    return { intent: 'unknown', confidence: 0.5, suggestedAction: 'Ask for clarification' };
   }
 }
 
