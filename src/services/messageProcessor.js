@@ -268,21 +268,9 @@ class MessageProcessor {
         }
       };
 
-      // Send the Template Flow message
+      // Send the Flow message using the configured Flow ID
       await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
-      
-      // Use template flow instead of interactive flow for business-initiated messages
-      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
-      const templateFlowData = {
-        flowToken: flowToken,
-        flowActionData: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
-        }
-      };
-      
-      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });
@@ -434,21 +422,9 @@ class MessageProcessor {
         }
       };
 
-      // Send the Template Flow message
+      // Send the Flow message using the configured Flow ID
       await whatsappService.sendTypingIndicator(user.whatsappNumber, 2000);
-      
-      // Use template flow instead of interactive flow for business-initiated messages
-      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
-      const templateFlowData = {
-        flowToken: flowToken,
-        flowActionData: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
-        }
-      };
-      
-      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });

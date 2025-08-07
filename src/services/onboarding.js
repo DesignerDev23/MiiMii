@@ -405,19 +405,9 @@ class OnboardingService {
         }
       };
 
-      // Use template flow instead of interactive flow for business-initiated messages
-      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
-      const templateFlowData = {
-        flowToken: whatsappFlowService.generateFlowToken(user.id),
-        flowActionData: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
-        }
-      };
-      
+      // Send the Flow message using the configured Flow ID
       const whatsappService = require('./whatsapp');
-      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Update user state to indicate flow was sent
       await user.update({
@@ -903,9 +893,19 @@ class OnboardingService {
 
   async startOnboardingFlow(user) {
     try {
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        logger.warn('WhatsApp Flow ID not configured for onboarding, falling back to traditional', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        return await this.fallbackToTraditionalOnboarding(user);
+      }
+
       // Create and send WhatsApp Flow for account onboarding
       const flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'ONBOARDING_FLOW',
+        flowId: flowId,
         flowToken: this.generateFlowToken(user.id),
         flowCta: 'Complete Onboarding',
         header: {
@@ -921,18 +921,9 @@ class OnboardingService {
         }
       };
 
-      // Use template flow instead of interactive flow for business-initiated messages
-      const templateName = 'miimii_onboarding_flow'; // The template name in WhatsApp Business Manager
-      const templateFlowData = {
-        flowToken: 'unused', // Can be removed if not needed
-        flowActionData: {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          step: 'personal_details'
-        }
-      };
-      
-      await whatsappService.sendTemplateFlowMessage(user.whatsappNumber, templateName, templateFlowData);
+      // Send the Flow message using the configured Flow ID
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Update user step
       await user.update({ onboardingStep: 'kyc_data' });

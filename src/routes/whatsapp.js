@@ -734,18 +734,8 @@ router.post('/send-flow-message', async (req, res) => {
       });
     }
 
-    // Use template flow for business-initiated messages
-    const templateName = 'miimii_onboarding_flow';
-    const templateFlowData = {
-      flowToken: flowData.flowToken,
-      flowActionData: {
-        userId: user.id,
-        phoneNumber: user.whatsappNumber,
-        step: 'personal_details'
-      }
-    };
-    
-    const result = await whatsappService.sendTemplateFlowMessage(to, templateName, templateFlowData);
+    // Send the Flow message using the configured Flow ID
+    const result = await whatsappService.sendFlowMessage(to, flowData);
     
     res.json({
       success: true,
