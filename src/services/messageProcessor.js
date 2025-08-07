@@ -260,27 +260,33 @@ class MessageProcessor {
         throw new Error('Flow ID not properly configured or disabled for local development');
       }
       
-      // Generate a secure flow token
-      const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
-      
-      // Get AI-generated personalized welcome message
+      // First, send personalized welcome message
       const aiAssistant = require('./aiAssistant');
       const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
       
-      // Create the onboarding flow data with AI-generated content
+      // Send the personalized welcome message first
+      await whatsappService.sendTextMessage(user.whatsappNumber, personalizedMessage);
+      
+      // Wait a moment for the message to be sent
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Generate a secure flow token
+      const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
+      
+      // Create the onboarding flow data with minimal content (Flow will use template)
       const flowData = {
         flowId: flowId,
-        flowToken: flowToken, // Optional - can be removed if not needed
+        flowToken: flowToken,
         flowCta: 'Complete Onboarding',
-        flowAction: 'navigate', // Default action
+        flowAction: 'navigate',
         header: {
           type: 'text',
-          text: 'Welcome to MiiMii!'
+          text: 'Account Setup'
         },
-        body: personalizedMessage || `👋 *Hey ${userName}!* 👋\n\nWelcome to MiiMii - your personal financial assistant! 😎\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+        body: `Let's complete your account setup securely. This will only take a few minutes.`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
-          screen: 'QUESTION_ONE', // Entry screen for the flow (matches actual Flow structure)
+          screen: 'QUESTION_ONE',
           data: {
             userId: user.id,
             phoneNumber: user.whatsappNumber,

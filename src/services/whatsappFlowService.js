@@ -186,28 +186,28 @@ class WhatsAppFlowService {
                   {
                     "input-type": "text",
                     "label": "First Name",
-                    "name": "First_Name_abf873",
+                    "name": "screen_1_First_Name_0",
                     "required": true,
                     "type": "TextInput"
                   },
                   {
                     "input-type": "text",
                     "label": "Last Name",
-                    "name": "Last_Name_5487df",
+                    "name": "screen_1_Last_Name_1",
                     "required": true,
                     "type": "TextInput"
                   },
                   {
                     "input-type": "text",
                     "label": "Middle Name",
-                    "name": "Middle_Name_8abed2",
+                    "name": "screen_1_Middle_Name_2",
                     "required": false,
                     "type": "TextInput"
                   },
                   {
                     "input-type": "text",
                     "label": "Address",
-                    "name": "Address_979e9b",
+                    "name": "screen_1_Address_3",
                     "required": true,
                     "type": "TextInput"
                   },
@@ -223,20 +223,19 @@ class WhatsAppFlowService {
                       }
                     ],
                     "label": "Gender",
-                    "name": "Gender_a12260",
+                    "name": "screen_1_Gender_4",
                     "required": true,
                     "type": "RadioButtonsGroup"
                   },
                   {
-                    "input-type": "text",
-                    "label": "Date of Birth ",
-                    "name": "Date_of_Birth__291d3f",
+                    "input-type": "date",
+                    "label": "Date of Birth",
+                    "name": "screen_1_Date_of_Birth__5",
                     "required": true,
-                    "type": "TextInput",
-                    "helper-text": "DD/MM/YYYY"
+                    "type": "TextInput"
                   },
                   {
-                    "label": "Next",
+                    "label": "Continue",
                     "on-click-action": {
                       "name": "navigate",
                       "next": {
@@ -244,12 +243,12 @@ class WhatsAppFlowService {
                         "type": "screen"
                       },
                       "payload": {
-                        "screen_1_First_Name_0": "${form.First_Name_abf873}",
-                        "screen_1_Last_Name_1": "${form.Last_Name_5487df}",
-                        "screen_1_Middle_Name_2": "${form.Middle_Name_8abed2}",
-                        "screen_1_Address_3": "${form.Address_979e9b}",
-                        "screen_1_Gender_4": "${form.Gender_a12260}",
-                        "screen_1_Date_of_Birth__5": "${form.Date_of_Birth__291d3f}"
+                        "screen_1_First_Name_0": "${form.screen_1_First_Name_0}",
+                        "screen_1_Last_Name_1": "${form.screen_1_Last_Name_1}",
+                        "screen_1_Middle_Name_2": "${form.screen_1_Middle_Name_2}",
+                        "screen_1_Address_3": "${form.screen_1_Address_3}",
+                        "screen_1_Gender_4": "${form.screen_1_Gender_4}",
+                        "screen_1_Date_of_Birth__5": "${form.screen_1_Date_of_Birth__5}"
                       }
                     },
                     "type": "Footer"
@@ -261,35 +260,10 @@ class WhatsAppFlowService {
             ],
             "type": "SingleColumnLayout"
           },
-          "title": "PERSONAL_DETAILS_SCREEN"
+          "title": "PERSONAL_DETAILS"
         },
         {
-          "data": {
-            "screen_1_First_Name_0": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Last_Name_1": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Middle_Name_2": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Address_3": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Gender_4": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Date_of_Birth__5": {
-              "__example__": "Example",
-              "type": "string"
-            }
-          },
+          "data": {},
           "id": "screen_kswuhq",
           "layout": {
             "children": [
@@ -300,16 +274,16 @@ class WhatsAppFlowService {
                     "type": "TextHeading"
                   },
                   {
-                    "text": "For security purposes, we need to verify your BVN:",
+                    "text": "Please provide your Bank Verification Number (BVN) for verification:",
                     "type": "TextBody"
                   },
                   {
-                    "input-type": "number",
+                    "input-type": "text",
                     "label": "BVN",
-                    "name": "BVN_217ee8",
+                    "name": "screen_2_BVN_0",
                     "required": true,
                     "type": "TextInput",
-                    "helper-text": "Must be exactly 11 digits"
+                    "helper-text": "Enter your 11-digit BVN"
                   },
                   {
                     "label": "Verify BVN",
@@ -320,7 +294,7 @@ class WhatsAppFlowService {
                         "type": "screen"
                       },
                       "payload": {
-                        "screen_2_BVN_0": "${form.BVN_217ee8}",
+                        "screen_2_BVN_0": "${form.screen_2_BVN_0}",
                         "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
                         "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
                         "screen_1_Middle_Name_2": "${data.screen_1_Middle_Name_2}",
@@ -338,39 +312,10 @@ class WhatsAppFlowService {
             ],
             "type": "SingleColumnLayout"
           },
-          "title": "BVN_SCREEN"
+          "title": "BVN_VERIFICATION"
         },
         {
-          "data": {
-            "screen_2_BVN_0": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_First_Name_0": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Last_Name_1": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Middle_Name_2": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Address_3": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Gender_4": {
-              "__example__": "Example",
-              "type": "string"
-            },
-            "screen_1_Date_of_Birth__5": {
-              "__example__": "Example",
-              "type": "string"
-            }
-          },
+          "data": {},
           "id": "screen_wkunnj",
           "layout": {
             "children": [
@@ -387,14 +332,14 @@ class WhatsAppFlowService {
                   {
                     "input-type": "text",
                     "label": "4-Digit PIN",
-                    "name": "4Digit_PIN_49b72a",
+                    "name": "screen_3_4Digit_PIN_0",
                     "required": true,
                     "type": "TextInput"
                   },
                   {
                     "input-type": "text",
                     "label": "Confirm PIN",
-                    "name": "Confirm_PIN_a9ed34",
+                    "name": "screen_3_Confirm_PIN_1",
                     "required": true,
                     "type": "TextInput",
                     "helper-text": "Must be exactly 4 digits"
@@ -404,8 +349,8 @@ class WhatsAppFlowService {
                     "on-click-action": {
                       "name": "complete",
                       "payload": {
-                        "screen_3_4Digit_PIN_0": "${form.4Digit_PIN_49b72a}",
-                        "screen_3_Confirm_PIN_1": "${form.Confirm_PIN_a9ed34}",
+                        "screen_3_4Digit_PIN_0": "${form.screen_3_4Digit_PIN_0}",
+                        "screen_3_Confirm_PIN_1": "${form.screen_3_Confirm_PIN_1}",
                         "screen_2_BVN_0": "${data.screen_2_BVN_0}",
                         "screen_1_First_Name_0": "${data.screen_1_First_Name_0}",
                         "screen_1_Last_Name_1": "${data.screen_1_Last_Name_1}",
@@ -424,11 +369,9 @@ class WhatsAppFlowService {
             ],
             "type": "SingleColumnLayout"
           },
-          "terminal": true,
-          "title": "PIN_SETUP_SCREEN"
+          "title": "PIN_SETUP"
         }
-      ],
-      "version": "7.2"
+      ]
     };
   }
 

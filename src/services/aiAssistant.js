@@ -752,7 +752,7 @@ Extract intent and data from this message. Consider the user context and any ext
         timeGreeting = '🌙 Good evening';
       }
 
-      const prompt = `Generate a warm, personalized welcome message for a new MiiMii user.
+      const prompt = `Generate a short, warm welcome message for a new MiiMii user (around 30 words).
 
 User Details:
 - Name: ${userName || 'there'}
@@ -760,16 +760,17 @@ User Details:
 - Platform: WhatsApp Financial Assistant
 
 Requirements:
-1. Use the user's name naturally in the greeting
-2. Be warm, friendly, and professional
-3. Explain what MiiMii offers (financial services, transfers, airtime, bills, etc.)
-4. Mention the onboarding process briefly
-5. Keep it conversational and engaging
-6. Use emojis appropriately
-7. Keep it under 200 words
-8. End with a call to action about starting the setup
+1. Start with "Hey [Name]! 👋" using the user's actual name
+2. Keep it under 30 words total
+3. Mention completing onboarding process
+4. Briefly mention what MiiMii can do (payments, transactions, etc.)
+5. Be warm and friendly
+6. Use emojis sparingly but effectively
+7. End with a call to action about starting setup
 
-Tone: Friendly, professional, trustworthy, and excited about helping with finances.
+Example format: "Hey Designer! 👋 Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨"
+
+Tone: Friendly, professional, and excited about helping with finances.
 
 Format the response as a WhatsApp message with proper formatting.`;
 
@@ -778,10 +779,10 @@ Format the response as a WhatsApp message with proper formatting.`;
         {
           model: this.model,
           messages: [
-            { role: 'system', content: 'You are MiiMii, a friendly WhatsApp financial assistant. Create warm, personalized welcome messages.' },
+            { role: 'system', content: 'You are MiiMii, a friendly WhatsApp financial assistant. Create short, warm welcome messages around 30 words.' },
             { role: 'user', content: prompt }
           ],
-          max_tokens: 300,
+          max_tokens: 150,
           temperature: 0.7
         },
         {
@@ -828,9 +829,9 @@ Format the response as a WhatsApp message with proper formatting.`;
       timeGreeting = '🌙 Good evening';
     }
 
-    const personalGreeting = userName ? `${timeGreeting}, ${userName}!` : `${timeGreeting}!`;
+    const personalGreeting = userName ? `Hey ${userName}! 👋` : `Hey there! 👋`;
 
-    return `${personalGreeting} 👋\n\n🎉 Welcome to *MiiMii* - Your Smart Financial Assistant!\n\nI'm excited to help you manage your finances effortlessly through WhatsApp! 😎\n\nHere's what I can do for you:\n✅ Send money to anyone instantly\n✅ Buy airtime & data bundles\n✅ Pay utility bills seamlessly\n✅ Manage your digital wallet\n✅ Check account balance & history\n\nLet's complete your account setup securely. This will only take a few minutes.\n\nYou'll provide:\n📝 Personal details\n🏦 BVN for verification\n🔐 Set up your PIN\n\nReady to start? 🚀`;
+    return `${personalGreeting} Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`;
   }
 }
 
