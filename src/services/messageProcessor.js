@@ -18,22 +18,25 @@ class MessageProcessor {
       // Get user's WhatsApp profile name
       const userName = contact?.profile?.name || user.firstName || 'there';
       
+      // Extract the actual message content
+      const messageContent = message?.text || message?.buttonReply?.title || '';
+      
       // Log the incoming message
       logger.info('Processing incoming message', {
         userId: user.id,
         phoneNumber: from,
         messageType,
         userName,
-        messageContent: message?.text || message?.buttonReply?.title || 'No text content'
+        messageContent: messageContent || 'No text content'
       });
 
       // Analyze user message with AI to determine intent
       const aiAssistant = require('./aiAssistant');
-      const intentAnalysis = await aiAssistant.analyzeUserIntent(message?.text || message?.buttonReply?.title || '', user);
+      const intentAnalysis = await aiAssistant.analyzeUserIntent(messageContent, user);
       
       logger.info('AI intent analysis result', {
         userId: user.id,
-        originalMessage: message?.text || message?.buttonReply?.title,
+        originalMessage: messageContent,
         detectedIntent: intentAnalysis.intent,
         confidence: intentAnalysis.confidence,
         suggestedAction: intentAnalysis.suggestedAction
@@ -1168,6 +1171,56 @@ class MessageProcessor {
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, 
           "I'm sorry, I don't understand that type of message. Please send a text message.");
+    }
+  }
+
+  /**
+   * Handle text messages
+   */
+  async handleTextMessage(user, userName, message) {
+    const messageText = message?.text || '';
+    
+    // Check if user needs onboarding
+    if (user.onboardingStep !== 'completed') {
+      await this.sendOnboardingFlow(user, userName);
+      return;
+    }
+
+    // For completed users, send a welcome back message
+    const whatsappService = require('./whatsapp');
+    const welcomeMessage = `Hey ${userName}! 👋 Welcome back to MiiMii! How can I help you today?\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nJust tell me what you need!`;
+    await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
+  }
+
+  /**
+   * Handle interactive messages (buttons, lists, etc.)
+   */
+  async handleInteractiveMessage(user, userName, message) {
+    const whatsappService = require('./whatsapp');
+    
+    // Handle button replies
+    if (message?.buttonReply) {
+      const buttonId = message.buttonReply.id;
+      
+      switch (buttonId) {
+        case 'start_onboarding':
+          await this.sendOnboardingFlow(user, userName);
+          break;
+        case 'learn_more':
+          const learnMessage = `📚 *About MiiMii*\n\nI'm your personal financial assistant! I can help you with:\n\n💰 *Money Management*\n• Send money to anyone\n• Check your balance\n• View transaction history\n\n📱 *Airtime & Data*\n• Buy airtime for any network\n• Purchase data bundles\n• Recharge family & friends\n\n💡 *Bill Payments*\n• Pay electricity bills\n• Cable TV subscriptions\n• Water and other utilities\n\n🔐 *Security*\n• Secure transactions\n• PIN protection\n• 24/7 support\n\nReady to get started?`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, learnMessage);
+          break;
+        case 'get_help':
+          await this.handleHelpIntent(user, message, 'interactive');
+          break;
+        default:
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "I'm sorry, I don't understand that option. Please try again or say 'help' for assistance.");
+      }
+    } else {
+      // Handle other interactive message types
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "I received your interactive message. Please send a text message or use the menu options.");
     }
   }
 }
