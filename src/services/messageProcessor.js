@@ -239,7 +239,7 @@ class MessageProcessor {
       const aiAssistant = require('./aiAssistant');
       const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
       
-      // Create the onboarding flow data with custom content
+      // Create the onboarding flow data with AI-generated personalized content
       const flowData = {
         flowId: flowId,
         flowToken: flowToken,
@@ -249,7 +249,7 @@ class MessageProcessor {
           type: 'text',
           text: 'Welcome to MiiMii!'
         },
-        body: personalizedMessage || `Hey ${userName}! 👋 I'm MiiMii, your financial assistant. Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`,
+        body: personalizedMessage, // Use AI-generated personalized message
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
           screen: 'QUESTION_ONE',
@@ -273,7 +273,8 @@ class MessageProcessor {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
         userName: userName,
-        personalizedMessage: !!personalizedMessage
+        personalizedMessage: !!personalizedMessage,
+        messageLength: personalizedMessage ? personalizedMessage.length : 0
       });
       
     } catch (error) {

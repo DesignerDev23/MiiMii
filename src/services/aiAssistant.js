@@ -768,7 +768,7 @@ Format the response as a WhatsApp message with proper formatting.`;
           messages: [
             {
               role: 'system',
-              content: 'You are MiiMii, a friendly financial assistant. Generate personalized welcome messages that are concise, warm, and professional.'
+              content: 'You are MiiMii, a friendly financial assistant. Generate personalized welcome messages that are concise, warm, and professional. Always use the user\'s actual WhatsApp profile name in the greeting.'
             },
             {
               role: 'user',

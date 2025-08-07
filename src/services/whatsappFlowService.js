@@ -34,7 +34,7 @@ class WhatsAppFlowService {
                 type: "FLOW",
                 text: "Complete Onboarding",
                 flow_action: "navigate",
-                navigate_screen: "WELCOME_SCREEN",
+                navigate_screen: "WELCOME_SCREENS",
                 flow_json: JSON.stringify(this.getOnboardingFlowJson())
               }
             ]
@@ -166,7 +166,7 @@ class WhatsAppFlowService {
             ],
             "type": "SingleColumnLayout"
           },
-          "title": "WELCOME_SCREEN"
+          "title": "WELCOME_SCREENS"
         },
         {
           "data": {},
@@ -772,10 +772,14 @@ class WhatsAppFlowService {
               }
             }
 
+            // Create full name from first and last name
+            const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ');
+
             await user.update({
               firstName: firstName,
               lastName: lastName,
               middleName: middleName || null,
+              fullName: fullName, // Save to fullName column as requested
               address: address,
               dateOfBirth: parsedDate,
               gender: parsedGender,
@@ -786,6 +790,7 @@ class WhatsAppFlowService {
               userId: user.id,
               firstName,
               lastName,
+              fullName,
               gender: parsedGender,
               onboardingStep: 'bvn_verification'
             });
@@ -959,39 +964,28 @@ class WhatsAppFlowService {
               nextScreen: 'screen_wkunnj',
               data: { 
                 success: false, 
-                error: 'Account setup failed. Please try again.' 
+                error: 'Failed to complete account setup. Please try again.' 
               }
             };
           }
 
-        case 'PIN_INPUT_SCREEN':
-          // Verify PIN for login (this is for the login flow, not onboarding)
-          const loginUser = await userService.getUserById(userId);
-          if (loginUser && await loginUser.validatePin(data.pin)) {
-            return {
-              success: true,
-              message: 'Login successful! Welcome back to MiiMii!'
-            };
-          } else {
-            return {
-              success: false,
-              error: 'Invalid PIN. Please try again.'
-            };
-          }
-
         default:
-          logger.warn('Unknown flow screen received', { screen, userId, data });
+          logger.warn('Unknown Flow screen', { screen, userId });
           return {
-            data: { error: `Unknown screen: ${screen}` }
+            nextScreen: 'QUESTION_ONE',
+            data: { success: false, error: 'Unknown screen encountered' }
           };
       }
     } catch (error) {
-      logger.error('Flow screen processing error', { error: error.message, screen, userId, data });
+      logger.error('Error processing Flow screen', {
+        error: error.message,
+        screen,
+        userId
+      });
+      
       return {
-        data: { 
-          success: false, 
-          error: 'Processing failed. Please try again.' 
-        }
+        nextScreen: 'QUESTION_ONE',
+        data: { success: false, error: 'Processing error occurred' }
       };
     }
   }

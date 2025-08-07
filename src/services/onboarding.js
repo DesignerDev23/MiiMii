@@ -1224,6 +1224,7 @@ class OnboardingService {
       // Create virtual account with BellBank
       let virtualAccountDetails = null;
       try {
+        const bellbankService = require('./bellbank');
         const virtualAccountData = await bellbankService.createVirtualAccount({
           firstName: user.firstName,
           lastName: user.lastName,
@@ -1249,13 +1250,16 @@ class OnboardingService {
           virtualAccountDetails = {
             accountNumber: virtualAccountData.accountNumber,
             bankName: virtualAccountData.bankName,
-            accountName: virtualAccountData.accountName
+            accountName: virtualAccountData.accountName,
+            bankCode: virtualAccountData.bankCode,
+            externalReference: virtualAccountData.externalReference
           };
 
           logger.info('Virtual account created successfully during onboarding', {
             userId: user.id,
             accountNumber: virtualAccountData.accountNumber,
-            bankName: virtualAccountData.bankName
+            bankName: virtualAccountData.bankName,
+            accountName: virtualAccountData.accountName
           });
         }
       } catch (virtualAccountError) {
@@ -1271,7 +1275,7 @@ class OnboardingService {
         `Your MiiMii account has been successfully created!\n\n` +
         `✅ Account verified\n` +
         `✅ PIN set up\n` +
-                            `✅ Wallet created\n`;
+        `✅ Wallet created\n`;
 
       if (virtualAccountDetails) {
         completionMessage += `✅ Virtual account created\n\n` +
@@ -1287,7 +1291,7 @@ class OnboardingService {
         `📱 Pay bills and buy airtime\n` +
         `💳 Get virtual cards\n` +
         `📊 Track your expenses\n\n` +
-                          `Welcome to the future of banking! 🚀`;
+        `Welcome to the future of banking! 🚀`;
 
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
@@ -1316,7 +1320,8 @@ class OnboardingService {
           source: 'whatsapp_flow',
           description: 'User onboarding completed successfully',
           hasVirtualAccount: !!virtualAccountDetails,
-          virtualAccountNumber: virtualAccountDetails?.accountNumber
+          virtualAccountNumber: virtualAccountDetails?.accountNumber,
+          bankName: virtualAccountDetails?.bankName
         }
       );
 
@@ -1324,7 +1329,8 @@ class OnboardingService {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
         hasVirtualAccount: !!virtualAccountDetails,
-        virtualAccountNumber: virtualAccountDetails?.accountNumber
+        virtualAccountNumber: virtualAccountDetails?.accountNumber,
+        bankName: virtualAccountDetails?.bankName
       });
 
       return { 

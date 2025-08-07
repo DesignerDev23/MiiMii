@@ -147,7 +147,7 @@ curl -X POST https://your-domain.com/api/kyc/verify-bvn \
 
 #### **3. Test BellBank Virtual Account**
 ```bash
-curl -X POST https://your-domain.com/api/wallet/create-virtual-account \
+curl -X POST https://api.chatmiimii.com/api/wallet/create-virtual-account \
   -H "Content-Type: application/json" \
   -d '{
     "firstName": "John",
