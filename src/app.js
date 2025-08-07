@@ -42,7 +42,6 @@ const app = express();
 const serverConfig = config.getServerConfig();
 
 // Log WhatsApp configuration at startup
-const config = require('./config');
 logger.info('🚀 WhatsApp Flow Configuration', {
   hasAccessToken: !!config.getWhatsappConfig().accessToken,
   hasPhoneNumberId: !!config.getWhatsappConfig().phoneNumberId,
