@@ -260,20 +260,10 @@ class MessageProcessor {
         throw new Error('Flow ID not properly configured or disabled for local development');
       }
       
-      // First, send personalized welcome message
-      const aiAssistant = require('./aiAssistant');
-      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
-      
-      // Send the personalized welcome message first
-      await whatsappService.sendTextMessage(user.whatsappNumber, personalizedMessage);
-      
-      // Wait a moment for the message to be sent
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
       
-      // Create the onboarding flow data with minimal content (Flow will use template)
+      // Create the onboarding flow data with custom content
       const flowData = {
         flowId: flowId,
         flowToken: flowToken,
@@ -281,16 +271,17 @@ class MessageProcessor {
         flowAction: 'navigate',
         header: {
           type: 'text',
-          text: 'Account Setup'
+          text: 'Welcome to MiiMii!'
         },
-        body: `Let's complete your account setup securely. This will only take a few minutes.`,
+        body: `Hey ${userName}! 👋 Before we dive in, please complete the onboarding process so I can get to know you better. Once that's done, I can help you with all sorts of things like managing payments, tracking transactions, and more! 💰✨`,
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
           screen: 'QUESTION_ONE',
           data: {
             userId: user.id,
             phoneNumber: user.whatsappNumber,
-            step: 'personal_details'
+            step: 'personal_details',
+            userName: userName
           }
         }
       };
@@ -305,8 +296,7 @@ class MessageProcessor {
       logger.info('Sent onboarding flow to new user', {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
-        userName: userName,
-        personalizedMessage: !!personalizedMessage
+        userName: userName
       });
       
     } catch (error) {
@@ -317,14 +307,12 @@ class MessageProcessor {
       });
       
       // Fallback to interactive buttons if flow fails
-      const fallbackText = `👋 *Hello ${userName}!* Welcome to MiiMii!\n\n` +
-                          `I'm Xara, your AI assistant. I'll help you set up your account step by step.\n\n` +
-                          `Let's start by collecting some basic information about you.`;
+      const fallbackText = `Hey ${userName}! 👋 Welcome to MiiMii!\n\nLet's get you set up with your account. This will only take a few minutes.`;
       
       const buttons = [
         { id: 'start_onboarding', title: '🚀 Start Setup' },
-        { id: 'skip_to_flow', title: '⚡ Quick Setup' },
-        { id: 'need_help', title: '❓ I Need Help' }
+        { id: 'learn_more', title: '📚 Learn More' },
+        { id: 'get_help', title: '❓ Get Help' }
       ];
       
       await whatsappService.sendButtonMessage(user.whatsappNumber, fallbackText, buttons);

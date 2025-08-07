@@ -625,6 +625,105 @@ class WhatsAppFlowService {
   }
 
   /**
+   * Handle Flow completion response
+   */
+  async handleFlowCompletion(flowResponse) {
+    try {
+      const { flowToken, responseJson } = flowResponse;
+      
+      // Verify the flow token
+      const tokenData = this.verifyFlowToken(flowToken);
+      if (!tokenData.valid) {
+        logger.warn('Invalid flow token in completion response', { 
+          reason: tokenData.reason,
+          flowToken: flowToken.substring(0, 20) + '...'
+        });
+        return { success: false, error: 'Invalid flow token' };
+      }
+
+      logger.info('Processing Flow completion', {
+        userId: tokenData.userId,
+        responseJson: responseJson
+      });
+
+      // Extract final data from the response
+      const finalData = {
+        firstName: responseJson.firstName || responseJson.first_name,
+        lastName: responseJson.lastName || responseJson.last_name,
+        middleName: responseJson.middleName || responseJson.middle_name,
+        address: responseJson.address,
+        gender: responseJson.gender,
+        dateOfBirth: responseJson.dateOfBirth || responseJson.date_of_birth,
+        bvn: responseJson.bvn,
+        pin: responseJson.pin
+      };
+
+      // Complete the onboarding process
+      const onboardingService = require('./onboarding');
+      const userService = require('./user');
+      
+      const user = await userService.getUserById(tokenData.userId);
+      if (!user) {
+        logger.error('User not found for Flow completion', { userId: tokenData.userId });
+        return { success: false, error: 'User not found' };
+      }
+
+      // Update user with final data
+      if (finalData.firstName || finalData.lastName) {
+        await user.update({
+          firstName: finalData.firstName,
+          lastName: finalData.lastName,
+          middleName: finalData.middleName,
+          address: finalData.address,
+          gender: finalData.gender,
+          dateOfBirth: finalData.dateOfBirth,
+          bvn: finalData.bvn,
+          onboardingStep: 'completed'
+        });
+      }
+
+      // Complete PIN setup and create virtual account
+      let accountDetails = null;
+      if (finalData.pin) {
+        try {
+          const pinResult = await onboardingService.completePinSetup(tokenData.userId, finalData.pin);
+          if (pinResult.success && pinResult.accountDetails) {
+            accountDetails = pinResult.accountDetails;
+          }
+        } catch (pinError) {
+          logger.error('Failed to complete PIN setup during Flow completion', {
+            error: pinError.message,
+            userId: tokenData.userId
+          });
+        }
+      }
+
+      logger.info('Flow completion processed successfully', {
+        userId: tokenData.userId,
+        finalData: {
+          ...finalData,
+          pin: finalData.pin ? '****' : 'not_provided',
+          bvn: finalData.bvn ? finalData.bvn.substring(0, 3) + '********' : 'not_provided'
+        },
+        hasAccountDetails: !!accountDetails
+      });
+
+      return {
+        success: true,
+        userId: tokenData.userId,
+        accountDetails: accountDetails
+      };
+
+    } catch (error) {
+      logger.error('Flow completion processing failed', { 
+        error: error.message,
+        flowResponse: flowResponse
+      });
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Process flow screen data
    * Updated to handle the actual field names from Facebook WhatsApp Manager Flow
    */
@@ -634,19 +733,27 @@ class WhatsAppFlowService {
     const onboardingService = require('./onboarding');
 
     try {
+      logger.info('Processing Flow screen', {
+        screen,
+        userId,
+        dataKeys: Object.keys(data || {}),
+        hasData: !!data
+      });
+
       switch (screen) {
+        case 'QUESTION_ONE':
         case 'screen_poawge': // Personal Details Screen
           // Extract personal details from the Facebook Flow data structure
-          const firstName = data.screen_1_First_Name_0;
-          const lastName = data.screen_1_Last_Name_1;
-          const middleName = data.screen_1_Middle_Name_2;
-          const address = data.screen_1_Address_3;
-          const gender = data.screen_1_Gender_4;
-          const dateOfBirth = data.screen_1_Date_of_Birth__5;
+          const firstName = data.screen_1_First_Name_0 || data.First_Name_abf873;
+          const lastName = data.screen_1_Last_Name_1 || data.Last_Name_5487df;
+          const middleName = data.screen_1_Middle_Name_2 || data.Middle_Name_8abed2;
+          const address = data.screen_1_Address_3 || data.Address_979e9b;
+          const gender = data.screen_1_Gender_4 || data.Gender_a12260;
+          const dateOfBirth = data.screen_1_Date_of_Birth__5 || data.Date_of_Birth__291d3f;
 
           // Save personal details
           const user = await userService.getUserById(userId);
-          if (user) {
+          if (user && (firstName || lastName)) {
             // Parse gender from radio button format (e.g., "0_Male" -> "male")
             let parsedGender = 'other';
             if (gender) {
@@ -689,7 +796,7 @@ class WhatsAppFlowService {
 
         case 'screen_kswuhq': // BVN Verification Screen
           // Extract BVN data from the Facebook Flow data structure
-          const bvn = data.screen_2_BVN_0;
+          const bvn = data.screen_2_BVN_0 || data.BVN_217ee8;
 
           // Validate BVN format
           if (!bvn || bvn.length !== 11 || !/^\d{11}$/.test(bvn)) {
@@ -704,7 +811,6 @@ class WhatsAppFlowService {
 
           // Verify BVN with Fincra
           try {
-            const kycService = require('./kyc');
             const bvnResult = await kycService.verifyBVNWithFincra(bvn, userId);
             
             if (bvnResult.success) {
@@ -768,8 +874,8 @@ class WhatsAppFlowService {
 
         case 'screen_wkunnj': // PIN Setup Screen (Final)
           // Extract PIN data from the Facebook Flow data structure
-          const pin = data.screen_3_4Digit_PIN_0;
-          const confirmPin = data.screen_3_Confirm_PIN_1;
+          const pin = data.screen_3_4Digit_PIN_0 || data['4Digit_PIN_49b72a'];
+          const confirmPin = data.screen_3_Confirm_PIN_1 || data.Confirm_PIN_a9ed34;
 
           // Validate PIN
           if (!pin || !confirmPin) {
@@ -807,13 +913,13 @@ class WhatsAppFlowService {
           
           // Extract all the data collected throughout the flow for final processing
           const finalData = {
-            firstName: data.screen_1_First_Name_0,
-            lastName: data.screen_1_Last_Name_1,
-            middleName: data.screen_1_Middle_Name_2,
-            address: data.screen_1_Address_3,
-            gender: data.screen_1_Gender_4,
-            dateOfBirth: data.screen_1_Date_of_Birth__5,
-            bvn: data.screen_2_BVN_0,
+            firstName: data.screen_1_First_Name_0 || data.First_Name_abf873,
+            lastName: data.screen_1_Last_Name_1 || data.Last_Name_5487df,
+            middleName: data.screen_1_Middle_Name_2 || data.Middle_Name_8abed2,
+            address: data.screen_1_Address_3 || data.Address_979e9b,
+            gender: data.screen_1_Gender_4 || data.Gender_a12260,
+            dateOfBirth: data.screen_1_Date_of_Birth__5 || data.Date_of_Birth__291d3f,
+            bvn: data.screen_2_BVN_0 || data.BVN_217ee8,
             pin: pin
           };
 

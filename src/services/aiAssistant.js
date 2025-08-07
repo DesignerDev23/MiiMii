@@ -724,10 +724,10 @@ Extract intent and data from this message. Consider the user context and any ext
     }
     
     // Default fallback
-    return {
-      success: true,
-      intent: 'UNKNOWN',
-      extractedData: {},
+    return { 
+      success: true, 
+      intent: 'UNKNOWN', 
+      extractedData: {}, 
       confidence: 0.5,
       message: `I'm not sure I understood that. You can say:\n\n💰 "Check my balance"\n💸 "Send 5k to John"\n📱 "Buy 1GB data"\n💳 "Pay electricity bill"\n\nOr just say "help" for more options!`
     };

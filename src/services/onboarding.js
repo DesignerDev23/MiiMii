@@ -44,14 +44,16 @@ class OnboardingService {
           return await this.handleInteractiveGreeting(user, message, contactName);
         case 'name_collection':
           return await this.handleInteractiveNameCollection(user, message);
-        case 'kyc_data':
-          return await this.handleInteractiveKycDataCollection(user, message, messageType);
+        case 'address_collection':
+          return await this.handleAddressCollection(user, message);
         case 'bvn_verification':
           return await this.handleBvnVerification(user, message);
+        case 'pin_setup':
+          return await this.handlePinSetup(user, message);
+        case 'kyc_data':
+          return await this.handleInteractiveKycDataCollection(user, message, messageType);
         case 'virtual_account_creation':
           return await this.handleVirtualAccountCreation(user);
-        case 'pin_setup':
-          return await this.handleInteractivePinSetup(user, message);
         default:
           return await this.handleInteractiveGreeting(user, message, contactName);
       }
@@ -101,8 +103,8 @@ class OnboardingService {
     );
 
     // Handle button responses from welcome message
-    if (message?.buttonReply?.id === 'complete_onboarding') {
-      return await this.startOnboardingFlow(user);
+    if (message?.buttonReply?.id === 'start_onboarding') {
+      return await this.startStepByStepOnboarding(user);
     }
     
     if (message?.buttonReply?.id === 'learn_more') {
@@ -123,8 +125,8 @@ class OnboardingService {
       
       const buttons = [
         { id: 'start_onboarding', title: '🚀 Start Setup' },
-        { id: 'skip_to_flow', title: '⚡ Quick Setup' },
-        { id: 'need_help', title: '❓ I Need Help' }
+        { id: 'learn_more', title: '📚 Learn More' },
+        { id: 'get_help', title: '❓ Get Help' }
       ];
       
       await whatsappService.sendButtonMessage(user.whatsappNumber, greetingMessage, buttons);
@@ -137,6 +139,40 @@ class OnboardingService {
 
     // If they send something else, proceed to name collection
     return await this.handleInteractiveNameCollection(user, message);
+  }
+
+  async startStepByStepOnboarding(user) {
+    try {
+      // Start with name collection
+      const userName = user.firstName || user.fullName || 'there';
+      
+      const nameMessage = `👋 *Hello ${userName}!* Let's get you set up!\n\n` +
+                         `First, I need to collect some basic information about you.\n\n` +
+                         `What's your full name? (First and Last name)`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, nameMessage);
+      
+      // Update user step
+      await user.update({ onboardingStep: 'name_collection' });
+      
+      logger.info('Started step-by-step onboarding', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+      return { success: true, step: 'name_collection_started' };
+      
+    } catch (error) {
+      logger.error('Failed to start step-by-step onboarding', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        "I'm having trouble starting the setup. Please try again in a moment."
+      );
+    }
   }
 
   async showNameCollectionFlow(user, existingName = null) {
@@ -179,98 +215,238 @@ class OnboardingService {
 
   async handleInteractiveNameCollection(user, message) {
     const messageText = typeof message === 'string' ? message : (message?.text || '');
-    const buttonId = message?.buttonReply?.id || message?.listReply?.id;
 
     // Handle button responses
-    if (buttonId) {
-      switch (buttonId) {
-        case 'name_correct':
-          // Proceed to next step
-          await user.update({ onboardingStep: 'kyc_data' });
-          return await this.showKycDataCollectionFlow(user);
-          
-        case 'name_incorrect':
-        case 'add_full_name':
-        case 'enter_full_name':
-          await whatsappService.sendTextMessage(
-            user.whatsappNumber,
-            `📝 Please tell me your *full name* (First, Middle, Last name).\n\n` +
-            `Example: John Emeka Smith`
-          );
-          return;
-          
-        case 'use_first_name':
-          await whatsappService.sendTextMessage(
-            user.whatsappNumber,
-            `👤 Please tell me your *first name*.\n\n` +
-            `Example: John`
-          );
-          return;
-          
-        case 'guided_name_setup':
-          return await this.startGuidedNameSetup(user);
-      }
+    if (message?.buttonReply?.id === 'name_correct') {
+      // User confirmed their name, proceed to next step
+      return await this.handleKycDataCollection(user);
     }
-
-    // Process name input
-    const nameParts = messageText.trim().split(/\s+/);
     
-    if (nameParts.length < 1 || nameParts[0].length < 2) {
-      const retryMessage = {
-        text: `Please provide at least your first name (minimum 2 characters).\n\n` +
-              `You can also use the options below:`,
-        buttons: [
-          { id: 'enter_full_name', title: '📝 Enter Full Name' },
-          { id: 'guided_name_setup', title: '🧭 Guided Setup' },
-          { id: 'skip_middle_name', title: '⏭️ Skip to First & Last' }
-        ]
-      };
-      await whatsappService.sendButtonMessage(
-        user.whatsappNumber,
-        retryMessage.text,
-        retryMessage.buttons
-      );
-      return;
+    if (message?.buttonReply?.id === 'name_incorrect') {
+      // User wants to correct their name
+      const correctionMessage = `No problem! Please send me your full name (First and Last name).`;
+      await whatsappService.sendTextMessage(user.whatsappNumber, correctionMessage);
+      return { success: true, step: 'name_correction_requested' };
+    }
+    
+    if (message?.buttonReply?.id === 'add_full_name') {
+      // User wants to add full name
+      const fullNameMessage = `Great! Please send me your complete full name (First, Middle, and Last name).`;
+      await whatsappService.sendTextMessage(user.whatsappNumber, fullNameMessage);
+      return { success: true, step: 'full_name_requested' };
     }
 
+    // Process text input for name
+    if (messageText && messageText.trim().length > 0) {
+      const fullName = messageText.trim();
+      const nameParts = fullName.split(' ');
+      
+      if (nameParts.length < 2) {
+        await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+          `Please provide both your first and last name. For example: "John Doe"`
+      );
+        return { success: true, step: 'name_incomplete' };
+    }
+
+      // Extract first and last name
     const firstName = nameParts[0];
-    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
+      const lastName = nameParts[nameParts.length - 1];
     const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : null;
 
-    // Update user with name information
+      // Save the name to user record
     await user.update({
+        firstName: firstName,
+        lastName: lastName,
+        middleName: middleName,
+        fullName: fullName
+      });
+      
+      // Confirm the name and proceed to next step
+      const confirmationMessage = `✅ *Name saved successfully!*\n\n` +
+                                `👤 *Name:* ${firstName} ${lastName}\n` +
+                                `${middleName ? `🔤 *Middle Name:* ${middleName}\n` : ''}` +
+                                `\nNow let's collect your address information.\n\n` +
+                                `Please send me your residential address:`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
+      
+      // Update user step
+      await user.update({ onboardingStep: 'address_collection' });
+      
+      logger.info('Name collected successfully', {
+        userId: user.id,
       firstName,
       lastName,
       middleName,
-      onboardingStep: 'kyc_data'
-    });
+        phoneNumber: user.whatsappNumber
+      });
+      
+      return { success: true, step: 'name_collected' };
+    }
+    
+    // If no valid input, ask again
+    const retryMessage = `Please send me your full name (First and Last name).\n\nFor example: "John Doe"`;
+    await whatsappService.sendTextMessage(user.whatsappNumber, retryMessage);
+    
+    return { success: true, step: 'name_retry' };
+  }
 
-    // Log activity
-    await ActivityLog.logUserActivity(
-      user.id, 
-      'profile_update', 
-      'name_collected',
-      { 
-        source: 'whatsapp',
-        description: 'User provided name information',
-        newValues: { firstName, lastName, middleName },
-        namePartsCount: nameParts.length
+  async handleAddressCollection(user, message) {
+    const messageText = typeof message === 'string' ? message : (message?.text || '');
+    
+    if (messageText && messageText.trim().length > 0) {
+      const address = messageText.trim();
+      
+      // Save the address to user record
+      await user.update({
+        address: address
+      });
+      
+      // Confirm address and proceed to BVN
+      const confirmationMessage = `✅ *Address saved successfully!*\n\n` +
+                                `🏠 *Address:* ${address}\n\n` +
+                                `Now I need your BVN (Bank Verification Number) for verification.\n\n` +
+                                `Please send me your 11-digit BVN:`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
+      
+      // Update user step
+      await user.update({ onboardingStep: 'bvn_verification' });
+      
+      logger.info('Address collected successfully', {
+        userId: user.id,
+        address,
+        phoneNumber: user.whatsappNumber
+      });
+      
+      return { success: true, step: 'address_collected' };
+    }
+    
+    // If no valid input, ask again
+    const retryMessage = `Please send me your residential address.\n\nFor example: "123 Main Street, Lagos, Nigeria"`;
+    await whatsappService.sendTextMessage(user.whatsappNumber, retryMessage);
+    
+    return { success: true, step: 'address_retry' };
+  }
+
+  async handleBvnVerification(user, message) {
+    const messageText = typeof message === 'string' ? message : (message?.text || '');
+    
+    if (messageText && messageText.trim().length > 0) {
+      const bvn = messageText.trim().replace(/\D/g, ''); // Remove non-digits
+      
+      if (bvn.length !== 11) {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `❌ Invalid BVN format. Please send your 11-digit BVN number.\n\nFor example: "12345678901"`
+        );
+        return { success: true, step: 'bvn_invalid' };
       }
-    );
-
-    // Send confirmation and proceed to KYC
+      
+      // Verify BVN with Fincra
+      try {
+        const kycService = require('./kyc');
+        const bvnResult = await kycService.verifyBVNWithFincra(bvn, user.id);
+        
+        if (bvnResult.success) {
+          // Save BVN and verification status
+          await user.update({
+            bvn: bvn,
+            kycStatus: 'verified',
+            kycData: {
+              bvnVerified: true,
+              bvnVerifiedAt: new Date().toISOString(),
+              bvnData: bvnResult.data
+            }
+          });
+          
+          // Confirm BVN and proceed to PIN setup
+          const confirmationMessage = `✅ *BVN verified successfully!*\n\n` +
+                                   `🏦 *BVN:* ${bvn.substring(0, 3)}********\n\n` +
+                                   `Now let's set up your 4-digit PIN for account security.\n\n` +
+                                   `Please send me your 4-digit PIN:`;
+          
+          await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
+          
+          // Update user step
+          await user.update({ onboardingStep: 'pin_setup' });
+          
+          logger.info('BVN verified successfully', {
+            userId: user.id,
+            bvn: bvn.substring(0, 3) + '********',
+            phoneNumber: user.whatsappNumber
+          });
+          
+          return { success: true, step: 'bvn_verified' };
+        } else {
     await whatsappService.sendTextMessage(
       user.whatsappNumber,
-      `✅ Perfect! Nice to meet you, *${firstName}*! 🤝\n\n` +
-      `Your name has been saved as:\n` +
-      `👤 ${firstName}${middleName ? ` ${middleName}` : ''}${lastName ? ` ${lastName}` : ''}\n\n` +
-      `Next, I need to verify your identity for security and compliance.`
-    );
+            `❌ BVN verification failed: ${bvnResult.error}\n\nPlease check your BVN and try again.`
+          );
+          return { success: true, step: 'bvn_verification_failed' };
+        }
+      } catch (error) {
+        logger.error('BVN verification error', {
+          error: error.message,
+          userId: user.id,
+          bvn: bvn.substring(0, 3) + '********'
+        });
+        
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `❌ BVN verification service is temporarily unavailable. Please try again later.`
+        );
+        return { success: true, step: 'bvn_service_error' };
+      }
+    }
+    
+    // If no valid input, ask again
+    const retryMessage = `Please send me your 11-digit BVN number.\n\nFor example: "12345678901"`;
+    await whatsappService.sendTextMessage(user.whatsappNumber, retryMessage);
+    
+    return { success: true, step: 'bvn_retry' };
+  }
 
-    // Small delay for better UX
-    setTimeout(async () => {
-      await this.showKycDataCollectionFlow(user);
-    }, 2000);
+  async handlePinSetup(user, message) {
+    const messageText = typeof message === 'string' ? message : (message?.text || '');
+    
+    if (messageText && messageText.trim().length > 0) {
+      const pin = messageText.trim().replace(/\D/g, ''); // Remove non-digits
+      
+      if (pin.length !== 4) {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `❌ PIN must be exactly 4 digits. Please send a 4-digit PIN.\n\nFor example: "1234"`
+        );
+        return { success: true, step: 'pin_invalid' };
+      }
+      
+      // Hash the PIN and save
+      const bcrypt = require('bcryptjs');
+      const hashedPin = await bcrypt.hash(pin, 10);
+      
+      await user.update({
+        pin: hashedPin,
+        onboardingStep: 'completed'
+      });
+      
+      // Complete onboarding and create virtual account
+      await this.completePinSetup(user.id, pin);
+      
+      logger.info('PIN setup completed', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+      
+      return { success: true, step: 'pin_setup_completed' };
+    }
+    
+    // If no valid input, ask again
+    const retryMessage = `Please send me your 4-digit PIN.\n\nFor example: "1234"`;
+    await whatsappService.sendTextMessage(user.whatsappNumber, retryMessage);
+    
+    return { success: true, step: 'pin_retry' };
   }
 
   async startGuidedNameSetup(user) {
@@ -1092,9 +1268,9 @@ class OnboardingService {
 
       // Send completion message with account details
       let completionMessage = `🎉 *Congratulations!* 🎉\n\n` +
-                            `Your MiiMii account has been successfully created!\n\n` +
-                            `✅ Account verified\n` +
-                            `✅ PIN set up\n` +
+        `Your MiiMii account has been successfully created!\n\n` +
+        `✅ Account verified\n` +
+        `✅ PIN set up\n` +
                             `✅ Wallet created\n`;
 
       if (virtualAccountDetails) {
@@ -1107,10 +1283,10 @@ class OnboardingService {
       }
 
       completionMessage += `You can now:\n` +
-                          `💰 Send and receive money\n` +
-                          `📱 Pay bills and buy airtime\n` +
-                          `💳 Get virtual cards\n` +
-                          `📊 Track your expenses\n\n` +
+        `💰 Send and receive money\n` +
+        `📱 Pay bills and buy airtime\n` +
+        `💳 Get virtual cards\n` +
+        `📊 Track your expenses\n\n` +
                           `Welcome to the future of banking! 🚀`;
 
       await whatsappService.sendTextMessage(

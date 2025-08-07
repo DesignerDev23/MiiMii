@@ -263,20 +263,33 @@ class WhatsAppService {
       phoneNumberId: this.phoneNumberId
     });
     
+    // Ensure we have the required fields
+    if (!flowData.flowId) {
+      throw new Error('Flow ID is required');
+    }
+    
     const interactive = {
       type: 'flow',
-      header: flowData.header,
-      body: { text: flowData.body },
+      header: flowData.header || {
+        type: 'text',
+        text: 'Welcome to MiiMii!'
+      },
+      body: { 
+        text: flowData.body || 'Let\'s complete your account setup securely. This will only take a few minutes.'
+      },
       footer: flowData.footer ? { text: flowData.footer } : undefined,
       action: {
         name: 'flow',
         parameters: {
           flow_message_version: '3',
-          flow_token: flowData.flowToken,
+          flow_token: flowData.flowToken || 'unused',
           flow_id: flowData.flowId,
-          flow_cta: flowData.flowCta || 'Start',
-          flow_action: 'navigate',
-          flow_action_payload: flowData.flowActionPayload || {}
+          flow_cta: flowData.flowCta || 'Complete Onboarding',
+          flow_action: flowData.flowAction || 'navigate',
+          flow_action_payload: flowData.flowActionPayload || {
+            screen: 'QUESTION_ONE',
+            data: {}
+          }
         }
       }
     };
@@ -831,24 +844,28 @@ class WhatsAppService {
         return {
           mediaId: message.image.id,
           caption: message.image.caption,
-          mimeType: message.image.mime_type
+          mimeType: message.image.mime_type,
+          type: 'image'
         };
       case 'audio':
         return {
           mediaId: message.audio.id,
-          mimeType: message.audio.mime_type
+          mimeType: message.audio.mime_type,
+          type: 'audio'
         };
       case 'video':
         return {
           mediaId: message.video.id,
           caption: message.video.caption,
-          mimeType: message.video.mime_type
+          mimeType: message.video.mime_type,
+          type: 'video'
         };
       case 'document':
         return {
           mediaId: message.document.id,
           filename: message.document.filename,
-          mimeType: message.document.mime_type
+          mimeType: message.document.mime_type,
+          type: 'document'
         };
       case 'interactive':
         if (message.interactive.type === 'button_reply') {
@@ -857,7 +874,9 @@ class WhatsAppService {
               id: message.interactive.button_reply.id,
               title: message.interactive.button_reply.title
             },
-            text: message.interactive.button_reply.title
+            text: message.interactive.button_reply.title,
+            type: 'interactive',
+            interactiveType: 'button_reply'
           };
         } else if (message.interactive.type === 'list_reply') {
           return {
@@ -866,7 +885,9 @@ class WhatsAppService {
               title: message.interactive.list_reply.title,
               description: message.interactive.list_reply.description
             },
-            text: message.interactive.list_reply.title
+            text: message.interactive.list_reply.title,
+            type: 'interactive',
+            interactiveType: 'list_reply'
           };
         } else if (message.interactive.type === 'flow_reply') {
           return {
@@ -875,12 +896,56 @@ class WhatsAppService {
               title: message.interactive.flow_reply.title,
               response: message.interactive.flow_reply.response
             },
-            text: `Flow response: ${message.interactive.flow_reply.title}`
+            text: `Flow response: ${message.interactive.flow_reply.title}`,
+            type: 'interactive',
+            interactiveType: 'flow_reply'
+          };
+        } else if (message.interactive.type === 'nfm_reply') {
+          // Handle Flow completion response
+          const nfmReply = message.interactive.nfm_reply;
+          let responseJson = {};
+          
+          try {
+            if (nfmReply.response_json) {
+              responseJson = JSON.parse(nfmReply.response_json);
+            }
+          } catch (parseError) {
+            logger.warn('Failed to parse Flow response JSON', {
+              error: parseError.message,
+              responseJson: nfmReply.response_json
+            });
+          }
+          
+          return {
+            flowResponse: {
+              name: nfmReply.name,
+              body: nfmReply.body,
+              responseJson: responseJson,
+              flowToken: responseJson.flow_token
+            },
+            text: `Flow completed: ${nfmReply.body}`,
+            type: 'interactive',
+            interactiveType: 'nfm_reply'
+          };
+        } else if (message.interactive.type === 'flow') {
+          return {
+            flow: message.interactive.flow,
+            type: 'interactive',
+            interactiveType: 'flow'
           };
         }
-        break;
+        // Default for other interactive types
+        return {
+          interactive: message.interactive,
+          type: 'interactive',
+          interactiveType: message.interactive.type
+        };
       default:
-        return { unsupported: true, type: message.type };
+        return { 
+          unsupported: true, 
+          type: message.type || 'unknown',
+          originalMessage: message
+        };
     }
   }
 

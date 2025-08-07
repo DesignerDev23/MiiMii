@@ -193,6 +193,34 @@ router.post('/whatsapp',
                 await whatsappService.sendTextMessage(user.whatsappNumber, flowResult.result.message);
               }
             }
+          } else if (parsedMessage.message && parsedMessage.message.interactiveType === 'nfm_reply') {
+            // Handle Flow completion response
+            logger.info('Processing Flow completion response', {
+              messageId: parsedMessage.messageId,
+              flowResponse: parsedMessage.message.flowResponse
+            });
+            
+            const flowResponse = parsedMessage.message.flowResponse;
+            if (flowResponse && flowResponse.flowToken) {
+              // Process the completed flow data
+              const whatsappFlowService = require('../services/whatsappFlowService');
+              const flowResult = await whatsappFlowService.handleFlowCompletion(flowResponse);
+              
+              if (flowResult.success) {
+                const user = await userService.getUserById(flowResult.userId);
+                if (user) {
+                  // Send completion message
+                  const completionMessage = `🎉 Welcome to MiiMii! Your account setup is complete. You can now use all our services including transfers, airtime, data, and bill payments.`;
+                  await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
+                  
+                  // Send account details if available
+                  if (flowResult.accountDetails) {
+                    const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${flowResult.accountDetails.accountNumber}\n🏛️ Bank: ${flowResult.accountDetails.bankName}\n💰 Balance: ₦${flowResult.accountDetails.balance || '0.00'}\n\nYour virtual account is ready for use!`;
+                    await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
+                  }
+                }
+              }
+            }
           } else {
             // Process the message with AI/NLP
             await messageProcessor.processIncomingMessage(parsedMessage);
