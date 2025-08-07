@@ -448,7 +448,7 @@ class WhatsAppFlowService {
         to: this.formatToE164(to),
         type: 'interactive',
         interactive: {
-          type: 'flow',
+        type: 'flow',
           header: flowData.header || {
             type: 'text',
             text: 'Welcome to MiiMii!'
@@ -459,8 +459,8 @@ class WhatsAppFlowService {
           footer: flowData.footer ? {
             text: flowData.footer
           } : undefined,
-          action: {
-            name: 'flow',
+        action: {
+          name: 'flow',
             parameters: {
               flow_message_version: '3',
               flow_token: flowData.flowToken || 'unused',
@@ -516,11 +516,11 @@ class WhatsAppFlowService {
       );
 
       if (response.data && response.data.messages && response.data.messages[0]) {
-        logger.info('Flow message sent successfully', {
-          to,
+      logger.info('Flow message sent successfully', {
+        to,
           messageId: response.data.messages[0].id,
           flowJsonLength: flowJson.length
-        });
+      });
         return response.data.messages[0].id;
       } else {
         throw new Error('Invalid response format from WhatsApp API');
@@ -1079,8 +1079,8 @@ class WhatsAppFlowService {
             });
 
             const bvnResult = await kycService.verifyBVNWithFincra(bvn, userId);
-            
-            if (bvnResult.success) {
+          
+          if (bvnResult.success) {
               // Update user with BVN and verification status
               const user = await userService.getUserById(userId);
               if (user) {
@@ -1103,24 +1103,24 @@ class WhatsAppFlowService {
                 });
               }
               
-              return {
-                nextScreen: 'screen_wkunnj',
+            return {
+              nextScreen: 'screen_wkunnj',
                 data: { 
                   success: true, 
                   message: 'BVN verified successfully! Please proceed to set up your PIN.' 
                 }
-              };
-            } else {
+            };
+          } else {
               logger.warn('BVN verification failed with Fincra', {
                 userId,
                 bvn: bvn.substring(0, 3) + '********',
                 error: bvnResult.error
               });
               
-              return {
-                nextScreen: 'screen_kswuhq',
-                data: { 
-                  success: false, 
+            return {
+              nextScreen: 'screen_kswuhq',
+              data: { 
+                success: false, 
                   error: bvnResult.error || 'BVN verification failed. Please check and try again.' 
                 }
               };
@@ -1183,25 +1183,25 @@ class WhatsAppFlowService {
             
             if (pinResult.success) {
               logger.info('PIN setup completed and virtual account created', {
-                userId,
+            userId,
                 hasAccountDetails: !!pinResult.accountDetails
-              });
-              
-              return {
-                nextScreen: 'COMPLETION_SCREEN',
-                data: { 
-                  success: true, 
+          });
+          
+          return {
+            nextScreen: 'COMPLETION_SCREEN',
+            data: { 
+              success: true, 
                   message: '🎉 Account setup completed! Welcome to MiiMii! Your account is now ready to use.',
                   accountDetails: pinResult.accountDetails
-                }
-              };
+            }
+          };
             } else {
               logger.error('Failed to complete PIN setup', {
                 userId,
                 error: pinResult.error
               });
-              
-              return {
+
+            return {
                 nextScreen: 'screen_wkunnj',
                 data: { 
                   success: false, 
@@ -1218,7 +1218,7 @@ class WhatsAppFlowService {
             return {
               nextScreen: 'screen_wkunnj',
               data: { 
-                success: false, 
+              success: false,
                 error: 'Failed to complete account setup. Please try again.' 
               }
             };

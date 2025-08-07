@@ -35,7 +35,7 @@ class MessageProcessor {
       const intentAnalysis = await aiAssistant.analyzeUserIntent(messageContent, user);
       
       logger.info('AI intent analysis result', {
-        userId: user.id,
+            userId: user.id,
         originalMessage: messageContent,
         detectedIntent: intentAnalysis.intent,
         confidence: intentAnalysis.confidence,
@@ -93,10 +93,10 @@ class MessageProcessor {
           // If AI couldn't determine intent, try traditional processing
           return await this.processMessageByType(user, userName, message, messageType);
       }
-      
+
     } catch (error) {
       logger.error('Failed to process incoming message', {
-        error: error.message,
+        error: error.message, 
         parsedMessage
       });
       
@@ -107,40 +107,35 @@ class MessageProcessor {
     }
   }
 
+  // Restore personalized welcome method - we want AI-generated personalized messages
   async sendPersonalizedWelcome(user, message, messageType) {
     try {
-      const isReturningUser = user.onboardingStep === 'completed';
+      const userName = user.firstName || user.lastName || 'there';
       
-      // Get the user's name from WhatsApp profile or stored data
-      let userName = 'there';
+      // Get AI-generated personalized welcome message
+      const aiAssistant = require('./aiAssistant');
+      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
       
-      // Priority: WhatsApp profile name > stored fullName > firstName > contact name
-      if (user.fullName) {
-        userName = user.fullName;
-      } else if (user.firstName) {
-        userName = user.firstName;
-      } else if (message?.contact?.name) {
-        userName = message.contact.name;
-      }
+      const buttons = [
+        { id: 'start_onboarding', title: '🚀 Start Setup' },
+        { id: 'learn_more', title: '📚 Learn More' },
+        { id: 'get_help', title: '❓ Get Help' }
+      ];
       
-      if (isReturningUser) {
-        // For returning users, send login flow
-        await this.sendLoginFlow(user, userName);
-      } else {
-        // For new users, send onboarding flow
-        await this.sendOnboardingFlow(user, userName);
-      }
+      await whatsappService.sendButtonMessage(user.whatsappNumber, personalizedMessage, buttons);
+      
+      // Update user onboarding step
+      await user.update({ onboardingStep: 'greeting' });
       
       logger.info('Sent personalized welcome message', {
         userId: user.id,
-        userName: userName,
-        isReturningUser,
         phoneNumber: user.whatsappNumber,
-        source: 'whatsapp_profile'
+        userName: userName,
+        messageLength: personalizedMessage ? personalizedMessage.length : 0
       });
       
     } catch (error) {
-      logger.error('Failed to send personalized welcome', {
+      logger.error('Failed to send personalized welcome message', {
         error: error.message,
         userId: user.id,
         phoneNumber: user.whatsappNumber
@@ -155,7 +150,11 @@ class MessageProcessor {
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id, 'pin_verification');
       
-      // Create the login flow data
+      // Get AI-generated personalized welcome message
+      const aiAssistant = require('./aiAssistant');
+      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+      
+      // Create the login flow data with AI-generated personalized message
       const flowData = {
         flowId: process.env.WHATSAPP_LOGIN_FLOW_ID || 'miimii_login_flow',
         flowToken: flowToken,
@@ -164,7 +163,7 @@ class MessageProcessor {
           type: 'text',
           text: 'Welcome Back!'
         },
-        body: `🌟 *Welcome back, ${userName}!* 🌟\n\nGreat to see you again! I'm your Personal Financial Assistant from MiiMii.\n\nPlease enter your 4-digit PIN to access your account securely.`,
+        body: personalizedMessage, // Use AI-generated personalized message
         footer: 'Secure Login',
         flowActionPayload: {}  // Empty payload to avoid WhatsApp API errors
       };
@@ -184,10 +183,9 @@ class MessageProcessor {
         userId: user.id
       });
       
-      // Fallback to button message if flow fails
-      const welcomeText = `🌟 *Welcome back, ${userName}!* 🌟\n\n` +
-                         `Great to see you again! I'm your Personal Financial Assistant from MiiMii.\n\n` +
-                         `I'm here to help you manage your finances. What would you like to do today?`;
+      // Fallback to AI-generated button message if flow fails
+      const aiAssistant = require('./aiAssistant');
+      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
       
       const buttons = [
         { id: 'view_balance', title: '💰 Check Balance' },
@@ -195,13 +193,24 @@ class MessageProcessor {
         { id: 'pay_bills', title: '📱 Pay Bills' }
       ];
       
-      await whatsappService.sendButtonMessage(user.whatsappNumber, welcomeText, buttons);
+      await whatsappService.sendButtonMessage(user.whatsappNumber, personalizedMessage, buttons);
     }
   }
 
   async sendOnboardingFlow(user, userName) {
     try {
       const whatsappFlowService = require('./whatsappFlowService');
+      
+      // Check if we have a valid flow ID configured
+      const config = require('../config');
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        logger.warn('WhatsApp Flow ID not configured or disabled for flow-based onboarding, skipping', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        return { success: false, error: 'Flow ID not configured or disabled for local development' };
+      }
       
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
@@ -225,6 +234,7 @@ class MessageProcessor {
       
       // Create the onboarding flow data with AI-generated personalized content
       const flowData = {
+        flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
         flowAction: 'navigate',
@@ -245,9 +255,9 @@ class MessageProcessor {
         }
       };
 
-      // Send the Flow message using flow_json approach (no Flow ID needed)
+      // Send the Flow message using flow_id approach
       await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
-      await whatsappFlowService.sendFlowMessage(user.whatsappNumber, flowData);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });
@@ -270,7 +280,7 @@ class MessageProcessor {
       
       // Fallback to interactive buttons if flow fails
       const fallbackText = `Hey ${userName}! 👋 I'm MiiMii, your financial assistant. Let's get you set up with your account. This will only take a few minutes.`;
-      
+        
       const buttons = [
         { id: 'start_onboarding', title: '🚀 Start Setup' },
         { id: 'learn_more', title: '📚 Learn More' },
@@ -378,7 +388,12 @@ class MessageProcessor {
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
       
-      // Create the flow data
+      // Get AI-generated personalized welcome message
+      const aiAssistant = require('./aiAssistant');
+      const userName = user.fullName || user.firstName || 'there';
+      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+      
+      // Create the flow data with AI-generated personalized message
       const flowData = {
         flowId: flowId,
         flowToken: flowToken,
@@ -388,7 +403,7 @@ class MessageProcessor {
           type: 'text',
           text: 'MiiMii Account Setup'
         },
-        body: `Hi ${user.fullName || user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+        body: personalizedMessage, // Use AI-generated personalized message
         footer: 'Secure • Fast • Easy',
         flowActionPayload: {
           screen: 'QUESTION_ONE',
@@ -1074,10 +1089,11 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       await this.sendOnboardingFlow(user, userName);
     } else {
-      // User is already completed, send welcome back message
-      const welcomeMessage = `Hey ${userName}! 👋 Welcome back to MiiMii! How can I help you today?`;
+      // User is already completed, send AI-generated personalized welcome back message
+      const aiAssistant = require('./aiAssistant');
+      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
       const whatsappService = require('./whatsapp');
-      await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
+      await whatsappService.sendTextMessage(user.whatsappNumber, personalizedMessage);
     }
   }
 
@@ -1240,10 +1256,11 @@ class MessageProcessor {
       return;
     }
 
-    // For completed users, send a welcome back message
+    // For completed users, send AI-generated personalized welcome back message
+    const aiAssistant = require('./aiAssistant');
+    const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
     const whatsappService = require('./whatsapp');
-    const welcomeMessage = `Hey ${userName}! 👋 Welcome back to MiiMii! How can I help you today?\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nJust tell me what you need!`;
-    await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
+    await whatsappService.sendTextMessage(user.whatsappNumber, personalizedMessage);
   }
 
   /**

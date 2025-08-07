@@ -214,7 +214,7 @@ class BilalService {
             network,
             phone,
             amount,
-            requestId,
+          requestId,
             status: 'failed',
             provider: 'bilal',
             error: response.message || 'Unknown error'
@@ -226,7 +226,7 @@ class BilalService {
     } catch (error) {
       logger.error('Airtime purchase error', {
         userId: user.id,
-        error: error.message,
+        error: error.message, 
         stack: error.stack
       });
 
@@ -243,7 +243,7 @@ class BilalService {
           error: error.message
         }
       });
-
+      
       throw error;
     }
   }
@@ -343,7 +343,7 @@ class BilalService {
             phone,
             dataPlan,
             amount: selectedPlan.price,
-            requestId,
+          requestId,
             status: 'failed',
             provider: 'bilal',
             error: response.message || 'Unknown error'
@@ -355,7 +355,7 @@ class BilalService {
     } catch (error) {
       logger.error('Data purchase error', {
         userId: user.id,
-        error: error.message,
+        error: error.message, 
         stack: error.stack
       });
 
@@ -372,7 +372,7 @@ class BilalService {
           error: error.message
         }
       });
-
+      
       throw error;
     }
   }
