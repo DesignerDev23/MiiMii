@@ -12,11 +12,11 @@ class MessageProcessor {
     try {
       const { from, message, messageType, contact } = parsedMessage;
       
-      // Get or create user
-      const user = await userService.getOrCreateUser(from, contact);
-      
       // Get user's WhatsApp profile name
-      const userName = contact?.profile?.name || user.firstName || 'there';
+      const userName = contact?.profile?.name || 'there';
+      
+      // Get or create user with proper parameters
+      const user = await userService.getOrCreateUser(from, userName);
       
       // Extract the actual message content
       const messageContent = message?.text || message?.buttonReply?.title || '';
