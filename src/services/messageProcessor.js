@@ -232,12 +232,23 @@ class MessageProcessor {
     try {
       const whatsappFlowService = require('./whatsappFlowService');
       
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        logger.warn('WhatsApp Flow ID not configured, falling back to interactive buttons', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        // Skip flow message and go directly to fallback
+        throw new Error('Flow ID not properly configured');
+      }
+      
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
       
       // Create the onboarding flow data
       const flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
         header: {
@@ -368,12 +379,22 @@ class MessageProcessor {
     try {
       const whatsappFlowService = require('./whatsappFlowService');
       
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        logger.warn('WhatsApp Flow ID not configured for flow-based onboarding, skipping', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        return { success: false, error: 'Flow ID not configured' };
+      }
+      
       // Generate a secure flow token
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
       
       // Create the flow data
       const flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
         header: {

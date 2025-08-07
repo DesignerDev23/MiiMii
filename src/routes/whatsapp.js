@@ -683,9 +683,19 @@ router.post('/send-flow-message', async (req, res) => {
     let flowData;
     
     if (flowType === 'onboarding') {
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        return res.status(400).json({
+          success: false,
+          error: 'WhatsApp Flow ID not configured',
+          message: 'Please set WHATSAPP_ONBOARDING_FLOW_ID environment variable'
+        });
+      }
+      
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
       flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowId: flowId,
         flowToken: flowToken,
         flowCta: 'Complete Onboarding',
         header: {

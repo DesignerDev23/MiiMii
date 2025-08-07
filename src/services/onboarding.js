@@ -372,10 +372,20 @@ class OnboardingService {
 
   async startGuidedKycFlow(user) {
     try {
+      // Check if we have a valid flow ID configured
+      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
+        logger.warn('WhatsApp Flow ID not configured for guided KYC, falling back to traditional', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        return await this.fallbackToTraditionalOnboarding(user);
+      }
+      
       // Create and send WhatsApp Flow for guided KYC setup
       const whatsappFlowService = require('./whatsappFlowService');
       const flowData = {
-        flowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID || 'miimii_onboarding_flow',
+        flowId: flowId,
         flowToken: whatsappFlowService.generateFlowToken(user.id),
         flowCta: 'Start Guided Setup',
         header: {
