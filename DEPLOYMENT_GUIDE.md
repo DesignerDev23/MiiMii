@@ -54,12 +54,12 @@ BILAL_PASSWORD=your_bilal_password
 BILAL_WEBHOOK_SECRET=your_bilal_webhook_secret
 
 # Fincra BVN Verification
-FINCRA_API_KEY=your_fincra_api_key
+FINCRA_API_KEY=your-fincra-api-key-here
 FINCRA_SECRET_KEY=your_fincra_secret_key
 FINCRA_BUSINESS_ID=your_fincra_business_id
 
 # OpenAI AI/NLP
-AI_API_KEY=your_openai_api_key
+AI_API_KEY=your-openai-api-key-here
 AI_MODEL=gpt-4-turbo
 
 # Database

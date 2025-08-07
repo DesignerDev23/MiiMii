@@ -200,13 +200,13 @@ BOT_BUSINESS_ACCOUNT_ID=your_business_account_id
 WHATSAPP_WEBHOOK_SECRET=your_webhook_secret
 
 # AI Configuration
-AI_API_KEY=your_openai_api_key
+AI_API_KEY=your-openai-api-key-here
 AI_MODEL=gpt-4-turbo-preview
 
 # Other services
 BANK_CONSUMER_KEY=your_bellbank_consumer_key
 BANK_CONSUMER_SECRET=your_bellbank_consumer_secret
-FINCRA_API_KEY=your_fincra_api_key
+FINCRA_API_KEY=your-fincra-api-key-here
 FINCRA_SECRET_KEY=your_fincra_secret_key
 FINCRA_BUSINESS_ID=your_business_id
 ```

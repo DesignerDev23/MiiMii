@@ -120,7 +120,7 @@ DOJAH_APP_ID=your_app_id
 DOJAH_SECRET_KEY=your_secret
 
 # OpenAI
-OPENAI_API_KEY=your_openai_key
+OPENAI_API_KEY=your-openai-api-key-here
 ```
 
 #### Optional
@@ -174,15 +174,15 @@ This application is optimized for DigitalOcean App Platform with Managed Databas
    WHATSAPP_BUSINESS_ACCOUNT_ID=your-business-id
    WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-verify-token
    BELLBANK_API_URL=https://api.bellbank.com
-   BELLBANK_API_KEY=your-bellbank-key
+   BELLBANK_API_KEY=your-bellbank-api-key-here
    BELLBANK_MERCHANT_ID=your-merchant-id
    BILAL_API_URL=https://api.bilal.com
-   BILAL_API_KEY=your-bilal-key
+   BILAL_API_KEY=your-bilal-api-key-here
    BILAL_MERCHANT_ID=your-bilal-merchant-id
    DOJAH_API_URL=https://api.dojah.io
    DOJAH_APP_ID=your-dojah-app-id
    DOJAH_SECRET_KEY=your-dojah-secret
-   OPENAI_API_KEY=your-openai-key
+   OPENAI_API_KEY=your-openai-api-key-here
    WEBHOOK_SECRET=your-webhook-secret
    ADMIN_EMAIL=admin@yourdomain.com
    ADMIN_PASSWORD=secure-admin-password
