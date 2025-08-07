@@ -41,6 +41,19 @@ const app = express();
 // Get server configuration early
 const serverConfig = config.getServerConfig();
 
+// Log WhatsApp Flow IDs at startup
+const whatsappConfig = config.getWhatsappConfig();
+logger.info('🚀 SERVER STARTUP: WhatsApp Flow ID Configuration', {
+  onboardingFlowId: whatsappConfig.onboardingFlowId,
+  loginFlowId: whatsappConfig.loginFlowId,
+  hasOnboardingFlowId: !!whatsappConfig.onboardingFlowId,
+  hasLoginFlowId: !!whatsappConfig.loginFlowId,
+  onboardingFlowIdLength: whatsappConfig.onboardingFlowId ? whatsappConfig.onboardingFlowId.length : 0,
+  loginFlowIdLength: whatsappConfig.loginFlowId ? whatsappConfig.loginFlowId.length : 0,
+  environment: process.env.NODE_ENV,
+  platform: 'DigitalOcean App Platform'
+});
+
 // Server configuration for Digital Ocean App Platform
 let PORT = parseInt(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';

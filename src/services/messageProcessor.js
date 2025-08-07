@@ -235,6 +235,23 @@ class MessageProcessor {
       // Check if we have a valid flow ID configured
       const config = require('../config');
       const flowId = config.getWhatsappConfig().onboardingFlowId;
+      
+      // Add detailed logging for Flow ID debugging
+      logger.info('🚀 FLOW ID DEBUG: About to send onboarding flow', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        configuredFlowId: flowId,
+        flowIdType: typeof flowId,
+        flowIdLength: flowId ? flowId.length : 0,
+        isFlowIdValid: flowId && flowId !== 'SET_THIS_IN_DO_UI' && flowId !== 'miimii_onboarding_flow' && flowId !== 'DISABLED_FOR_LOCAL_DEV',
+        environment: process.env.NODE_ENV,
+        whatsappConfig: {
+          hasAccessToken: !!config.getWhatsappConfig().accessToken,
+          hasPhoneNumberId: !!config.getWhatsappConfig().phoneNumberId,
+          hasBusinessAccountId: !!config.getWhatsappConfig().businessAccountId
+        }
+      });
+      
       if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
         logger.warn('WhatsApp Flow ID not configured or disabled, falling back to interactive buttons', {
           userId: user.id,

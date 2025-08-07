@@ -148,6 +148,18 @@ class Config {
   }
 
   getWhatsappConfig() {
+    // Add runtime logging for Flow ID debugging
+    const logger = require('../utils/logger');
+    logger.info('🔍 Config: WhatsApp Flow IDs at runtime', {
+      onboardingFlowId: this.whatsapp.onboardingFlowId,
+      loginFlowId: this.whatsapp.loginFlowId,
+      hasOnboardingFlowId: !!this.whatsapp.onboardingFlowId,
+      hasLoginFlowId: !!this.whatsapp.loginFlowId,
+      onboardingFlowIdLength: this.whatsapp.onboardingFlowId ? this.whatsapp.onboardingFlowId.length : 0,
+      loginFlowIdLength: this.whatsapp.loginFlowId ? this.whatsapp.loginFlowId.length : 0,
+      environment: process.env.NODE_ENV
+    });
+    
     return this.whatsapp;
   }
 

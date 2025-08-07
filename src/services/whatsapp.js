@@ -249,6 +249,20 @@ class WhatsAppService {
 
   // New Advanced Interactive Message Methods
   async sendFlowMessage(to, flowData) {
+    // Add detailed logging for Flow debugging
+    logger.info('Sending Flow Message', {
+      to,
+      flowId: flowData.flowId,
+      flowToken: flowData.flowToken ? flowData.flowToken.substring(0, 20) + '...' : 'none',
+      flowCta: flowData.flowCta,
+      hasHeader: !!flowData.header,
+      hasBody: !!flowData.body,
+      hasFooter: !!flowData.footer,
+      hasActionPayload: !!flowData.flowActionPayload,
+      environment: process.env.NODE_ENV,
+      phoneNumberId: this.phoneNumberId
+    });
+    
     const interactive = {
       type: 'flow',
       header: flowData.header,
@@ -266,6 +280,19 @@ class WhatsAppService {
         }
       }
     };
+    
+    logger.info('🚀 FLOW ID DEBUG: WhatsApp API request payload', {
+      flowId: flowData.flowId,
+      flowIdType: typeof flowData.flowId,
+      flowIdLength: flowData.flowId ? flowData.flowId.length : 0,
+      flowTokenLength: flowData.flowToken ? flowData.flowToken.length : 0,
+      interactiveType: interactive.type,
+      actionName: interactive.action.name,
+      parameters: interactive.action.parameters,
+      phoneNumberId: this.phoneNumberId,
+      environment: process.env.NODE_ENV
+    });
+    
     return this.sendInteractiveMessage(to, interactive);
   }
 
