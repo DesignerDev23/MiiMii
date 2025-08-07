@@ -100,6 +100,14 @@ services:
         scope: RUN_AND_BUILD_TIME
         value: "SET_THIS_IN_DO_UI"
 
+      # WhatsApp Flow Configuration (REQUIRED for Flow features)
+      - key: WHATSAPP_ONBOARDING_FLOW_ID
+        scope: RUN_AND_BUILD_TIME
+        value: "SET_THIS_IN_DO_UI"
+      - key: WHATSAPP_LOGIN_FLOW_ID
+        scope: RUN_AND_BUILD_TIME
+        value: "SET_THIS_IN_DO_UI"
+
       # Banking Configuration (REQUIRED for banking features)
       - key: BANK_CONSUMER_KEY
         scope: RUN_AND_BUILD_TIME
