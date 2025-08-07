@@ -22,7 +22,9 @@ class Config {
       accessToken: process.env.BOT_ACCESS_TOKEN,
       phoneNumberId: process.env.BOT_PHONE_NUMBER_ID,
       businessAccountId: process.env.BOT_BUSINESS_ACCOUNT_ID,
-      webhookVerifyToken: process.env.BOT_WEBHOOK_VERIFY_TOKEN
+      webhookVerifyToken: process.env.BOT_WEBHOOK_VERIFY_TOKEN,
+      onboardingFlowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID,
+      loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID
     };
 
     // Bellbank Configuration

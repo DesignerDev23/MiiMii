@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "dev:local": "node -r dotenv/config src/app.js dotenv_config_path=.env.local",
+    "tunnel": "ngrok http 3000 --log=stdout",
     "test": "jest",
     "migrate": "node src/database/migrate.js",
     "seed": "node src/database/seed.js"
@@ -29,7 +31,6 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.0.1",
     "express-validator": "^7.2.0",
-    "fluent-ffmpeg": "^2.1.3",
     "helmet": "^8.1.0",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
@@ -42,10 +43,7 @@
     "pg-hstore": "^2.3.4",
     "redis": "^4.7.0",
     "sequelize": "^6.37.6",
-    "sharp": "^0.33.5",
     "socket.io": "^4.8.1",
-    "sqlite3": "^5.1.7",
-    "tesseract.js": "^5.1.1",
     "uuid": "^11.0.3",
     "winston": "^3.17.0"
   },
@@ -56,6 +54,6 @@
     "supertest": "^7.0.0"
   },
   "engines": {
-    "node": ">=18.0.0 <=22.x"
+    "node": ">=18.0.0"
   }
 }

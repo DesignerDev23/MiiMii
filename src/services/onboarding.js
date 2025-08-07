@@ -373,9 +373,10 @@ class OnboardingService {
   async startGuidedKycFlow(user) {
     try {
       // Check if we have a valid flow ID configured
-      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
-      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
-        logger.warn('WhatsApp Flow ID not configured for guided KYC, falling back to traditional', {
+      const config = require('../config');
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        logger.warn('WhatsApp Flow ID not configured or disabled for guided KYC, falling back to traditional', {
           userId: user.id,
           configuredFlowId: flowId
         });
@@ -894,9 +895,10 @@ class OnboardingService {
   async startOnboardingFlow(user) {
     try {
       // Check if we have a valid flow ID configured
-      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
-      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
-        logger.warn('WhatsApp Flow ID not configured for onboarding, falling back to traditional', {
+      const config = require('../config');
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        logger.warn('WhatsApp Flow ID not configured or disabled for onboarding, falling back to traditional', {
           userId: user.id,
           configuredFlowId: flowId
         });

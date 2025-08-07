@@ -233,14 +233,15 @@ class MessageProcessor {
       const whatsappFlowService = require('./whatsappFlowService');
       
       // Check if we have a valid flow ID configured
-      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
-      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
-        logger.warn('WhatsApp Flow ID not configured, falling back to interactive buttons', {
+      const config = require('../config');
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        logger.warn('WhatsApp Flow ID not configured or disabled, falling back to interactive buttons', {
           userId: user.id,
           configuredFlowId: flowId
         });
         // Skip flow message and go directly to fallback
-        throw new Error('Flow ID not properly configured');
+        throw new Error('Flow ID not properly configured or disabled for local development');
       }
       
       // Generate a secure flow token
@@ -388,13 +389,14 @@ class MessageProcessor {
       const whatsappFlowService = require('./whatsappFlowService');
       
       // Check if we have a valid flow ID configured
-      const flowId = process.env.WHATSAPP_ONBOARDING_FLOW_ID;
-      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow') {
-        logger.warn('WhatsApp Flow ID not configured for flow-based onboarding, skipping', {
+      const config = require('../config');
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        logger.warn('WhatsApp Flow ID not configured or disabled for flow-based onboarding, skipping', {
           userId: user.id,
           configuredFlowId: flowId
         });
-        return { success: false, error: 'Flow ID not configured' };
+        return { success: false, error: 'Flow ID not configured or disabled for local development' };
       }
       
       // Generate a secure flow token
