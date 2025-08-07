@@ -27,10 +27,36 @@ router.post('/endpoint', async (req, res) => {
     logger.info('Flow endpoint request received', {
       hasEncryptedData: !!encrypted_flow_data,
       hasAesKey: !!encrypted_aes_key,
-      hasInitialVector: !!initial_vector
+      hasInitialVector: !!initial_vector,
+      bodyKeys: Object.keys(req.body)
     });
 
-    // Validate required fields
+    // Handle WhatsApp Business Manager health check
+    // WhatsApp sends a simple ping request without encryption
+    if (!encrypted_flow_data && !encrypted_aes_key && !initial_vector) {
+      logger.info('WhatsApp Business Manager health check detected');
+      return res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        version: FLOW_CONFIG.version,
+        encryption: {
+          enabled: !!FLOW_CONFIG.privateKey,
+          configured: !!FLOW_CONFIG.privateKey
+        }
+      });
+    }
+
+    // Check if encryption is configured for actual Flow requests
+    if (!FLOW_CONFIG.privateKey) {
+      logger.error('Flow endpoint called but private key not configured');
+      return res.status(503).json({
+        error: 'Flow encryption not configured',
+        code: 'ENCRYPTION_NOT_CONFIGURED',
+        message: 'Please configure FLOW_PRIVATE_KEY environment variable'
+      });
+    }
+
+    // Validate required fields for encrypted requests
     if (!encrypted_flow_data || !encrypted_aes_key || !initial_vector) {
       logger.warn('Missing required Flow endpoint fields', {
         hasEncryptedData: !!encrypted_flow_data,
@@ -39,7 +65,8 @@ router.post('/endpoint', async (req, res) => {
       });
       return res.status(421).json({
         error: 'Missing required fields',
-        code: 'MISSING_REQUIRED_FIELDS'
+        code: 'MISSING_REQUIRED_FIELDS',
+        message: 'This endpoint requires encrypted data for Flow requests.'
       });
     }
 
@@ -102,24 +129,106 @@ router.post('/endpoint', async (req, res) => {
  */
 router.get('/health', async (req, res) => {
   try {
+    // Check if private key is configured
+    const hasPrivateKey = !!FLOW_CONFIG.privateKey;
+    
     const healthStatus = {
-      status: 'healthy',
+      status: hasPrivateKey ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
       version: FLOW_CONFIG.version,
       endpoint: FLOW_CONFIG.endpointUrl,
+      encryption: {
+        enabled: hasPrivateKey,
+        configured: hasPrivateKey,
+        message: hasPrivateKey ? 'Encryption properly configured' : 'Private key not configured'
+      },
       services: {
         database: 'connected',
-        encryption: !!FLOW_CONFIG.privateKey,
         userService: 'available',
         onboardingService: 'available'
       }
     };
 
-    res.json(healthStatus);
+    // Return 200 for health check even if encryption is not configured
+    res.status(200).json(healthStatus);
   } catch (error) {
     logger.error('Health check failed', { error: error.message });
     res.status(503).json({
       status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Simple ping endpoint for Flow (no encryption required)
+ */
+router.get('/ping', async (req, res) => {
+  try {
+    res.json({
+      status: 'pong',
+      timestamp: new Date().toISOString(),
+      version: FLOW_CONFIG.version,
+      message: 'Flow endpoint is reachable'
+    });
+  } catch (error) {
+    logger.error('Ping failed', { error: error.message });
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * GET endpoint for Flow (handles WhatsApp Business Manager health checks)
+ */
+router.get('/endpoint', async (req, res) => {
+  try {
+    logger.info('WhatsApp Business Manager GET health check received');
+    
+    res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: FLOW_CONFIG.version,
+      encryption: {
+        enabled: !!FLOW_CONFIG.privateKey,
+        configured: !!FLOW_CONFIG.privateKey
+      },
+      message: 'Flow endpoint is available for WhatsApp Business Manager'
+    });
+  } catch (error) {
+    logger.error('Flow GET endpoint failed', { error: error.message });
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Test endpoint for Flow (no encryption required)
+ */
+router.get('/test', async (req, res) => {
+  try {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: FLOW_CONFIG.version,
+      message: 'Flow test endpoint is working',
+      endpoints: {
+        health: '/api/flow/health',
+        ping: '/api/flow/ping',
+        endpoint: '/api/flow/endpoint (requires encryption)'
+      }
+    });
+  } catch (error) {
+    logger.error('Test failed', { error: error.message });
+    res.status(500).json({
+      status: 'error',
       error: error.message,
       timestamp: new Date().toISOString()
     });
