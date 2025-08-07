@@ -421,14 +421,22 @@ class WhatsAppFlowService {
   /**
    * Generate a secure flow token for a user
    */
-  generateFlowToken(userId) {
+  generateFlowToken(userId, step = 'personal_details') {
     const timestamp = Date.now();
     const randomString = crypto.randomBytes(16).toString('hex');
+    const payload = {
+      userId: userId,
+      step: step,
+      timestamp: timestamp
+    };
+    
+    // Encode payload in the token
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64');
     const signature = crypto.createHash('sha256')
-      .update(`${userId}_${timestamp}_${randomString}_${process.env.APP_SECRET}`)
+      .update(`${encodedPayload}_${randomString}_${process.env.APP_SECRET}`)
       .digest('hex');
     
-    return `${userId}_${timestamp}_${randomString}_${signature}`;
+    return `${encodedPayload}_${randomString}_${signature}`;
   }
 
   /**
@@ -437,13 +445,15 @@ class WhatsAppFlowService {
   verifyFlowToken(token) {
     try {
       const parts = token.split('_');
-      if (parts.length !== 4) {
+      if (parts.length !== 3) { // Changed from 4 to 3
         return { valid: false, reason: 'Invalid token format' };
       }
 
-      const [userId, timestamp, randomString, signature] = parts;
+      const [encodedPayload, randomString, signature] = parts;
+      const payload = JSON.parse(Buffer.from(encodedPayload, 'base64').toString());
+
       const expectedSignature = crypto.createHash('sha256')
-        .update(`${userId}_${timestamp}_${randomString}_${process.env.APP_SECRET}`)
+        .update(`${encodedPayload}_${randomString}_${process.env.APP_SECRET}`)
         .digest('hex');
 
       if (signature !== expectedSignature) {
@@ -451,15 +461,16 @@ class WhatsAppFlowService {
       }
 
       // Check if token is expired (24 hours)
-      const tokenAge = Date.now() - parseInt(timestamp);
+      const tokenAge = Date.now() - payload.timestamp;
       if (tokenAge > 24 * 60 * 60 * 1000) {
         return { valid: false, reason: 'Token expired' };
       }
 
       return { 
         valid: true, 
-        userId: parseInt(userId),
-        timestamp: parseInt(timestamp)
+        userId: payload.userId,
+        step: payload.step,
+        timestamp: payload.timestamp
       };
     } catch (error) {
       logger.error('Flow token verification failed', { error: error.message });
