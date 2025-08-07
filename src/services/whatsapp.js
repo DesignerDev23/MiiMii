@@ -10,6 +10,7 @@ class WhatsAppService {
     this.phoneNumberId = whatsappConfig.phoneNumberId;
     this.baseURL = `https://graph.facebook.com/v18.0/${this.phoneNumberId}`;
     this.verifyToken = whatsappConfig.webhookVerifyToken;
+    this.axiosConfig = axiosConfig;
   }
 
   /**
@@ -153,9 +154,9 @@ class WhatsAppService {
         `${this.baseURL}/messages`,
         payload,
         {
-          ...axiosConfig,
+          ...this.axiosConfig,
           headers: {
-            ...axiosConfig.headers,
+            ...this.axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`,
             'Content-Type': 'application/json'
           }
@@ -408,9 +409,9 @@ class WhatsAppService {
       const response = await axios.get(
         `https://graph.facebook.com/v18.0/${formattedNumber}?fields=profile`,
         {
-          ...axiosConfig,
+          ...this.axiosConfig,
           headers: {
-            ...axiosConfig.headers,
+            ...this.axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`
           }
         }
@@ -466,9 +467,9 @@ class WhatsAppService {
           message_id: messageId
         },
         {
-          ...axiosConfig,
+          ...this.axiosConfig,
           headers: {
-            ...axiosConfig.headers,
+            ...this.axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`,
             'Content-Type': 'application/json'
           }
@@ -510,9 +511,9 @@ class WhatsAppService {
       const mediaResponse = await axios.get(
         `https://graph.facebook.com/v18.0/${mediaId}`,
         {
-          ...axiosConfig,
+          ...this.axiosConfig,
           headers: {
-            ...axiosConfig.headers,
+            ...this.axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`
           }
         }
@@ -522,9 +523,9 @@ class WhatsAppService {
 
       // Download the actual media
       const downloadResponse = await axios.get(mediaUrl, {
-        ...axiosConfig,
+        ...this.axiosConfig,
         headers: {
-          ...axiosConfig.headers,
+          ...this.axiosConfig.headers,
           'Authorization': `Bearer ${this.accessToken}`
         },
         responseType: 'stream'
@@ -584,9 +585,9 @@ class WhatsAppService {
       const response = await axios.get(
         `https://graph.facebook.com/v18.0/${this.phoneNumberId}`,
         {
-          ...axiosConfig,
+          ...this.axiosConfig,
           headers: {
-            ...axiosConfig.headers,
+            ...this.axiosConfig.headers,
             'Authorization': `Bearer ${this.accessToken}`
           }
         }
