@@ -111,11 +111,12 @@ router.post('/endpoint', async (req, res) => {
     // Process the decrypted request
     const response = await processFlowRequest(decryptedData.data);
 
-    // Encrypt the response
+    // Encrypt the response (mirror IV handling and algorithm)
     const encryptedResponse = await encryptFlowResponse(
       response,
       decryptedData.aesKey,
-      decryptedData.initialVector
+      decryptedData.initialVector,
+      { usedFlippedIV: decryptedData.usedFlippedIV, aesAlgo: decryptedData.aesAlgo }
     );
 
     if (!encryptedResponse.success) {
@@ -360,24 +361,29 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
     const initialVectorBytes = Buffer.from(initialVector, 'base64');
     const flowDataBytes = Buffer.from(encryptedFlowData, 'base64');
 
-    // Flip IV bits (byte-wise XOR 0xFF) as per WhatsApp spec
-    const flippedIV = Buffer.from(initialVectorBytes);
-    for (let i = 0; i < flippedIV.length; i++) {
-      flippedIV[i] = flippedIV[i] ^ 0xff;
-    }
-
     const ciphertext = flowDataBytes.slice(0, -16);
     const authTag = flowDataBytes.slice(-16);
 
-    // AES-256-GCM decrypt
-    const decipher = crypto.createDecipheriv(aesAlgo, aesKeyBytes, flippedIV);
-    decipher.setAuthTag(authTag);
-    // If Meta sets AAD, set it here. We assume none.
+    const tryDecrypt = (ivBuf) => {
+      const decipher = crypto.createDecipheriv(aesAlgo, aesKeyBytes, ivBuf);
+      decipher.setAuthTag(authTag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    };
 
-    const decryptedData = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final()
-    ]);
+    let decryptedData;
+    let usedFlippedIV = false;
+    try {
+      // Try without IV flip first
+      decryptedData = tryDecrypt(initialVectorBytes);
+    } catch (e1) {
+      // Fallback: try with IV bits flipped (XOR 0xFF)
+      const flippedIV = Buffer.from(initialVectorBytes);
+      for (let i = 0; i < flippedIV.length; i++) {
+        flippedIV[i] = flippedIV[i] ^ 0xff;
+      }
+      decryptedData = tryDecrypt(flippedIV);
+      usedFlippedIV = true;
+    }
 
     const decryptedJson = JSON.parse(decryptedData.toString('utf8'));
 
@@ -391,7 +397,9 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
       success: true,
       data: decryptedJson,
       aesKey: aesKeyBytes,
-      initialVector: initialVectorBytes
+      initialVector: initialVectorBytes,
+      usedFlippedIV,
+      aesAlgo
     };
 
   } catch (error) {
@@ -419,19 +427,23 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
 /**
  * Encrypt Flow response using AES-GCM
  */
-async function encryptFlowResponse(response, aesKey, initialVector) {
+async function encryptFlowResponse(response, aesKey, initialVector, opts = {}) {
   try {
     // Convert response to JSON
     const responseJson = JSON.stringify(response);
 
-    // Flip IV bits (byte-wise XOR 0xFF) for response
-    const flippedIV = Buffer.from(initialVector);
-    for (let i = 0; i < flippedIV.length; i++) {
-      flippedIV[i] = flippedIV[i] ^ 0xff;
+    const usedFlippedIV = opts.usedFlippedIV === true;
+    const aesAlgo = opts.aesAlgo || 'aes-256-gcm';
+
+    const ivForResponse = Buffer.from(initialVector);
+    if (usedFlippedIV) {
+      for (let i = 0; i < ivForResponse.length; i++) {
+        ivForResponse[i] = ivForResponse[i] ^ 0xff;
+      }
     }
 
-    // AES-256-GCM encrypt
-    const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, flippedIV);
+    // AES-GCM encrypt with matching algorithm
+    const cipher = crypto.createCipheriv(aesAlgo, aesKey, ivForResponse);
     // If Meta sets AAD, set it here. We assume none.
 
     const encryptedData = Buffer.concat([
