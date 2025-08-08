@@ -471,11 +471,11 @@ async function encryptFlowResponse(response, aesKey, initialVector, opts = {}) {
     const usedFlippedIV = opts.usedFlippedIV === true;
     const aesAlgo = opts.aesAlgo || 'aes-256-gcm';
 
+    // For response encryption, we should ALWAYS flip the IV (as per WhatsApp Flow spec)
+    // This is different from request decryption where we try both normal and flipped IV
     const ivForResponse = Buffer.from(initialVector);
-    if (usedFlippedIV) {
-      for (let i = 0; i < ivForResponse.length; i++) {
-        ivForResponse[i] = ivForResponse[i] ^ 0xff;
-      }
+    for (let i = 0; i < ivForResponse.length; i++) {
+      ivForResponse[i] = ivForResponse[i] ^ 0xff;
     }
 
     // AES-GCM encrypt with matching algorithm
@@ -496,7 +496,11 @@ async function encryptFlowResponse(response, aesKey, initialVector, opts = {}) {
 
     logger.info('Flow response encrypted successfully', {
       responseLength: responseJson.length,
-      encryptedLength: encryptedBase64.length
+      encryptedLength: encryptedBase64.length,
+      usedFlippedIV: usedFlippedIV,
+      aesAlgo: aesAlgo,
+      originalIVLength: initialVector.length,
+      flippedIVLength: ivForResponse.length
     });
 
     return {
