@@ -32,7 +32,7 @@ router.post('/endpoint', async (req, res) => {
       contentType: req.get('Content-Type')
     });
 
-    // Handle unencrypted health check requests from WhatsApp
+    // Handle unencrypted health check requests from WhatsApp (fallback for non-Flow requests)
     if (!encrypted_flow_data && !encrypted_aes_key && !initial_vector) {
       logger.info('Unencrypted health check request detected');
       
@@ -528,6 +528,7 @@ async function processFlowRequest(requestData) {
 
   try {
     // For ping actions, skip token verification as they don't include a flow_token
+    // Note: According to WhatsApp Flow specification, ping requests should be encrypted
     if (action === 'ping') {
       logger.info('Processing ping action - skipping token verification');
       return {
