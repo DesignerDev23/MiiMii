@@ -23,7 +23,9 @@ class Config {
       phoneNumberId: process.env.BOT_PHONE_NUMBER_ID, // Changed from WHATSAPP_PHONE_NUMBER_ID
       businessAccountId: process.env.BOT_BUSINESS_ACCOUNT_ID,
       webhookSecret: process.env.WEBHOOK_SECRET, // Changed from WHATSAPP_WEBHOOK_SECRET
-      // Removed Flow ID dependencies since we're using flow_json approach
+      // Flow Configuration
+      welcomeFlowId: process.env.WELCOME_FLOW_ID || '1223628202852216',
+      flowSecretKey: process.env.FLOW_SECRET_KEY || 'default-flow-secret-key'
     };
 
     // Bellbank Configuration

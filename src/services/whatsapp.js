@@ -320,7 +320,7 @@ class WhatsAppService {
     try {
       // Start typing indicator if messageId is provided
       if (messageId) {
-        await this.sendTypingIndicator(to, messageId, 2000);
+        await this.sendTypingIndicator(to, messageId, 3000);
       }
 
       // Get user's profile name if not provided
@@ -329,8 +329,9 @@ class WhatsAppService {
         userName = profile.name || 'there';
       }
 
-      // Create personalized welcome message
-      const welcomeText = `Hi ${userName}! 👋\n\nWelcome to MiiMii - Your Smart Financial Assistant! 🚀\n\nI'm here to help you with all your financial needs. Let's get you set up quickly and securely.`;
+      // Get AI-generated personalized welcome message
+      const aiAssistant = require('./aiAssistant');
+      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, to);
 
       // Send the welcome flow message
       const flowData = {
@@ -340,7 +341,7 @@ class WhatsAppService {
           type: 'text',
           text: `Welcome ${userName}! 👋`
         },
-        body: welcomeText,
+        body: personalizedMessage,
         footer: 'Your data is secure and encrypted 🔒',
         flowAction: 'navigate',
         flowActionPayload: {
@@ -463,10 +464,12 @@ class WhatsAppService {
       // Prepare the payload according to WhatsApp Cloud API documentation
       const payload = {
         messaging_product: 'whatsapp',
-        status: 'read',
-        message_id: messageId,
-        typing_indicator: {
-          type: 'text'
+        recipient_type: 'individual',
+        to: formattedNumber,
+        type: 'text',
+        text: {
+          preview_url: false,
+          body: '' // Empty body for typing indicator simulation
         }
       };
 
@@ -524,39 +527,15 @@ class WhatsAppService {
 
       const formattedNumber = this.formatToE164(to);
       
-      // Prepare the payload to stop typing indicator
-      const payload = {
-        messaging_product: 'whatsapp',
-        status: 'read',
-        message_id: messageId
-        // Remove typing_indicator to stop typing
-      };
-
-      logger.info('Stopping typing indicator', { 
+      // For WhatsApp Cloud API, we don't need to explicitly stop typing
+      // The typing indicator automatically stops when we send a message
+      logger.info('Typing indicator stopped automatically', { 
         to: formattedNumber, 
         messageId,
         service: 'whatsapp-service'
       });
 
-      // Send the request to stop typing indicator
-      const response = await axios.post(
-        `${this.baseURL}/messages`,
-        payload,
-        {
-          ...this.axiosConfig,
-          headers: {
-            ...this.axiosConfig.headers,
-            'Authorization': `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      logger.info('Typing indicator stopped successfully', {
-        to: formattedNumber,
-        messageId,
-        response: response.data
-      });
+      return { success: true };
 
     } catch (error) {
       logger.error('Failed to stop typing indicator', { 
@@ -565,6 +544,7 @@ class WhatsAppService {
         messageId,
         service: 'whatsapp-service'
       });
+      throw error;
     }
   }
 
