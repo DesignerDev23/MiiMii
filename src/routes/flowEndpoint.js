@@ -341,9 +341,19 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
       Buffer.from(encryptedAesKey, 'base64')
     );
 
-    // Optional: ensure 32-byte key for AES-256
-    if (aesKeyBytes.length !== 32) {
-      logger.warn('Decrypted AES key length unexpected', { length: aesKeyBytes.length });
+    // Select AES-GCM algorithm based on key length (16/24/32 => 128/192/256)
+    const keyLen = aesKeyBytes.length;
+    let aesAlgo;
+    if (keyLen === 16) {
+      aesAlgo = 'aes-128-gcm';
+    } else if (keyLen === 24) {
+      aesAlgo = 'aes-192-gcm';
+    } else if (keyLen === 32) {
+      aesAlgo = 'aes-256-gcm';
+    } else {
+      logger.warn('Decrypted AES key length unexpected', { length: keyLen });
+      // Try best-effort: default to aes-256-gcm, but will likely fail
+      aesAlgo = 'aes-256-gcm';
     }
 
     // Decrypt the Flow data using AES-GCM
@@ -360,7 +370,7 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
     const authTag = flowDataBytes.slice(-16);
 
     // AES-256-GCM decrypt
-    const decipher = crypto.createDecipheriv('aes-256-gcm', aesKeyBytes, flippedIV);
+    const decipher = crypto.createDecipheriv(aesAlgo, aesKeyBytes, flippedIV);
     decipher.setAuthTag(authTag);
     // If Meta sets AAD, set it here. We assume none.
 
