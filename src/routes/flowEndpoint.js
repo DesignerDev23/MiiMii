@@ -291,35 +291,54 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
       throw new Error('Missing encryption parameters');
     }
 
-    // Decrypt the AES key using RSA
+    // Prepare private key for decryption using KeyObject (handles formats/openssl3)
+    let keyObject;
+    try {
+      keyObject = crypto.createPrivateKey({
+        key: FLOW_CONFIG.privateKey,
+        format: 'pem',
+        passphrase: FLOW_CONFIG.passphrase || undefined
+      });
+    } catch (keyError) {
+      throw new Error(`Invalid private key: ${keyError.message}`);
+    }
+
+    // Decrypt the AES key using RSA-OAEP with SHA-256
     const aesKeyBytes = crypto.privateDecrypt(
       {
-        key: FLOW_CONFIG.privateKey,
+        key: keyObject,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256'
       },
       Buffer.from(encryptedAesKey, 'base64')
     );
 
+    // Optional: ensure 32-byte key for AES-256
+    if (aesKeyBytes.length !== 32) {
+      logger.warn('Decrypted AES key length unexpected', { length: aesKeyBytes.length });
+    }
+
     // Decrypt the Flow data using AES-GCM
     const initialVectorBytes = Buffer.from(initialVector, 'base64');
     const flowDataBytes = Buffer.from(encryptedFlowData, 'base64');
 
-    // Flip the initialization vector (as per WhatsApp spec)
+    // Flip IV bits (byte-wise XOR 0xFF) as per WhatsApp spec
     const flippedIV = Buffer.from(initialVectorBytes);
     for (let i = 0; i < flippedIV.length; i++) {
-      flippedIV[i] = ~flippedIV[i];
+      flippedIV[i] = flippedIV[i] ^ 0xff;
     }
 
-    // Create AES-GCM cipher
-    const cipher = crypto.createDecipher('aes-256-gcm', aesKeyBytes);
-    cipher.setAAD(Buffer.alloc(0));
-    cipher.setAuthTag(flowDataBytes.slice(-16)); // Last 16 bytes are auth tag
+    const ciphertext = flowDataBytes.slice(0, -16);
+    const authTag = flowDataBytes.slice(-16);
 
-    // Decrypt the data
+    // AES-256-GCM decrypt
+    const decipher = crypto.createDecipheriv('aes-256-gcm', aesKeyBytes, flippedIV);
+    decipher.setAuthTag(authTag);
+    // If Meta sets AAD, set it here. We assume none.
+
     const decryptedData = Buffer.concat([
-      cipher.update(flowDataBytes.slice(0, -16)),
-      cipher.final()
+      decipher.update(ciphertext),
+      decipher.final()
     ]);
 
     const decryptedJson = JSON.parse(decryptedData.toString('utf8'));
@@ -367,26 +386,23 @@ async function encryptFlowResponse(response, aesKey, initialVector) {
     // Convert response to JSON
     const responseJson = JSON.stringify(response);
 
-    // Flip the initialization vector (as per WhatsApp spec)
+    // Flip IV bits (byte-wise XOR 0xFF) for response
     const flippedIV = Buffer.from(initialVector);
     for (let i = 0; i < flippedIV.length; i++) {
-      flippedIV[i] = ~flippedIV[i];
+      flippedIV[i] = flippedIV[i] ^ 0xff;
     }
 
-    // Create AES-GCM cipher
-    const cipher = crypto.createCipher('aes-256-gcm', aesKey);
-    cipher.setAAD(Buffer.alloc(0));
+    // AES-256-GCM encrypt
+    const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, flippedIV);
+    // If Meta sets AAD, set it here. We assume none.
 
-    // Encrypt the response
     const encryptedData = Buffer.concat([
       cipher.update(responseJson, 'utf8'),
       cipher.final()
     ]);
 
-    // Get the authentication tag
     const authTag = cipher.getAuthTag();
 
-    // Concatenate encrypted data and auth tag
     const finalEncryptedData = Buffer.concat([encryptedData, authTag]);
 
     // Return as base64 string
