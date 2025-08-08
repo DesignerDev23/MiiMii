@@ -98,7 +98,7 @@ router.post('/endpoint', async (req, res) => {
         screen: 'ERROR_SCREEN',
         data: {
           error: 'Unable to process your request. Please try again or contact support.',
-          code: 'DECRYPTION_FAILED'
+        code: 'DECRYPTION_FAILED'
         }
       };
       
@@ -130,7 +130,7 @@ router.post('/endpoint', async (req, res) => {
         screen: 'ERROR_SCREEN',
         data: {
           error: 'Unable to process your request. Please try again.',
-          code: 'ENCRYPTION_FAILED'
+        code: 'ENCRYPTION_FAILED'
         }
       };
       
@@ -156,7 +156,7 @@ router.post('/endpoint', async (req, res) => {
       screen: 'ERROR_SCREEN',
       data: {
         error: 'Service temporarily unavailable. Please try again later.',
-        code: 'INTERNAL_ERROR'
+      code: 'INTERNAL_ERROR'
       }
     };
     
@@ -199,6 +199,30 @@ router.get('/health', async (req, res) => {
     res.status(503).json({
       status: 'unhealthy',
       error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * WhatsApp Business Manager specific health check endpoint
+ * This endpoint is specifically for WhatsApp Business Manager health checks
+ */
+router.get('/whatsapp-health', async (req, res) => {
+  try {
+    logger.info('WhatsApp Business Manager health check received');
+    
+    // Simple health check response as expected by WhatsApp Business Manager
+    res.status(200).json({
+      status: 'ok',
+      message: 'Flow endpoint is healthy and ready for WhatsApp Business Manager',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('WhatsApp health check failed', { error: error.message });
+    res.status(200).json({
+      status: 'error',
+      message: 'Flow endpoint health check failed',
       timestamp: new Date().toISOString()
     });
   }
@@ -377,8 +401,8 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
       decryptedData = tryDecrypt(initialVectorBytes);
     } catch (e1) {
       // Fallback: try with IV bits flipped (XOR 0xFF)
-      const flippedIV = Buffer.from(initialVectorBytes);
-      for (let i = 0; i < flippedIV.length; i++) {
+    const flippedIV = Buffer.from(initialVectorBytes);
+    for (let i = 0; i < flippedIV.length; i++) {
         flippedIV[i] = flippedIV[i] ^ 0xff;
       }
       decryptedData = tryDecrypt(flippedIV);
@@ -411,8 +435,8 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
     
     // Handle specific crypto errors
     if (error.message.includes('interrupted or cancelled')) {
-      return {
-        success: false,
+    return {
+      success: false,
         error: 'Decryption interrupted - private key may be invalid or missing passphrase'
       };
     }
@@ -495,10 +519,8 @@ async function processFlowRequest(requestData) {
     if (action === 'ping') {
       logger.info('Processing ping action - skipping token verification');
       return {
-        screen: 'PING_RESPONSE',
         data: {
-          status: 'active',
-          timestamp: new Date().toISOString()
+          status: 'active'
         }
       };
     }
@@ -851,6 +873,561 @@ async function handlePinSetupScreen(data, userId) {
 }
 
 module.exports = router;
+
+
+
+
+
+        return await handlePinSetupScreen(data, userId);
+
+
+
+      default:
+
+        logger.warn('Unknown Flow screen', { screen });
+
+        return {
+
+          screen: 'ERROR_SCREEN',
+
+          data: {
+
+            error: 'Unknown screen',
+
+            code: 'UNKNOWN_SCREEN'
+
+          }
+
+        };
+
+    }
+
+
+
+  } catch (error) {
+
+    logger.error('Data exchange processing failed', { error: error.message });
+
+    return {
+
+      screen: 'ERROR_SCREEN',
+
+      data: {
+
+        error: 'Processing failed',
+
+        code: 'PROCESSING_ERROR'
+
+      }
+
+    };
+
+  }
+
+}
+
+
+
+/**
+
+ * Handle personal details screen
+
+ */
+
+async function handlePersonalDetailsScreen(data, userId) {
+
+  try {
+
+    // Extract personal details
+
+    const firstName = data.screen_1_First_Name_0;
+
+    const lastName = data.screen_1_Last_Name_1;
+
+    const middleName = data.screen_1_Middle_Name_2;
+
+    const address = data.screen_1_Address_3;
+
+    const gender = data.screen_1_Gender_4;
+
+    const dateOfBirth = data.screen_1_Date_of_Birth__5;
+
+
+
+    // Validate required fields
+
+    if (!firstName || !lastName || !address || !gender || !dateOfBirth) {
+
+      return {
+
+        screen: 'screen_poawge',
+
+        data: {
+
+          error: 'Please fill in all required fields',
+
+          validation: {
+
+            firstName: !firstName ? 'First name is required' : null,
+
+            lastName: !lastName ? 'Last name is required' : null,
+
+            address: !address ? 'Address is required' : null,
+
+            gender: !gender ? 'Gender is required' : null,
+
+            dateOfBirth: !dateOfBirth ? 'Date of birth is required' : null
+
+          }
+
+        }
+
+      };
+
+    }
+
+
+
+    // Parse gender
+
+    let parsedGender = 'other';
+
+    if (gender.toLowerCase().includes('male')) {
+
+      parsedGender = gender.toLowerCase().includes('female') ? 'female' : 'male';
+
+    }
+
+
+
+    // Parse date
+
+    let parsedDate = null;
+
+    if (dateOfBirth) {
+
+      const parts = dateOfBirth.split('/');
+
+      if (parts.length === 3) {
+
+        parsedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+
+      }
+
+    }
+
+
+
+    // Save to database
+
+    const user = await userService.getUserById(userId);
+
+    if (user) {
+
+      await user.update({
+
+        firstName,
+
+        lastName,
+
+        middleName: middleName || null,
+
+        address,
+
+        dateOfBirth: parsedDate,
+
+        gender: parsedGender,
+
+        onboardingStep: 'bvn_verification'
+
+      });
+
+
+
+      logger.info('Personal details saved', {
+
+        userId,
+
+        firstName,
+
+        lastName,
+
+        gender: parsedGender
+
+      });
+
+    }
+
+
+
+    // Return next screen
+
+    return {
+
+      screen: 'screen_kswuhq',
+
+      data: {
+
+        success: true,
+
+        message: 'Personal details saved successfully'
+
+      }
+
+    };
+
+
+
+  } catch (error) {
+
+    logger.error('Personal details processing failed', { error: error.message });
+
+    return {
+
+      screen: 'screen_poawge',
+
+      data: {
+
+        error: 'Failed to save personal details. Please try again.',
+
+        code: 'SAVE_ERROR'
+
+      }
+
+    };
+
+  }
+
+}
+
+
+
+/**
+
+ * Handle BVN verification screen
+
+ */
+
+async function handleBvnVerificationScreen(data, userId) {
+
+  try {
+
+    const bvn = data.screen_2_BVN_0;
+
+
+
+    // Validate BVN format
+
+    if (!bvn || bvn.length !== 11 || !/^\d{11}$/.test(bvn)) {
+
+      return {
+
+        screen: 'screen_kswuhq',
+
+        data: {
+
+          error: 'BVN must be exactly 11 digits. Please check and try again.',
+
+          validation: {
+
+            bvn: 'Invalid BVN format'
+
+          }
+
+        }
+
+      };
+
+    }
+
+
+
+    // Verify BVN with Fincra
+
+    const bvnResult = await kycService.verifyBVNWithFincra(bvn, userId);
+
+
+
+    if (bvnResult.success) {
+
+      // Update user
+
+      const user = await userService.getUserById(userId);
+
+      if (user) {
+
+        await user.update({
+
+          bvn: bvn,
+
+          kycStatus: 'verified',
+
+          kycData: {
+
+            bvnVerified: true,
+
+            bvnVerifiedAt: new Date().toISOString(),
+
+            bvnData: bvnResult.data
+
+          },
+
+          onboardingStep: 'pin_setup'
+
+        });
+
+      }
+
+
+
+      logger.info('BVN verified successfully', {
+
+        userId,
+
+        bvn: bvn.substring(0, 3) + '********'
+
+      });
+
+
+
+      return {
+
+        screen: 'screen_wkunnj',
+
+        data: {
+
+          success: true,
+
+          message: 'BVN verified successfully! Please proceed to set up your PIN.'
+
+        }
+
+      };
+
+
+
+    } else {
+
+      return {
+
+        screen: 'screen_kswuhq',
+
+        data: {
+
+          error: bvnResult.error || 'BVN verification failed. Please check and try again.',
+
+          code: 'BVN_VERIFICATION_FAILED'
+
+        }
+
+      };
+
+    }
+
+
+
+  } catch (error) {
+
+    logger.error('BVN verification processing failed', { error: error.message });
+
+    return {
+
+      screen: 'screen_kswuhq',
+
+      data: {
+
+        error: 'BVN verification service is temporarily unavailable. Please try again later.',
+
+        code: 'SERVICE_UNAVAILABLE'
+
+      }
+
+    };
+
+  }
+
+}
+
+
+
+/**
+
+ * Handle PIN setup screen
+
+ */
+
+async function handlePinSetupScreen(data, userId) {
+
+  try {
+
+    const pin = data.screen_3_4Digit_PIN_0;
+
+    const confirmPin = data.screen_3_Confirm_PIN_1;
+
+
+
+    // Validate PIN
+
+    if (!pin || !confirmPin) {
+
+      return {
+
+        screen: 'screen_wkunnj',
+
+        data: {
+
+          error: 'Both PIN fields are required.',
+
+          validation: {
+
+            pin: !pin ? 'PIN is required' : null,
+
+            confirmPin: !confirmPin ? 'PIN confirmation is required' : null
+
+          }
+
+        }
+
+      };
+
+    }
+
+
+
+    if (pin !== confirmPin) {
+
+      return {
+
+        screen: 'screen_wkunnj',
+
+        data: {
+
+          error: 'PINs do not match. Please try again.',
+
+          validation: {
+
+            confirmPin: 'PINs do not match'
+
+          }
+
+        }
+
+      };
+
+    }
+
+
+
+    if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+
+      return {
+
+        screen: 'screen_wkunnj',
+
+        data: {
+
+          error: 'PIN must be exactly 4 digits.',
+
+          validation: {
+
+            pin: 'PIN must be 4 digits'
+
+          }
+
+        }
+
+      };
+
+    }
+
+
+
+    // Complete PIN setup and create virtual account
+
+    const pinResult = await onboardingService.completePinSetup(userId, pin);
+
+
+
+    if (pinResult.success) {
+
+      logger.info('PIN setup completed successfully', {
+
+        userId,
+
+        hasAccountDetails: !!pinResult.accountDetails
+
+      });
+
+
+
+      return {
+
+        screen: 'COMPLETION_SCREEN',
+
+        data: {
+
+          success: true,
+
+          message: '🎉 Account setup completed! Welcome to MiiMii! Your account is now ready to use.',
+
+          accountDetails: pinResult.accountDetails
+
+        }
+
+      };
+
+
+
+    } else {
+
+      return {
+
+        screen: 'screen_wkunnj',
+
+        data: {
+
+          error: 'Failed to complete account setup. Please try again.',
+
+          code: 'SETUP_FAILED'
+
+        }
+
+      };
+
+    }
+
+
+
+  } catch (error) {
+
+    logger.error('PIN setup processing failed', { error: error.message });
+
+    return {
+
+      screen: 'screen_wkunnj',
+
+      data: {
+
+        error: 'Failed to complete account setup. Please try again.',
+
+        code: 'PROCESSING_ERROR'
+
+      }
+
+    };
+
+  }
+
+}
+
+
+
+module.exports = router;
+
+
+
+
+
 
 
 
