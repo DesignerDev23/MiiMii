@@ -291,16 +291,44 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
       throw new Error('Missing encryption parameters');
     }
 
+    // Normalize private key newlines/format (env vars may contain escaped \n)
+    const normalizePrivateKey = (raw) => {
+      if (!raw) return raw;
+      let k = String(raw).trim();
+      // Replace escaped newline sequences with real newlines
+      k = k.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+      // Ensure header/footer have proper newlines around
+      if (k.includes('BEGIN') && !k.includes('\n')) {
+        // If it is all on one line, force newlines around headers
+        k = k.replace('-----BEGIN', '\n-----BEGIN');
+        k = k.replace('KEY-----', 'KEY-----\n');
+      }
+      return k;
+    };
+
+    const normalizedPem = normalizePrivateKey(FLOW_CONFIG.privateKey);
+
     // Prepare private key for decryption using KeyObject (handles formats/openssl3)
     let keyObject;
     try {
       keyObject = crypto.createPrivateKey({
-        key: FLOW_CONFIG.privateKey,
+        key: normalizedPem,
         format: 'pem',
         passphrase: FLOW_CONFIG.passphrase || undefined
       });
-    } catch (keyError) {
-      throw new Error(`Invalid private key: ${keyError.message}`);
+    } catch (pemErr) {
+      // Fallback: treat as base64 DER PKCS#8 (starts with MII...)
+      try {
+        const compact = (FLOW_CONFIG.privateKey || '').replace(/\s+/g, '');
+        if (/^MII[A-Za-z0-9+/=]+$/.test(compact)) {
+          const der = Buffer.from(compact, 'base64');
+          keyObject = crypto.createPrivateKey({ key: der, format: 'der', type: 'pkcs8', passphrase: FLOW_CONFIG.passphrase || undefined });
+        } else {
+          throw pemErr;
+        }
+      } catch (derErr) {
+        throw new Error(`Invalid private key: ${derErr.message}`);
+      }
     }
 
     // Decrypt the AES key using RSA-OAEP with SHA-256
