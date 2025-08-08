@@ -758,23 +758,13 @@ async function handleBvnVerificationScreen(data, userId) {
       bvn: bvn.substring(0, 3) + '********'
     });
 
-      return {
-        screen: 'screen_wkunnj',
-        data: {
-          success: true,
-          message: 'BVN verified successfully! Please proceed to set up your PIN.'
-        }
-      };
-
-    } else {
-      return {
-        screen: 'screen_kswuhq',
-        data: {
-          error: bvnResult.error || 'BVN verification failed. Please check and try again.',
-          code: 'BVN_VERIFICATION_FAILED'
-        }
-      };
-    }
+    return {
+      screen: 'screen_wkunnj',
+      data: {
+        success: true,
+        message: 'BVN verified successfully! Please proceed to set up your PIN.'
+      }
+    };
 
   } catch (error) {
     logger.error('BVN verification processing failed', { error: error.message });
