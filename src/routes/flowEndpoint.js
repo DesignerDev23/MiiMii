@@ -491,7 +491,30 @@ async function processFlowRequest(requestData) {
   });
 
   try {
-    // Verify flow token
+    // For ping actions, skip token verification as they don't include a flow_token
+    if (action === 'ping') {
+      logger.info('Processing ping action - skipping token verification');
+      return {
+        screen: 'PING_RESPONSE',
+        data: {
+          status: 'active',
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
+
+    // Verify flow token for other actions
+    if (!flow_token) {
+      logger.warn('Missing flow token for non-ping action', { action });
+      return {
+        screen: 'ERROR_SCREEN',
+        data: {
+          error: 'Invalid session. Please start over.',
+          code: 'MISSING_TOKEN'
+        }
+      };
+    }
+
     const tokenData = whatsappFlowService.verifyFlowToken(flow_token);
     if (!tokenData.valid) {
       logger.warn('Invalid flow token', { reason: tokenData.reason });
@@ -508,15 +531,6 @@ async function processFlowRequest(requestData) {
     switch (action) {
       case 'data_exchange':
         return await handleDataExchange(screen, data, tokenData);
-
-      case 'ping':
-        return {
-          screen: 'PING_RESPONSE',
-          data: {
-            status: 'active',
-            timestamp: new Date().toISOString()
-          }
-        };
 
       default:
         logger.warn('Unknown Flow action', { action });
