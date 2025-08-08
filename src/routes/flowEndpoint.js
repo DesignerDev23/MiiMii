@@ -616,6 +616,8 @@ async function handleDataExchange(screen, data, tokenData) {
     logger.info('Handling data exchange', {
       screen,
       tokenData,
+      flowId: tokenData.flowId,
+      source: tokenData.source,
       dataKeys: Object.keys(data || {})
     });
 
@@ -623,13 +625,13 @@ async function handleDataExchange(screen, data, tokenData) {
     switch (screen) {
       case 'QUESTION_ONE':
       case 'screen_poawge':
-        return handlePersonalDetailsScreen(data, userId);
+        return handlePersonalDetailsScreen(data, userId, tokenData);
 
       case 'screen_kswuhq':
-        return handleBvnVerificationScreen(data, userId);
+        return handleBvnVerificationScreen(data, userId, tokenData);
 
       case 'screen_wkunnj':
-        return handlePinSetupScreen(data, userId);
+        return handlePinSetupScreen(data, userId, tokenData);
 
       default:
         logger.warn('Unknown Flow screen', { screen });
@@ -657,7 +659,7 @@ async function handleDataExchange(screen, data, tokenData) {
 /**
  * Handle personal details screen
  */
-async function handlePersonalDetailsScreen(data, userId) {
+async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
   try {
     // Extract personal details
     const firstName = data.screen_1_First_Name_0;
@@ -699,16 +701,47 @@ async function handlePersonalDetailsScreen(data, userId) {
       }
     }
 
-    // For WhatsApp Flow, we don't have a specific userId
-    // We'll just log the data and return success
+    // For WhatsApp Flow, we'll use the flow token information
     logger.info('Personal details received from Flow', {
       userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
       firstName,
       lastName,
       gender: parsedGender,
       address,
       dateOfBirth: parsedDate
     });
+
+    // Store flow data in database (you can implement this based on your needs)
+    try {
+      // Create or update flow session
+      const flowSession = {
+        flowId: tokenData.flowId || 'unknown',
+        flowToken: tokenData.token,
+        screen: 'screen_poawge',
+        data: {
+          firstName,
+          lastName,
+          middleName: middleName || null,
+          address,
+          gender: parsedGender,
+          dateOfBirth: parsedDate
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // You can store this in your database here
+      // For now, we'll just log it
+      logger.info('Flow session data prepared for storage', {
+        flowId: flowSession.flowId,
+        screen: flowSession.screen,
+        hasData: !!flowSession.data
+      });
+    } catch (storageError) {
+      logger.error('Failed to store flow session data', { error: storageError.message });
+    }
 
     // Return next screen
     return {
@@ -734,7 +767,7 @@ async function handlePersonalDetailsScreen(data, userId) {
 /**
  * Handle BVN verification screen
  */
-async function handleBvnVerificationScreen(data, userId) {
+async function handleBvnVerificationScreen(data, userId, tokenData = {}) {
   try {
     const bvn = data.screen_2_BVN_0;
 
@@ -751,10 +784,11 @@ async function handleBvnVerificationScreen(data, userId) {
       };
     }
 
-    // For WhatsApp Flow, we'll just log the BVN verification
-    // In a real implementation, you might want to store this in a session or temporary storage
+    // For WhatsApp Flow, we'll use the flow token information
     logger.info('BVN verification received from Flow', {
       userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
       bvn: bvn.substring(0, 3) + '********'
     });
 
@@ -781,7 +815,7 @@ async function handleBvnVerificationScreen(data, userId) {
 /**
  * Handle PIN setup screen
  */
-async function handlePinSetupScreen(data, userId) {
+async function handlePinSetupScreen(data, userId, tokenData = {}) {
   try {
     const pin = data.screen_3_4Digit_PIN_0;
     const confirmPin = data.screen_3_Confirm_PIN_1;
@@ -824,10 +858,11 @@ async function handlePinSetupScreen(data, userId) {
       };
     }
 
-    // For WhatsApp Flow, we'll just log the PIN setup
-    // In a real implementation, you might want to store this in a session or temporary storage
+    // For WhatsApp Flow, we'll use the flow token information
     logger.info('PIN setup received from Flow', {
       userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
       pinLength: pin.length
     });
 

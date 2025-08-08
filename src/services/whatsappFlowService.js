@@ -39,19 +39,41 @@ class WhatsAppFlowService {
       // We'll accept any non-empty string token from WhatsApp as valid
       // In production, you might want to implement additional validation based on your needs
       
-      // Basic validation: token should be at least 10 characters
-      if (token.length < 10) {
+      // Handle special cases for WhatsApp Flow tokens
+      if (token === 'unused' || token === 'placeholder' || token.length < 3) {
+        logger.info('WhatsApp Flow placeholder token detected', {
+          token: token,
+          tokenLength: token.length
+        });
+        
         return {
-          valid: false,
-          reason: 'Token too short'
+          valid: true,
+          token: token,
+          source: 'whatsapp_flow_placeholder'
         };
       }
 
-      // For WhatsApp Flow tokens, we'll accept them as valid
+      // Handle real WhatsApp Flow tokens (format: flows-builder-xxxxxxxx)
+      if (token.startsWith('flows-builder-')) {
+        logger.info('Real WhatsApp Flow token detected', {
+          token: token,
+          tokenLength: token.length,
+          flowId: token.replace('flows-builder-', '')
+        });
+        
+        return {
+          valid: true,
+          token: token,
+          source: 'whatsapp_flow_real',
+          flowId: token.replace('flows-builder-', '')
+        };
+      }
+
+      // For real WhatsApp Flow tokens, we'll accept them as valid
       // You can add additional validation here if needed
       logger.info('WhatsApp Flow token accepted', {
         tokenLength: token.length,
-        tokenPrefix: token.substring(0, 10) + '...'
+        tokenPrefix: token.substring(0, Math.min(10, token.length)) + (token.length > 10 ? '...' : '')
       });
 
       return {
