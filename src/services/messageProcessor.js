@@ -10,7 +10,7 @@ const activityLogger = require('./activityLogger');
 class MessageProcessor {
   async processIncomingMessage(parsedMessage) {
     try {
-      const { from, message, messageType, contact } = parsedMessage;
+      const { from, message, messageType, contact, messageId } = parsedMessage;
       
       // Get user's WhatsApp profile name
       const userName = contact?.profile?.name || 'there';
@@ -26,6 +26,7 @@ class MessageProcessor {
         userId: user.id,
         phoneNumber: from,
         messageType,
+        messageId,
         userName,
         messageContent: messageContent || 'No text content'
       });
@@ -47,51 +48,51 @@ class MessageProcessor {
         case 'onboarding':
         case 'start_onboarding':
         case 'setup_account':
-          return await this.handleOnboardingIntent(user, userName, message, messageType);
+          return await this.handleOnboardingIntent(user, userName, message, messageType, messageId);
           
         case 'balance':
         case 'check_balance':
         case 'account_balance':
-          return await this.handleBalanceIntent(user, message, messageType);
+          return await this.handleBalanceIntent(user, message, messageType, messageId);
           
         case 'transfer':
         case 'send_money':
         case 'bank_transfer':
-          return await this.handleTransferIntent(user, message, messageType);
+          return await this.handleTransferIntent(user, message, messageType, messageId);
           
         case 'airtime':
         case 'buy_airtime':
         case 'recharge':
-          return await this.handleAirtimeIntent(user, message, messageType);
+          return await this.handleAirtimeIntent(user, message, messageType, messageId);
           
         case 'data':
         case 'buy_data':
         case 'internet':
-          return await this.handleDataIntent(user, message, messageType);
+          return await this.handleDataIntent(user, message, messageType, messageId);
           
         case 'bills':
         case 'pay_bills':
         case 'utility':
-          return await this.handleBillsIntent(user, message, messageType);
+          return await this.handleBillsIntent(user, message, messageType, messageId);
           
         case 'help':
         case 'support':
         case 'customer_service':
-          return await this.handleHelpIntent(user, message, messageType);
+          return await this.handleHelpIntent(user, message, messageType, messageId);
           
         case 'menu':
         case 'services':
         case 'options':
-          return await this.handleMenuIntent(user, message, messageType);
+          return await this.handleMenuIntent(user, message, messageType, messageId);
           
         case 'account_details':
         case 'virtual_account':
         case 'account_info':
-          return await this.handleAccountDetailsIntent(user, message, messageType);
+          return await this.handleAccountDetailsIntent(user, message, messageType, messageId);
           
         default:
           // If AI couldn't determine intent, try traditional processing
-          return await this.processMessageByType(user, userName, message, messageType);
+          return await this.processMessageByType(user, userName, message, messageType, messageId);
       }
 
     } catch (error) {
@@ -108,38 +109,62 @@ class MessageProcessor {
   }
 
   // Restore personalized welcome method - we want AI-generated personalized messages
-  async sendPersonalizedWelcome(user, message, messageType) {
+  async sendPersonalizedWelcome(user, message, messageType, messageId = null) {
     try {
       const userName = user.firstName || user.lastName || 'there';
       
-      // Get AI-generated personalized welcome message
-      const aiAssistant = require('./aiAssistant');
-      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+      // Start typing indicator if messageId is provided
+      if (messageId) {
+        await whatsappService.sendTypingIndicator(user.whatsappNumber, messageId, 2000);
+      }
       
-      const buttons = [
-        { id: 'start_onboarding', title: '🚀 Start Setup' },
-        { id: 'learn_more', title: '📚 Learn More' },
-        { id: 'get_help', title: '❓ Get Help' }
-      ];
-      
-      await whatsappService.sendButtonMessage(user.whatsappNumber, personalizedMessage, buttons);
+      // Send welcome flow message with the verified Flow ID
+      await whatsappService.sendWelcomeFlowMessage(user.whatsappNumber, userName, messageId);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'greeting' });
       
-      logger.info('Sent personalized welcome message', {
+      logger.info('Sent welcome flow message', {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
         userName: userName,
-        messageLength: personalizedMessage ? personalizedMessage.length : 0
+        messageId: messageId,
+        flowId: '1223628202852216'
       });
       
     } catch (error) {
-      logger.error('Failed to send personalized welcome message', {
+      logger.error('Failed to send welcome flow message', {
         error: error.message,
         userId: user.id,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        messageId: messageId
       });
+      
+      // Fallback to button message if flow fails
+      try {
+        const aiAssistant = require('./aiAssistant');
+        const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+        
+        const buttons = [
+          { id: 'start_onboarding', title: '🚀 Start Setup' },
+          { id: 'learn_more', title: '📚 Learn More' },
+          { id: 'get_help', title: '❓ Get Help' }
+        ];
+        
+        await whatsappService.sendButtonMessage(user.whatsappNumber, personalizedMessage, buttons);
+        
+        logger.info('Sent fallback welcome message', {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          userName: userName
+        });
+      } catch (fallbackError) {
+        logger.error('Failed to send fallback welcome message', {
+          error: fallbackError.message,
+          userId: user.id,
+          phoneNumber: user.whatsappNumber
+        });
+      }
     }
   }
 
@@ -197,85 +222,28 @@ class MessageProcessor {
     }
   }
 
-  async sendOnboardingFlow(user, userName) {
+  async sendOnboardingFlow(user, userName, messageId = null) {
     try {
-      const whatsappFlowService = require('./whatsappFlowService');
-      
-      // Check if we have a valid flow ID configured
-      const config = require('../config');
-      const flowId = config.getWhatsappConfig().onboardingFlowId;
-      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
-        logger.warn('WhatsApp Flow ID not configured or disabled for flow-based onboarding, skipping', {
-          userId: user.id,
-          configuredFlowId: flowId
-        });
-        return { success: false, error: 'Flow ID not configured or disabled for local development' };
-      }
-      
-      // Generate a secure flow token
-      const flowToken = whatsappFlowService.generateFlowToken(user.id, 'personal_details');
-      
-      // Get AI-generated personalized welcome message with user's WhatsApp profile name
-      const aiAssistant = require('./aiAssistant');
-      const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
-      
-      logger.info('🚀 FLOW ID DEBUG: About to send onboarding flow', {
-        userId: user.id,
-        phoneNumber: user.whatsappNumber,
-        userName: userName,
-        personalizedMessageLength: personalizedMessage ? personalizedMessage.length : 0,
-        environment: process.env.NODE_ENV,
-        whatsappConfig: {
-          hasAccessToken: !!process.env.BOT_ACCESS_TOKEN,
-          hasPhoneNumberId: !!process.env.BOT_PHONE_NUMBER_ID,
-          hasBusinessAccountId: !!process.env.BOT_BUSINESS_ACCOUNT_ID
-        }
-      });
-      
-      // Create the onboarding flow data with AI-generated personalized content
-      const flowData = {
-        flowId: flowId,
-        flowToken: flowToken,
-        flowCta: 'Complete Onboarding',
-        flowAction: 'navigate',
-        header: {
-          type: 'text',
-          text: 'Welcome to MiiMii!'
-        },
-        body: personalizedMessage, // Use AI-generated personalized message
-        footer: 'Secure • Fast • Easy',
-        flowActionPayload: {
-          screen: 'QUESTION_ONE',
-          data: {
-            userId: user.id,
-            phoneNumber: user.whatsappNumber,
-            step: 'personal_details',
-            userName: userName
-          }
-        }
-      };
-
-      // Send the Flow message using flow_id approach
-      await whatsappService.sendTypingIndicator(user.whatsappNumber, 1500);
-      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      // Send welcome flow message with the verified Flow ID
+      await whatsappService.sendWelcomeFlowMessage(user.whatsappNumber, userName, messageId);
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });
       
-      logger.info('Sent onboarding flow to new user', {
+      logger.info('Sent welcome flow to new user', {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
         userName: userName,
-        personalizedMessage: !!personalizedMessage,
-        messageLength: personalizedMessage ? personalizedMessage.length : 0,
-        flowToken: flowToken.substring(0, 20) + '...'
+        messageId: messageId,
+        flowId: '1223628202852216'
       });
       
     } catch (error) {
-      logger.error('Failed to send onboarding flow', {
+      logger.error('Failed to send welcome flow', {
         error: error.message,
         userId: user.id,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        messageId: messageId
       });
       
       // Fallback to interactive buttons if flow fails
@@ -330,7 +298,7 @@ class MessageProcessor {
     }
   }
 
-  async handleOnboardingFlow(user, message, messageType, contactName = null) {
+  async handleOnboardingFlow(user, message, messageType, contactName = null, messageId = null) {
     try {
       // Check if this is a button response for onboarding
       const buttonId = message?.buttonReply?.id || message?.listReply?.id;
@@ -356,7 +324,7 @@ class MessageProcessor {
 
       // For new users, send the welcome message with Flow onboarding option
       if (user.onboardingStep === 'initial' || user.onboardingStep === 'greeting') {
-        return await this.sendPersonalizedWelcome(user, message, messageType);
+        return await this.sendPersonalizedWelcome(user, message, messageType, messageId);
       }
 
       // For users in traditional onboarding, continue with existing flow
@@ -1084,10 +1052,10 @@ class MessageProcessor {
   /**
    * Handle onboarding intent
    */
-  async handleOnboardingIntent(user, userName, message, messageType) {
+  async handleOnboardingIntent(user, userName, message, messageType, messageId = null) {
     // Check if user needs onboarding
     if (user.onboardingStep !== 'completed') {
-      await this.sendOnboardingFlow(user, userName);
+      await this.sendOnboardingFlow(user, userName, messageId);
     } else {
       // User is already completed, send AI-generated personalized welcome back message
       const aiAssistant = require('./aiAssistant');

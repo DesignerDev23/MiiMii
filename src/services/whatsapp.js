@@ -309,6 +309,79 @@ class WhatsAppService {
     return this.sendInteractiveMessage(to, interactive);
   }
 
+  /**
+   * Send welcome flow message for new users
+   * @param {string} to - Phone number
+   * @param {string} userName - User's WhatsApp profile name
+   * @param {string} messageId - Message ID for typing indicator
+   * @returns {Promise<Object>} - Response from WhatsApp API
+   */
+  async sendWelcomeFlowMessage(to, userName = null, messageId = null) {
+    try {
+      // Start typing indicator if messageId is provided
+      if (messageId) {
+        await this.sendTypingIndicator(to, messageId, 2000);
+      }
+
+      // Get user's profile name if not provided
+      if (!userName) {
+        const profile = await this.getContactProfile(to);
+        userName = profile.name || 'there';
+      }
+
+      // Create personalized welcome message
+      const welcomeText = `Hi ${userName}! 👋\n\nWelcome to MiiMii - Your Smart Financial Assistant! 🚀\n\nI'm here to help you with all your financial needs. Let's get you set up quickly and securely.`;
+
+      // Send the welcome flow message
+      const flowData = {
+        flowId: '1223628202852216', // Your verified Flow ID
+        flowCta: 'Start Setup',
+        header: {
+          type: 'text',
+          text: `Welcome ${userName}! 👋`
+        },
+        body: welcomeText,
+        footer: 'Your data is secure and encrypted 🔒',
+        flowAction: 'navigate',
+        flowActionPayload: {
+          screen: 'QUESTION_ONE',
+          data: {
+            userName: userName
+          }
+        }
+      };
+
+      logger.info('Sending welcome flow message', {
+        to,
+        userName,
+        flowId: flowData.flowId,
+        messageId,
+        service: 'whatsapp-service'
+      });
+
+      const response = await this.sendFlowMessage(to, flowData);
+
+      logger.info('Welcome flow message sent successfully', {
+        to,
+        userName,
+        messageId: response.messages?.[0]?.id,
+        service: 'whatsapp-service'
+      });
+
+      return response;
+
+    } catch (error) {
+      logger.error('Failed to send welcome flow message', {
+        error: error.response?.data || error.message,
+        to,
+        userName,
+        messageId,
+        service: 'whatsapp-service'
+      });
+      throw error;
+    }
+  }
+
   // Template Flow Message Method
   async sendTemplateFlowMessage(to, templateName, flowData) {
     try {
@@ -377,7 +450,7 @@ class WhatsAppService {
     }
   }
 
-  async sendTypingIndicator(to, duration = 3000) {
+  async sendTypingIndicator(to, messageId = null, duration = 3000) {
     try {
       // Check if service is properly configured
       if (!this.isConfigured()) {
@@ -387,35 +460,112 @@ class WhatsAppService {
 
       const formattedNumber = this.formatToE164(to);
       
-      // Use the correct WhatsApp Business API endpoint for typing
+      // Prepare the payload according to WhatsApp Cloud API documentation
       const payload = {
         messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: formattedNumber,
-        type: 'text',
-        text: {
-          preview_url: false,
-          body: '' // Empty body for typing indicator simulation
+        status: 'read',
+        message_id: messageId,
+        typing_indicator: {
+          type: 'text'
         }
       };
 
-      // Instead of using typing endpoint which may not be available,
-      // we'll simulate typing with a very short delay and no actual message
-      logger.debug('Simulating typing indicator', { to: formattedNumber, duration });
-      
-      // Just add a delay to simulate typing without making API call
-      // This prevents the 400 status code error
-      await new Promise(resolve => setTimeout(resolve, Math.min(duration, 2000)));
+      logger.info('Sending typing indicator', { 
+        to: formattedNumber, 
+        messageId,
+        duration,
+        service: 'whatsapp-service'
+      });
 
-      logger.debug('Typing indicator simulation complete', { to: formattedNumber, duration });
+      // Send the typing indicator request
+      const response = await axios.post(
+        `${this.baseURL}/messages`,
+        payload,
+        {
+          ...this.axiosConfig,
+          headers: {
+            ...this.axiosConfig.headers,
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.info('Typing indicator sent successfully', {
+        to: formattedNumber,
+        messageId,
+        response: response.data
+      });
+
+      // If duration is specified, stop typing after the duration
+      if (duration > 0) {
+        setTimeout(async () => {
+          await this.stopTypingIndicator(to, messageId);
+        }, duration);
+      }
+
     } catch (error) {
-      logger.warn('Failed to send typing indicator', { error: error.message, to });
+      logger.error('Failed to send typing indicator', { 
+        error: error.response?.data || error.message, 
+        to,
+        messageId,
+        service: 'whatsapp-service'
+      });
     }
   }
 
-  async stopTypingIndicator(to) {
-    // Since we're not using the actual typing API, we don't need to stop it
-    logger.debug('Typing indicator stopped (simulated)', { to });
+  async stopTypingIndicator(to, messageId = null) {
+    try {
+      // Check if service is properly configured
+      if (!this.isConfigured()) {
+        logger.warn('WhatsApp service not configured, skipping stop typing indicator', { to });
+        return;
+      }
+
+      const formattedNumber = this.formatToE164(to);
+      
+      // Prepare the payload to stop typing indicator
+      const payload = {
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId
+        // Remove typing_indicator to stop typing
+      };
+
+      logger.info('Stopping typing indicator', { 
+        to: formattedNumber, 
+        messageId,
+        service: 'whatsapp-service'
+      });
+
+      // Send the request to stop typing indicator
+      const response = await axios.post(
+        `${this.baseURL}/messages`,
+        payload,
+        {
+          ...this.axiosConfig,
+          headers: {
+            ...this.axiosConfig.headers,
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.info('Typing indicator stopped successfully', {
+        to: formattedNumber,
+        messageId,
+        response: response.data
+      });
+
+    } catch (error) {
+      logger.error('Failed to stop typing indicator', { 
+        error: error.response?.data || error.message, 
+        to,
+        messageId,
+        service: 'whatsapp-service'
+      });
+    }
   }
 
   async sendLocationRequestMessage(to, text) {
