@@ -18,6 +18,17 @@ class MessageProcessor {
       // Get or create user with proper parameters
       const user = await userService.getOrCreateUser(from, userName);
       
+      // Short-circuit routing:
+      // - If not onboarded → start onboarding flow
+      // - If onboarded → prompt login (PIN) via login flow
+      if (user.onboardingStep !== 'completed') {
+        await this.sendOnboardingFlow(user, userName, messageId);
+        return;
+      } else {
+        await this.sendLoginFlow(user, userName);
+        return;
+      }
+      
       // Extract the actual message content
       const messageContent = message?.text || message?.buttonReply?.title || '';
       
@@ -640,7 +651,7 @@ class MessageProcessor {
       // Get user from flow token or phone number
       let user = null;
       if (data?.phoneNumber) {
-        user = await userService.getUserByPhoneNumber(data.phoneNumber);
+        user = await userService.getUserByWhatsappNumber(data.phoneNumber);
       }
 
       if (!user) {
@@ -652,40 +663,65 @@ class MessageProcessor {
         return;
       }
 
-      // Process the completed flow data
-      const onboardingService = require('./onboarding');
-      const result = await onboardingService.processCompletedFlow(user, {
-        flowToken,
-        screen,
-        data
-      });
-
-      if (result.success) {
-        logger.info('Flow completion processed successfully', {
-          userId: user.id,
-          flowToken,
-          screen
-        });
-
-        // Send completion message
-        const completionMessage = `🎉 Welcome to MiiMii! Your account setup is complete. You can now use all our services including transfers, airtime, data, and bill payments.`;
-        await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
-
-        // Send account details if available
-        if (result.accountDetails) {
-          const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${result.accountDetails.accountNumber}\n🏛️ Bank: ${result.accountDetails.bankName}\n💰 Balance: ₦${result.accountDetails.balance || '0.00'}\n\nYour virtual account is ready for use!`;
-          await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
+      // Determine flow type based on screen
+      if (screen === 'PIN_INPUT_SCREEN') {
+        // Handle login flow
+        const whatsappFlowService = require('./whatsappFlowService');
+        const result = await whatsappFlowService.handleLoginFlow(data, user.whatsappNumber);
+        
+        if (result.success) {
+          logger.info('Login flow completed successfully', {
+            userId: user.id,
+            flowToken,
+            screen
+          });
+        } else {
+          logger.error('Login flow processing failed', {
+            userId: user.id,
+            flowToken,
+            screen,
+            error: result.error
+          });
         }
+        
+        return result;
       } else {
-        logger.error('Flow completion processing failed', {
-          userId: user.id,
+        // Handle onboarding flow
+        const onboardingService = require('./onboarding');
+        const result = await onboardingService.processCompletedFlow(user, {
           flowToken,
           screen,
-          error: result.error
+          data
         });
+
+        if (result.success) {
+          logger.info('Onboarding flow completion processed successfully', {
+            userId: user.id,
+            flowToken,
+            screen
+          });
+
+          // Send completion message
+          const completionMessage = `🎉 Welcome to MiiMii! Your account setup is complete. You can now use all our services including transfers, airtime, data, and bill payments.`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
+
+          // Send account details if available
+          if (result.accountDetails) {
+            const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${result.accountDetails.accountNumber}\n🏛️ Bank: ${result.accountDetails.bankName}\n💰 Balance: ₦${result.accountDetails.balance || '0.00'}\n\nYour virtual account is ready for use!`;
+            await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
+          }
+        } else {
+          logger.error('Onboarding flow completion processing failed', {
+            userId: user.id,
+            flowToken,
+            screen,
+            error: result.error
+          });
+        }
+
+        return result;
       }
 
-      return result;
     } catch (error) {
       logger.error('Error processing Flow completion', {
         error: error.message,

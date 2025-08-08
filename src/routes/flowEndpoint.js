@@ -633,6 +633,9 @@ async function handleDataExchange(screen, data, tokenData) {
       case 'screen_wkunnj':
         return handlePinSetupScreen(data, userId, tokenData);
 
+      case 'PIN_INPUT_SCREEN':
+        return handleLoginScreen(data, userId, tokenData);
+
       default:
         logger.warn('Unknown Flow screen', { screen });
         return {
@@ -880,6 +883,58 @@ async function handlePinSetupScreen(data, userId, tokenData = {}) {
       screen: 'screen_wkunnj',
       data: {
         error: 'Failed to complete account setup. Please try again.',
+        code: 'PROCESSING_ERROR'
+      }
+    };
+  }
+}
+
+/**
+ * Handle login screen (PIN input)
+ */
+async function handleLoginScreen(data, userId, tokenData = {}) {
+  try {
+    const pin = data.pin;
+
+    // Validate PIN format
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      return {
+        screen: 'PIN_INPUT_SCREEN',
+        data: {
+          error: 'Please enter exactly 4 digits for your PIN.',
+          validation: {
+            pin: 'PIN must be exactly 4 digits'
+          }
+        }
+      };
+    }
+
+    // For WhatsApp Flow, we need to get the phone number from the flow context
+    // Since we don't have direct access to the phone number in the flow data,
+    // we'll need to handle this in the flow processing service
+    logger.info('Login PIN received from Flow', {
+      userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
+      pinLength: pin.length
+    });
+
+    // Return success response for the flow
+    // The actual PIN validation will be handled by the flow processing service
+    return {
+      screen: 'COMPLETION_SCREEN',
+      data: {
+        success: true,
+        message: 'Login successful! Welcome back to MiiMii!'
+      }
+    };
+
+  } catch (error) {
+    logger.error('Login screen processing failed', { error: error.message });
+    return {
+      screen: 'PIN_INPUT_SCREEN',
+      data: {
+        error: 'Login failed. Please try again.',
         code: 'PROCESSING_ERROR'
       }
     };

@@ -58,8 +58,8 @@ const User = sequelize.define('User', {
     }
   },
   kycStatus: {
-    type: DataTypes.ENUM('pending', 'verified', 'rejected', 'incomplete'),
-    defaultValue: 'incomplete'
+    type: DataTypes.ENUM('pending', 'verified', 'rejected', 'incomplete', 'not_required'),
+    defaultValue: 'not_required'
   },
   kycData: {
     type: DataTypes.JSONB,
@@ -67,8 +67,8 @@ const User = sequelize.define('User', {
   },
   onboardingStep: {
     type: DataTypes.ENUM(
-      'initial', 'greeting', 'name_collection', 'kyc_data', 'bvn_verification', 
-      'virtual_account_creation', 'pin_setup', 'flow_onboarding', 'completed'
+      'initial', 'greeting', 'name_collection', 
+      'address_collection', 'bvn_collection', 'virtual_account_creation', 'pin_setup', 'flow_onboarding', 'completed'
     ),
     defaultValue: 'initial'
   },
@@ -255,7 +255,6 @@ User.prototype.isKycComplete = function() {
 User.prototype.canPerformTransactions = function() {
   return this.isActive && 
          !this.isBanned && 
-         this.isKycComplete() &&
          this.onboardingStep === 'completed' &&
          this.pin &&
          (!this.pinLockedUntil || this.pinLockedUntil < new Date());
@@ -283,7 +282,7 @@ User.prototype.updateRiskScore = async function(score) {
 };
 
 User.prototype.isOnboardingComplete = function() {
-  return this.onboardingStep === 'completed' && this.isKycComplete() && this.pin;
+  return this.onboardingStep === 'completed' && !!this.pin;
 };
 
 User.prototype.getNextOnboardingStep = function() {

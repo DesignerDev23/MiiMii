@@ -1,7 +1,6 @@
 const logger = require('../utils/logger');
 const whatsappService = require('./whatsapp');
 const userService = require('./user');
-const kycService = require('./kyc');
 const bellbankService = require('./bellbank');
 const walletService = require('./wallet');
 const { ActivityLog } = require('../models');
@@ -38,7 +37,7 @@ class OnboardingService {
       // Show typing indicator for interactive experience
       await whatsappService.sendTypingIndicator(phoneNumber, 2000);
 
-      // Process based on current onboarding step
+      // Process based on current onboarding step (KYC removed)
       switch (user.onboardingStep) {
         case 'greeting':
           return await this.handleInteractiveGreeting(user, message, contactName);
@@ -46,12 +45,10 @@ class OnboardingService {
           return await this.handleInteractiveNameCollection(user, message);
         case 'address_collection':
           return await this.handleAddressCollection(user, message);
-        case 'bvn_verification':
-          return await this.handleBvnVerification(user, message);
+        case 'bvn_collection':
+          return await this.handleBvnCollection(user, message);
         case 'pin_setup':
           return await this.handlePinSetup(user, message);
-        case 'kyc_data':
-          return await this.handleInteractiveKycDataCollection(user, message, messageType);
         case 'virtual_account_creation':
           return await this.handleVirtualAccountCreation(user);
         default:
@@ -303,16 +300,16 @@ class OnboardingService {
         address: address
       });
       
-      // Confirm address and proceed to BVN
+      // Confirm address and proceed to BVN collection (provider validates BVN during account creation)
       const confirmationMessage = `✅ *Address saved successfully!*\n\n` +
                                 `🏠 *Address:* ${address}\n\n` +
-                                `Now I need your BVN (Bank Verification Number) for verification.\n\n` +
+                                `Now I need your 11-digit BVN for account creation.\n\n` +
                                 `Please send me your 11-digit BVN:`;
       
       await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
       
       // Update user step
-      await user.update({ onboardingStep: 'bvn_verification' });
+      await user.update({ onboardingStep: 'bvn_collection' });
       
       logger.info('Address collected successfully', {
         userId: user.id,
@@ -330,81 +327,33 @@ class OnboardingService {
     return { success: true, step: 'address_retry' };
   }
 
-  async handleBvnVerification(user, message) {
+  // Simple BVN collection (no internal verification). Bell validates during account creation
+  async handleBvnCollection(user, message) {
     const messageText = typeof message === 'string' ? message : (message?.text || '');
-    
     if (messageText && messageText.trim().length > 0) {
-      const bvn = messageText.trim().replace(/\D/g, ''); // Remove non-digits
-      
-      if (bvn.length !== 11) {
+      const bvn = messageText.trim().replace(/\D/g, '');
+      if (!/^\d{11}$/.test(bvn)) {
         await whatsappService.sendTextMessage(
           user.whatsappNumber,
-          `❌ Invalid BVN format. Please send your 11-digit BVN number.\n\nFor example: "12345678901"`
+          `❌ Invalid BVN format. Please send your 11-digit BVN number.\n\nExample: 12345678901`
         );
         return { success: true, step: 'bvn_invalid' };
       }
-      
-      // Verify BVN with Fincra
-      try {
-        const kycService = require('./kyc');
-        const bvnResult = await kycService.verifyBVNWithFincra(bvn, user.id);
-        
-        if (bvnResult.success) {
-          // Save BVN and verification status
-          await user.update({
-            bvn: bvn,
-            kycStatus: 'verified',
-            kycData: {
-              bvnVerified: true,
-              bvnVerifiedAt: new Date().toISOString(),
-              bvnData: bvnResult.data
-            }
-          });
-          
-          // Confirm BVN and proceed to PIN setup
-          const confirmationMessage = `✅ *BVN verified successfully!*\n\n` +
-                                   `🏦 *BVN:* ${bvn.substring(0, 3)}********\n\n` +
-                                   `Now let's set up your 4-digit PIN for account security.\n\n` +
-                                   `Please send me your 4-digit PIN:`;
-          
-          await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
-          
-          // Update user step
-          await user.update({ onboardingStep: 'pin_setup' });
-          
-          logger.info('BVN verified successfully', {
-            userId: user.id,
-            bvn: bvn.substring(0, 3) + '********',
-            phoneNumber: user.whatsappNumber
-          });
-          
-          return { success: true, step: 'bvn_verified' };
-        } else {
+
+      await user.update({ bvn, kycStatus: 'not_required', onboardingStep: 'pin_setup' });
+
+      const nextMessage = `✅ *BVN captured successfully!*\n\n` +
+                          `Now let's set up your 4-digit PIN to secure your transactions.\n\n` +
+                          `Please enter your 4-digit PIN:`;
+      await whatsappService.sendTextMessage(user.whatsappNumber, nextMessage);
+
+      return { success: true, step: 'bvn_captured' };
+    }
+
     await whatsappService.sendTextMessage(
       user.whatsappNumber,
-            `❌ BVN verification failed: ${bvnResult.error}\n\nPlease check your BVN and try again.`
-          );
-          return { success: true, step: 'bvn_verification_failed' };
-        }
-      } catch (error) {
-        logger.error('BVN verification error', {
-          error: error.message,
-          userId: user.id,
-          bvn: bvn.substring(0, 3) + '********'
-        });
-        
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          `❌ BVN verification service is temporarily unavailable. Please try again later.`
-        );
-        return { success: true, step: 'bvn_service_error' };
-      }
-    }
-    
-    // If no valid input, ask again
-    const retryMessage = `Please send me your 11-digit BVN number.\n\nFor example: "12345678901"`;
-    await whatsappService.sendTextMessage(user.whatsappNumber, retryMessage);
-    
+      `Please send your 11-digit BVN.\n\nExample: 12345678901`
+    );
     return { success: true, step: 'bvn_retry' };
   }
 
@@ -426,13 +375,11 @@ class OnboardingService {
       const bcrypt = require('bcryptjs');
       const hashedPin = await bcrypt.hash(pin, 10);
       
-      await user.update({
-        pin: hashedPin,
-        onboardingStep: 'completed'
-      });
+      await user.update({ pin: hashedPin });
       
-      // Complete onboarding and create virtual account
-      await this.completePinSetup(user.id, pin);
+      // Complete onboarding and create virtual account then mark completed
+      const result = await this.completePinSetup(user.id, pin);
+      await user.update({ onboardingStep: 'completed' });
       
       logger.info('PIN setup completed', {
         userId: user.id,
@@ -807,7 +754,7 @@ class OnboardingService {
         middleName: user.middleName,
         phoneNumber: user.whatsappNumber,
         address: user.address,
-        bvn: user.bvn,
+        bvn: user.bvn, // Bell will validate BVN
         gender: user.gender,
         dateOfBirth: user.dateOfBirth.replace(/\//g, '/'), // Ensure correct format
         userId: user.id
@@ -815,7 +762,8 @@ class OnboardingService {
 
       if (virtualAccountData.success) {
         // Create or update wallet
-        const wallet = await walletService.createUserWallet(user.id, {
+        const wallet = await walletService.getUserWallet(user.id);
+        await wallet.update({
           virtualAccountNumber: virtualAccountData.accountNumber,
           virtualAccountBank: virtualAccountData.bankName,
           virtualAccountName: virtualAccountData.accountName,
@@ -1211,11 +1159,9 @@ class OnboardingService {
       const bcrypt = require('bcryptjs');
       const hashedPin = await bcrypt.hash(pin, 10);
 
-      // Update user with PIN and complete onboarding
+      // Update user with PIN
       await user.update({
-        pin: hashedPin,
-        onboardingStep: 'completed',
-        kycStatus: 'verified' // Assuming KYC is verified if they reach this step
+        pin: hashedPin
       });
 
       // Create wallet for user if not exists
@@ -1270,10 +1216,13 @@ class OnboardingService {
         // Continue without virtual account - can be created later
       }
 
+      // Mark onboarding completed
+      await user.update({ onboardingStep: 'completed', kycStatus: 'not_required' });
+
       // Send completion message with account details
       let completionMessage = `🎉 *Congratulations!* 🎉\n\n` +
         `Your MiiMii account has been successfully created!\n\n` +
-        `✅ Account verified\n` +
+        `✅ Account created\n` +
         `✅ PIN set up\n` +
         `✅ Wallet created\n`;
 
@@ -1344,6 +1293,91 @@ class OnboardingService {
         userId
       });
       throw error;
+    }
+  }
+
+  async processOnboardingFlowData(flowData, phoneNumber) {
+    try {
+      logger.info('Processing onboarding flow data', {
+        phoneNumber,
+        dataKeys: Object.keys(flowData || {})
+      });
+
+      // Get or create user
+      let user = await userService.getUserByWhatsappNumber(phoneNumber);
+      if (!user) {
+        user = await userService.getOrCreateUser(phoneNumber, null);
+        await user.update({ onboardingStep: 'greeting' });
+      }
+
+      // Process onboarding data based on structure
+      if (flowData.screen_1_First_Name_0 && flowData.screen_1_Last_Name_1) {
+        // Personal details screen
+        await user.update({
+          firstName: flowData.screen_1_First_Name_0,
+          lastName: flowData.screen_1_Last_Name_1,
+          middleName: flowData.screen_1_Middle_Name_2 || null,
+          address: flowData.screen_1_Address_3,
+          gender: flowData.screen_1_Gender_4,
+          dateOfBirth: flowData.screen_1_Date_of_Birth__5,
+          onboardingStep: 'bvn_verification'
+        });
+
+        logger.info('Personal details processed', { userId: user.id });
+      }
+
+      if (flowData.screen_2_BVN_0) {
+        // BVN collection screen (no external KYC; provider validates during account creation)
+        await user.update({
+          bvn: flowData.screen_2_BVN_0,
+          kycStatus: 'not_required',
+          onboardingStep: 'pin_setup'
+        });
+        logger.info('BVN captured for account creation', { userId: user.id });
+      }
+
+      if (flowData.screen_3_4Digit_PIN_0 && flowData.screen_3_Confirm_PIN_1) {
+        // PIN setup screen
+        if (flowData.screen_3_4Digit_PIN_0 === flowData.screen_3_Confirm_PIN_1) {
+          await userService.setUserPin(user.id, flowData.screen_3_4Digit_PIN_0);
+          await user.update({ onboardingStep: 'completed' });
+          
+          // Create virtual account
+          try {
+            const virtualAccountData = await bellbankService.createVirtualAccount({
+              firstName: user.firstName,
+              lastName: user.lastName,
+              middleName: user.middleName,
+              phoneNumber: user.whatsappNumber,
+              address: user.address,
+              bvn: user.bvn,
+              gender: user.gender,
+              dateOfBirth: user.dateOfBirth,
+              userId: user.id
+            });
+
+            if (virtualAccountData.success) {
+              logger.info('Virtual account created successfully', { userId: user.id });
+              return { 
+                success: true, 
+                userId: user.id,
+                accountDetails: virtualAccountData.accountDetails
+              };
+            }
+          } catch (error) {
+            logger.error('Failed to create virtual account', { userId: user.id, error: error.message });
+          }
+
+          return { success: true, userId: user.id };
+        } else {
+          return { success: false, error: 'PINs do not match' };
+        }
+      }
+
+      return { success: true, userId: user.id };
+    } catch (error) {
+      logger.error('Failed to process onboarding flow data', { error: error.message });
+      return { success: false, error: error.message };
     }
   }
 
