@@ -9,8 +9,9 @@ class AIService {
       this.openai = new OpenAI({
         apiKey: apiKey
       });
-      // Use a valid default model if none is provided via environment
-      this.model = process.env.AI_MODEL || 'gpt-4o';
+      // Use a valid default model; avoid unsupported placeholders like gpt-5*
+      const envModel = (process.env.AI_MODEL || '').trim();
+      this.model = envModel && !/gpt-5/i.test(envModel) ? envModel : 'gpt-4o';
       this.isEnabled = true;
       logger.info('AI service initialized successfully');
     } else {
