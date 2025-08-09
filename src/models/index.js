@@ -8,6 +8,7 @@ const BankAccount = require('./BankAccount');
 const Beneficiary = require('./Beneficiary');
 const VirtualCard = require('./VirtualCard');
 const SupportTicket = require('./SupportTicket');
+const KVStore = require('./KVStore');
 const WebhookLog = require('./WebhookLog');
 const ActivityLog = require('./ActivityLog');
 
@@ -143,5 +144,6 @@ module.exports = {
   VirtualCard,
   SupportTicket,
   WebhookLog,
-  ActivityLog
+  ActivityLog,
+  KVStore
 };

@@ -1,5 +1,6 @@
 const redis = require('redis');
 const logger = require('./logger');
+const { sequelize, KVStore } = require('../models');
 
 class RedisClient {
   constructor() {
@@ -7,6 +8,7 @@ class RedisClient {
     this.isConnected = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 3;
+    this.useDbFallback = false;
   }
 
   async connect() {
@@ -14,16 +16,18 @@ class RedisClient {
       const redisUrl = process.env.REDIS_URL;
       
       if (!redisUrl || typeof redisUrl !== 'string') {
-        logger.info('Redis URL not provided - Redis features will be disabled');
-        this.isConnected = false;
-        return false;
+        logger.info('Redis URL not provided - enabling DB-backed fallback store');
+        this.useDbFallback = true;
+        this.isConnected = true;
+        return true;
       }
 
       // For production, check if it's a proper external Redis URL
       if (process.env.NODE_ENV === 'production' && redisUrl.includes('localhost')) {
-        logger.warn('Redis URL points to localhost in production - Redis features will be disabled');
-        this.isConnected = false;
-        return false;
+        logger.warn('Redis URL points to localhost in production - enabling DB-backed fallback store');
+        this.useDbFallback = true;
+        this.isConnected = true;
+        return true;
       }
 
       // Create Redis client with connection options
@@ -80,13 +84,18 @@ class RedisClient {
       
       return true;
     } catch (error) {
-      logger.info('Failed to connect to Redis (Redis features disabled):', error.message);
-      this.isConnected = false;
-      return false;
+      logger.info('Failed to connect to Redis - enabling DB-backed fallback store:', error.message);
+      this.useDbFallback = true;
+      this.isConnected = true;
+      return true;
     }
   }
 
   async disconnect() {
+    if (this.useDbFallback) {
+      // No persistent connection to close
+      return;
+    }
     if (this.client) {
       try {
         await this.client.quit();
@@ -100,9 +109,14 @@ class RedisClient {
   // Session Management
   async setSession(sessionId, sessionData, ttl = 3600) {
     if (!this.isConnected) return false;
-    
+    const key = `session:${sessionId}`;
     try {
-      await this.client.setEx(`session:${sessionId}`, ttl, JSON.stringify(sessionData));
+      if (this.useDbFallback) {
+        const expiresAt = new Date(Date.now() + ttl * 1000);
+        await KVStore.upsert({ key, value: sessionData, expiresAt });
+        return true;
+      }
+      await this.client.setEx(key, ttl, JSON.stringify(sessionData));
       return true;
     } catch (error) {
       logger.error('Error setting session:', error);
@@ -112,9 +126,18 @@ class RedisClient {
 
   async getSession(sessionId) {
     if (!this.isConnected) return null;
-    
+    const key = `session:${sessionId}`;
     try {
-      const sessionData = await this.client.get(`session:${sessionId}`);
+      if (this.useDbFallback) {
+        const row = await KVStore.findByPk(key);
+        if (!row) return null;
+        if (row.expiresAt && row.expiresAt < new Date()) {
+          await KVStore.destroy({ where: { key } });
+          return null;
+        }
+        return row.value ?? null;
+      }
+      const sessionData = await this.client.get(key);
       return sessionData ? JSON.parse(sessionData) : null;
     } catch (error) {
       logger.error('Error getting session:', error);
@@ -124,9 +147,13 @@ class RedisClient {
 
   async deleteSession(sessionId) {
     if (!this.isConnected) return false;
-    
+    const key = `session:${sessionId}`;
     try {
-      await this.client.del(`session:${sessionId}`);
+      if (this.useDbFallback) {
+        await KVStore.destroy({ where: { key } });
+        return true;
+      }
+      await this.client.del(key);
       return true;
     } catch (error) {
       logger.error('Error deleting session:', error);
@@ -137,8 +164,12 @@ class RedisClient {
   // Caching
   async set(key, value, ttl = null) {
     if (!this.isConnected) return false;
-    
     try {
+      if (this.useDbFallback) {
+        const expiresAt = ttl ? new Date(Date.now() + ttl * 1000) : null;
+        await KVStore.upsert({ key, value, expiresAt });
+        return true;
+      }
       const serializedValue = JSON.stringify(value);
       if (ttl) {
         await this.client.setEx(key, ttl, serializedValue);
@@ -154,8 +185,16 @@ class RedisClient {
 
   async get(key) {
     if (!this.isConnected) return null;
-    
     try {
+      if (this.useDbFallback) {
+        const row = await KVStore.findByPk(key);
+        if (!row) return null;
+        if (row.expiresAt && row.expiresAt < new Date()) {
+          await KVStore.destroy({ where: { key } });
+          return null;
+        }
+        return row.value ?? null;
+      }
       const value = await this.client.get(key);
       return value ? JSON.parse(value) : null;
     } catch (error) {
@@ -166,8 +205,11 @@ class RedisClient {
 
   async del(key) {
     if (!this.isConnected) return false;
-    
     try {
+      if (this.useDbFallback) {
+        await KVStore.destroy({ where: { key } });
+        return true;
+      }
       await this.client.del(key);
       return true;
     } catch (error) {
@@ -179,22 +221,30 @@ class RedisClient {
   // Rate Limiting
   async checkRateLimit(identifier, limit, window) {
     if (!this.isConnected) return { allowed: true, remaining: limit };
-    
+    const key = `rate_limit:${identifier}`;
     try {
-      const key = `rate_limit:${identifier}`;
+      if (this.useDbFallback) {
+        const result = await sequelize.transaction(async (t) => {
+          const now = new Date();
+          let row = await KVStore.findByPk(key, { transaction: t, lock: t.LOCK.UPDATE });
+          if (!row || (row.expiresAt && row.expiresAt < now)) {
+            const expiresAt = new Date(Date.now() + window * 1000);
+            await KVStore.upsert({ key, value: { count: 1 }, expiresAt }, { transaction: t });
+            return 1;
+          }
+          const count = (row.value && row.value.count) ? row.value.count + 1 : 1;
+          await row.update({ value: { count } }, { transaction: t });
+          return count;
+        });
+        const remaining = Math.max(0, limit - result);
+        return { allowed: result <= limit, remaining, total: limit, resetTime: Date.now() + (window * 1000) };
+      }
       const current = await this.client.incr(key);
-      
       if (current === 1) {
         await this.client.expire(key, window);
       }
-      
       const remaining = Math.max(0, limit - current);
-      return {
-        allowed: current <= limit,
-        remaining,
-        total: limit,
-        resetTime: Date.now() + (window * 1000)
-      };
+      return { allowed: current <= limit, remaining, total: limit, resetTime: Date.now() + (window * 1000) };
     } catch (error) {
       logger.error('Error checking rate limit:', error);
       return { allowed: true, remaining: limit };
@@ -204,8 +254,15 @@ class RedisClient {
   // Queue Operations (for background jobs)
   async pushToQueue(queueName, data) {
     if (!this.isConnected) return false;
-    
+    const key = `queue:${queueName}`;
     try {
+      if (this.useDbFallback) {
+        const row = await KVStore.findByPk(key);
+        const list = Array.isArray(row?.value) ? row.value : [];
+        list.push(data);
+        await KVStore.upsert({ key, value: list, expiresAt: null });
+        return true;
+      }
       await this.client.rPush(`queue:${queueName}`, JSON.stringify(data));
       return true;
     } catch (error) {
@@ -216,8 +273,17 @@ class RedisClient {
 
   async popFromQueue(queueName, timeout = 0) {
     if (!this.isConnected) return null;
-    
+    const key = `queue:${queueName}`;
     try {
+      if (this.useDbFallback) {
+        const row = await KVStore.findByPk(key);
+        const list = Array.isArray(row?.value) ? row.value : [];
+        const item = list.shift();
+        if (row) {
+          await row.update({ value: list });
+        }
+        return item ?? null;
+      }
       const result = await this.client.blPop(
         { key: `queue:${queueName}`, timeout }
       );
@@ -287,12 +353,15 @@ class RedisClient {
   // Health Check
   async healthCheck() {
     if (!this.isConnected) return false;
-    
     try {
+      if (this.useDbFallback) {
+        await sequelize.query('SELECT 1');
+        return true;
+      }
       const result = await this.client.ping();
       return result === 'PONG';
     } catch (error) {
-      logger.error('Redis health check failed:', error);
+      logger.error('Redis/DB health check failed:', error);
       return false;
     }
   }
