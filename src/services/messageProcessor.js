@@ -1159,8 +1159,78 @@ class MessageProcessor {
     }
 
     const whatsappService = require('./whatsapp');
-    await whatsappService.sendTextMessage(user.whatsappNumber, 
-      "💸 *Money Transfer*\n\nTo transfer money, please provide:\n\n• Recipient's phone number\n• Amount\n• Description (optional)\n\nExample: Send 5000 to 08012345678 for groceries");
+    const bankTransferService = require('./bankTransfer');
+
+    const text = (message?.text || '').toLowerCase();
+    // Try to parse quick intent: amount, account number, bank name/code
+    const amountMatch = message?.text?.match(/(\d+[\d,]*)(?:\s*(?:ngn|naira|₦|k|k\b))?/i);
+    let amount = null;
+    if (amountMatch) {
+      const raw = amountMatch[1].replace(/,/g, '');
+      amount = raw.endsWith('k') ? Number(raw.slice(0, -1)) * 1000 : Number(raw);
+      if (Number.isNaN(amount)) amount = null;
+    }
+
+    const acctMatch = message?.text?.match(/\b(\d{10})\b/);
+    const accountNumber = acctMatch ? acctMatch[1] : null;
+
+    // Map common bank mentions to codes (add more as needed)
+    const bankMap = {
+      zenith: '057', gtb: '058', gtbank: '058', access: '044', uba: '033', fidelity: '070', wema: '035',
+      union: '032', fcmb: '214', first: '011', fbn: '011', keystone: '082', stanbic: '221', sterling: '232',
+      bell: '000023', bellbank: '000023', bells: '000023'
+    };
+    let bankCode = null;
+    for (const key of Object.keys(bankMap)) {
+      if (text.includes(key)) { bankCode = bankMap[key]; break; }
+    }
+
+    if (amount && accountNumber && bankCode) {
+      // Validate account via provider (or mock)
+      try {
+        const validation = await bankTransferService.validateBankAccount(accountNumber, bankCode);
+        if (!validation.valid) throw new Error('Invalid account details');
+
+        const feeInfo = bankTransferService.calculateTransferFee(amount, bankTransferService.transferTypes.WALLET_TO_BANK);
+        const confirmMsg = `Please confirm this transfer:\n\n` +
+                           `💰 Amount: ₦${feeInfo.amount.toLocaleString()}\n` +
+                           `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
+                           `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
+                           `👤 Recipient: ${validation.accountName}\n` +
+                           `🏦 Bank: ${validation.bank}\n` +
+                           `🔢 Account: ${validation.accountNumber}\n\n` +
+                           `Reply YES to confirm, or NO to cancel.`;
+
+        await user.updateConversationState({
+          intent: 'bank_transfer',
+          awaitingInput: 'confirm_transfer',
+          context: 'bank_transfer_confirmation',
+          step: 1,
+          data: {
+            accountNumber: validation.accountNumber,
+            bankCode: validation.bankCode,
+            bankName: validation.bank,
+            amount: feeInfo.amount,
+            totalFee: feeInfo.totalFee,
+            totalAmount: feeInfo.totalAmount,
+            narration: 'Wallet transfer',
+            reference: `TXN${Date.now()}`
+          }
+        });
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, confirmMsg);
+        return;
+      } catch (err) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${err.message}. Please recheck the details or provide bank name.`);
+        return;
+      }
+    }
+
+    // Fall back to asking for structured details
+    await whatsappService.sendTextMessage(
+      user.whatsappNumber,
+      "💸 *Money Transfer*\n\nPlease send in one message:\n• Amount (e.g. 5k or 5000)\n• Account number (10 digits)\n• Bank name (e.g. BellBank)\n\nExample: Send 5k to 00308267834627 bellbank"
+    );
   }
 
   /**
