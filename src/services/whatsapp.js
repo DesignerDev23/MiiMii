@@ -478,15 +478,13 @@ class WhatsAppService {
 
       const formattedNumber = this.formatToE164(to);
       
-      // Prepare the payload according to WhatsApp Cloud API documentation
+      // Official typing indicator payload: mark as read and show typing
       const payload = {
         messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: formattedNumber,
-        type: 'text',
-        text: {
-          preview_url: false,
-          body: '' // Empty body for typing indicator simulation
+        status: 'read',
+        message_id: messageId,
+        typing_indicator: {
+          type: 'text'
         }
       };
 
@@ -517,12 +515,7 @@ class WhatsAppService {
         response: response.data
       });
 
-      // If duration is specified, stop typing after the duration
-      if (duration > 0) {
-        setTimeout(async () => {
-          await this.stopTypingIndicator(to, messageId);
-        }, duration);
-      }
+      // Typing indicator will auto-dismiss on next send or 25s timeout
 
     } catch (error) {
       logger.error('Failed to send typing indicator', { 

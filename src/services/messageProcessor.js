@@ -17,6 +17,15 @@ class MessageProcessor {
       
       // Get or create user with proper parameters
       const user = await userService.getOrCreateUser(from, userName);
+      // Mark as read + typing indicator to improve UX while processing
+      try {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.markMessageAsRead(messageId);
+        await whatsappService.sendTypingIndicator(from, messageId, 3000);
+      } catch (e) {
+        // Non-fatal
+      }
+
       // If this is a Flow completion (nfm_reply), process immediately (bypass AI)
       if (messageType === 'interactive' && message?.flowResponse?.responseJson) {
         const flowData = { ...message.flowResponse.responseJson };
@@ -27,14 +36,18 @@ class MessageProcessor {
         const result = await whatsappFlowService.processFlowData(flowData, user.whatsappNumber);
 
         if (result.success) {
-          // If onboarding completed, send welcome/menu
-          if (user.onboardingStep !== 'completed') {
-            try {
-              await user.update({ onboardingStep: 'completed' });
-            } catch (_) {}
+          // If onboarding just completed, send bank details to user
+          const refreshedUser = await userService.getUserById(user.id);
+          const walletService = require('./wallet');
+          const wallet = await walletService.getUserWallet(user.id);
+          if (refreshedUser.onboardingStep === 'completed' && wallet?.virtualAccountNumber) {
+            const accountMessage = `📋 *Your Bank Details*\n\n` +
+                                   `💳 Account Number: ${wallet.virtualAccountNumber}\n` +
+                                   `🏦 Bank: ${wallet.virtualAccountBank}\n` +
+                                   `👤 Account Name: ${wallet.virtualAccountName}`;
+            const whatsappService = require('./whatsapp');
+            await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
           }
-          // Send a friendly confirmation only if nothing was sent yet
-          // (Most services already send confirmations.)
         } else if (result.error) {
           const whatsappService = require('./whatsapp');
           await whatsappService.sendTextMessage(user.whatsappNumber, result.error);
