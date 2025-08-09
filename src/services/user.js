@@ -19,7 +19,7 @@ class UserService {
         // Create new user using retry logic
         user = await databaseService.createWithRetry(User, {
           whatsappNumber: cleanNumber,
-          firstName: displayName,
+          fullName: displayName || null,
           isActive: true
         }, {}, { operationName: 'create new user' });
 
@@ -30,9 +30,9 @@ class UserService {
         logger.info('New user created', { userId: user.id, whatsappNumber: cleanNumber });
       } else {
         // Update display name if provided and not already set
-        if (displayName && !user.firstName) {
+        if (displayName && !user.fullName) {
           await databaseService.executeWithRetry(
-            () => user.update({ firstName: displayName }),
+            () => user.update({ fullName: displayName }),
             { operationName: 'update user display name' }
           );
         }

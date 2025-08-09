@@ -609,9 +609,15 @@ async function processFlowRequest(requestData) {
  */
 async function handleDataExchange(screen, data, tokenData) {
   try {
-    // For WhatsApp Flow tokens, we don't have a userId in the token
-    // We'll need to extract user information from the flow data or use a different approach
-    const userId = tokenData.userId || 'unknown_user';
+    // Try map flow token to user or fallback to phoneNumber in data
+    let userId = tokenData.userId || null;
+    let phoneNumber = data?.phoneNumber || null;
+    
+    if (!userId && phoneNumber) {
+      const userService = require('../services/user');
+      const user = await userService.getUserByWhatsappNumber(phoneNumber).catch(() => null);
+      if (user) userId = user.id;
+    }
 
     logger.info('Handling data exchange', {
       screen,
@@ -635,6 +641,12 @@ async function handleDataExchange(screen, data, tokenData) {
 
       case 'PIN_INPUT_SCREEN':
         return handleLoginScreen(data, userId, tokenData);
+
+      case 'COMPLETION_SCREEN':
+        return {
+          screen: 'COMPLETION_SCREEN',
+          data: { success: true }
+        };
 
       default:
         logger.warn('Unknown Flow screen', { screen });
@@ -671,6 +683,7 @@ async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
     const address = data.screen_1_Address_3;
     const gender = data.screen_1_Gender_4;
     const dateOfBirth = data.screen_1_Date_of_Birth__5;
+    const phoneNumber = data.phoneNumber || null;
 
     // Validate required fields
     if (!firstName || !lastName || !address || !gender || !dateOfBirth) {
@@ -704,7 +717,39 @@ async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
       }
     }
 
-    // For WhatsApp Flow, we'll use the flow token information
+    // Persist to user record if possible
+    try {
+      if (userId) {
+        const userService = require('../services/user');
+        const user = await userService.getUserById(userId);
+        if (user) {
+          await user.update({
+            firstName,
+            lastName,
+            middleName: middleName || null,
+            address,
+            gender: parsedGender === 'female' ? 'female' : 'male',
+            dateOfBirth: parsedDate
+          });
+        }
+      } else if (phoneNumber) {
+        const userService = require('../services/user');
+        const user = await userService.getUserByWhatsappNumber(phoneNumber);
+        if (user) {
+          await user.update({
+            firstName,
+            lastName,
+            middleName: middleName || null,
+            address,
+            gender: parsedGender === 'female' ? 'female' : 'male',
+            dateOfBirth: parsedDate
+          });
+        }
+      }
+    } catch (persistErr) {
+      logger.warn('Failed to persist personal details from flow', { error: persistErr.message });
+    }
+
     logger.info('Personal details received from Flow', {
       userId: userId || 'unknown',
       flowId: tokenData.flowId || 'unknown',
@@ -715,36 +760,6 @@ async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
       address,
       dateOfBirth: parsedDate
     });
-
-    // Store flow data in database (you can implement this based on your needs)
-    try {
-      // Create or update flow session
-      const flowSession = {
-        flowId: tokenData.flowId || 'unknown',
-        flowToken: tokenData.token,
-        screen: 'screen_poawge',
-        data: {
-          firstName,
-          lastName,
-          middleName: middleName || null,
-          address,
-          gender: parsedGender,
-          dateOfBirth: parsedDate
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-
-      // You can store this in your database here
-      // For now, we'll just log it
-      logger.info('Flow session data prepared for storage', {
-        flowId: flowSession.flowId,
-        screen: flowSession.screen,
-        hasData: !!flowSession.data
-      });
-    } catch (storageError) {
-      logger.error('Failed to store flow session data', { error: storageError.message });
-    }
 
     // Return next screen
     return {

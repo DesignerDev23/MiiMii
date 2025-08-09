@@ -242,6 +242,20 @@ class WhatsAppFlowService {
       logger.info('Processing onboarding flow', { phoneNumber, dataKeys: Object.keys(flowData || {}) });
       const onboardingService = require('./onboarding');
       const result = await onboardingService.processOnboardingFlowData(flowData, phoneNumber);
+
+      // If PIN was set as part of completion, create wallet VA if missing
+      if (result?.success && result?.userId) {
+        try {
+          const walletService = require('./wallet');
+          const wallet = await walletService.getUserWallet(result.userId);
+          if (!wallet.virtualAccountNumber) {
+            await walletService.createVirtualAccountForWallet(result.userId);
+          }
+        } catch (vaErr) {
+          logger.warn('Optional virtual account creation post-onboarding failed', { error: vaErr.message });
+        }
+      }
+
       return { success: true, ...result };
     } catch (error) {
       logger.error('Onboarding flow processing failed', { phoneNumber, error: error.message });

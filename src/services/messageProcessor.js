@@ -17,18 +17,6 @@ class MessageProcessor {
       
       // Get or create user with proper parameters
       const user = await userService.getOrCreateUser(from, userName);
-      
-      // Short-circuit routing:
-      // - If not onboarded → start onboarding flow
-      // - If onboarded → prompt login (PIN) via login flow
-      if (user.onboardingStep !== 'completed') {
-        await this.sendOnboardingFlow(user, userName, messageId);
-        return;
-      } else {
-        await this.sendLoginFlow(user, userName);
-        return;
-      }
-      
       // Extract the actual message content
       const messageContent = message?.text || message?.buttonReply?.title || '';
       
