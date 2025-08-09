@@ -333,9 +333,24 @@ class WhatsAppService {
       const aiAssistant = require('./aiAssistant');
       const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, to);
 
+      // Generate a secure flow token and persist mapping for this session
+      const whatsappFlowService = require('./whatsappFlowService');
+      const userService = require('./user');
+      const redisClient = require('../utils/redis');
+      const user = await userService.getUserByWhatsappNumber(to);
+      const flowToken = whatsappFlowService.generateFlowToken(user?.id || to);
+      // Store mapping for 30 minutes
+      try {
+        await redisClient.setSession(`flow:${flowToken}`, {
+          userId: user?.id || null,
+          phoneNumber: user?.whatsappNumber || to
+        }, 1800);
+      } catch (_) {}
+
       // Send the welcome flow message
       const flowData = {
         flowId: '1223628202852216', // Your verified Flow ID
+        flowToken,
         flowCta: 'Start Setup',
         header: {
           type: 'text',
@@ -347,7 +362,9 @@ class WhatsAppService {
         flowActionPayload: {
           screen: 'QUESTION_ONE',
           data: {
-            userName: userName
+            userName: userName,
+            phoneNumber: user?.whatsappNumber || to,
+            userId: user?.id || null
           }
         }
       };

@@ -17,7 +17,32 @@ class MessageProcessor {
       
       // Get or create user with proper parameters
       const user = await userService.getOrCreateUser(from, userName);
-      // Extract the actual message content
+      // If this is a Flow completion (nfm_reply), process immediately (bypass AI)
+      if (messageType === 'interactive' && message?.flowResponse?.responseJson) {
+        const flowData = { ...message.flowResponse.responseJson };
+        // Enrich with phone number for downstream services
+        flowData.phoneNumber = user.whatsappNumber;
+
+        const whatsappFlowService = require('./whatsappFlowService');
+        const result = await whatsappFlowService.processFlowData(flowData, user.whatsappNumber);
+
+        if (result.success) {
+          // If onboarding completed, send welcome/menu
+          if (user.onboardingStep !== 'completed') {
+            try {
+              await user.update({ onboardingStep: 'completed' });
+            } catch (_) {}
+          }
+          // Send a friendly confirmation only if nothing was sent yet
+          // (Most services already send confirmations.)
+        } else if (result.error) {
+          const whatsappService = require('./whatsapp');
+          await whatsappService.sendTextMessage(user.whatsappNumber, result.error);
+        }
+        return;
+      }
+
+      // Extract the actual message content for AI routing
       const messageContent = message?.text || message?.buttonReply?.title || '';
       
       // Log the incoming message

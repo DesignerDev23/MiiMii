@@ -579,7 +579,7 @@ async function processFlowRequest(requestData) {
     // Process based on action
     switch (action) {
       case 'data_exchange':
-        return handleDataExchange(screen, data, tokenData);
+        return handleDataExchange(screen, data, tokenData, flow_token);
 
       default:
         logger.warn('Unknown Flow action', { action });
@@ -607,12 +607,24 @@ async function processFlowRequest(requestData) {
 /**
  * Handle data exchange requests
  */
-async function handleDataExchange(screen, data, tokenData) {
+async function handleDataExchange(screen, data, tokenData, flowToken = null) {
   try {
     // Try map flow token to user or fallback to phoneNumber in data
     let userId = tokenData.userId || null;
     let phoneNumber = data?.phoneNumber || null;
     
+    // Try redis lookup with flow token
+    if (!userId && flowToken) {
+      try {
+        const redisClient = require('../utils/redis');
+        const session = await redisClient.getSession(`flow:${flowToken}`);
+        if (session) {
+          userId = session.userId || userId;
+          phoneNumber = session.phoneNumber || phoneNumber;
+        }
+      } catch (_) {}
+    }
+
     if (!userId && phoneNumber) {
       const userService = require('../services/user');
       const user = await userService.getUserByWhatsappNumber(phoneNumber).catch(() => null);
@@ -802,7 +814,19 @@ async function handleBvnVerificationScreen(data, userId, tokenData = {}) {
       };
     }
 
-    // For WhatsApp Flow, we'll use the flow token information
+    // Persist BVN to user if we can resolve the user
+    try {
+      if (userId) {
+        const userService = require('../services/user');
+        const user = await userService.getUserById(userId);
+        if (user) {
+          await user.update({ bvn });
+        }
+      }
+    } catch (persistErr) {
+      logger.warn('Failed to persist BVN from flow', { error: persistErr.message });
+    }
+
     logger.info('BVN verification received from Flow', {
       userId: userId || 'unknown',
       flowId: tokenData.flowId || 'unknown',
@@ -876,7 +900,16 @@ async function handlePinSetupScreen(data, userId, tokenData = {}) {
       };
     }
 
-    // For WhatsApp Flow, we'll use the flow token information
+    // Persist PIN and complete onboarding
+    try {
+      if (userId) {
+        const onboardingService = require('../services/onboarding');
+        await onboardingService.completePinSetup(userId, pin);
+      }
+    } catch (persistErr) {
+      logger.warn('Failed to complete onboarding during flow PIN setup', { error: persistErr.message });
+    }
+
     logger.info('PIN setup received from Flow', {
       userId: userId || 'unknown',
       flowId: tokenData.flowId || 'unknown',
