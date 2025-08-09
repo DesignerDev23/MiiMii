@@ -12,14 +12,22 @@ const { ActivityLog } = require('../models');
 
 class AIAssistantService {
   constructor() {
-    this.openaiApiKey = process.env.AI_API_KEY;
-    this.openaiBaseUrl = 'https://api.openai.com/v1';
-    this.model = process.env.AI_MODEL || 'gpt-4-turbo-preview';
+    this.openaiApiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+    this.openaiBaseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
+    this.model = process.env.AI_MODEL || 'gpt-4o-mini';
     
     // Validate OpenAI configuration
     this.isConfigured = !!this.openaiApiKey;
     if (!this.isConfigured) {
       logger.warn('OpenAI API key not configured - AI features will use fallback processing');
+    } else {
+      const mask = (v) => (v && v.length >= 8 ? `${v.slice(0, 4)}***${v.slice(-2)}` : 'SET');
+      logger.info('AI assistant initialized', {
+        model: this.model,
+        baseUrl: this.openaiBaseUrl,
+        hasKey: !!this.openaiApiKey,
+        apiKeyPreview: mask(this.openaiApiKey)
+      });
     }
     
     // Enhanced intent patterns for better recognition
@@ -254,11 +262,15 @@ Extract intent and data from this message. Consider the user context and any ext
       return aiResult;
 
     } catch (error) {
+      const status = error.response?.status;
       logger.error('OpenAI API call failed', { 
         error: error.message, 
         phoneNumber: user.whatsappNumber,
-        errorType: error.response?.status || 'unknown'
+        errorType: status || 'unknown'
       });
+      if (status === 401) {
+        logger.warn('AI unauthorized: Check AI_API_KEY/OPENAI_API_KEY');
+      }
       
       // Fallback to rule-based processing if AI fails
       logger.info('Using fallback processing due to AI failure', { phoneNumber: user.whatsappNumber });
@@ -921,10 +933,15 @@ Response format:
       return this.basicIntentAnalysis(message);
       
     } catch (error) {
+      const status = error.response?.status;
       logger.error('AI intent analysis failed', {
         error: error.message,
+        status,
         message
       });
+      if (status === 401) {
+        logger.warn('AI unauthorized: Check AI_API_KEY/OPENAI_API_KEY');
+      }
       
       return this.basicIntentAnalysis(message);
     }

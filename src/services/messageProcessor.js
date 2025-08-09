@@ -57,6 +57,66 @@ class MessageProcessor {
 
       // Extract the actual message content for AI routing
       const messageContent = message?.text || message?.buttonReply?.title || '';
+
+      // Handle ongoing bank transfer conversation (confirmation and PIN)
+      if (user.conversationState?.intent === 'bank_transfer') {
+        const state = user.conversationState;
+        const whatsappService = require('./whatsapp');
+        const bankTransferService = require('./bankTransfer');
+
+        // Confirmation step
+        if (state.awaitingInput === 'confirm_transfer') {
+          const lower = (messageContent || '').toLowerCase();
+          if (/(^|\b)(yes|y|confirm|ok|sure)(\b|$)/.test(lower)) {
+            await user.updateConversationState({ awaitingInput: 'pin_for_transfer', step: 2 });
+            await whatsappService.sendTextMessage(user.whatsappNumber, '🔐 Please enter your 4-digit transaction PIN to confirm.');
+            return;
+          }
+          if (/(^|\b)(no|n|cancel|stop)(\b|$)/.test(lower)) {
+            await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Transfer cancelled. To try again, send: "Send 5000 to 00308267834627 bellbank"');
+            await user.clearConversationState();
+            return;
+          }
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply YES to confirm or NO to cancel.');
+          return;
+        }
+
+        // PIN entry step
+        if (state.awaitingInput === 'pin_for_transfer') {
+          const pin = (messageContent || '').replace(/\D/g, '');
+          if (!/^\d{4}$/.test(pin)) {
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please enter exactly 4 digits.');
+            return;
+          }
+          try {
+            const transferData = {
+              accountNumber: state.data.accountNumber,
+              bankCode: state.data.bankCode,
+              amount: state.data.amount,
+              narration: state.data.narration || 'Wallet transfer',
+              reference: state.data.reference
+            };
+            const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+            if (result.success) {
+              const receipt = `✅ *Transfer Successful*\n\n` +
+                             `💰 Amount: ₦${Number(result.transaction.amount).toLocaleString()}\n` +
+                             `💳 Fee: ₦${Number(result.transaction.fee).toLocaleString()}\n` +
+                             `🧾 Total: ₦${Number(result.transaction.totalAmount).toLocaleString()}\n` +
+                             `📄 Reference: ${result.transaction.reference}\n` +
+                             `👤 Recipient: ${result.transaction.accountName} (${result.transaction.accountNumber})\n` +
+                             `🏦 Bank: ${result.transaction.bankName}`;
+              await whatsappService.sendTextMessage(user.whatsappNumber, receipt);
+            } else {
+              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
+            }
+          } catch (err) {
+            await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${err.message}`);
+          } finally {
+            await user.clearConversationState();
+          }
+          return;
+        }
+      }
       
       // Log the incoming message
       logger.info('Processing incoming message', {
