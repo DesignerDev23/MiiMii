@@ -12,7 +12,7 @@ const { ActivityLog } = require('../models');
 
 class AIAssistantService {
   constructor() {
-    this.openaiApiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+    this.openaiApiKey = process.env.AI_API_KEY;
     this.openaiBaseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
     // Use a valid default model; sanitize unsupported env values (e.g., gpt-5*)
     const envModel = (process.env.AI_MODEL || '').trim();
@@ -271,7 +271,7 @@ Extract intent and data from this message. Consider the user context and any ext
         errorType: status || 'unknown'
       });
       if (status === 401) {
-        logger.warn('AI unauthorized: Check AI_API_KEY/OPENAI_API_KEY');
+        logger.warn('AI unauthorized: Check AI_API_KEY');
       }
       
       // Fallback to rule-based processing if AI fails
@@ -942,7 +942,7 @@ Response format:
         message
       });
       if (status === 401) {
-        logger.warn('AI unauthorized: Check AI_API_KEY/OPENAI_API_KEY');
+        logger.warn('AI unauthorized: Check AI_API_KEY');
       }
       
       return this.basicIntentAnalysis(message);
