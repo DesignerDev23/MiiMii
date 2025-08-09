@@ -112,17 +112,20 @@ class BellBankService {
         });
 
         // Log activity
-        await ActivityLog.create({
-          userId: userData.userId,
-          action: 'virtual_account_created',
-          details: {
+        await ActivityLog.logUserActivity(
+          userData.userId,
+          'wallet_funding',
+          'virtual_account_created',
+          {
+            description: 'Virtual account created successfully',
             accountNumber: accountData.accountNumber,
             accountName: accountData.accountName,
             bankName: accountData.bankName,
             provider: 'bellbank',
-            success: true
+            success: true,
+            source: 'api'
           }
-        });
+        );
 
         return {
           success: true,
@@ -141,15 +144,18 @@ class BellBankService {
         });
 
         // Log activity
-        await ActivityLog.create({
-          userId: userData.userId,
-          action: 'virtual_account_created',
-          details: {
+        await ActivityLog.logUserActivity(
+          userData.userId,
+          'wallet_funding',
+          'virtual_account_created_failed',
+          {
+            description: 'Failed to create virtual account',
             provider: 'bellbank',
             success: false,
-            error: response.message || 'Unknown error'
+            error: response.message || 'Unknown error',
+            source: 'api'
           }
-        });
+        );
 
         throw new Error(response.message || 'Failed to create virtual account');
       }
@@ -161,15 +167,18 @@ class BellBankService {
       });
 
       // Log activity
-      await ActivityLog.create({
-        userId: userData.userId,
-        action: 'virtual_account_created',
-        details: {
+      await ActivityLog.logUserActivity(
+        userData.userId,
+        'wallet_funding',
+        'virtual_account_created_error',
+        {
+          description: 'Virtual account creation error',
           provider: 'bellbank',
           success: false,
-          error: error.message
+          error: error.message,
+          source: 'api'
         }
-      });
+      );
 
       throw error;
     }

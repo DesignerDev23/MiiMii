@@ -390,9 +390,7 @@ class WalletService {
       const user = await User.findByPk(userId);
       const wallet = await this.getUserWallet(userId);
 
-      if (!user.isKycComplete()) {
-        throw new Error('KYC verification required for virtual account');
-      }
+      // KYC is handled by provider during VA creation; don't block here
 
       if (wallet.virtualAccountNumber) {
         return {
@@ -402,7 +400,17 @@ class WalletService {
         };
       }
 
-      const virtualAccount = await bellBankService.createVirtualAccount(user);
+      const virtualAccount = await bellBankService.createVirtualAccount({
+        firstName: user.firstName,
+        lastName: user.lastName,
+        middleName: user.middleName,
+        phoneNumber: user.whatsappNumber,
+        address: user.address,
+        bvn: user.bvn,
+        gender: user.gender,
+        dateOfBirth: user.dateOfBirth,
+        userId: user.id
+      });
       
       await wallet.update({
         virtualAccountNumber: virtualAccount.accountNumber,
