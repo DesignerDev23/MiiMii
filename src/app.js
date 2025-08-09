@@ -122,6 +122,11 @@ app.get('/', (req, res) => {
 // Simple health check for Digital Ocean App Platform (no database checks)
 app.get('/healthz', (req, res) => {
   try {
+    // Allow forcing dev mode via env (does not leak to other modules here)
+    if (process.env.FORCE_DEV === 'true') {
+      logger.warn('FORCE_DEV is enabled. Overriding NODE_ENV to development for this process.');
+      process.env.NODE_ENV = 'development';
+    }
     const healthResponse = {
       status: 'OK',
       service: 'MiiMii Fintech Platform',
@@ -339,12 +344,12 @@ async function startServer() {
     initializeRedisConnection();
 
   } catch (error) {
-    logger.error('❌ Unable to start server on Digital Ocean App Platform:', {
+      logger.error('❌ Unable to start server on Digital Ocean App Platform:', {
       error: error.message,
       stack: error.stack,
       port: PORT,
       host: HOST,
-      environment: process.env.NODE_ENV || 'production',
+        environment: process.env.NODE_ENV || 'production',
       platform: 'DigitalOcean App Platform',
       timestamp: new Date().toISOString()
     });

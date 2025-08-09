@@ -10,7 +10,16 @@ class BellBankService {
   constructor() {
     this.sandboxURL = 'https://sandbox-baas-api.bellmfb.com';
     this.productionURL = 'https://baas-api.bellmfb.com';
-    this.baseURL = process.env.NODE_ENV === 'production' ? this.productionURL : this.sandboxURL;
+
+    // Allow override of environment via BELLBANK_ENV or APP_ENV
+    const overrideEnv = (process.env.BELLBANK_ENV || process.env.APP_ENV || '').toLowerCase();
+    const isProduction = overrideEnv
+      ? overrideEnv === 'prod' || overrideEnv === 'production'
+      : process.env.NODE_ENV === 'production';
+
+    this.selectedEnvironment = isProduction ? 'production' : 'sandbox';
+    this.baseURL = isProduction ? this.productionURL : this.sandboxURL;
+
     this.consumerKey = process.env.BANK_CONSUMER_KEY;
     this.consumerSecret = process.env.BANK_CONSUMER_SECRET;
     this.validityTime = 2880; // 48 hours in minutes
@@ -22,10 +31,37 @@ class BellBankService {
     this.lastRequestTime = 0;
     this.requestQueue = [];
     this.isProcessingQueue = false;
+
+    // Safe runtime config log (no secrets leaked)
+    const mask = (val) => {
+      if (!val) return 'MISSING';
+      const s = String(val);
+      if (s.length <= 6) return `${s[0] || ''}***${s[s.length - 1] || ''}`;
+      return `${s.slice(0, 4)}***${s.slice(-2)}`;
+    };
+
+    logger.info('BellBankService initialized', {
+      nodeEnv: process.env.NODE_ENV || 'undefined',
+      appEnv: process.env.APP_ENV || 'undefined',
+      bellbankEnvOverride: process.env.BELLBANK_ENV || 'undefined',
+      selectedEnvironment: this.selectedEnvironment,
+      baseURL: this.baseURL,
+      hasConsumerKey: !!this.consumerKey,
+      hasConsumerSecret: !!this.consumerSecret,
+      consumerKeyPreview: mask(this.consumerKey),
+      consumerSecretPreview: mask(this.consumerSecret)
+    });
   }
 
   async generateToken() {
     try {
+      logger.info('Generating BellBank token', {
+        selectedEnvironment: this.selectedEnvironment,
+        baseURL: this.baseURL,
+        hasConsumerKey: !!this.consumerKey,
+        hasConsumerSecret: !!this.consumerSecret
+      });
+
       if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
         return this.token;
       }
