@@ -57,8 +57,8 @@ class Config {
 
     // OpenAI Configuration
     this.openai = {
-      apiKey: process.env.AI_API_KEY,
-      model: process.env.AI_MODEL || 'gpt-4-turbo'
+      apiKey: process.env.AI_API_KEY || process.env.OPENAI_API_KEY,
+      model: process.env.AI_MODEL || 'gpt-5'
     };
 
     // Server Configuration

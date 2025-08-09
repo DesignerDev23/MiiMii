@@ -9,7 +9,7 @@ class AIService {
       this.openai = new OpenAI({
         apiKey: apiKey
       });
-      this.model = process.env.AI_MODEL || 'gpt-4-turbo';
+      this.model = process.env.AI_MODEL || 'gpt-5';
       this.isEnabled = true;
       logger.info('AI service initialized successfully');
     } else {

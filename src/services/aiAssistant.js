@@ -14,7 +14,7 @@ class AIAssistantService {
   constructor() {
     this.openaiApiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
     this.openaiBaseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
-    this.model = process.env.AI_MODEL || 'gpt-4o-mini';
+    this.model = process.env.AI_MODEL || 'gpt-5';
     
     // Validate OpenAI configuration
     this.isConfigured = !!this.openaiApiKey;
