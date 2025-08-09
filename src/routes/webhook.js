@@ -19,10 +19,11 @@ const verifyWebhookSignature = (provider) => (req, res, next) => {
     
     // For actual webhooks, verify WhatsApp signature if provided
     const signature = req.headers['x-hub-signature-256'];
-    if (signature && process.env.WHATSAPP_WEBHOOK_SECRET) {
+    const webhookSecret = process.env.WEBHOOK_SECRET || process.env.WHATSAPP_WEBHOOK_SECRET;
+    if (signature && webhookSecret) {
       const payload = JSON.stringify(req.body);
       const expectedSignature = crypto
-        .createHmac('sha256', process.env.WHATSAPP_WEBHOOK_SECRET)
+        .createHmac('sha256', webhookSecret)
         .update(payload)
         .digest('hex');
       

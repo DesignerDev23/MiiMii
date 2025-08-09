@@ -9,7 +9,8 @@ class AIService {
       this.openai = new OpenAI({
         apiKey: apiKey
       });
-      this.model = process.env.AI_MODEL || 'gpt-5';
+      // Use a valid default model if none is provided via environment
+      this.model = process.env.AI_MODEL || 'gpt-4o';
       this.isEnabled = true;
       logger.info('AI service initialized successfully');
     } else {

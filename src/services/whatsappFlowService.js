@@ -291,7 +291,7 @@ class WhatsAppFlowService {
           type: 'flow',
           flow: {
             flow_token: flowData.flowToken,
-            flow_id: flowData.flowId,
+            ...(flowData.flowJson ? { flow_json: flowData.flowJson } : { flow_id: flowData.flowId }),
             flow_cta: flowData.flowCta,
             flow_action_payload: flowData.flowActionPayload || {}
           }

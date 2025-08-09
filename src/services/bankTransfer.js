@@ -95,16 +95,16 @@ class BankTransferService {
         throw new Error('Account number must be 10 digits');
       }
 
-      // Use BellBank API for account validation
-      const accountDetails = await bellbankService.validateBankAccount(accountNumber, bankCode);
+      // Use BellBank name enquiry for account validation
+      const accountDetails = await bellbankService.nameEnquiry(accountNumber, bankCode);
       
-      if (accountDetails && accountDetails.account_name) {
+      if (accountDetails && (accountDetails.account_name || accountDetails.accountName)) {
         return {
           valid: true,
           accountNumber,
           bankCode,
-          accountName: accountDetails.account_name,
-          bank: accountDetails.bank_name || this.getBankNameByCode(bankCode),
+          accountName: accountDetails.account_name || accountDetails.accountName,
+          bank: accountDetails.bank_name || accountDetails.bankName || this.getBankNameByCode(bankCode),
           currency: 'NGN'
         };
       }

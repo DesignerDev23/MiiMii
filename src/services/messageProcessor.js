@@ -1200,9 +1200,10 @@ class MessageProcessor {
 
     // Get wallet balance
     const walletService = require('./wallet');
-    const balance = await walletService.getWalletBalance(user.id);
-    
-    const balanceMessage = `💰 *Account Balance*\n\nCurrent Balance: ₦${balance.toFixed(2)}\n\nYour account is ready for transactions!`;
+    const walletSummary = await walletService.getWalletBalance(user.id);
+    const available = typeof walletSummary === 'object' ? (walletSummary.available ?? walletSummary.availableBalance ?? walletSummary.balance) : walletSummary;
+    const balanceValue = Number(available || 0);
+    const balanceMessage = `💰 *Account Balance*\n\nCurrent Balance: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\nYour account is ready for transactions!`;
     const whatsappService = require('./whatsapp');
     await whatsappService.sendTextMessage(user.whatsappNumber, balanceMessage);
   }

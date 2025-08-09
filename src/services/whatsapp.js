@@ -263,10 +263,7 @@ class WhatsAppService {
       phoneNumberId: this.phoneNumberId
     });
     
-    // Ensure we have the required fields
-    if (!flowData.flowId) {
-      throw new Error('Flow ID is required');
-    }
+    // Accept either pre-created flow by ID or dynamic flow_json
     
     const interactive = {
       type: 'flow',
@@ -283,7 +280,7 @@ class WhatsAppService {
         parameters: {
           flow_message_version: '3',
           flow_token: flowData.flowToken || 'unused',
-          flow_id: flowData.flowId,
+          ...(flowData.flowJson ? { flow_json: flowData.flowJson } : { flow_id: flowData.flowId }),
           flow_cta: flowData.flowCta || 'Complete Onboarding',
           flow_action: flowData.flowAction || 'navigate',
           flow_action_payload: flowData.flowActionPayload || {
@@ -294,7 +291,8 @@ class WhatsAppService {
       }
     };
     
-    logger.info('🚀 FLOW ID DEBUG: WhatsApp API request payload', {
+    logger.info('🚀 FLOW DEBUG: WhatsApp API request payload', {
+      hasFlowJson: !!flowData.flowJson,
       flowId: flowData.flowId,
       flowIdType: typeof flowData.flowId,
       flowIdLength: flowData.flowId ? flowData.flowId.length : 0,
@@ -349,7 +347,8 @@ class WhatsAppService {
 
       // Send the welcome flow message
       const flowData = {
-        flowId: '1223628202852216', // Your verified Flow ID
+        // Prefer dynamic flow_json if available in future; for now allow ID fallback via config
+        flowId: (require('../config').getWhatsappConfig().welcomeFlowId) || undefined,
         flowToken,
         flowCta: 'Start Setup',
         header: {
