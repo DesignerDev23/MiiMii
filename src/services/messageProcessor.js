@@ -26,6 +26,41 @@ class MessageProcessor {
         // Non-fatal
       }
 
+      // Daily login: if user onboarded, require PIN once every 24h
+      try {
+        const redisClient = require('../utils/redis');
+        if (user.onboardingStep === 'completed') {
+          const sessionKey = `auth:${user.id}`;
+          const hasSession = await redisClient.get(sessionKey);
+          if (!hasSession && user.conversationState?.awaitingInput !== 'login_pin') {
+            await user.updateConversationState({ awaitingInput: 'login_pin', context: 'daily_login' });
+            const whatsappService = require('./whatsapp');
+            await whatsappService.sendTextMessage(user.whatsappNumber, '🔐 Please enter your 4-digit PIN to unlock your session.');
+            return;
+          }
+          if (user.conversationState?.awaitingInput === 'login_pin') {
+            const pin = (message?.text || '').replace(/\D/g, '');
+            if (!/^\d{4}$/.test(pin)) {
+              const whatsappService = require('./whatsapp');
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN. Please enter exactly 4 digits.');
+              return;
+            }
+            try {
+              const userService = require('./user');
+              await userService.validateUserPin(user.id, pin);
+              await redisClient.set(`auth:${user.id}`, { ok: true }, 86400);
+              await user.clearConversationState();
+              const whatsappService = require('./whatsapp');
+              await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Login successful. How can I help you today?');
+            } catch (e) {
+              const whatsappService = require('./whatsapp');
+              await whatsappService.sendTextMessage(user.whatsappNumber, e.message || '❌ Incorrect PIN. Try again.');
+            }
+            return;
+          }
+        }
+      } catch (_) {}
+
       // If this is a Flow completion (nfm_reply), process immediately (bypass AI)
       if (messageType === 'interactive' && message?.flowResponse?.responseJson) {
         const flowData = { ...message.flowResponse.responseJson };
