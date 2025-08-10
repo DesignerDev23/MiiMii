@@ -12,6 +12,7 @@ const { ActivityLog } = require('../models');
 
 class AIAssistantService {
   constructor() {
+    // Use ONLY AI_API_KEY - remove OPENAI_API_KEY fallback
     this.openaiApiKey = process.env.AI_API_KEY;
     this.openaiBaseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
     // Use a valid default model; sanitize unsupported env values (e.g., gpt-5*)
@@ -28,7 +29,6 @@ class AIAssistantService {
     // Log all relevant environment variables for debugging
     logger.info('AI Assistant Environment Variables', {
       AI_API_KEY: mask(process.env.AI_API_KEY),
-      OPENAI_API_KEY: mask(process.env.OPENAI_API_KEY),
       AI_BASE_URL: process.env.AI_BASE_URL || 'DEFAULT',
       AI_MODEL: process.env.AI_MODEL || 'DEFAULT',
       NODE_ENV: process.env.NODE_ENV || 'NOT_SET'
@@ -37,15 +37,31 @@ class AIAssistantService {
     // Validate OpenAI configuration
     this.isConfigured = !!this.openaiApiKey;
     if (!this.isConfigured) {
-      logger.warn('OpenAI API key not configured - AI features will use fallback processing');
+      logger.warn('AI_API_KEY not configured - AI features will use fallback processing');
     } else {
+      // Validate API key format
+      if (!this.openaiApiKey.startsWith('sk-')) {
+        logger.error('Invalid AI_API_KEY format - should start with "sk-"', {
+          apiKeyPreview: mask(this.openaiApiKey),
+          apiKeyLength: this.openaiApiKey.length
+        });
+        this.isConfigured = false;
+      } else if (this.openaiApiKey.length !== 51) {
+        logger.warn('AI_API_KEY length is unusual - expected 51 characters', {
+          apiKeyPreview: mask(this.openaiApiKey),
+          apiKeyLength: this.openaiApiKey.length,
+          expectedLength: 51
+        });
+      }
+      
       logger.info('AI assistant initialized', {
         model: this.model,
         baseUrl: this.openaiBaseUrl,
         hasKey: !!this.openaiApiKey,
         apiKeyPreview: mask(this.openaiApiKey),
         apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0,
-        apiKeyStartsWith: this.openaiApiKey ? this.openaiApiKey.substring(0, 3) : 'N/A'
+        apiKeyStartsWith: this.openaiApiKey ? this.openaiApiKey.substring(0, 3) : 'N/A',
+        isValidFormat: this.openaiApiKey ? this.openaiApiKey.startsWith('sk-') : false
       });
     }
     
@@ -99,71 +115,118 @@ class AIAssistantService {
       TRANSACTION_HISTORY: {
         keywords: ['history', 'transactions', 'statement', 'records', 'activity'],
         patterns: [
-          /(?:transaction\s+)?(?:history|transactions|statement|records)/i,
-          /show\s+(?:my\s+)?(?:recent\s+)?transactions/i
+          /(?:show\s+)?(?:my\s+)?(?:transaction\s+)?history/i,
+          /(?:view\s+)?(?:my\s+)?(?:transaction\s+)?statement/i
+        ]
+      },
+      GREETING: {
+        keywords: ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'start', 'begin'],
+        patterns: [
+          /^(hi|hello|hey|good\s+(morning|afternoon|evening))/i,
+          /^(start|begin)/i
         ]
       },
       HELP: {
-        keywords: ['help', 'what can you do', 'commands', 'menu', 'assist', 'support'],
-        patterns: [/help/i, /what\s+can\s+you\s+do/i, /menu/i]
+        keywords: ['help', 'support', 'assist', 'guide', 'what can you do'],
+        patterns: [
+          /^(help|support|assist|guide)/i,
+          /what\s+can\s+you\s+do/i
+        ]
       }
     };
 
-    // System prompt for enhanced AI processing
-    this.systemPrompt = `You are MiiMii, a highly intelligent WhatsApp-based fintech assistant for Nigeria. Your role is to understand natural language and extract precise information for financial transactions.
+    // System prompt for AI responses
+    this.systemPrompt = `You are MiiMii, a friendly and helpful financial assistant for a Nigerian fintech platform. Your role is to:
 
-CORE CAPABILITIES:
-- Money transfers (wallet-to-wallet, bank transfers)
-- Airtime purchases (MTN, Airtel, Glo, 9mobile)
-- Data bundle purchases
-- Utility bill payments (electricity, cable TV, water, internet)
-- Account management (balance, history, KYC)
+1. Analyze user messages to understand their intent
+2. Extract relevant financial data (amounts, phone numbers, account details)
+3. Provide helpful responses and guide users through financial transactions
+4. Maintain a warm, professional tone with appropriate emojis
 
-EXTRACTION RULES:
-1. AMOUNTS: Recognize "k" as thousands (5k = 5000), commas in numbers (5,000), and written amounts
-2. PHONE NUMBERS: Nigerian format (11 digits starting with 070, 080, 081, 090, 091, etc.)
-3. ACCOUNT NUMBERS: Bank accounts (10 digits), meter numbers (variable length)
-4. NAMES: Extract recipient names, bank names, utility providers
-5. CONTEXT: Consider conversation history and user preferences
+Available Services:
+- Money transfers (P2P)
+- Bank transfers
+- Airtime purchases
+- Data purchases
+- Bill payments (electricity, cable, water, internet)
+- Balance inquiries
+- Transaction history
 
-RESPONSE FORMAT (JSON):
+Response Format (JSON):
 {
-  "success": true,
-  "intent": "INTENT_NAME",
+  "intent": "intent_name",
   "confidence": 0.95,
   "extractedData": {
-    "amount": "5000",
-    "recipient": "John",
-    "phoneNumber": "08123456789",
-    "accountNumber": "0123456789",
-    "bankName": "GTBank",
-    "bankCode": "058",
-    "utilityProvider": "EKEDC",
-    "meterNumber": "12345678901",
-    "network": "MTN",
-    "dataSize": "1GB"
+    "amount": 1000,
+    "recipientPhone": "08012345678",
+    "recipientName": "John",
+    "service": "airtime",
+    "network": "MTN"
   },
-  "requiredFields": ["pin"],
-  "message": "I'll help you send ₦5,000 to John (08123456789). Please provide your PIN to authorize this transaction.",
-  "requiresAction": "VERIFY_PIN",
-  "awaitingInput": "pin",
-  "context": "money_transfer_verification",
-  "estimatedFee": "25.00"
+  "response": "I'll help you with that! Please confirm the details...",
+  "requiresConfirmation": true,
+  "nextStep": "confirm_transaction"
 }
 
-EXAMPLES:
-- "Send 5k to Musa 9091234567 Opay" → TRANSFER_MONEY with amount=5000, recipient=Musa, phoneNumber=9091234567
-- "Buy 1000 MTN airtime for 08123456789" → BUY_AIRTIME with amount=1000, network=MTN, phoneNumber=08123456789
-- "Pay 2000 electricity EKEDC 12345678901" → PAY_BILL with amount=2000, utilityProvider=EKEDC, meterNumber=12345678901
-- "Transfer 10000 to Access Bank 1234567890" → BANK_TRANSFER with amount=10000, bankName=Access Bank, accountNumber=1234567890
+Be accurate, helpful, and always prioritize user security.`;
 
-NIGERIAN CONTEXT:
-- Networks: MTN, Airtel, Glo, 9mobile
-- Banks: GTBank, Access, Zenith, UBA, First Bank, etc.
-- Utilities: PHCN, EKEDC, IKEDC, DStv, GOtv, Startimes, etc.
-- Phone prefixes: 070X, 080X, 081X, 090X, 091X (where X is any digit)
+    // Test API key validity on startup
+    this.validateApiKey();
+  }
 
-Be helpful, secure, and always ask for PIN verification for transactions.`;
+  // Add API key validation method
+  async validateApiKey() {
+    if (!this.isConfigured || !this.openaiApiKey) {
+      logger.warn('Skipping API key validation - AI_API_KEY not configured');
+      return false;
+    }
+
+    try {
+      logger.info('Validating AI_API_KEY with OpenAI...');
+      
+      const response = await axios.get(`${this.openaiBaseUrl}/models`, {
+        headers: {
+          'Authorization': `Bearer ${this.openaiApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000 // 10 second timeout
+      });
+
+      if (response.status === 200) {
+        logger.info('✅ AI_API_KEY validation successful', {
+          apiKeyPreview: `${this.openaiApiKey.substring(0, 4)}***${this.openaiApiKey.substring(this.openaiApiKey.length - 4)}`,
+          availableModels: response.data.data?.length || 0
+        });
+        return true;
+      } else {
+        logger.error('❌ AI_API_KEY validation failed - unexpected status', {
+          status: response.status,
+          apiKeyPreview: `${this.openaiApiKey.substring(0, 4)}***${this.openaiApiKey.substring(this.openaiApiKey.length - 4)}`
+        });
+        return false;
+      }
+    } catch (error) {
+      const status = error.response?.status;
+      const errorMessage = error.response?.data?.error?.message || error.message;
+      
+      logger.error('❌ AI_API_KEY validation failed', {
+        status: status || 'unknown',
+        error: errorMessage,
+        apiKeyPreview: `${this.openaiApiKey.substring(0, 4)}***${this.openaiApiKey.substring(this.openaiApiKey.length - 4)}`,
+        apiKeyLength: this.openaiApiKey.length
+      });
+
+      if (status === 401) {
+        logger.error('🔑 AI_API_KEY is invalid or expired - AI features will use fallback processing');
+        this.isConfigured = false;
+      } else if (status === 429) {
+        logger.warn('⚠️ Rate limit exceeded during API key validation - this is normal');
+      } else {
+        logger.warn('⚠️ API key validation failed due to network/connection issues');
+      }
+      
+      return false;
+    }
   }
 
   async processUserMessage(phoneNumber, message, messageType = 'text', extractedData = null) {
@@ -297,13 +360,27 @@ Extract intent and data from this message. Consider the user context and any ext
 
     } catch (error) {
       const status = error.response?.status;
+      const errorMessage = error.response?.data?.error?.message || error.message;
+      
       logger.error('OpenAI API call failed', { 
-        error: error.message, 
+        error: errorMessage, 
+        status: status || 'unknown',
         phoneNumber: user.whatsappNumber,
-        errorType: status || 'unknown'
+        apiKeyPreview: this.openaiApiKey ? `${this.openaiApiKey.substring(0, 4)}***${this.openaiApiKey.substring(this.openaiApiKey.length - 4)}` : 'NOT_SET',
+        apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0
       });
+      
       if (status === 401) {
-        logger.warn('AI unauthorized: Check AI_API_KEY');
+        logger.error('🔑 AI_API_KEY is invalid or expired - check your OpenAI API key', {
+          apiKeyPreview: this.openaiApiKey ? `${this.openaiApiKey.substring(0, 4)}***${this.openaiApiKey.substring(this.openaiApiKey.length - 4)}` : 'NOT_SET',
+          apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0,
+          expectedLength: 51,
+          suggestion: 'Generate a new API key from OpenAI dashboard'
+        });
+      } else if (status === 429) {
+        logger.warn('⚠️ Rate limit exceeded - this is normal for high usage');
+      } else if (status === 400) {
+        logger.warn('⚠️ Bad request - check the model and request format');
       }
       
       // Fallback to rule-based processing if AI fails
@@ -863,11 +940,21 @@ Format the response as a WhatsApp message with proper formatting.`;
       return this.generateTemplateWelcome(userName, timeGreeting);
       
     } catch (error) {
+      const status = error.response?.status;
+      const errorMessage = error.response?.data?.error?.message || error.message;
+      
       logger.error('Failed to generate personalized welcome message', {
-        error: error.message,
+        error: errorMessage,
+        status: status || 'unknown',
         userName,
-        phoneNumber
+        phoneNumber,
+        apiKeyPreview: this.openaiApiKey ? `${this.openaiApiKey.substring(0, 4)}***${this.openaiApiKey.substring(this.openaiApiKey.length - 4)}` : 'NOT_SET',
+        apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0
       });
+      
+      if (status === 401) {
+        logger.error('🔑 AI_API_KEY is invalid or expired for welcome message generation');
+      }
       
       // Fallback to template message
       return this.generateTemplateWelcome(userName, this.getTimeGreeting());
@@ -998,13 +1085,20 @@ Response format:
       
     } catch (error) {
       const status = error.response?.status;
+      const errorMessage = error.response?.data?.error?.message || error.message;
+      
       logger.error('AI intent analysis failed', {
-        error: error.message,
-        status,
-        message
+        error: errorMessage,
+        status: status || 'unknown',
+        message: message.substring(0, 50) + '...',
+        apiKeyPreview: this.openaiApiKey ? `${this.openaiApiKey.substring(0, 4)}***${this.openaiApiKey.substring(this.openaiApiKey.length - 4)}` : 'NOT_SET',
+        apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0
       });
+      
       if (status === 401) {
-        logger.warn('AI unauthorized: Check AI_API_KEY');
+        logger.error('🔑 AI_API_KEY is invalid or expired for intent analysis');
+      } else if (status === 429) {
+        logger.warn('⚠️ Rate limit exceeded during intent analysis');
       }
       
       return this.basicIntentAnalysis(message);

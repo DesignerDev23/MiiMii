@@ -59,7 +59,7 @@ class Config {
     // OpenAI Configuration
     this.openai = {
       apiKey: process.env.AI_API_KEY,
-      model: process.env.AI_MODEL || 'gpt-4o'
+      model: process.env.AI_MODEL || 'gpt-4o-mini'
     };
 
     // Server Configuration
@@ -123,7 +123,6 @@ class Config {
     // Detailed AI configuration logging
     logger.info('AI Configuration Details', {
       AI_API_KEY: mask(process.env.AI_API_KEY),
-      OPENAI_API_KEY: mask(process.env.OPENAI_API_KEY),
       AI_MODEL: process.env.AI_MODEL || 'DEFAULT',
       AI_BASE_URL: process.env.AI_BASE_URL || 'DEFAULT',
       openaiApiKey: mask(this.openai.apiKey),
@@ -161,8 +160,8 @@ class Config {
     }
     
     if (!this.openai.apiKey) {
-      missingCritical.push('OpenAI API Key (AI_API_KEY or OPENAI_API_KEY)');
-      logger.warn('AI_API_KEY or OPENAI_API_KEY environment variable is missing - AI features will use fallback processing');
+      missingCritical.push('OpenAI API Key (AI_API_KEY)');
+      logger.warn('AI_API_KEY environment variable is missing - AI features will use fallback processing');
     }
 
     if (missingCritical.length > 0) {
