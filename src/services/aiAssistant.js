@@ -139,7 +139,7 @@ class AIAssistantService {
     this.systemPrompt = `You are MiiMii, a friendly and helpful financial assistant for a Nigerian fintech platform. Your role is to:
 
 1. Analyze user messages to understand their intent
-2. Extract relevant financial data (amounts, phone numbers, account details)
+2. Extract relevant financial data (amounts, phone numbers, account details, bank names)
 3. Provide helpful responses and guide users through financial transactions
 4. Maintain a warm, professional tone with appropriate emojis
 
@@ -152,21 +152,42 @@ Available Services:
 - Balance inquiries
 - Transaction history
 
+IMPORTANT: Use these exact intent names that match our system:
+- "transfer" for money transfers (P2P)
+- "bank_transfer" for bank transfers
+- "airtime" for airtime purchases
+- "data" for data purchases
+- "bills" for bill payments
+- "balance" for balance inquiries
+- "help" for help requests
+- "menu" for service menu
+- "greeting" for greetings
+
 Response Format (JSON):
 {
-  "intent": "intent_name",
+  "intent": "bank_transfer",
   "confidence": 0.95,
   "extractedData": {
-    "amount": 1000,
-    "recipientPhone": "08012345678",
-    "recipientName": "John",
-    "service": "airtime",
-    "network": "MTN"
+    "amount": 5000,
+    "accountNumber": "6035745691",
+    "bankName": "keystone",
+    "recipientName": "Abdulkadir Musa"
   },
-  "response": "I'll help you with that! Please confirm the details...",
+  "response": "I'll help you transfer ₦5,000 to Abdulkadir Musa at Keystone Bank. Let me validate the account details first.",
   "requiresConfirmation": true,
-  "nextStep": "confirm_transaction"
+  "nextStep": "validate_account"
 }
+
+For bank transfers, extract:
+- amount (convert "5k" to 5000, "10k" to 10000, etc.)
+- accountNumber (10-digit number)
+- bankName (bank name like "keystone", "gtb", "access", etc.)
+- recipientName (if provided)
+
+For money transfers, extract:
+- amount
+- phoneNumber (11-digit Nigerian number)
+- recipientName (if provided)
 
 Be accurate, helpful, and always prioritize user security.`;
 
@@ -423,41 +444,48 @@ Extract intent and data from this message. Consider the user context and any ext
 
       // Process based on intent
       switch (intent) {
-        case 'GREETING':
+        case 'greeting':
           return {
-            intent: 'GREETING',
+            intent: 'greeting',
             message: aiResponse.message || `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`,
             requiresAction: 'NONE'
           };
           
-        case 'TRANSFER_MONEY':
+        case 'transfer':
           return await this.handleMoneyTransfer(user, extractedData, aiResponse);
           
-        case 'BANK_TRANSFER':
+        case 'bank_transfer':
           return await this.handleBankTransfer(user, extractedData, aiResponse);
           
-        case 'BUY_AIRTIME':
+        case 'airtime':
           return await this.handleAirtimePurchase(user, extractedData, aiResponse);
           
-        case 'BUY_DATA':
+        case 'data':
           return await this.handleDataPurchase(user, extractedData, aiResponse);
           
-        case 'PAY_BILL':
+        case 'bills':
           return await this.handleBillPayment(user, extractedData, aiResponse);
           
-        case 'CHECK_BALANCE':
+        case 'balance':
           return await this.handleBalanceInquiry(user);
           
-        case 'TRANSACTION_HISTORY':
+        case 'transaction_history':
           return await this.handleTransactionHistory(user, extractedData);
           
-        case 'HELP':
+        case 'help':
           return this.handleHelp(user);
           
-        case 'UNKNOWN':
+        case 'menu':
+          return {
+            intent: 'menu',
+            message: aiResponse.message || "📱 *Available Services*\n\n💰 Check Balance\n💸 Send Money\n🏦 Bank Transfer\n📱 Buy Airtime\n🌐 Buy Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do?",
+            requiresAction: 'NONE'
+          };
+          
+        case 'unknown':
         default:
           return {
-            intent: 'UNKNOWN',
+            intent: 'unknown',
             message: aiResponse.message || "I didn't quite understand that. Could you please rephrase or type 'help' for assistance?",
             requiresAction: 'NONE'
           };
@@ -477,7 +505,7 @@ Extract intent and data from this message. Consider the user context and any ext
     
     if (!amount || !phoneNumber) {
       return {
-        intent: 'TRANSFER_MONEY',
+        intent: 'transfer',
         message: "To send money, I need the amount and recipient's phone number.\n\n📝 Example: 'Send 5000 to John 08123456789'",
         awaitingInput: 'transfer_details',
         context: 'money_transfer'
@@ -488,7 +516,7 @@ Extract intent and data from this message. Consider the user context and any ext
     const transferAmount = this.parseAmount(amount);
     if (transferAmount < 100) {
       return {
-        intent: 'TRANSFER_MONEY',
+        intent: 'transfer',
         message: "Minimum transfer amount is ₦100. Please specify a valid amount.",
         awaitingInput: 'transfer_details',
         context: 'money_transfer'
@@ -499,7 +527,7 @@ Extract intent and data from this message. Consider the user context and any ext
     const wallet = await walletService.getUserWallet(user.id);
     if (!wallet.canDebit(transferAmount)) {
       return {
-        intent: 'TRANSFER_MONEY',
+        intent: 'transfer',
         message: `Insufficient balance! You need ₦${transferAmount.toLocaleString()} but only have ₦${parseFloat(wallet.availableBalance).toLocaleString()}.`,
         requiresAction: 'FUND_WALLET'
       };
@@ -518,7 +546,7 @@ Extract intent and data from this message. Consider the user context and any ext
     });
 
     return {
-      intent: 'TRANSFER_MONEY',
+      intent: 'transfer',
       message: `💸 *Transfer Confirmation*\n\n` +
                `💰 Amount: ₦${transferAmount.toLocaleString()}\n` +
                `👤 To: ${recipient || phoneNumber}\n` +
@@ -542,20 +570,118 @@ Extract intent and data from this message. Consider the user context and any ext
     
     if (!amount || !accountNumber) {
       return {
-        intent: 'BANK_TRANSFER',
+        intent: 'bank_transfer',
         message: "To transfer to a bank account, I need the amount, bank name, and account number.\n\n📝 Example: 'Transfer 10000 to GTBank 0123456789'",
         awaitingInput: 'bank_transfer_details',
         context: 'bank_transfer'
       };
     }
 
-    // Start bank transfer process
-    return await bankTransferService.initiateBankTransfer(user, {
-      amount: this.parseAmount(amount),
-      accountNumber,
-      bankName,
-      bankCode
-    });
+    try {
+      const transferAmount = this.parseAmount(amount);
+      
+      // Validate amount
+      if (transferAmount < 100) {
+        return {
+          intent: 'bank_transfer',
+          message: "Minimum transfer amount is ₦100. Please specify a valid amount.",
+          awaitingInput: 'bank_transfer_details',
+          context: 'bank_transfer'
+        };
+      }
+
+      // Check wallet balance
+      const wallet = await walletService.getUserWallet(user.id);
+      if (!wallet.canDebit(transferAmount)) {
+        return {
+          intent: 'bank_transfer',
+          message: `Insufficient balance! You need ₦${transferAmount.toLocaleString()} but only have ₦${parseFloat(wallet.availableBalance).toLocaleString()}.`,
+          requiresAction: 'FUND_WALLET'
+        };
+      }
+
+      // Map bank name to bank code if not provided
+      const bankMap = {
+        'keystone': '082', 'gtb': '058', 'gtbank': '058', 'access': '044', 'uba': '033', 
+        'fidelity': '070', 'wema': '035', 'union': '032', 'fcmb': '214', 'first': '011', 
+        'fbn': '011', 'zenith': '057', 'stanbic': '221', 'sterling': '232'
+      };
+      
+      const resolvedBankCode = bankCode || bankMap[bankName?.toLowerCase()];
+      
+      if (!resolvedBankCode) {
+        return {
+          intent: 'bank_transfer',
+          message: `I couldn't identify the bank "${bankName}". Please specify a valid bank name like GTBank, Access, UBA, etc.`,
+          awaitingInput: 'bank_transfer_details',
+          context: 'bank_transfer'
+        };
+      }
+
+      // Validate account via BellBank API
+      const bankTransferService = require('./bankTransfer');
+      const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
+      
+      if (!validation.valid) {
+        return {
+          intent: 'bank_transfer',
+          message: `❌ Invalid account details. Please check the account number and bank name.`,
+          awaitingInput: 'bank_transfer_details',
+          context: 'bank_transfer'
+        };
+      }
+
+      // Calculate fees
+      const feeInfo = bankTransferService.calculateTransferFee(transferAmount, bankTransferService.transferTypes.WALLET_TO_BANK);
+      
+      // Store transaction details and request confirmation
+      await user.updateConversationState({
+        intent: 'bank_transfer',
+        awaitingInput: 'confirm_transfer',
+        context: 'bank_transfer_confirmation',
+        step: 1,
+        data: {
+          accountNumber: validation.accountNumber,
+          bankCode: resolvedBankCode,
+          bankName: validation.bank,
+          amount: transferAmount,
+          totalFee: feeInfo.totalFee,
+          totalAmount: feeInfo.totalAmount,
+          narration: 'Wallet transfer',
+          reference: `TXN${Date.now()}`,
+          recipientName: extractedData.recipientName || validation.accountName
+        }
+      });
+
+      const confirmMsg = `💸 *Bank Transfer Confirmation*\n\n` +
+                        `💰 Amount: ₦${transferAmount.toLocaleString()}\n` +
+                        `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
+                        `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
+                        `👤 Recipient: ${validation.accountName}\n` +
+                        `🏦 Bank: ${validation.bank}\n` +
+                        `🔢 Account: ${validation.accountNumber}\n\n` +
+                        `Reply YES to confirm, or NO to cancel.`;
+
+      return {
+        intent: 'bank_transfer',
+        message: confirmMsg,
+        awaitingInput: 'confirm_transfer',
+        context: 'bank_transfer_confirmation'
+      };
+
+    } catch (error) {
+      logger.error('Bank transfer initiation failed', { 
+        error: error.message, 
+        userId: user.id,
+        extractedData 
+      });
+      
+      return {
+        intent: 'bank_transfer',
+        message: `❌ Failed to process bank transfer: ${error.message}. Please try again or contact support.`,
+        requiresAction: 'ERROR'
+      };
+    }
   }
 
   async handleAirtimePurchase(user, extractedData, aiResponse) {
@@ -563,7 +689,7 @@ Extract intent and data from this message. Consider the user context and any ext
     
     if (!amount) {
       return {
-        intent: 'BUY_AIRTIME',
+        intent: 'airtime',
         message: "How much airtime would you like to buy?\n\n📝 Example: 'Buy 1000 airtime for 08123456789'",
         awaitingInput: 'airtime_amount',
         context: 'airtime_purchase'
@@ -585,7 +711,7 @@ Extract intent and data from this message. Consider the user context and any ext
     
     if (!dataSize && !amount) {
       return {
-        intent: 'BUY_DATA',
+        intent: 'data',
         message: "What data bundle would you like to buy?\n\n📝 Examples:\n• 'Buy 1GB data'\n• 'Buy 2000 worth of data'\n• 'Buy 1GB data for 08123456789'",
         awaitingInput: 'data_details',
         context: 'data_purchase'
@@ -607,7 +733,7 @@ Extract intent and data from this message. Consider the user context and any ext
     
     if (!utilityProvider || !meterNumber) {
       return {
-        intent: 'PAY_BILL',
+        intent: 'bills',
         message: "To pay a bill, I need the utility provider and meter/account number.\n\n📝 Examples:\n• 'Pay 5000 electricity EKEDC 12345678901'\n• 'Pay 3000 cable DStv 123456789'",
         awaitingInput: 'bill_details',
         context: 'bill_payment'
@@ -824,8 +950,8 @@ Extract intent and data from this message. Consider the user context and any ext
 
   isTransactionIntent(intent) {
     const transactionIntents = [
-      'TRANSFER_MONEY', 'BANK_TRANSFER', 'BUY_AIRTIME', 
-      'BUY_DATA', 'PAY_BILL'
+      'transfer', 'bank_transfer', 'airtime', 
+      'data', 'bills'
     ];
     return transactionIntents.includes(intent);
   }
@@ -839,7 +965,7 @@ Extract intent and data from this message. Consider the user context and any ext
     if (greetings.some(greeting => lowerMessage.includes(greeting)) || lowerMessage.length < 10) {
       return { 
         success: true, 
-        intent: 'GREETING', 
+        intent: 'greeting', 
         extractedData: {}, 
         confidence: 0.9,
         message: `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`
@@ -849,7 +975,7 @@ Extract intent and data from this message. Consider the user context and any ext
     // Default fallback
       return { 
         success: true, 
-      intent: 'UNKNOWN', 
+      intent: 'unknown', 
         extractedData: {}, 
       confidence: 0.5,
       message: `I'm not sure I understood that. You can say:\n\n💰 "Check my balance"\n💸 "Send 5k to John"\n📱 "Buy 1GB data"\n💳 "Pay electricity bill"\n\nOr just say "help" for more options!`
@@ -995,32 +1121,42 @@ User Context:
 - Onboarding Status: ${user.onboardingStep || 'unknown'}
 - Account Status: ${user.onboardingStep === 'completed' ? 'completed' : 'incomplete'}
 
-Possible Intents:
-1. onboarding/setup_account - User wants to start or continue account setup
-2. balance/check_balance - User wants to check account balance
-3. transfer/send_money - User wants to transfer money
-4. airtime/buy_airtime - User wants to buy airtime
-5. data/buy_data - User wants to buy data
-6. bills/pay_bills - User wants to pay bills
-7. help/support - User needs help or support
-8. menu/services - User wants to see available services
-9. account_details - User wants account information
-10. greeting - General greeting or hello
-11. unknown - Cannot determine intent
+IMPORTANT: Use these exact intent names:
+1. "transfer" - User wants to send money to another person (P2P)
+2. "bank_transfer" - User wants to transfer money to a bank account
+3. "balance" - User wants to check account balance
+4. "airtime" - User wants to buy airtime
+5. "data" - User wants to buy data
+6. "bills" - User wants to pay bills
+7. "help" - User needs help or support
+8. "menu" - User wants to see available services
+9. "account_details" - User wants account information
+10. "greeting" - General greeting or hello
+11. "unknown" - Cannot determine intent
+
+For bank transfers, look for:
+- Amount (e.g., "5k", "5000", "10k")
+- Account number (10 digits)
+- Bank name (e.g., "keystone", "gtb", "access")
+
+For money transfers, look for:
+- Amount
+- Phone number (11 digits)
+- Recipient name
 
 Instructions:
 - Analyze the message content and context
 - Consider user's onboarding status
-- Return the most likely intent
+- Return the most likely intent using the exact names above
 - Provide confidence level (0-1)
 - Suggest appropriate action
 
 Response format:
 {
-  "intent": "intent_name",
+  "intent": "bank_transfer",
   "confidence": 0.95,
-  "suggestedAction": "action_description",
-  "reasoning": "why this intent was chosen"
+  "suggestedAction": "Validate account details and request confirmation",
+  "reasoning": "Message contains amount (5k), account number (6035745691), and bank name (keystone)"
 }`;
 
       // Log the API key being used for intent analysis
