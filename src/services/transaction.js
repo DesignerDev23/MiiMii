@@ -7,6 +7,117 @@ const aiService = require('./ai');
 const logger = require('../utils/logger');
 
 class TransactionService {
+  // Create a new transaction record
+  async createTransaction(userId, transactionData) {
+    try {
+      const {
+        type,
+        category,
+        subCategory,
+        amount,
+        fee = 0,
+        platformFee = 0,
+        providerFee = 0,
+        totalAmount,
+        currency = 'NGN',
+        description,
+        reference,
+        recipientDetails,
+        metadata,
+        status = 'pending',
+        source = 'whatsapp',
+        priority = 'normal',
+        approvalStatus = 'auto_approved'
+      } = transactionData;
+
+      // Generate reference if not provided
+      const finalReference = reference || Transaction.generateReference(type, category);
+
+      // Calculate total amount if not provided
+      const finalTotalAmount = totalAmount || (parseFloat(amount) + parseFloat(fee) + parseFloat(platformFee) + parseFloat(providerFee));
+
+      const transaction = await Transaction.create({
+        userId,
+        reference: finalReference,
+        type,
+        category,
+        subCategory,
+        amount: parseFloat(amount),
+        fee: parseFloat(fee),
+        platformFee: parseFloat(platformFee),
+        providerFee: parseFloat(providerFee),
+        totalAmount: parseFloat(finalTotalAmount),
+        currency,
+        description,
+        recipientDetails,
+        metadata,
+        status,
+        source,
+        priority,
+        approvalStatus,
+        processedAt: status === 'completed' ? new Date() : null
+      });
+
+      logger.info('Transaction created successfully', {
+        transactionId: transaction.id,
+        reference: transaction.reference,
+        userId,
+        type,
+        category,
+        amount: transaction.amount,
+        status: transaction.status
+      });
+
+      return transaction;
+    } catch (error) {
+      logger.error('Failed to create transaction', {
+        error: error.message,
+        userId,
+        transactionData
+      });
+      throw error;
+    }
+  }
+
+  // Update transaction status
+  async updateTransactionStatus(reference, status, additionalData = {}) {
+    try {
+      const transaction = await Transaction.findOne({ where: { reference } });
+      
+      if (!transaction) {
+        throw new Error(`Transaction with reference ${reference} not found`);
+      }
+
+      const updateData = {
+        status,
+        ...additionalData
+      };
+
+      // Set processedAt if status is completed
+      if (status === 'completed') {
+        updateData.processedAt = new Date();
+      }
+
+      await transaction.update(updateData);
+
+      logger.info('Transaction status updated', {
+        reference,
+        oldStatus: transaction.status,
+        newStatus: status,
+        additionalData: Object.keys(additionalData)
+      });
+
+      return transaction;
+    } catch (error) {
+      logger.error('Failed to update transaction status', {
+        error: error.message,
+        reference,
+        status
+      });
+      throw error;
+    }
+  }
+
   async initiateTransfer(user, transferData, userPhoneNumber) {
     try {
       const { recipientPhone, amount, description, recipientName } = transferData;

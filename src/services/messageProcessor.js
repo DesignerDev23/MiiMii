@@ -231,7 +231,17 @@ class MessageProcessor {
         default:
           // Check if user is awaiting PIN verification
           if (user.conversationState?.awaitingInput === 'pin_verification') {
-            return await this.handlePinVerification(user, message, messageType);
+            // Only proceed if we have valid transfer data
+            if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
+              return await this.handlePinVerification(user, message, messageType);
+            } else {
+              // Clear invalid conversation state and ask user to start over
+              await user.updateConversationState(null);
+              const whatsappService = require('./whatsapp');
+              await whatsappService.sendTextMessage(user.whatsappNumber, 
+                "I couldn't find your transfer details. Please try your transfer request again.");
+              return;
+            }
           }
           
           // If AI couldn't determine intent, try traditional processing
@@ -1512,6 +1522,19 @@ class MessageProcessor {
       if (!transferData) {
         await whatsappService.sendTextMessage(user.whatsappNumber, 
           "I couldn't find your transfer details. Please try your transfer request again.");
+        
+        // Clear any invalid conversation state
+        await user.updateConversationState(null);
+        return;
+      }
+
+      // Validate that we have the required transfer data
+      if (!transferData.amount || !transferData.accountNumber || !transferData.bankCode) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "Transfer details are incomplete. Please try your transfer request again.");
+        
+        // Clear invalid conversation state
+        await user.updateConversationState(null);
         return;
       }
 
@@ -1543,11 +1566,22 @@ class MessageProcessor {
     } catch (error) {
       logger.error('PIN verification failed', { 
         error: error.message, 
-        userId: user.id 
+        userId: user.id,
+        conversationState: user.conversationState
       });
       
-      await whatsappService.sendTextMessage(user.whatsappNumber, 
-        `❌ ${error.message}. Please try again or contact support if the issue persists.`);
+      // Provide a more helpful error message
+      let errorMessage = "❌ Transfer failed. Please try again or contact support if the issue persists.";
+      
+      if (error.message.includes('createTransaction')) {
+        errorMessage = "❌ System error: Transaction service unavailable. Please try again in a moment.";
+      } else if (error.message.includes('Insufficient')) {
+        errorMessage = "❌ Insufficient wallet balance. Please fund your wallet first.";
+      } else if (error.message.includes('PIN')) {
+        errorMessage = "❌ Invalid PIN. Please check your PIN and try again.";
+      }
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
       
       // Clear conversation state on error
       await user.updateConversationState(null);
