@@ -95,6 +95,20 @@ class BankTransferService {
         throw new Error('Account number must be 10 digits');
       }
 
+      // Handle test accounts for development/testing
+      if (bankCode === '000023' || bankCode === '000024') {
+        logger.info('Using test account validation', { accountNumber, bankCode });
+        return {
+          valid: true,
+          accountNumber,
+          bankCode,
+          accountName: 'TEST ACCOUNT HOLDER',
+          bank: 'Test Bank',
+          currency: 'NGN',
+          test: true
+        };
+      }
+
       // Use BellBank name enquiry for account validation
       const accountDetails = await bellbankService.nameEnquiry(accountNumber, bankCode);
       

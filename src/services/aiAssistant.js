@@ -189,6 +189,19 @@ For money transfers, extract:
 - phoneNumber (11-digit Nigerian number)
 - recipientName (if provided)
 
+IMPORTANT EXTRACTION RULES:
+1. Amount: Look for numbers followed by "k" (5k = 5000) or plain numbers
+2. Account Number: Look for 10-digit numbers
+3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, etc.)
+4. Recipient Name: Look for names before account numbers or bank names
+
+Example: "Send 5k to Abdulkadir Musa 6035745691 keystone bank"
+Should extract:
+- amount: 5000
+- accountNumber: "6035745691"
+- bankName: "keystone"
+- recipientName: "Abdulkadir Musa"
+
 Be accurate, helpful, and always prioritize user security.`;
 
     // Test API key validity on startup
@@ -1144,17 +1157,30 @@ For money transfers, look for:
 - Phone number (11 digits)
 - Recipient name
 
+EXTRACTION RULES:
+1. Amount: Convert "5k" to 5000, "10k" to 10000, etc.
+2. Account Number: Find 10-digit numbers
+3. Bank Name: Look for bank names in the message
+4. Recipient Name: Look for names before account numbers
+
 Instructions:
 - Analyze the message content and context
 - Consider user's onboarding status
 - Return the most likely intent using the exact names above
 - Provide confidence level (0-1)
 - Suggest appropriate action
+- Extract relevant data if present
 
 Response format:
 {
   "intent": "bank_transfer",
   "confidence": 0.95,
+  "extractedData": {
+    "amount": 5000,
+    "accountNumber": "6035745691",
+    "bankName": "keystone",
+    "recipientName": "Abdulkadir Musa"
+  },
   "suggestedAction": "Validate account details and request confirmation",
   "reasoning": "Message contains amount (5k), account number (6035745691), and bank name (keystone)"
 }`;

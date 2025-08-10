@@ -1256,14 +1256,124 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Please complete your account setup first before making transfers.");
+        "Hey! 👋 I'd love to help you with transfers, but we need to complete your account setup first. It's quick and secure! Just let me know when you're ready to get started.");
       return;
     }
 
     const whatsappService = require('./whatsapp');
     const bankTransferService = require('./bankTransfer');
 
+    // First, let's use AI to analyze the message and extract data
+    const aiAssistant = require('./aiAssistant');
+    const aiAnalysis = await aiAssistant.analyzeUserIntent(message?.text || '', user);
+    
+    logger.info('AI transfer analysis', {
+      intent: aiAnalysis.intent,
+      confidence: aiAnalysis.confidence,
+      extractedData: aiAnalysis.extractedData || {}
+    });
+
+    // If AI detected bank_transfer intent with high confidence, use AI processing
+    if (aiAnalysis.intent === 'bank_transfer' && aiAnalysis.confidence > 0.8) {
+      try {
+        const extractedData = aiAnalysis.extractedData || {};
+        const { amount, accountNumber, bankName, bankCode, recipientName } = extractedData;
+        
+        if (!amount || !accountNumber) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "I can see you want to make a bank transfer! 💸\n\nTo help you better, I need:\n• The amount (like 5k or 5000)\n• The account number (10 digits)\n• The bank name\n\nTry something like: *Send 5k to John 1234567890 GTBank*");
+          return;
+        }
+
+        const transferAmount = this.parseAmount(amount);
+        
+        // Validate amount
+        if (transferAmount < 100) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "The minimum transfer amount is ₦100. Please specify a higher amount.");
+          return;
+        }
+
+        // Map bank name to code if not provided
+        const bankMap = {
+          'keystone': '082', 'gtb': '058', 'gtbank': '058', 'access': '044', 'uba': '033', 
+          'fidelity': '070', 'wema': '035', 'union': '032', 'fcmb': '214', 'first': '011', 
+          'fbn': '011', 'zenith': '057', 'stanbic': '221', 'sterling': '232',
+          'test': '000023', 'testbank': '000023' // For testing
+        };
+        
+        const resolvedBankCode = bankCode || bankMap[bankName?.toLowerCase()];
+        
+        if (!resolvedBankCode) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            `I couldn't identify the bank "${bankName}". Please use a valid bank name like GTBank, Access, UBA, Zenith, etc.`);
+          return;
+        }
+
+        // Show processing message
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "🔍 Validating account details... Please wait a moment.");
+
+        // Validate account via BellBank API
+        const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
+        
+        if (!validation.valid) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "❌ I couldn't validate those account details. Please double-check the account number and bank name, then try again.");
+          return;
+        }
+
+        // Calculate fees
+        const feeInfo = bankTransferService.calculateTransferFee(transferAmount, bankTransferService.transferTypes.WALLET_TO_BANK);
+        
+        // Store transaction details and request confirmation
+        await user.updateConversationState({
+          intent: 'bank_transfer',
+          awaitingInput: 'confirm_transfer',
+          context: 'bank_transfer_confirmation',
+          step: 1,
+          data: {
+            accountNumber: validation.accountNumber,
+            bankCode: resolvedBankCode,
+            bankName: validation.bank,
+            amount: transferAmount,
+            totalFee: feeInfo.totalFee,
+            totalAmount: feeInfo.totalAmount,
+            narration: 'Wallet transfer',
+            reference: `TXN${Date.now()}`,
+            recipientName: recipientName || validation.accountName
+          }
+        });
+
+        const confirmMsg = `💸 *Transfer Confirmation*\n\n` +
+                          `💰 Amount: ₦${transferAmount.toLocaleString()}\n` +
+                          `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
+                          `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
+                          `👤 Recipient: ${validation.accountName}\n` +
+                          `🏦 Bank: ${validation.bank}\n` +
+                          `🔢 Account: ${validation.accountNumber}\n\n` +
+                          `Does this look correct? Reply *YES* to confirm or *NO* to cancel.`;
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, confirmMsg);
+        return;
+
+      } catch (error) {
+        logger.error('AI transfer processing failed', { 
+          error: error.message, 
+          userId: user.id,
+          aiAnalysis 
+        });
+        
+        // Fallback to manual processing
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble processing that transfer request. Let me help you manually:\n\nPlease send:\n• Amount (e.g., 5k or 5000)\n• Account number (10 digits)\n• Bank name\n\nExample: *Send 5k to 1234567890 GTBank*");
+        return;
+      }
+    }
+
+    // Fallback to traditional parsing for lower confidence or other transfer types
     const text = (message?.text || '').toLowerCase();
+    
     // Try to parse quick intent: amount, account number, bank name/code
     const amountMatch = message?.text?.match(/(\d+[\d,]*)(?:\s*(?:ngn|naira|₦|k|k\b))?/i);
     let amount = null;
@@ -1276,11 +1386,11 @@ class MessageProcessor {
     const acctMatch = message?.text?.match(/\b(\d{10})\b/);
     const accountNumber = acctMatch ? acctMatch[1] : null;
 
-    // Map common bank mentions to codes (add more as needed)
+    // Map common bank mentions to codes
     const bankMap = {
       zenith: '057', gtb: '058', gtbank: '058', access: '044', uba: '033', fidelity: '070', wema: '035',
       union: '032', fcmb: '214', first: '011', fbn: '011', keystone: '082', stanbic: '221', sterling: '232',
-      bell: '000023', bellbank: '000023', bells: '000023'
+      bell: '000023', bellbank: '000023', bells: '000023', test: '000023', testbank: '000023'
     };
     let bankCode = null;
     for (const key of Object.keys(bankMap)) {
@@ -1288,21 +1398,21 @@ class MessageProcessor {
     }
 
     if (amount && accountNumber && bankCode) {
-      // Validate account via provider (or mock)
+      // Process the transfer (same logic as above)
       try {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "🔍 Validating account details... Please wait a moment.");
+
         const validation = await bankTransferService.validateBankAccount(accountNumber, bankCode);
-        if (!validation.valid) throw new Error('Invalid account details');
+        
+        if (!validation.valid) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "❌ I couldn't validate those account details. Please double-check the account number and bank name.");
+          return;
+        }
 
         const feeInfo = bankTransferService.calculateTransferFee(amount, bankTransferService.transferTypes.WALLET_TO_BANK);
-        const confirmMsg = `Please confirm this transfer:\n\n` +
-                           `💰 Amount: ₦${feeInfo.amount.toLocaleString()}\n` +
-                           `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
-                           `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
-                           `👤 Recipient: ${validation.accountName}\n` +
-                           `🏦 Bank: ${validation.bank}\n` +
-                           `🔢 Account: ${validation.accountNumber}\n\n` +
-                           `Reply YES to confirm, or NO to cancel.`;
-
+        
         await user.updateConversationState({
           intent: 'bank_transfer',
           awaitingInput: 'confirm_transfer',
@@ -1310,29 +1420,52 @@ class MessageProcessor {
           step: 1,
           data: {
             accountNumber: validation.accountNumber,
-            bankCode: validation.bankCode,
+            bankCode: bankCode,
             bankName: validation.bank,
-            amount: feeInfo.amount,
+            amount: amount,
             totalFee: feeInfo.totalFee,
             totalAmount: feeInfo.totalAmount,
             narration: 'Wallet transfer',
-            reference: `TXN${Date.now()}`
+            reference: `TXN${Date.now()}`,
+            recipientName: validation.accountName
           }
         });
 
+        const confirmMsg = `💸 *Transfer Confirmation*\n\n` +
+                          `💰 Amount: ₦${amount.toLocaleString()}\n` +
+                          `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
+                          `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
+                          `👤 Recipient: ${validation.accountName}\n` +
+                          `🏦 Bank: ${validation.bank}\n` +
+                          `🔢 Account: ${validation.accountNumber}\n\n` +
+                          `Does this look correct? Reply *YES* to confirm or *NO* to cancel.`;
+
         await whatsappService.sendTextMessage(user.whatsappNumber, confirmMsg);
         return;
+
       } catch (err) {
-        await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${err.message}. Please recheck the details or provide bank name.`);
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          `❌ ${err.message}. Please recheck the details or try a different bank.`);
         return;
       }
     }
 
-    // Fall back to asking for structured details
-    await whatsappService.sendTextMessage(
-      user.whatsappNumber,
-      "💸 *Money Transfer*\n\nPlease send in one message:\n• Amount (e.g. 5k or 5000)\n• Account number (10 digits)\n• Bank name (e.g. BellBank)\n\nExample: Send 5k to 00308267834627 bellbank"
-    );
+    // If we couldn't parse the transfer details, ask for them
+    await whatsappService.sendTextMessage(user.whatsappNumber, 
+      "I'd love to help you with that transfer! 💸\n\nTo make it quick and easy, please send me:\n• Amount (like 5k or 5000)\n• Account number (10 digits)\n• Bank name\n\nFor example: *Send 5k to 1234567890 GTBank*");
+  }
+
+  // Helper method to parse amounts
+  parseAmount(amountStr) {
+    if (!amountStr) return 0;
+    
+    // Handle "k" suffix (thousands)
+    if (amountStr.toString().toLowerCase().includes('k')) {
+      return parseInt(amountStr.replace(/[k,\s]/gi, '')) * 1000;
+    }
+    
+    // Handle regular numbers with commas
+    return parseInt(amountStr.toString().replace(/[,\s]/g, ''));
   }
 
   /**

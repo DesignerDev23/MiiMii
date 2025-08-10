@@ -297,31 +297,51 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
-      const response = await this.makeRequest('POST', '/v1/transfer/name-enquiry', {
-        accountNumber: accountNumber.toString(),
+      // According to BellBank docs, the endpoint should be /v1/transfer/name-enquiry
+      // and the payload should match their specification
+      const payload = {
+        accountNumber: accountNumber.toString().padStart(10, '0'), // Ensure 10 digits
         bankCode: bankCode.toString()
-      }, {
+      };
+
+      logger.info('Making BellBank name enquiry', {
+        accountNumber: payload.accountNumber,
+        bankCode: payload.bankCode,
+        endpoint: '/v1/transfer/name-enquiry'
+      });
+
+      const response = await this.makeRequest('POST', '/v1/transfer/name-enquiry', payload, {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
+      });
+
+      logger.info('BellBank name enquiry response', {
+        success: response.success,
+        hasData: !!response.data,
+        accountName: response.data?.accountName || response.data?.account_name,
+        bankName: response.data?.bankName || response.data?.bank_name
       });
 
       if (response.success && response.data) {
         return {
           success: true,
-          accountName: response.data.accountName,
-          accountNumber: response.data.accountNumber,
-          bankCode: response.data.bankCode,
-          bankName: response.data.bankName,
-          sessionId: response.data.sessionId
+          accountName: response.data.accountName || response.data.account_name,
+          accountNumber: response.data.accountNumber || response.data.account_number,
+          bankCode: response.data.bankCode || response.data.bank_code,
+          bankName: response.data.bankName || response.data.bank_name,
+          sessionId: response.data.sessionId || response.data.session_id
         };
       } else {
-        throw new Error(response.message || 'Name enquiry failed');
+        // Handle different error response formats
+        const errorMessage = response.message || response.error || response.data?.message || 'Name enquiry failed';
+        throw new Error(errorMessage);
       }
     } catch (error) {
       logger.error('External name enquiry failed', { 
         error: error.message, 
         accountNumber, 
-        bankCode 
+        bankCode,
+        stack: error.stack
       });
       throw error;
     }
@@ -680,341 +700,4 @@ class BellBankService {
         const completionMessage = `✅ *Transfer Successful!*\n\n` +
                                 `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
                                 `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
-                                `📄 Reference: ${transaction.reference}\n` +
-                                `⏰ Completed: ${new Date().toLocaleString()}\n\n` +
-                                `Thank you for using MiiMii! 🎉`;
-
-        await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
-      }
-
-      // Log activity
-      await ActivityLog.logTransactionActivity(
-        transaction.id,
-        transaction.userId,
-        'bank_transfer',
-        'transfer_completed',
-        {
-          source: 'webhook',
-          description: 'Bank transfer completed successfully',
-          amount: transaction.amount,
-          isSuccessful: true
-        }
-      );
-
-      logger.info('Transfer completion processed successfully', {
-        transactionId: transaction.id,
-        reference: data.reference,
-        amount: transaction.amount
-      });
-
-      return { 
-        success: true, 
-        message: 'Transfer completion processed',
-        transaction: transaction.getTransactionSummary()
-      };
-
-    } catch (error) {
-      logger.error('Failed to process transfer completion', { 
-        error: error.message, 
-        webhookData 
-      });
-      return { success: false, error: error.message };
-    }
-  }
-
-  async handleTransferFailed(webhookData) {
-    try {
-      const { data } = webhookData;
-      
-      // Find the transaction by provider reference
-      const transaction = await Transaction.findOne({
-        where: { providerReference: data.reference }
-      });
-
-      if (!transaction) {
-        logger.warn('Transaction not found for transfer failure', { 
-          reference: data.reference 
-        });
-        return { success: false, message: 'Transaction not found' };
-      }
-
-      // Update transaction status
-      await transaction.update({
-        status: 'failed',
-        processedAt: new Date(),
-        failureReason: data.failureReason || 'Transfer failed',
-        providerResponse: data
-      });
-
-      // Refund the user's wallet if amount was debited
-      if (transaction.balanceBefore !== null) {
-        const wallet = await Wallet.findOne({ where: { userId: transaction.userId } });
-        if (wallet) {
-          await wallet.updateBalance(transaction.totalAmount, 'credit', 'Refund for failed transfer');
-          
-          // Create refund transaction
-          await Transaction.create({
-            reference: `RF_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-            userId: transaction.userId,
-            type: 'credit',
-            category: 'refund',
-            amount: parseFloat(transaction.totalAmount),
-            fee: 0,
-            totalAmount: parseFloat(transaction.totalAmount),
-            currency: 'NGN',
-            status: 'completed',
-            description: `Refund for failed transfer ${transaction.reference}`,
-            parentTransactionId: transaction.id,
-            balanceBefore: parseFloat(wallet.balance) - parseFloat(transaction.totalAmount),
-            balanceAfter: parseFloat(wallet.balance),
-            processedAt: new Date(),
-            source: 'system'
-          });
-        }
-      }
-
-      // Find user and send notification
-      const user = await User.findByPk(transaction.userId);
-      if (user) {
-        const failureMessage = `❌ *Transfer Failed*\n\n` +
-                             `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
-                             `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
-                             `📄 Reference: ${transaction.reference}\n` +
-                             `❌ Reason: ${data.failureReason || 'Transfer failed'}\n\n` +
-                             `Your wallet has been refunded. Please try again or contact support if this continues.`;
-
-        await whatsappService.sendTextMessage(user.whatsappNumber, failureMessage);
-      }
-
-      // Log activity
-      await ActivityLog.logTransactionActivity(
-        transaction.id,
-        transaction.userId,
-        'bank_transfer',
-        'transfer_failed',
-        {
-          source: 'webhook',
-          description: 'Bank transfer failed',
-          failureReason: data.failureReason,
-          isSuccessful: false
-        }
-      );
-
-      logger.info('Transfer failure processed successfully', {
-        transactionId: transaction.id,
-        reference: data.reference,
-        failureReason: data.failureReason
-      });
-
-      return { 
-        success: true, 
-        message: 'Transfer failure processed',
-        transaction: transaction.getTransactionSummary()
-      };
-
-    } catch (error) {
-      logger.error('Failed to process transfer failure', { 
-        error: error.message, 
-        webhookData 
-      });
-      return { success: false, error: error.message };
-    }
-  }
-
-  async handleTransferReversed(webhookData) {
-    try {
-      const { data } = webhookData;
-      
-      // Find the original transaction
-      const originalTransaction = await Transaction.findOne({
-        where: { providerReference: data.originalReference }
-      });
-
-      if (!originalTransaction) {
-        logger.warn('Original transaction not found for reversal', { 
-          originalReference: data.originalReference 
-        });
-        return { success: false, message: 'Original transaction not found' };
-      }
-
-      // Create reversal transaction
-      const reversalTransaction = await Transaction.create({
-        reference: `RV_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-        userId: originalTransaction.userId,
-        type: 'credit',
-        category: 'refund',
-        amount: parseFloat(originalTransaction.amount),
-        fee: parseFloat(originalTransaction.fee),
-        totalAmount: parseFloat(originalTransaction.totalAmount),
-        currency: 'NGN',
-        status: 'completed',
-        description: `Reversal of transfer ${originalTransaction.reference}`,
-        parentTransactionId: originalTransaction.id,
-        providerReference: data.reference,
-        providerResponse: data,
-        processedAt: new Date(),
-        source: 'webhook'
-      });
-
-      // Credit back to wallet
-      const wallet = await Wallet.findOne({ where: { userId: originalTransaction.userId } });
-      if (wallet) {
-        reversalTransaction.balanceBefore = parseFloat(wallet.balance);
-        await wallet.updateBalance(originalTransaction.totalAmount, 'credit', 'Transfer reversal');
-        reversalTransaction.balanceAfter = parseFloat(wallet.balance);
-        await reversalTransaction.save();
-      }
-
-      // Update original transaction
-      await originalTransaction.update({
-        status: 'reversed'
-      });
-
-      // Notify user
-      const user = await User.findByPk(originalTransaction.userId);
-      if (user) {
-        const reversalMessage = `🔄 *Transfer Reversed*\n\n` +
-                              `💰 Amount: ₦${parseFloat(originalTransaction.amount).toLocaleString()}\n` +
-                              `📄 Original Reference: ${originalTransaction.reference}\n` +
-                              `📄 Reversal Reference: ${reversalTransaction.reference}\n` +
-                              `💰 Refunded to Wallet: ₦${parseFloat(originalTransaction.totalAmount).toLocaleString()}\n\n` +
-                              `Your money has been refunded to your wallet.`;
-
-        await whatsappService.sendTextMessage(user.whatsappNumber, reversalMessage);
-      }
-
-      logger.info('Transfer reversal processed successfully', {
-        originalTransactionId: originalTransaction.id,
-        reversalTransactionId: reversalTransaction.id,
-        amount: originalTransaction.amount
-      });
-
-      return { 
-        success: true, 
-        message: 'Transfer reversal processed',
-        reversalTransaction: reversalTransaction.getTransactionSummary()
-      };
-
-    } catch (error) {
-      logger.error('Failed to process transfer reversal', { 
-        error: error.message, 
-        webhookData 
-      });
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Utility methods
-  async makeRequest(method, endpoint, data = {}, headers = {}) {
-    return await RetryHelper.retryBankApiCall(async () => {
-      // Rate limiting - ensure minimum 100ms between requests
-      const now = Date.now();
-      const timeSinceLastRequest = now - this.lastRequestTime;
-      if (timeSinceLastRequest < 100) {
-        await new Promise(resolve => setTimeout(resolve, 100 - timeSinceLastRequest));
-      }
-      this.lastRequestTime = Date.now();
-
-      const config = {
-        ...axiosConfig,
-        method,
-        url: `${this.baseURL}${endpoint}`,
-        headers: {
-          ...axiosConfig.headers,
-          'Accept': 'application/json',
-          ...headers
-        },
-        validateStatus: (status) => status < 500 // Don't throw on 4xx errors
-      };
-
-      if (method === 'POST' || method === 'PUT') {
-        config.data = data;
-      } else if (method === 'GET' && Object.keys(data).length > 0) {
-        config.params = data;
-      }
-
-      const response = await axios(config);
-      
-      if (response.status >= 400) {
-        const error = new Error(`HTTP ${response.status}: ${response.data?.message || response.statusText}`);
-        error.response = response;
-        throw error;
-      }
-
-      return response.data;
-    }, {
-      operationName: `bellbank_${method.toLowerCase()}_${endpoint.replace(/\//g, '_')}`
-    });
-  }
-
-  formatPhoneNumber(phoneNumber) {
-    // Convert to international format for BellBank
-    let cleaned = phoneNumber.replace(/\D/g, '');
-    
-    if (cleaned.startsWith('234')) {
-      return `+${cleaned}`;
-    } else if (cleaned.startsWith('0')) {
-      return `+234${cleaned.substring(1)}`;
-    } else if (cleaned.length === 10) {
-      return `+234${cleaned}`;
-    } else {
-      return `+234${cleaned}`;
-    }
-  }
-
-  formatDateForBellBank(dateString) {
-    // Convert DD/MM/YYYY to YYYY/MM/DD format
-    if (dateString.includes('/')) {
-      const parts = dateString.split('/');
-      if (parts.length === 3) {
-        if (parts[2].length === 4) {
-          // DD/MM/YYYY format
-          return `${parts[2]}/${parts[1]}/${parts[0]}`;
-        } else {
-          // Assume YYYY/MM/DD already
-          return dateString;
-        }
-      }
-    }
-    
-    // If it's a Date object or ISO string
-    const date = new Date(dateString);
-    if (!isNaN(date.getTime())) {
-      return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
-    }
-    
-    throw new Error('Invalid date format');
-  }
-
-  verifyWebhookSignature(payload, signature) {
-    if (!this.webhookSecret) {
-      logger.warn('Webhook secret not configured - skipping signature verification');
-      return true; // Allow if not configured (for development)
-    }
-
-    try {
-      const crypto = require('crypto');
-      const expectedSignature = crypto
-        .createHmac('sha256', this.webhookSecret)
-        .update(payload)
-        .digest('hex');
-      
-      return signature === expectedSignature;
-    } catch (error) {
-      logger.error('Webhook signature verification failed', { error: error.message });
-      return false;
-    }
-  }
-
-  // Health check method
-  async healthCheck() {
-    try {
-      const token = await this.generateToken();
-      return { healthy: true, token: !!token };
-    } catch (error) {
-      return { healthy: false, error: error.message };
-    }
-  }
-}
-
-module.exports = new BellBankService();
+                                `
