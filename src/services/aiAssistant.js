@@ -1296,12 +1296,21 @@ Should extract:
 And respond with something like:
 "Great! I can see you want to send ₦5,000 to the test account. Perfect for testing! Just provide your PIN to authorize this transfer. 🔐"
 
+Example: "Let me have my transaction history"
+Should respond with:
+"I'll get your transaction history for you right away! 📊"
+
+Example: "Check my balance"
+Should respond with:
+"I'll check your current balance for you! 💰"
+
 Instructions:
 - Analyze the message content and context
 - Consider user's onboarding status
 - Return the most likely intent using the exact names above
 - Provide confidence level (0-1)
-- Generate a conversational response that confirms details and asks for PIN
+- For transfer intents: Generate a conversational response that confirms details and asks for PIN
+- For non-transfer intents: Generate a friendly response that acknowledges the request
 - Extract relevant data if present
 
 Response format:

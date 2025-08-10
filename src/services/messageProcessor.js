@@ -1,9 +1,9 @@
-const aiAssistantService = require('./aiAssistant');
-const whatsappService = require('./whatsapp');
 const userService = require('./user');
 const onboardingService = require('./onboarding');
-const ocrService = require('./ocr');
-const transcriptionService = require('./transcription');
+const whatsappService = require('./whatsapp');
+const aiAssistantService = require('./aiAssistant');
+const whatsappFlowService = require('./whatsappFlowService');
+const ActivityLog = require('../models/ActivityLog');
 const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
 
@@ -701,70 +701,87 @@ class MessageProcessor {
       );
 
       // Process with AI Assistant for intent recognition and response
-      const aiProcessingResult = await aiAssistantService.processUserMessage(
-        user.whatsappNumber, 
-        processedText, 
-        messageType,
-        extractedData
-      );
+      const aiAssistant = require('./aiAssistant');
+      const aiAnalysis = await aiAssistant.analyzeUserIntent(processedText, user);
+      
+      logger.info('AI intent analysis result', {
+        userId: user.id,
+        originalMessage: processedText,
+        detectedIntent: aiAnalysis.intent,
+        confidence: aiAnalysis.confidence,
+        suggestedAction: aiAnalysis.suggestedAction
+      });
 
-      // Handle the AI processing result
-      if (aiProcessingResult.success) {
-        const { result } = aiProcessingResult;
-        
-        // Send response message
-        if (result.message) {
-          await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
-          
-          // Log outgoing message
-          await ActivityLog.logUserActivity(
-            user.id,
-            'whatsapp_message_sent',
-            'response_sent',
-            {
-              source: 'whatsapp',
-              description: 'Sent AI response to user',
-              responseType: result.intent || 'general'
-            }
-          );
-        }
-        
-        // Handle specific response types
-        if (result.awaitingInput) {
-          // Store conversation state for next message
-          await this.storeConversationState(user, result);
-        }
-        
-        if (result.transactionDetails) {
-          // Send transaction receipt
-          await this.sendTransactionReceipt(user, result.transactionDetails);
-        }
-        
-        if (result.requiresAction) {
-          await this.handleSpecialActions(user, result);
-        }
-
-      } else if (aiProcessingResult.error) {
-        // Send error response
-        await whatsappService.sendTextMessage(user.whatsappNumber, aiProcessingResult.userFriendlyResponse);
-        
-        // Log error
-        await ActivityLog.logUserActivity(
-          user.id,
-          'whatsapp_message_sent',
-          'error_response_sent',
-          {
-            source: 'whatsapp',
-            description: 'Sent error response to user',
-            errorType: aiProcessingResult.errorType || 'general'
+      // Handle the AI analysis result
+      if (aiAnalysis.intent && aiAnalysis.confidence > 0.7) {
+        // Check if user is awaiting PIN verification
+        if (user.conversationState?.awaitingInput === 'pin_verification') {
+          // Only proceed if we have valid transfer data
+          if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
+            return await this.handlePinVerification(user, { text: processedText }, messageType);
+          } else {
+            // Clear invalid conversation state and ask user to start over
+            await user.updateConversationState(null);
+            await whatsappService.sendTextMessage(user.whatsappNumber, 
+              "I couldn't find your transfer details. Please try your transfer request again.");
+            return;
           }
-        );
+        }
+
+        // Handle different intents
+        switch (aiAnalysis.intent) {
+          case 'transaction_history':
+            await aiAssistant.handleTransactionHistory(user, aiAnalysis.extractedData);
+            break;
+            
+          case 'balance':
+          case 'balance_inquiry':
+            await aiAssistant.handleBalanceInquiry(user);
+            break;
+            
+          case 'wallet_details':
+          case 'account_info':
+          case 'account_details':
+            await aiAssistant.handleWalletDetails(user);
+            break;
+            
+          case 'transfer_limits':
+            await aiAssistant.handleTransferLimits(user);
+            break;
+            
+          case 'bank_transfer':
+            return await this.handleTransferIntent(user, { text: processedText }, messageType);
+            
+          case 'transfer':
+            return await this.handleTransferIntent(user, { text: processedText }, messageType);
+            
+          case 'airtime':
+            return await this.handleAirtimeIntent(user, { text: processedText }, messageType);
+            
+          case 'data':
+            return await this.handleDataIntent(user, { text: processedText }, messageType);
+            
+          case 'bills':
+            return await this.handleBillsIntent(user, { text: processedText }, messageType);
+            
+          case 'help':
+            return await this.handleHelpIntent(user, { text: processedText }, messageType);
+            
+          case 'menu':
+            return await this.handleMenuIntent(user, { text: processedText }, messageType);
+            
+          case 'greeting':
+            const greetingMessage = `Hello ${user.firstName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`;
+            await whatsappService.sendTextMessage(user.whatsappNumber, greetingMessage);
+            break;
+            
+          default:
+            // If AI couldn't determine intent, try traditional processing
+            return await this.processMessageByType(user, userName, { text: processedText }, messageType);
+        }
       } else {
-        // Fallback response
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber, 
-          "I'm here to help! Type 'help' to see what I can do for you."
-        );
+        // If AI couldn't determine intent, try traditional processing
+        return await this.processMessageByType(user, userName, { text: processedText }, messageType);
       }
 
     } catch (error) {
