@@ -512,7 +512,7 @@ Extract intent and data from this message. Consider the user context and any ext
       
         case 'transaction_history':
           return await this.handleTransactionHistory(user, extractedData);
-      
+          
         case 'transfer_limits':
           return await this.handleTransferLimits(user);
       

@@ -601,7 +601,7 @@ class TransactionService {
         order: [['createdAt', 'DESC']],
         limit: limit
       });
-
+      
       if (transactions.length === 0) {
         await whatsappService.sendTextMessage(
           userPhoneNumber,
@@ -629,7 +629,7 @@ class TransactionService {
         if (transaction.description) {
           historyText += `📝 Note: ${transaction.description}\n`;
         }
-
+        
         if (index < transactions.length - 1) {
           historyText += '\n';
         }

@@ -90,60 +90,20 @@ class BellBankService {
         return this.token;
       }
 
-      // Try different payload formats for BellBank API
-      const payload = {
-        consumerKey: this.consumerKey.trim(),
-        consumerSecret: this.consumerSecret.trim(),
-        validityTime: this.validityTime.toString()
-      };
-
-      // Debug: Log the exact payload being sent (without exposing secrets)
-      logger.info('BellBank token request payload', {
-        hasConsumerKey: !!payload.consumerKey,
-        hasConsumerSecret: !!payload.consumerSecret,
-        consumerKeyLength: payload.consumerKey ? payload.consumerKey.length : 0,
-        consumerSecretLength: payload.consumerSecret ? payload.consumerSecret.length : 0,
-        validityTime: payload.validityTime,
-        payloadKeys: Object.keys(payload)
-      });
-
-      // Try with additional headers that might be required
+      // BellBank API expects consumerKey, consumerSecret, and validityTime in the request headers
       const headers = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'User-Agent': 'MiiMii/1.0'
+        'User-Agent': 'MiiMii/1.0',
+        'consumerKey': this.consumerKey.trim(), // As per documentation
+        'consumerSecret': this.consumerSecret.trim(), // As per documentation
+        'validityTime': this.validityTime.toString() // As per documentation
       };
 
-      let response;
-      try {
-        response = await this.makeRequest('POST', '/v1/generate-token', payload, headers);
-      } catch (error) {
-        // If production fails, try sandbox as fallback
-        if (this.selectedEnvironment === 'production' && error.message.includes('consumerKey')) {
-          logger.warn('Production BellBank token generation failed, trying sandbox as fallback', {
-            error: error.message,
-            originalEnvironment: this.selectedEnvironment
-          });
-          
-          // Temporarily switch to sandbox
-          const originalBaseURL = this.baseURL;
-          this.baseURL = this.sandboxURL;
-          
-          try {
-            response = await this.makeRequest('POST', '/v1/generate-token', payload, headers);
-            logger.info('BellBank token generated successfully using sandbox fallback');
-          } catch (sandboxError) {
-            // Restore original base URL
-            this.baseURL = originalBaseURL;
-            throw sandboxError;
-          }
-          
-          // Restore original base URL
-          this.baseURL = originalBaseURL;
-        } else {
-          throw error;
-        }
-      }
+      // The payload for generate-token endpoint is empty as per documentation
+      const payload = {}; 
+
+      const response = await this.makeRequest('POST', '/v1/generate-token', payload, headers);
 
       if (response.success) {
         this.token = response.token;
@@ -825,8 +785,8 @@ class BellBankService {
       });
 
       // Refund the user's wallet
-      const wallet = await Wallet.findOne({ where: { userId: transaction.userId } });
-      if (wallet) {
+        const wallet = await Wallet.findOne({ where: { userId: transaction.userId } });
+        if (wallet) {
         await wallet.updateBalance(transaction.totalAmount, 'credit', 'Transfer refund');
       }
 
@@ -1211,7 +1171,17 @@ class BellBankService {
       if (method === 'GET') {
         config.params = data;
       } else {
-        config.data = data;
+        // Handle different data formats
+        if (typeof data === 'string' && headers['Content-Type'] === 'application/x-www-form-urlencoded') {
+          // Form data as string
+          config.data = data;
+        } else if (typeof data === 'object') {
+          // JSON data
+          config.data = data;
+        } else {
+          // Default to JSON
+          config.data = data;
+        }
       }
 
       logger.info('Making BellBank API request', {
@@ -1220,8 +1190,9 @@ class BellBankService {
         url,
         hasData: !!Object.keys(data).length,
         hasHeaders: !!Object.keys(headers).length,
-        dataKeys: Object.keys(data),
-        headerKeys: Object.keys(headers)
+        dataKeys: typeof data === 'object' ? Object.keys(data) : ['string_data'],
+        headerKeys: Object.keys(headers),
+        contentType: headers['Content-Type']
       });
 
       // Debug: Log the exact request configuration (without sensitive data)
@@ -1229,13 +1200,14 @@ class BellBankService {
         logger.info('BellBank token request details', {
           method,
           url,
-          dataKeys: Object.keys(data),
-          hasConsumerKey: !!data.consumerKey,
-          hasConsumerSecret: !!data.consumerSecret,
-          consumerKeyLength: data.consumerKey ? data.consumerKey.length : 0,
-          consumerSecretLength: data.consumerSecret ? data.consumerSecret.length : 0,
-          validityTime: data.validityTime,
-          headers: Object.keys(config.headers)
+          dataKeys: typeof data === 'object' ? Object.keys(data) : ['string_data'],
+          hasConsumerKey: typeof data === 'object' ? !!data.consumerKey : data.includes('consumerKey'),
+          hasConsumerSecret: typeof data === 'object' ? !!data.consumerSecret : data.includes('consumerSecret'),
+          consumerKeyLength: typeof data === 'object' ? (data.consumerKey ? data.consumerKey.length : 0) : 'N/A',
+          consumerSecretLength: typeof data === 'object' ? (data.consumerSecret ? data.consumerSecret.length : 0) : 'N/A',
+          validityTime: typeof data === 'object' ? data.validityTime : 'N/A',
+          headers: Object.keys(config.headers),
+          contentType: headers['Content-Type']
         });
       }
 
@@ -1291,14 +1263,7 @@ class BellBankService {
     return true;
   }
 
-  async healthCheck() {
-    try {
-      const token = await this.generateToken();
-      return { success: true, message: 'BellBank service is healthy' };
-    } catch (error) {
-      return { success: false, message: error.message };
-    }
-  }
+
 }
 
 module.exports = new BellBankService();
