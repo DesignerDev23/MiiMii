@@ -166,6 +166,12 @@ class MessageProcessor {
       // Analyze user message with AI to determine intent
       const aiAssistant = require('./aiAssistant');
       const intentAnalysis = await aiAssistant.analyzeUserIntent(messageContent, user);
+
+      // If user is already onboarded, never route to onboarding
+      if (user.onboardingStep === 'completed' && intentAnalysis.intent === 'onboarding') {
+        intentAnalysis.intent = 'menu';
+        intentAnalysis.suggestedAction = 'Show available services';
+      }
       
       logger.info('AI intent analysis result', {
             userId: user.id,

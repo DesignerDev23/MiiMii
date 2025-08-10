@@ -99,6 +99,13 @@ class Config {
   }
 
   logConfigurationStatus() {
+    // Enhanced AI API key logging
+    const mask = (v) => {
+      if (!v) return 'NOT_SET';
+      if (v.length < 8) return 'TOO_SHORT';
+      return `${v.slice(0, 4)}***${v.slice(-4)}`;
+    };
+    
     logger.info('Configuration loaded for Digital Ocean App Platform', {
       hasDatabaseUrl: !!this.database.url,
       hasWhatsappToken: !!this.whatsapp.accessToken,
@@ -111,6 +118,18 @@ class Config {
       platform: 'DigitalOcean App Platform',
       service: 'config',
       timestamp: new Date().toISOString()
+    });
+    
+    // Detailed AI configuration logging
+    logger.info('AI Configuration Details', {
+      AI_API_KEY: mask(process.env.AI_API_KEY),
+      OPENAI_API_KEY: mask(process.env.OPENAI_API_KEY),
+      AI_MODEL: process.env.AI_MODEL || 'DEFAULT',
+      AI_BASE_URL: process.env.AI_BASE_URL || 'DEFAULT',
+      openaiApiKey: mask(this.openai.apiKey),
+      openaiModel: this.openai.model,
+      apiKeyLength: this.openai.apiKey ? this.openai.apiKey.length : 0,
+      apiKeyStartsWith: this.openai.apiKey ? this.openai.apiKey.substring(0, 3) : 'N/A'
     });
 
     // Generate a fallback JWT secret if none provided (for development/testing)
@@ -139,6 +158,11 @@ class Config {
     if (this.server.nodeEnv === 'production' && !this.server.jwtSecret) {
       missingCritical.push('JWT Secret (APP_SECRET)');
       logger.error('APP_SECRET environment variable is required in production');
+    }
+    
+    if (!this.openai.apiKey) {
+      missingCritical.push('OpenAI API Key (AI_API_KEY or OPENAI_API_KEY)');
+      logger.warn('AI_API_KEY or OPENAI_API_KEY environment variable is missing - AI features will use fallback processing');
     }
 
     if (missingCritical.length > 0) {

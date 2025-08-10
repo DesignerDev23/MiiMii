@@ -18,17 +18,34 @@ class AIAssistantService {
     const envModel = (process.env.AI_MODEL || '').trim();
     this.model = envModel && !/gpt-5/i.test(envModel) ? envModel : 'gpt-4o-mini';
     
+    // Enhanced logging for API key debugging
+    const mask = (v) => {
+      if (!v) return 'NOT_SET';
+      if (v.length < 8) return 'TOO_SHORT';
+      return `${v.slice(0, 4)}***${v.slice(-4)}`;
+    };
+    
+    // Log all relevant environment variables for debugging
+    logger.info('AI Assistant Environment Variables', {
+      AI_API_KEY: mask(process.env.AI_API_KEY),
+      OPENAI_API_KEY: mask(process.env.OPENAI_API_KEY),
+      AI_BASE_URL: process.env.AI_BASE_URL || 'DEFAULT',
+      AI_MODEL: process.env.AI_MODEL || 'DEFAULT',
+      NODE_ENV: process.env.NODE_ENV || 'NOT_SET'
+    });
+    
     // Validate OpenAI configuration
     this.isConfigured = !!this.openaiApiKey;
     if (!this.isConfigured) {
       logger.warn('OpenAI API key not configured - AI features will use fallback processing');
     } else {
-      const mask = (v) => (v && v.length >= 8 ? `${v.slice(0, 4)}***${v.slice(-2)}` : 'SET');
       logger.info('AI assistant initialized', {
         model: this.model,
         baseUrl: this.openaiBaseUrl,
         hasKey: !!this.openaiApiKey,
-        apiKeyPreview: mask(this.openaiApiKey)
+        apiKeyPreview: mask(this.openaiApiKey),
+        apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0,
+        apiKeyStartsWith: this.openaiApiKey ? this.openaiApiKey.substring(0, 3) : 'N/A'
       });
     }
     
@@ -221,6 +238,21 @@ ${extractedData ? `EXTRACTED DATA FROM IMAGE/DOCUMENT:\n${JSON.stringify(extract
 USER MESSAGE: "${message}"
 
 Extract intent and data from this message. Consider the user context and any extracted data. Return a JSON response following the specified format.`;
+
+      // Log the API key being used for the request (masked for security)
+      const mask = (v) => {
+        if (!v) return 'NOT_SET';
+        if (v.length < 8) return 'TOO_SHORT';
+        return `${v.slice(0, 4)}***${v.slice(-4)}`;
+      };
+      
+      logger.info('Making AI API request', {
+        url: `${this.openaiBaseUrl}/chat/completions`,
+        model: this.model,
+        apiKeyUsed: mask(this.openaiApiKey),
+        apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0,
+        apiKeyStartsWith: this.openaiApiKey ? this.openaiApiKey.substring(0, 3) : 'N/A'
+      });
 
       const response = await axios.post(`${this.openaiBaseUrl}/chat/completions`, {
         model: this.model,
@@ -775,6 +807,21 @@ Tone: Friendly, professional, and excited about helping with finances.
 
 Format the response as a WhatsApp message with proper formatting.`;
 
+      // Log the API key being used for welcome message generation
+      const mask = (v) => {
+        if (!v) return 'NOT_SET';
+        if (v.length < 8) return 'TOO_SHORT';
+        return `${v.slice(0, 4)}***${v.slice(-4)}`;
+      };
+      
+      logger.info('Generating personalized welcome message', {
+        url: `${this.openaiBaseUrl}/chat/completions`,
+        model: this.model,
+        apiKeyUsed: mask(this.openaiApiKey),
+        apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0,
+        apiKeyStartsWith: this.openaiApiKey ? this.openaiApiKey.substring(0, 3) : 'N/A'
+      });
+
       const response = await axios.post(
         `${this.openaiBaseUrl}/chat/completions`,
         {
@@ -889,6 +936,21 @@ Response format:
   "reasoning": "why this intent was chosen"
 }`;
 
+      // Log the API key being used for intent analysis
+      const mask = (v) => {
+        if (!v) return 'NOT_SET';
+        if (v.length < 8) return 'TOO_SHORT';
+        return `${v.slice(0, 4)}***${v.slice(-4)}`;
+      };
+      
+      logger.info('Analyzing user intent with AI', {
+        url: `${this.openaiBaseUrl}/chat/completions`,
+        model: this.model,
+        apiKeyUsed: mask(this.openaiApiKey),
+        apiKeyLength: this.openaiApiKey ? this.openaiApiKey.length : 0,
+        apiKeyStartsWith: this.openaiApiKey ? this.openaiApiKey.substring(0, 3) : 'N/A'
+      });
+
       const response = await axios.post(`${this.openaiBaseUrl}/chat/completions`, {
         model: this.model,
         messages: [
@@ -953,53 +1015,58 @@ Response format:
    * Basic keyword-based intent analysis as fallback
    */
   basicIntentAnalysis(message) {
-    const lowerMessage = message.toLowerCase();
-    
-    // Onboarding keywords
-    if (lowerMessage.includes('start') || lowerMessage.includes('setup') || lowerMessage.includes('onboard') || lowerMessage.includes('account')) {
-      return { intent: 'onboarding', confidence: 0.8, suggestedAction: 'Start onboarding flow' };
+    const lowerMessage = (message || '').toLowerCase();
+
+    // Highest priority: explicit account details requests
+    if (/(virtual\s+account|account\s+(details|detail|info|information|number|no)|bank\s+details)/i.test(message)) {
+      return { intent: 'account_details', confidence: 0.95, suggestedAction: 'Show virtual account details' };
     }
-    
-    // Balance keywords
-    if (lowerMessage.includes('balance') || lowerMessage.includes('money') || lowerMessage.includes('account')) {
+
+    // Onboarding keywords (do NOT match generic 'account')
+    if (/(start|setup|set\s*up|onboard|register|create\s+account|open\s+account)/i.test(message)) {
+      return { intent: 'onboarding', confidence: 0.85, suggestedAction: 'Start onboarding flow' };
+    }
+
+    // Balance keywords (avoid generic 'money')
+    if (/(balance|how\s+much\s+(do\s+)?i\s+have)/i.test(message)) {
       return { intent: 'balance', confidence: 0.9, suggestedAction: 'Check account balance' };
     }
-    
+
     // Transfer keywords
-    if (lowerMessage.includes('transfer') || lowerMessage.includes('send') || lowerMessage.includes('money')) {
+    if (/(transfer|send)(\s|$)/i.test(message)) {
       return { intent: 'transfer', confidence: 0.9, suggestedAction: 'Initiate money transfer' };
     }
-    
+
     // Airtime keywords
-    if (lowerMessage.includes('airtime') || lowerMessage.includes('recharge') || lowerMessage.includes('credit')) {
+    if (/(airtime|recharge|top\s*up)/i.test(message)) {
       return { intent: 'airtime', confidence: 0.9, suggestedAction: 'Buy airtime' };
     }
-    
+
     // Data keywords
-    if (lowerMessage.includes('data') || lowerMessage.includes('internet') || lowerMessage.includes('mb') || lowerMessage.includes('gb')) {
-      return { intent: 'data', confidence: 0.9, suggestedAction: 'Buy data bundle' };
+    if (/(\bdata\b|internet|\bmb\b|\bgb\b)/i.test(message)) {
+      return { intent: 'data', confidence: 0.85, suggestedAction: 'Buy data bundle' };
     }
-    
-    // Bills keywords
-    if (lowerMessage.includes('bill') || lowerMessage.includes('pay') || lowerMessage.includes('utility')) {
+
+    // Bills keywords (ensure presence of bill-like terms)
+    if (/(bill|electric|electricity|cable|tv|water)/i.test(message)) {
       return { intent: 'bills', confidence: 0.8, suggestedAction: 'Pay utility bills' };
     }
-    
+
     // Help keywords
-    if (lowerMessage.includes('help') || lowerMessage.includes('support') || lowerMessage.includes('problem')) {
+    if (/(help|support|problem|issue)/i.test(message)) {
       return { intent: 'help', confidence: 0.9, suggestedAction: 'Provide help and support' };
     }
-    
+
     // Menu keywords
-    if (lowerMessage.includes('menu') || lowerMessage.includes('service') || lowerMessage.includes('option')) {
+    if (/(menu|services?|options?)/i.test(message)) {
       return { intent: 'menu', confidence: 0.8, suggestedAction: 'Show available services' };
     }
-    
+
     // Greeting keywords
-    if (lowerMessage.includes('hi') || lowerMessage.includes('hello') || lowerMessage.includes('hey')) {
+    if (/(^|\b)(hi|hello|hey)(\b|$)/i.test(message)) {
       return { intent: 'greeting', confidence: 0.9, suggestedAction: 'Send welcome message' };
     }
-    
+
     return { intent: 'unknown', confidence: 0.5, suggestedAction: 'Ask for clarification' };
   }
 }
