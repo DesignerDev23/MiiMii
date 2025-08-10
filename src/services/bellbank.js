@@ -1120,6 +1120,11 @@ class BellBankService {
     try {
       const { User, Wallet } = require('../models');
       
+      logger.info('Searching for user by virtual account', {
+        virtualAccount,
+        searchMethod: 'wallet_lookup'
+      });
+      
       // Find user by virtual account number stored in wallet
       const wallet = await Wallet.findOne({
         where: { virtualAccountNumber: virtualAccount },
@@ -1127,18 +1132,54 @@ class BellBankService {
       });
 
       if (wallet && wallet.user) {
+        logger.info('User found by virtual account in wallet', {
+          virtualAccount,
+          userId: wallet.user.id,
+          userName: `${wallet.user.firstName} ${wallet.user.lastName}`
+        });
         return wallet.user;
       }
 
-      // Fallback: try to find by virtual account name (in case it's stored differently)
-      const user = await User.findOne({
-        where: { 
-          firstName: { [require('sequelize').Op.like]: `%${virtualAccount}%` },
-          lastName: { [require('sequelize').Op.like]: `%${virtualAccount}%` }
-        }
+      // Fallback: try to find by account reference or other fields
+      logger.info('User not found in wallet, trying fallback search', {
+        virtualAccount
+      });
+      
+      // Try to find by account reference
+      const walletByReference = await Wallet.findOne({
+        where: { accountReference: virtualAccount },
+        include: [{ model: User, as: 'user' }]
       });
 
-      return user;
+      if (walletByReference && walletByReference.user) {
+        logger.info('User found by account reference', {
+          virtualAccount,
+          userId: walletByReference.user.id,
+          userName: `${walletByReference.user.firstName} ${walletByReference.user.lastName}`
+        });
+        return walletByReference.user;
+      }
+
+      // Log all wallets with virtual accounts for debugging
+      const allWallets = await Wallet.findAll({
+        where: { 
+          virtualAccountNumber: { [require('sequelize').Op.not]: null }
+        },
+        include: [{ model: User, as: 'user' }],
+        limit: 10
+      });
+
+      logger.warn('User not found for virtual account, available virtual accounts:', {
+        virtualAccount,
+        availableAccounts: allWallets.map(w => ({
+          virtualAccountNumber: w.virtualAccountNumber,
+          accountReference: w.accountReference,
+          userId: w.user?.id,
+          userName: w.user ? `${w.user.firstName} ${w.user.lastName}` : 'N/A'
+        }))
+      });
+
+      return null;
     } catch (error) {
       logger.error('Failed to find user by virtual account', {
         error: error.message,
