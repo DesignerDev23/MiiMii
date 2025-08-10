@@ -20,8 +20,15 @@ class BellBankService {
     this.selectedEnvironment = isProduction ? 'production' : 'sandbox';
     this.baseURL = isProduction ? this.productionURL : this.sandboxURL;
 
-    this.consumerKey = process.env.BANK_CONSUMER_KEY;
-    this.consumerSecret = process.env.BANK_CONSUMER_SECRET;
+    // Use different environment variables for production and sandbox
+    if (isProduction) {
+      this.consumerKey = process.env.BANK_CONSUMER_KEY || process.env.BELLBANK_PRODUCTION_CONSUMER_KEY;
+      this.consumerSecret = process.env.BANK_CONSUMER_SECRET || process.env.BELLBANK_PRODUCTION_CONSUMER_SECRET;
+    } else {
+      this.consumerKey = process.env.BANK_CONSUMER_KEY || process.env.BELLBANK_SANDBOX_CONSUMER_KEY;
+      this.consumerSecret = process.env.BANK_CONSUMER_SECRET || process.env.BELLBANK_SANDBOX_CONSUMER_SECRET;
+    }
+
     this.validityTime = 2880; // 48 hours in minutes
     this.token = null;
     this.tokenExpiry = null;
@@ -49,7 +56,15 @@ class BellBankService {
       hasConsumerKey: !!this.consumerKey,
       hasConsumerSecret: !!this.consumerSecret,
       consumerKeyPreview: mask(this.consumerKey),
-      consumerSecretPreview: mask(this.consumerSecret)
+      consumerSecretPreview: mask(this.consumerSecret),
+      envVarsChecked: [
+        'BANK_CONSUMER_KEY',
+        'BANK_CONSUMER_SECRET',
+        'BELLBANK_PRODUCTION_CONSUMER_KEY',
+        'BELLBANK_PRODUCTION_CONSUMER_SECRET',
+        'BELLBANK_SANDBOX_CONSUMER_KEY',
+        'BELLBANK_SANDBOX_CONSUMER_SECRET'
+      ]
     });
   }
 
@@ -62,20 +77,73 @@ class BellBankService {
         hasConsumerSecret: !!this.consumerSecret
       });
 
+      // Validate that consumer key and secret are set
+      if (!this.consumerKey || !this.consumerKey.trim()) {
+        throw new Error('BANK_CONSUMER_KEY environment variable is not set or is empty');
+      }
+
+      if (!this.consumerSecret || !this.consumerSecret.trim()) {
+        throw new Error('BANK_CONSUMER_SECRET environment variable is not set or is empty');
+      }
+
       if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
         return this.token;
       }
 
-      // BellBank API expects consumerKey and consumerSecret in the request body
+      // Try different payload formats for BellBank API
       const payload = {
-        consumerKey: this.consumerKey,
-        consumerSecret: this.consumerSecret,
+        consumerKey: this.consumerKey.trim(),
+        consumerSecret: this.consumerSecret.trim(),
         validityTime: this.validityTime.toString()
       };
 
-      const response = await this.makeRequest('POST', '/v1/generate-token', payload, {
-        'Content-Type': 'application/json'
+      // Debug: Log the exact payload being sent (without exposing secrets)
+      logger.info('BellBank token request payload', {
+        hasConsumerKey: !!payload.consumerKey,
+        hasConsumerSecret: !!payload.consumerSecret,
+        consumerKeyLength: payload.consumerKey ? payload.consumerKey.length : 0,
+        consumerSecretLength: payload.consumerSecret ? payload.consumerSecret.length : 0,
+        validityTime: payload.validityTime,
+        payloadKeys: Object.keys(payload)
       });
+
+      // Try with additional headers that might be required
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'MiiMii/1.0'
+      };
+
+      let response;
+      try {
+        response = await this.makeRequest('POST', '/v1/generate-token', payload, headers);
+      } catch (error) {
+        // If production fails, try sandbox as fallback
+        if (this.selectedEnvironment === 'production' && error.message.includes('consumerKey')) {
+          logger.warn('Production BellBank token generation failed, trying sandbox as fallback', {
+            error: error.message,
+            originalEnvironment: this.selectedEnvironment
+          });
+          
+          // Temporarily switch to sandbox
+          const originalBaseURL = this.baseURL;
+          this.baseURL = this.sandboxURL;
+          
+          try {
+            response = await this.makeRequest('POST', '/v1/generate-token', payload, headers);
+            logger.info('BellBank token generated successfully using sandbox fallback');
+          } catch (sandboxError) {
+            // Restore original base URL
+            this.baseURL = originalBaseURL;
+            throw sandboxError;
+          }
+          
+          // Restore original base URL
+          this.baseURL = originalBaseURL;
+        } else {
+          throw error;
+        }
+      }
 
       if (response.success) {
         this.token = response.token;
@@ -1151,8 +1219,25 @@ class BellBankService {
         endpoint,
         url,
         hasData: !!Object.keys(data).length,
-        hasHeaders: !!Object.keys(headers).length
+        hasHeaders: !!Object.keys(headers).length,
+        dataKeys: Object.keys(data),
+        headerKeys: Object.keys(headers)
       });
+
+      // Debug: Log the exact request configuration (without sensitive data)
+      if (endpoint === '/v1/generate-token') {
+        logger.info('BellBank token request details', {
+          method,
+          url,
+          dataKeys: Object.keys(data),
+          hasConsumerKey: !!data.consumerKey,
+          hasConsumerSecret: !!data.consumerSecret,
+          consumerKeyLength: data.consumerKey ? data.consumerKey.length : 0,
+          consumerSecretLength: data.consumerSecret ? data.consumerSecret.length : 0,
+          validityTime: data.validityTime,
+          headers: Object.keys(config.headers)
+        });
+      }
 
       const response = await axios(config);
 
