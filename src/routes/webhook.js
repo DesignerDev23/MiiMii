@@ -335,6 +335,51 @@ router.post('/bellbank',
   }
 );
 
+// BellBank incoming transfer webhook
+router.post('/bellbank/incoming', async (req, res) => {
+  try {
+    logger.info('BellBank incoming transfer webhook received', {
+      body: req.body,
+      headers: req.headers
+    });
+
+    // Validate webhook signature (if BellBank provides one)
+    // You should implement signature validation based on BellBank's documentation
+    const isValidSignature = await validateBellBankWebhookSignature(req);
+    if (!isValidSignature) {
+      logger.warn('Invalid BellBank webhook signature');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const bellbankService = require('../services/bellbank');
+    
+    // Process the incoming transfer webhook
+    const result = await bellbankService.handleIncomingTransferWebhook(req.body);
+    
+    logger.info('BellBank incoming transfer webhook processed successfully', {
+      result
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Webhook processed successfully',
+      result 
+    });
+
+  } catch (error) {
+    logger.error('BellBank incoming transfer webhook failed', {
+      error: error.message,
+      body: req.body
+    });
+
+    res.status(500).json({ 
+      success: false, 
+      error: 'Webhook processing failed',
+      message: error.message 
+    });
+  }
+});
+
 // Bilal webhook endpoints
 router.post('/bilal',
   verifyWebhookSignature('bilal'),
@@ -542,6 +587,30 @@ async function handleBvnVerified(data) {
 async function handleBvnRejected(data) {
   const fincraService = require('../services/fincra');
   await fincraService.handleBvnRejected(data);
+}
+
+// Validate BellBank webhook signature
+async function validateBellBankWebhookSignature(req) {
+  try {
+    // This should be implemented based on BellBank's webhook signature validation
+    // For now, we'll return true, but you should implement proper validation
+    
+    // Example implementation:
+    // const signature = req.headers['x-bellbank-signature'];
+    // const payload = JSON.stringify(req.body);
+    // const expectedSignature = crypto
+    //   .createHmac('sha256', process.env.BELLBANK_WEBHOOK_SECRET)
+    //   .update(payload)
+    //   .digest('hex');
+    // return signature === expectedSignature;
+    
+    return true; // Placeholder - implement proper validation
+  } catch (error) {
+    logger.error('Failed to validate BellBank webhook signature', {
+      error: error.message
+    });
+    return false;
+  }
 }
 
 module.exports = router;

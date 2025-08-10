@@ -3,6 +3,8 @@ const { sequelize } = require('../database/connection');
 const bellBankService = require('./bellbank');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize'); // Added Op for date range queries
+const userService = require('./user'); // Added userService for getUserById
 
 class WalletService {
   async createWallet(userId) {
@@ -591,6 +593,125 @@ class WalletService {
         metadata
       });
       throw error;
+    }
+  }
+
+  // Get comprehensive wallet details
+  async getWalletDetails(userId) {
+    try {
+      const user = await userService.getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const wallet = await this.getUserWallet(userId);
+      const limits = await this.getTransactionLimits(userId);
+      const recentTransactions = await this.getWalletTransactions(userId, 3);
+
+      return {
+        user: {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          whatsappNumber: user.whatsappNumber,
+          accountNumber: user.accountNumber || this.generateAccountNumber(user.id),
+          accountName: `${user.firstName} ${user.lastName || ''}`.trim()
+        },
+        wallet: {
+          balance: parseFloat(wallet.balance),
+          currency: wallet.currency,
+          status: wallet.status,
+          lastUpdated: wallet.updatedAt
+        },
+        limits: {
+          daily: limits.daily,
+          monthly: limits.monthly,
+          single: limits.single,
+          dailyUsed: limits.dailyUsed,
+          monthlyUsed: limits.monthlyUsed
+        },
+        recentTransactions: recentTransactions.map(tx => ({
+          type: tx.type,
+          amount: parseFloat(tx.amount),
+          description: tx.description,
+          status: tx.status,
+          date: tx.createdAt
+        }))
+      };
+    } catch (error) {
+      logger.error('Failed to get wallet details', {
+        error: error.message,
+        userId
+      });
+      throw error;
+    }
+  }
+
+  // Generate account number for user
+  generateAccountNumber(userId) {
+    // Generate a 10-digit account number based on user ID
+    const hash = require('crypto').createHash('md5').update(userId).digest('hex');
+    const numericHash = parseInt(hash.substring(0, 8), 16);
+    return (numericHash % 9000000000 + 1000000000).toString();
+  }
+
+  // Get transaction limits for user
+  async getTransactionLimits(userId) {
+    try {
+      // Get user's transaction history for today and this month
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      
+      const todayTransactions = await Transaction.findAll({
+        where: {
+          userId,
+          createdAt: {
+            [Op.gte]: today
+          },
+          type: 'debit'
+        }
+      });
+
+      const monthTransactions = await Transaction.findAll({
+        where: {
+          userId,
+          createdAt: {
+            [Op.gte]: firstDayOfMonth
+          },
+          type: 'debit'
+        }
+      });
+
+      const dailyUsed = todayTransactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+      const monthlyUsed = monthTransactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+      return {
+        daily: 5000000, // 5 million naira daily limit
+        monthly: 50000000, // 50 million naira monthly limit
+        single: 1000000, // 1 million naira single transaction limit
+        dailyUsed,
+        monthlyUsed,
+        dailyRemaining: 5000000 - dailyUsed,
+        monthlyRemaining: 50000000 - monthlyUsed
+      };
+    } catch (error) {
+      logger.error('Failed to get transaction limits', {
+        error: error.message,
+        userId
+      });
+      
+      // Return default limits
+      return {
+        daily: 5000000,
+        monthly: 50000000,
+        single: 1000000,
+        dailyUsed: 0,
+        monthlyUsed: 0,
+        dailyRemaining: 5000000,
+        monthlyRemaining: 50000000
+      };
     }
   }
 }

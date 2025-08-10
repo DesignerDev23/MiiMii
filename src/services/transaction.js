@@ -472,30 +472,164 @@ class TransactionService {
 
   async sendTransactionHistory(user, userPhoneNumber, limit = 5) {
     try {
-      const transactions = await walletService.getWalletTransactions(user.id, limit);
-      
+      const transactions = await Transaction.findAll({
+        where: { userId: user.id },
+        order: [['createdAt', 'DESC']],
+        limit: limit
+      });
+
       if (transactions.length === 0) {
         await whatsappService.sendTextMessage(
           userPhoneNumber,
-          `📊 *Transaction History*\n\nNo transactions found.\n\nStart using MiiMii to see your transaction history here! 🚀`
+          "📊 *Transaction History*\n\nNo transactions found. Start using MiiMii to see your transaction history here! 💰"
         );
         return;
       }
 
-      // Generate AI summary
-      const summary = await aiService.generateTransactionSummary(transactions);
+      // Generate PDF
+      const pdfBuffer = await this.generateTransactionHistoryPDF(user, transactions);
       
-      let historyText = `📊 *Transaction History*\n\n${summary}\n\n`;
-      
-      transactions.forEach((tx, index) => {
-        const emoji = tx.type === 'credit' ? '💰' : '💸';
-        const sign = tx.type === 'credit' ? '+' : '-';
-        const date = new Date(tx.createdAt).toLocaleDateString();
-        
-        historyText += `${emoji} ${sign}₦${parseFloat(tx.amount).toLocaleString()}\n`;
-        historyText += `   ${tx.description}\n`;
-        historyText += `   ${date} • ${tx.status}\n`;
-        
+      // Send PDF via WhatsApp
+      await whatsappService.sendDocument(
+        userPhoneNumber,
+        pdfBuffer,
+        `transaction_history_${user.id}_${Date.now()}.pdf`,
+        'application/pdf',
+        `📊 *Your Transaction History*\n\nHere's your recent transaction history (${transactions.length} transactions).\n\n💡 You can also type "transactions 10" to see more transactions.`
+      );
+
+      logger.info('Transaction history PDF sent', {
+        userId: user.id,
+        transactionCount: transactions.length
+      });
+    } catch (error) {
+      logger.error('Failed to send transaction history PDF', {
+        error: error.message,
+        userId: user.id
+      });
+
+      // Fallback to text format
+      await this.sendTransactionHistoryText(user, userPhoneNumber, limit);
+    }
+  }
+
+  async generateTransactionHistoryPDF(user, transactions) {
+    const PDFDocument = require('pdfkit');
+    const fs = require('fs');
+    const path = require('path');
+
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({
+          size: 'A4',
+          margin: 50
+        });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+        // Header
+        doc.fontSize(24)
+           .font('Helvetica-Bold')
+           .text('MiiMii Transaction History', { align: 'center' })
+           .moveDown();
+
+        doc.fontSize(12)
+           .font('Helvetica')
+           .text(`Generated for: ${user.firstName} ${user.lastName || ''}`)
+           .text(`Phone: ${user.whatsappNumber}`)
+           .text(`Date: ${new Date().toLocaleDateString()}`)
+           .moveDown(2);
+
+        // Table header
+        const tableTop = doc.y;
+        const tableLeft = 50;
+        const colWidths = [80, 100, 80, 80, 100];
+
+        // Draw table header
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .text('Date', tableLeft, tableTop)
+           .text('Type', tableLeft + colWidths[0], tableTop)
+           .text('Amount', tableLeft + colWidths[0] + colWidths[1], tableTop)
+           .text('Status', tableLeft + colWidths[0] + colWidths[1] + colWidths[2], tableTop)
+           .text('Reference', tableLeft + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], tableTop);
+
+        // Draw table rows
+        let yPosition = tableTop + 20;
+        doc.fontSize(9).font('Helvetica');
+
+        transactions.forEach((transaction, index) => {
+          if (yPosition > 700) {
+            doc.addPage();
+            yPosition = 50;
+          }
+
+          const date = new Date(transaction.createdAt).toLocaleDateString();
+          const type = transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1);
+          const amount = `₦${parseFloat(transaction.amount).toLocaleString()}`;
+          const status = transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1);
+          const reference = transaction.reference.substring(0, 12) + '...';
+
+          doc.text(date, tableLeft, yPosition)
+             .text(type, tableLeft + colWidths[0], yPosition)
+             .text(amount, tableLeft + colWidths[0] + colWidths[1], yPosition)
+             .text(status, tableLeft + colWidths[0] + colWidths[1] + colWidths[2], yPosition)
+             .text(reference, tableLeft + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], yPosition);
+
+          yPosition += 15;
+        });
+
+        // Footer
+        doc.moveDown(2)
+           .fontSize(10)
+           .text(`Total Transactions: ${transactions.length}`, { align: 'center' })
+           .text('Generated by MiiMii - Your Digital Financial Assistant', { align: 'center' });
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  async sendTransactionHistoryText(user, userPhoneNumber, limit = 5) {
+    try {
+      const transactions = await Transaction.findAll({
+        where: { userId: user.id },
+        order: [['createdAt', 'DESC']],
+        limit: limit
+      });
+
+      if (transactions.length === 0) {
+        await whatsappService.sendTextMessage(
+          userPhoneNumber,
+          "📊 *Transaction History*\n\nNo transactions found. Start using MiiMii to see your transaction history here! 💰"
+        );
+        return;
+      }
+
+      let historyText = `📊 *Transaction History*\n\nHere are your recent ${transactions.length} transactions:\n\n`;
+
+      transactions.forEach((transaction, index) => {
+        const date = new Date(transaction.createdAt).toLocaleDateString();
+        const time = new Date(transaction.createdAt).toLocaleTimeString();
+        const type = transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1);
+        const amount = parseFloat(transaction.amount).toLocaleString();
+        const status = transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1);
+        const emoji = this.getTransactionEmoji(transaction.type, transaction.status);
+
+        historyText += `${emoji} *${type}*\n`;
+        historyText += `💰 Amount: ₦${amount}\n`;
+        historyText += `📅 Date: ${date} at ${time}\n`;
+        historyText += `📊 Status: ${status}\n`;
+        historyText += `🔢 Ref: ${transaction.reference}\n`;
+
+        if (transaction.description) {
+          historyText += `📝 Note: ${transaction.description}\n`;
+        }
+
         if (index < transactions.length - 1) {
           historyText += '\n';
         }
@@ -522,6 +656,31 @@ class TransactionService {
         "❌ Unable to retrieve transaction history right now. Please try again later."
       );
     }
+  }
+
+  getTransactionEmoji(type, status) {
+    const emojis = {
+      credit: '💰',
+      debit: '💸',
+      transfer: '🔄',
+      airtime: '📱',
+      data: '📶',
+      utility: '⚡',
+      fee_charge: '💳',
+      refund: '↩️',
+      bonus: '🎁',
+      cashback: '💵'
+    };
+
+    const statusEmojis = {
+      completed: '✅',
+      pending: '⏳',
+      failed: '❌',
+      processing: '🔄',
+      cancelled: '🚫'
+    };
+
+    return `${emojis[type] || '📊'} ${statusEmojis[status] || '📊'}`;
   }
 
   async getTransactionByReference(reference) {

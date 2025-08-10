@@ -505,8 +505,19 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'balance':
           return await this.handleBalanceInquiry(user);
           
+        case 'wallet_details':
+        case 'account_info':
+        case 'account_details':
+          return await this.handleWalletDetails(user);
+      
         case 'transaction_history':
           return await this.handleTransactionHistory(user, extractedData);
+      
+        case 'transfer_limits':
+          return await this.handleTransferLimits(user);
+      
+        case 'balance_inquiry':
+          return await this.handleBalanceInquiry(user);
           
         case 'help':
           return this.handleHelp(user);
@@ -793,27 +804,102 @@ Extract intent and data from this message. Consider the user context and any ext
   }
 
   async handleTransactionHistory(user, extractedData) {
-    const limit = extractedData?.limit || 10;
-    const transactions = await transactionService.getRecentTransactions(user.id, limit);
-    
-    if (transactions.length === 0) {
-      return {
-        intent: 'TRANSACTION_HISTORY',
-        message: "📊 *Transaction History*\n\nNo transactions found. Start by funding your wallet or making your first transaction!"
-      };
+    try {
+      const transactionService = require('./transaction');
+      const limit = extractedData?.limit || 5;
+      
+      await transactionService.sendTransactionHistory(user, user.whatsappNumber, limit);
+      
+      logger.info('Transaction history sent', {
+        userId: user.id,
+        limit
+      });
+    } catch (error) {
+      logger.error('Failed to send transaction history', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "❌ Unable to retrieve transaction history right now. Please try again later.");
     }
+  }
 
-    let historyMessage = `📊 *Recent Transactions*\n\n`;
-    transactions.forEach((tx, index) => {
-      const icon = tx.type === 'credit' ? '✅' : '💸';
-      historyMessage += `${icon} ₦${parseFloat(tx.amount).toLocaleString()} - ${tx.description}\n`;
-      historyMessage += `   ${new Date(tx.createdAt).toLocaleDateString()} | ${tx.status}\n\n`;
-    });
+  async handleWalletDetails(user) {
+    try {
+      const walletService = require('./wallet');
+      const whatsappService = require('./whatsapp');
+      
+      const walletDetails = await walletService.getWalletDetails(user.id);
+      
+      const message = `🏦 *Wallet Details*\n\n` +
+        `👤 *Account Name:* ${walletDetails.user.accountName}\n` +
+        `🔢 *Account Number:* ${walletDetails.user.accountNumber}\n` +
+        `📱 *Phone:* ${walletDetails.user.whatsappNumber}\n\n` +
+        `💰 *Current Balance:* ₦${walletDetails.wallet.balance.toLocaleString()}\n` +
+        `💳 *Currency:* ${walletDetails.wallet.currency}\n` +
+        `📊 *Status:* ${walletDetails.wallet.status}\n\n` +
+        `📈 *Transaction Limits*\n` +
+        `• Daily Limit: ₦${walletDetails.limits.daily.toLocaleString()}\n` +
+        `• Monthly Limit: ₦${walletDetails.limits.monthly.toLocaleString()}\n` +
+        `• Single Transaction: ₦${walletDetails.limits.single.toLocaleString()}\n\n` +
+        `📊 *Usage This Period*\n` +
+        `• Daily Used: ₦${walletDetails.limits.dailyUsed.toLocaleString()}\n` +
+        `• Monthly Used: ₦${walletDetails.limits.monthlyUsed.toLocaleString()}\n\n` +
+        `💡 Type "transactions" to see your transaction history`;
 
-    return {
-      intent: 'TRANSACTION_HISTORY',
-      message: historyMessage
-    };
+      await whatsappService.sendTextMessage(user.whatsappNumber, message);
+      
+      logger.info('Wallet details sent', {
+        userId: user.id
+      });
+    } catch (error) {
+      logger.error('Failed to send wallet details', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "❌ Unable to retrieve wallet details right now. Please try again later.");
+    }
+  }
+
+  async handleTransferLimits(user) {
+    try {
+      const walletService = require('./wallet');
+      const whatsappService = require('./whatsapp');
+      
+      const limits = await walletService.getTransactionLimits(user.id);
+      
+      const message = `📈 *Transfer Limits*\n\n` +
+        `💰 *Daily Limit:* ₦${limits.daily.toLocaleString()}\n` +
+        `📅 *Monthly Limit:* ₦${limits.monthly.toLocaleString()}\n` +
+        `💸 *Single Transaction:* ₦${limits.single.toLocaleString()}\n\n` +
+        `📊 *Current Usage*\n` +
+        `• Daily Used: ₦${limits.dailyUsed.toLocaleString()}\n` +
+        `• Monthly Used: ₦${limits.monthlyUsed.toLocaleString()}\n\n` +
+        `✅ *Remaining*\n` +
+        `• Daily Remaining: ₦${limits.dailyRemaining.toLocaleString()}\n` +
+        `• Monthly Remaining: ₦${limits.monthlyRemaining.toLocaleString()}\n\n` +
+        `💡 These limits help keep your account secure!`;
+
+      await whatsappService.sendTextMessage(user.whatsappNumber, message);
+      
+      logger.info('Transfer limits sent', {
+        userId: user.id
+      });
+    } catch (error) {
+      logger.error('Failed to send transfer limits', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "❌ Unable to retrieve transfer limits right now. Please try again later.");
+    }
   }
 
   handleHelp(user) {
@@ -1167,8 +1253,13 @@ IMPORTANT: Use these exact intent names:
 7. "help" - User needs help or support
 8. "menu" - User wants to see available services
 9. "account_details" - User wants account information
-10. "greeting" - General greeting or hello
-11. "unknown" - Cannot determine intent
+10. "wallet_details" - User wants to see wallet information, account details, balance, and transaction limits
+11. "transaction_history" - User wants to see transaction history, past transactions, or financial records
+12. "account_info" - User wants to see account information, account number, account name, or account details
+13. "balance_inquiry" - User wants to check wallet balance, account balance, or current balance
+14. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
+15. "greeting" - General greeting or hello
+16. "unknown" - Cannot determine intent
 
 For bank transfers, look for:
 - Amount (e.g., "5k", "5000", "10k")

@@ -862,6 +862,271 @@ class BellBankService {
     }
   }
 
+  // Handle incoming transfer webhook from BellBank
+  async handleIncomingTransferWebhook(webhookData) {
+    try {
+      logger.info('Processing incoming transfer webhook', { webhookData });
+
+      const {
+        event,
+        reference,
+        virtualAccount,
+        externalReference,
+        amountReceived,
+        transactionFee,
+        netAmount,
+        stampDuty,
+        sessionId,
+        sourceCurrency,
+        sourceAccountNumber,
+        sourceAccountName,
+        sourceBankCode,
+        sourceBankName,
+        remarks,
+        destinationCurrency,
+        status,
+        createdAt,
+        updatedAt
+      } = webhookData;
+
+      // Validate required fields
+      if (!reference || !amountReceived || !status) {
+        throw new Error('Missing required webhook fields');
+      }
+
+      // Check if this is a collection event (incoming transfer)
+      if (event !== 'collection') {
+        logger.info('Ignoring non-collection webhook event', { event });
+        return { success: true, message: 'Non-collection event ignored' };
+      }
+
+      // Find user by virtual account number
+      const user = await this.findUserByVirtualAccount(virtualAccount);
+      if (!user) {
+        logger.warn('User not found for virtual account', { virtualAccount });
+        throw new Error('User not found for virtual account');
+      }
+
+      // Check if transaction already processed
+      const existingTransaction = await this.getTransactionByReference(reference);
+      if (existingTransaction) {
+        logger.info('Transaction already processed', { reference });
+        return { success: true, message: 'Transaction already processed' };
+      }
+
+      // Process the incoming transfer
+      if (status === 'successful') {
+        return await this.processSuccessfulIncomingTransfer(user, {
+          reference,
+          externalReference,
+          amountReceived: parseFloat(amountReceived),
+          transactionFee: parseFloat(transactionFee || 0),
+          netAmount: parseFloat(netAmount || amountReceived),
+          stampDuty: parseFloat(stampDuty || 0),
+          sessionId,
+          sourceAccountNumber,
+          sourceAccountName,
+          sourceBankCode,
+          sourceBankName,
+          remarks,
+          createdAt: new Date(createdAt),
+          updatedAt: new Date(updatedAt)
+        });
+      } else if (status === 'pending') {
+        return await this.processPendingIncomingTransfer(user, {
+          reference,
+          externalReference,
+          amountReceived: parseFloat(amountReceived),
+          sessionId,
+          sourceAccountNumber,
+          sourceAccountName,
+          sourceBankCode,
+          sourceBankName,
+          remarks,
+          createdAt: new Date(createdAt)
+        });
+      } else {
+        logger.warn('Unknown transfer status', { status, reference });
+        throw new Error(`Unknown transfer status: ${status}`);
+      }
+
+    } catch (error) {
+      logger.error('Failed to process incoming transfer webhook', {
+        error: error.message,
+        webhookData
+      });
+      throw error;
+    }
+  }
+
+  // Process successful incoming transfer
+  async processSuccessfulIncomingTransfer(user, transferData) {
+    try {
+      const transactionService = require('./transaction');
+      const walletService = require('./wallet');
+      const whatsappService = require('./whatsapp');
+
+      // Create transaction record
+      const transaction = await transactionService.createTransaction(user.id, {
+        type: 'credit',
+        category: 'wallet_funding',
+        amount: transferData.netAmount,
+        fee: transferData.transactionFee,
+        totalAmount: transferData.netAmount,
+        description: `Incoming transfer from ${transferData.sourceAccountName}`,
+        reference: transferData.reference,
+        recipientDetails: {
+          sourceAccountNumber: transferData.sourceAccountNumber,
+          sourceAccountName: transferData.sourceAccountName,
+          sourceBankCode: transferData.sourceBankCode,
+          sourceBankName: transferData.sourceBankName,
+          remarks: transferData.remarks
+        },
+        metadata: {
+          service: 'bellbank_incoming',
+          externalReference: transferData.externalReference,
+          sessionId: transferData.sessionId,
+          stampDuty: transferData.stampDuty,
+          sourceCurrency: 'NGN',
+          destinationCurrency: 'NGN'
+        },
+        status: 'completed'
+      });
+
+      // Credit user's wallet
+      await walletService.creditWallet(user.id, transferData.netAmount, 
+        `Incoming transfer from ${transferData.sourceAccountName}`, {
+        category: 'wallet_funding',
+        transactionId: transaction.id
+      });
+
+      // Send notification to user
+      const notificationMessage = `💰 *Money Received!*\n\n` +
+        `Amount: ₦${transferData.netAmount.toLocaleString()}\n` +
+        `From: ${transferData.sourceAccountName}\n` +
+        `Bank: ${transferData.sourceBankName}\n` +
+        `Account: ${transferData.sourceAccountNumber}\n` +
+        `Reference: ${transferData.reference}\n` +
+        `Fee: ₦${transferData.transactionFee.toLocaleString()}\n\n` +
+        `Your wallet has been credited! 🎉\n\n` +
+        `Check your balance: Type "balance"`;
+
+      await whatsappService.sendTextMessage(user.whatsappNumber, notificationMessage);
+
+      logger.info('Incoming transfer processed successfully', {
+        userId: user.id,
+        reference: transferData.reference,
+        amount: transferData.netAmount,
+        sourceAccount: transferData.sourceAccountName
+      });
+
+      return {
+        success: true,
+        transaction: transaction,
+        message: 'Incoming transfer processed successfully'
+      };
+
+    } catch (error) {
+      logger.error('Failed to process successful incoming transfer', {
+        error: error.message,
+        userId: user.id,
+        transferData
+      });
+      throw error;
+    }
+  }
+
+  // Process pending incoming transfer
+  async processPendingIncomingTransfer(user, transferData) {
+    try {
+      const transactionService = require('./transaction');
+
+      // Create pending transaction record
+      const transaction = await transactionService.createTransaction(user.id, {
+        type: 'credit',
+        category: 'wallet_funding',
+        amount: transferData.amountReceived,
+        totalAmount: transferData.amountReceived,
+        description: `Pending incoming transfer from ${transferData.sourceAccountName}`,
+        reference: transferData.reference,
+        recipientDetails: {
+          sourceAccountNumber: transferData.sourceAccountNumber,
+          sourceAccountName: transferData.sourceAccountName,
+          sourceBankCode: transferData.sourceBankCode,
+          sourceBankName: transferData.sourceBankName,
+          remarks: transferData.remarks
+        },
+        metadata: {
+          service: 'bellbank_incoming',
+          externalReference: transferData.externalReference,
+          sessionId: transferData.sessionId,
+          status: 'pending'
+        },
+        status: 'pending'
+      });
+
+      logger.info('Pending incoming transfer recorded', {
+        userId: user.id,
+        reference: transferData.reference,
+        amount: transferData.amountReceived
+      });
+
+      return {
+        success: true,
+        transaction: transaction,
+        message: 'Pending incoming transfer recorded'
+      };
+
+    } catch (error) {
+      logger.error('Failed to process pending incoming transfer', {
+        error: error.message,
+        userId: user.id,
+        transferData
+      });
+      throw error;
+    }
+  }
+
+  // Find user by virtual account number
+  async findUserByVirtualAccount(virtualAccount) {
+    try {
+      const { User } = require('../models');
+      
+      // This would need to be implemented based on your user model structure
+      // You might need to add a virtualAccount field to your User model
+      const user = await User.findOne({
+        where: { virtualAccount }
+      });
+
+      return user;
+    } catch (error) {
+      logger.error('Failed to find user by virtual account', {
+        error: error.message,
+        virtualAccount
+      });
+      return null;
+    }
+  }
+
+  // Get transaction by reference
+  async getTransactionByReference(reference) {
+    try {
+      const { Transaction } = require('../models');
+      
+      const transaction = await Transaction.findOne({
+        where: { reference }
+      });
+
+      return transaction;
+    } catch (error) {
+      logger.error('Failed to get transaction by reference', {
+        error: error.message,
+        reference
+      });
+      return null;
+    }
+  }
+
   async makeRequest(method, endpoint, data = {}, headers = {}) {
     try {
       const url = `${this.baseURL}${endpoint}`;
