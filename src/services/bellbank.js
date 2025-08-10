@@ -1159,13 +1159,14 @@ class BellBankService {
     try {
       const url = `${this.baseURL}${endpoint}`;
       const config = {
+        ...axiosConfig,
         method,
         url,
         headers: {
+          ...axiosConfig.headers,
           'Content-Type': 'application/json',
           ...headers
-        },
-        ...axiosConfig
+        }
       };
 
       if (method === 'GET') {
