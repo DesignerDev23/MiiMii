@@ -1711,8 +1711,8 @@ class MessageProcessor {
         const accountMessage = `📋 *Account Details*\n\n` +
           `🏦 *Virtual Account:* ${walletDetails.user.accountNumber || 'N/A'}\n` +
           `🏛️ *Bank:* ${walletDetails.user.bankName || 'BellBank'}\n` +
+          `👤 *Account Name:* ${walletDetails.user.accountName}\n` +
           `💰 *Balance:* ₦${parseFloat(walletDetails.wallet.balance).toLocaleString()}\n` +
-          `👤 *Name:* ${user.firstName} ${user.lastName}\n` +
           `📱 *Phone:* ${user.whatsappNumber}\n\n` +
           `📈 *Transaction Limits*\n` +
           `• Daily: ₦${walletDetails.limits.daily.toLocaleString()}\n` +
@@ -1793,11 +1793,8 @@ class MessageProcessor {
       return;
     }
 
-    // For completed users, send AI-generated personalized welcome back message
-    const aiAssistant = require('./aiAssistant');
-    const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
-    const whatsappService = require('./whatsapp');
-    await whatsappService.sendTextMessage(user.whatsappNumber, personalizedMessage);
+    // For completed users, process their message with AI intent analysis
+    return await this.handleCompletedUserMessage(user, message, 'text');
   }
 
   /**

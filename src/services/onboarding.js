@@ -1364,7 +1364,12 @@ class OnboardingService {
                 const aiAssistant = require('./aiAssistant');
                 const whatsappService = require('./whatsapp');
                 
-                const welcomeMessage = await aiAssistant.generateWelcomeMessage(user, virtualAccountData.accountDetails);
+                const accountDetails = {
+                  accountNumber: virtualAccountData.accountNumber,
+                  accountName: virtualAccountData.accountName,
+                  bankName: virtualAccountData.bankName || 'BellBank'
+                };
+                const welcomeMessage = await aiAssistant.generateWelcomeMessage(user, accountDetails);
                 await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
                 
                 logger.info('AI welcome message sent successfully', { userId: user.id });
@@ -1375,7 +1380,11 @@ class OnboardingService {
               return { 
                 success: true, 
                 userId: user.id,
-                accountDetails: virtualAccountData.accountDetails
+                accountDetails: {
+                  accountNumber: virtualAccountData.accountNumber,
+                  accountName: virtualAccountData.accountName,
+                  bankName: virtualAccountData.bankName || 'BellBank'
+                }
               };
             }
           } catch (error) {

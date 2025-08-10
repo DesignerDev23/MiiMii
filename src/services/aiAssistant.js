@@ -1531,6 +1531,21 @@ Response format:
       return { intent: 'balance', confidence: 0.9, suggestedAction: 'Check account balance' };
     }
 
+    // Transaction history keywords
+    if (/(transaction\s+history|history|transactions?|statement|records?)/i.test(message)) {
+      return { intent: 'transaction_history', confidence: 0.9, suggestedAction: 'Show transaction history' };
+    }
+
+    // Wallet details keywords
+    if (/(wallet\s+details?|wallet\s+info|wallet\s+information)/i.test(message)) {
+      return { intent: 'wallet_details', confidence: 0.9, suggestedAction: 'Show wallet details' };
+    }
+
+    // Transfer limits keywords
+    if (/(transfer\s+limits?|daily\s+limits?|monthly\s+limits?|transaction\s+limits?|limits?)/i.test(message)) {
+      return { intent: 'transfer_limits', confidence: 0.9, suggestedAction: 'Show transfer limits' };
+    }
+
     // Transfer keywords
     if (/(transfer|send)(\s|$)/i.test(message)) {
       return { intent: 'transfer', confidence: 0.9, suggestedAction: 'Initiate money transfer' };

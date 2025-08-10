@@ -633,8 +633,9 @@ class WalletService {
           firstName: user.firstName,
           lastName: user.lastName,
           whatsappNumber: user.whatsappNumber,
-          accountNumber: user.accountNumber || this.generateAccountNumber(user.id),
-          accountName: `${user.firstName} ${user.lastName || ''}`.trim()
+          accountNumber: wallet.virtualAccountNumber || user.accountNumber || this.generateAccountNumber(user.id),
+          accountName: wallet.virtualAccountName || `${user.firstName} ${user.lastName || ''}`.trim(),
+          bankName: wallet.virtualAccountBank || 'BellBank'
         },
         wallet: {
           balance: parseFloat(wallet.balance),

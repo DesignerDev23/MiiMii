@@ -592,19 +592,50 @@ async function handleBvnRejected(data) {
 // Validate BellBank webhook signature
 async function validateBellBankWebhookSignature(req) {
   try {
-    // This should be implemented based on BellBank's webhook signature validation
-    // For now, we'll return true, but you should implement proper validation
+    // Check if we have a webhook secret configured
+    const webhookSecret = process.env.BELLBANK_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
     
-    // Example implementation:
-    // const signature = req.headers['x-bellbank-signature'];
-    // const payload = JSON.stringify(req.body);
-    // const expectedSignature = crypto
-    //   .createHmac('sha256', process.env.BELLBANK_WEBHOOK_SECRET)
-    //   .update(payload)
-    //   .digest('hex');
-    // return signature === expectedSignature;
+    if (!webhookSecret) {
+      logger.warn('No BellBank webhook secret configured - skipping signature validation');
+      return true; // Allow in development/testing
+    }
+
+    // Check for signature in headers
+    const signature = req.headers['x-bellbank-signature'] || 
+                     req.headers['x-webhook-signature'] || 
+                     req.headers['signature'];
     
-    return true; // Placeholder - implement proper validation
+    if (!signature) {
+      logger.warn('No BellBank webhook signature found in headers', {
+        headers: Object.keys(req.headers)
+      });
+      
+      // In production, reject unsigned webhooks
+      if (process.env.NODE_ENV === 'production') {
+        return false;
+      }
+      
+      return true; // Allow in development/testing
+    }
+
+    // Validate signature
+    const payload = JSON.stringify(req.body);
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(payload)
+      .digest('hex');
+
+    const isValid = signature === expectedSignature || signature === `sha256=${expectedSignature}`;
+    
+    if (!isValid) {
+      logger.warn('Invalid BellBank webhook signature', {
+        provided: signature,
+        expected: expectedSignature,
+        payloadPreview: payload.substring(0, 100) + '...'
+      });
+    }
+
+    return isValid;
   } catch (error) {
     logger.error('Failed to validate BellBank webhook signature', {
       error: error.message
