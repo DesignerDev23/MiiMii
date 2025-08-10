@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 
 class AIService {
   constructor() {
-    const apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+    const apiKey = process.env.AI_API_KEY;
     
     if (apiKey) {
       this.openai = new OpenAI({
@@ -13,12 +13,15 @@ class AIService {
       const envModel = (process.env.AI_MODEL || '').trim();
       this.model = envModel && !/gpt-5/i.test(envModel) ? envModel : 'gpt-4o';
       this.isEnabled = true;
-      logger.info('AI service initialized successfully');
+      logger.info('AI service initialized successfully', {
+        model: this.model,
+        hasApiKey: !!apiKey
+      });
     } else {
       this.openai = null;
       this.model = null;
       this.isEnabled = false;
-      logger.warn('AI service disabled - no API key provided. Set AI_API_KEY or OPENAI_API_KEY environment variable to enable AI features.');
+      logger.warn('AI service disabled - no API key provided. Set AI_API_KEY environment variable to enable AI features.');
     }
   }
 
