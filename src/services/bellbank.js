@@ -66,11 +66,15 @@ class BellBankService {
         return this.token;
       }
 
-      const response = await this.makeRequest('POST', '/v1/generate-token', {}, {
-        'Content-Type': 'application/json',
-        'consumerKey': this.consumerKey,
-        'consumerSecret': this.consumerSecret,
-        'validityTime': this.validityTime.toString()
+      // BellBank API expects consumerKey and consumerSecret in the request body
+      const payload = {
+        consumerKey: this.consumerKey,
+        consumerSecret: this.consumerSecret,
+        validityTime: this.validityTime.toString()
+      };
+
+      const response = await this.makeRequest('POST', '/v1/generate-token', payload, {
+        'Content-Type': 'application/json'
       });
 
       if (response.success) {

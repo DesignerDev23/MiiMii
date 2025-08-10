@@ -138,9 +138,13 @@ class BankTransferService {
         };
       }
 
-      // Mock validation for testing when API is not available
-      if (!process.env.BANK_CONSUMER_KEY) {
-        logger.warn('BellBank API not configured, using mock validation');
+      // Mock validation for testing when API is not available or in sandbox
+      if (!process.env.BANK_CONSUMER_KEY || process.env.NODE_ENV === 'development') {
+        logger.warn('BellBank API not configured or in development, using mock validation', {
+          accountNumber,
+          bankCode,
+          environment: process.env.NODE_ENV
+        });
         return {
           valid: true,
           accountNumber,

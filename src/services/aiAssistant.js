@@ -140,8 +140,9 @@ class AIAssistantService {
 
 1. Analyze user messages to understand their intent
 2. Extract relevant financial data (amounts, phone numbers, account details, bank names)
-3. Provide helpful responses and guide users through financial transactions
-4. Maintain a warm, professional tone with appropriate emojis
+3. Generate conversational, human-like responses that feel natural and friendly
+4. Confirm transfer details and guide users through the process
+5. Maintain a warm, professional tone with appropriate emojis
 
 Available Services:
 - Money transfers (P2P)
@@ -173,9 +174,9 @@ Response Format (JSON):
     "bankName": "keystone",
     "recipientName": "Abdulkadir Musa"
   },
-  "response": "I'll help you transfer ₦5,000 to Abdulkadir Musa at Keystone Bank. Let me validate the account details first.",
+  "response": "Nice! Are you sure you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank? That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐",
   "requiresConfirmation": true,
-  "nextStep": "validate_account"
+  "nextStep": "request_pin"
 }
 
 For bank transfers, extract:
@@ -194,6 +195,15 @@ IMPORTANT EXTRACTION RULES:
 2. Account Number: Look for 10-digit numbers
 3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, etc.)
 4. Recipient Name: Look for names before account numbers or bank names
+5. Test Bank: Recognize "test bank" as a valid bank name for testing
+
+CONVERSATIONAL RESPONSE GUIDELINES:
+- Be friendly and conversational, like talking to a friend
+- Confirm the transfer details in a natural way
+- Use emojis appropriately (💰, 🔐, ✅, etc.)
+- Ask for PIN in a friendly, secure way
+- Make the user feel confident about the transaction
+- Keep responses concise but warm
 
 Example: "Send 5k to Abdulkadir Musa 6035745691 keystone bank"
 Should extract:
@@ -202,7 +212,20 @@ Should extract:
 - bankName: "keystone"
 - recipientName: "Abdulkadir Musa"
 
-Be accurate, helpful, and always prioritize user security.`;
+And respond with something like:
+"Nice! Are you sure you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank? That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐"
+
+Example: "Send 5k to 1001011000 test bank"
+Should extract:
+- amount: 5000
+- accountNumber: "1001011000"
+- bankName: "test bank"
+- recipientName: null
+
+And respond with something like:
+"Great! I can see you want to send ₦5,000 to the test account. Perfect for testing! Just provide your PIN to authorize this transfer. 🔐"
+
+Be accurate, helpful, and always prioritize user security while maintaining a friendly, conversational tone.`;
 
     // Test API key validity on startup
     this.validateApiKey();
@@ -1160,15 +1183,34 @@ For money transfers, look for:
 EXTRACTION RULES:
 1. Amount: Convert "5k" to 5000, "10k" to 10000, etc.
 2. Account Number: Find 10-digit numbers
-3. Bank Name: Look for bank names in the message
-4. Recipient Name: Look for names before account numbers
+3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, test bank, etc.)
+4. Recipient Name: Look for names before account numbers or bank names
+5. Test Bank: "test bank" is a valid bank name for testing purposes
+
+CONVERSATIONAL RESPONSE GUIDELINES:
+- Be friendly and conversational, like talking to a friend
+- Confirm the transfer details in a natural way
+- Use emojis appropriately (💰, 🔐, ✅, etc.)
+- Ask for PIN in a friendly, secure way
+- Make the user feel confident about the transaction
+- Keep responses concise but warm
+
+Example: "Send 5k to 1001011000 test bank"
+Should extract:
+- amount: 5000
+- accountNumber: "1001011000"
+- bankName: "test bank"
+- recipientName: null
+
+And respond with something like:
+"Great! I can see you want to send ₦5,000 to the test account. Perfect for testing! Just provide your PIN to authorize this transfer. 🔐"
 
 Instructions:
 - Analyze the message content and context
 - Consider user's onboarding status
 - Return the most likely intent using the exact names above
 - Provide confidence level (0-1)
-- Suggest appropriate action
+- Generate a conversational response that confirms details and asks for PIN
 - Extract relevant data if present
 
 Response format:
@@ -1181,7 +1223,8 @@ Response format:
     "bankName": "keystone",
     "recipientName": "Abdulkadir Musa"
   },
-  "suggestedAction": "Validate account details and request confirmation",
+  "response": "Nice! Are you sure you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank? That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐",
+  "suggestedAction": "Confirm transfer details and request PIN",
   "reasoning": "Message contains amount (5k), account number (6035745691), and bank name (keystone)"
 }`;
 

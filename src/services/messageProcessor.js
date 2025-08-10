@@ -229,6 +229,11 @@ class MessageProcessor {
           return await this.handleAccountDetailsIntent(user, message, messageType, messageId);
           
         default:
+          // Check if user is awaiting PIN verification
+          if (user.conversationState?.awaitingInput === 'pin_verification') {
+            return await this.handlePinVerification(user, message, messageType);
+          }
+          
           // If AI couldn't determine intent, try traditional processing
           return await this.processMessageByType(user, userName, message, messageType, messageId);
       }
@@ -1299,10 +1304,14 @@ class MessageProcessor {
           'keystone': '082', 'gtb': '058', 'gtbank': '058', 'access': '044', 'uba': '033', 
           'fidelity': '070', 'wema': '035', 'union': '032', 'fcmb': '214', 'first': '011', 
           'fbn': '011', 'zenith': '057', 'stanbic': '221', 'sterling': '232',
-          'test': '010', 'testbank': '010' // Official BellBank test bank
+          'test': '010', 'testbank': '010', 'test bank': '010' // Official BellBank test bank
         };
         
-        const resolvedBankCode = bankCode || bankMap[bankName?.toLowerCase()];
+        // More flexible bank name matching
+        const bankNameLower = bankName?.toLowerCase().trim();
+        const resolvedBankCode = bankCode || bankMap[bankNameLower] || 
+          Object.keys(bankMap).find(key => bankNameLower?.includes(key)) ? 
+          bankMap[Object.keys(bankMap).find(key => bankNameLower?.includes(key))] : null;
         
         if (!resolvedBankCode) {
           await whatsappService.sendTextMessage(user.whatsappNumber, 
@@ -1310,7 +1319,30 @@ class MessageProcessor {
           return;
         }
 
-        // Show processing message
+        // Use AI-generated conversational response if available
+        if (aiAnalysis.response) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, aiAnalysis.response);
+          
+          // Store conversation state for PIN verification
+          await user.updateConversationState({
+            intent: 'bank_transfer',
+            awaitingInput: 'pin_verification',
+            context: 'bank_transfer_pin',
+            step: 1,
+            data: {
+              accountNumber: accountNumber,
+              bankCode: resolvedBankCode,
+              bankName: bankName,
+              amount: transferAmount,
+              recipientName: recipientName,
+              narration: 'Wallet transfer',
+              reference: `TXN${Date.now()}`
+            }
+          });
+          return;
+        }
+
+        // Fallback to traditional processing if no AI response
         await whatsappService.sendTextMessage(user.whatsappNumber, 
           "🔍 Validating account details... Please wait a moment.");
 
@@ -1390,11 +1422,17 @@ class MessageProcessor {
     const bankMap = {
       zenith: '057', gtb: '058', gtbank: '058', access: '044', uba: '033', fidelity: '070', wema: '035',
       union: '032', fcmb: '214', first: '011', fbn: '011', keystone: '082', stanbic: '221', sterling: '232',
-      bell: '000023', bellbank: '000023', bells: '000023', test: '010', testbank: '010'
+      bell: '000023', bellbank: '000023', bells: '000023', test: '010', testbank: '010', 'test bank': '010'
     };
     let bankCode = null;
-    for (const key of Object.keys(bankMap)) {
-      if (text.includes(key)) { bankCode = bankMap[key]; break; }
+    
+    // More flexible bank name matching
+    const textLower = text.toLowerCase();
+    for (const [key, code] of Object.entries(bankMap)) {
+      if (textLower.includes(key)) { 
+        bankCode = code; 
+        break; 
+      }
     }
 
     if (amount && accountNumber && bankCode) {
@@ -1453,6 +1491,67 @@ class MessageProcessor {
     // If we couldn't parse the transfer details, ask for them
     await whatsappService.sendTextMessage(user.whatsappNumber, 
       "I'd love to help you with that transfer! 💸\n\nTo make it quick and easy, please send me:\n• Amount (like 5k or 5000)\n• Account number (10 digits)\n• Bank name\n\nFor example: *Send 5k to 1234567890 GTBank*");
+  }
+
+  // Handle PIN verification for transfers
+  async handlePinVerification(user, message, messageType) {
+    const whatsappService = require('./whatsapp');
+    const bankTransferService = require('./bankTransfer');
+    
+    try {
+      const pin = message?.text?.trim();
+      
+      if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "Please enter a valid 4-digit PIN to authorize your transfer. 🔐");
+        return;
+      }
+
+      // Get stored transfer data
+      const transferData = user.conversationState?.data;
+      if (!transferData) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I couldn't find your transfer details. Please try your transfer request again.");
+        return;
+      }
+
+      // Show processing message
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "🔐 Verifying your PIN and processing transfer... Please wait a moment.");
+
+      // Process the transfer
+      const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+      
+      if (result.success) {
+        const successMsg = `✅ *Transfer Successful!*\n\n` +
+                          `💰 Amount: ₦${result.transaction.amount.toLocaleString()}\n` +
+                          `👤 To: ${result.transaction.accountName}\n` +
+                          `🏦 Bank: ${result.transaction.bankName}\n` +
+                          `📄 Reference: ${result.transaction.reference}\n\n` +
+                          `Your transfer has been completed! The recipient should receive the funds within 5-15 minutes. 🎉\n\n` +
+                          `Is there anything else I can help you with?`;
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, successMsg);
+      } else {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          `❌ Transfer failed: ${result.message}. Please try again or contact support if the issue persists.`);
+      }
+
+      // Clear conversation state
+      await user.updateConversationState(null);
+
+    } catch (error) {
+      logger.error('PIN verification failed', { 
+        error: error.message, 
+        userId: user.id 
+      });
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        `❌ ${error.message}. Please try again or contact support if the issue persists.`);
+      
+      // Clear conversation state on error
+      await user.updateConversationState(null);
+    }
   }
 
   // Helper method to parse amounts
