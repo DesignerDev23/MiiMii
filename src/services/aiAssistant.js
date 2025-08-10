@@ -1225,6 +1225,106 @@ Format the response as a WhatsApp message with proper formatting.`;
     }
   }
 
+  async generateWelcomeMessage(user, accountDetails) {
+    try {
+      const prompt = `Generate a warm, welcoming message for a newly onboarded user on MiiMii. 
+
+User Details:
+- Name: ${user.firstName} ${user.lastName}
+- Phone: ${user.whatsappNumber}
+
+Bank Account Details:
+- Account Number: ${accountDetails?.accountNumber || 'N/A'}
+- Account Name: ${accountDetails?.accountName || `${user.firstName} ${user.lastName}`}
+- Bank: ${accountDetails?.bankName || 'BellBank'}
+
+Requirements:
+1. Be warm, friendly, and welcoming
+2. Include emojis to make it engaging
+3. Mention their successful onboarding
+4. Include their bank account details clearly
+5. Welcome them to MiiMii's financial services
+6. Keep it conversational and not too formal
+7. Mention they can now receive money and make transfers
+8. Include a call to action to explore features
+
+Format the response as a friendly WhatsApp message with proper formatting.`;
+
+      const response = await axios.post(
+        `${this.openaiBaseUrl}/chat/completions`,
+        {
+          model: this.model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a friendly AI assistant for MiiMii, a financial services platform. Generate warm, welcoming messages with emojis and clear formatting.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 300,
+          temperature: 0.7
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.openaiApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const welcomeMessage = response.data.choices[0]?.message?.content?.trim();
+      
+      if (!welcomeMessage) {
+        // Fallback message if AI fails
+        return `🎉 *Welcome to MiiMii!* 🎉
+
+Congratulations ${user.firstName}! You have been successfully onboarded on MiiMii.
+
+🏦 *Your Bank Details:*
+• Account Number: \`${accountDetails?.accountNumber || 'N/A'}\`
+• Account Name: ${accountDetails?.accountName || `${user.firstName} ${user.lastName}`}
+• Bank: ${accountDetails?.bankName || 'BellBank'}
+
+💰 You can now:
+• Receive money from anyone
+• Make transfers to other banks
+• Check your balance anytime
+• View transaction history
+
+Type "help" to see all available features or "balance" to check your current balance.
+
+Welcome to the future of banking! 🚀`;
+      }
+
+      return welcomeMessage;
+    } catch (error) {
+      logger.error('Failed to generate AI welcome message', { error: error.message, userId: user.id });
+      
+      // Fallback message
+      return `🎉 *Welcome to MiiMii!* 🎉
+
+Congratulations ${user.firstName}! You have been successfully onboarded on MiiMii.
+
+🏦 *Your Bank Details:*
+• Account Number: \`${accountDetails?.accountNumber || 'N/A'}\`
+• Account Name: ${accountDetails?.accountName || `${user.firstName} ${user.lastName}`}
+• Bank: ${accountDetails?.bankName || 'BellBank'}
+
+💰 You can now:
+• Receive money from anyone
+• Make transfers to other banks
+• Check your balance anytime
+• View transaction history
+
+Type "help" to see all available features or "balance" to check your current balance.
+
+Welcome to the future of banking! 🚀`;
+    }
+  }
+
   /**
    * Analyze user message to determine intent
    */

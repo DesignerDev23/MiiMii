@@ -1118,12 +1118,24 @@ class BellBankService {
   // Find user by virtual account number
   async findUserByVirtualAccount(virtualAccount) {
     try {
-      const { User } = require('../models');
+      const { User, Wallet } = require('../models');
       
-      // This would need to be implemented based on your user model structure
-      // You might need to add a virtualAccount field to your User model
+      // Find user by virtual account number stored in wallet
+      const wallet = await Wallet.findOne({
+        where: { virtualAccountNumber: virtualAccount },
+        include: [{ model: User, as: 'user' }]
+      });
+
+      if (wallet && wallet.user) {
+        return wallet.user;
+      }
+
+      // Fallback: try to find by virtual account name (in case it's stored differently)
       const user = await User.findOne({
-        where: { virtualAccount }
+        where: { 
+          firstName: { [require('sequelize').Op.like]: `%${virtualAccount}%` },
+          lastName: { [require('sequelize').Op.like]: `%${virtualAccount}%` }
+        }
       });
 
       return user;

@@ -1358,6 +1358,20 @@ class OnboardingService {
 
             if (virtualAccountData.success) {
               logger.info('Virtual account created successfully', { userId: user.id });
+              
+              // Send AI-generated welcome message with bank details
+              try {
+                const aiAssistant = require('./aiAssistant');
+                const whatsappService = require('./whatsapp');
+                
+                const welcomeMessage = await aiAssistant.generateWelcomeMessage(user, virtualAccountData.accountDetails);
+                await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
+                
+                logger.info('AI welcome message sent successfully', { userId: user.id });
+              } catch (welcomeError) {
+                logger.error('Failed to send AI welcome message', { userId: user.id, error: welcomeError.message });
+              }
+              
               return { 
                 success: true, 
                 userId: user.id,

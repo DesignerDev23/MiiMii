@@ -228,6 +228,11 @@ class MessageProcessor {
         case 'account_info':
           return await this.handleAccountDetailsIntent(user, message, messageType, messageId);
           
+        case 'transaction_history':
+        case 'transactions':
+        case 'history':
+          return await this.handleTransactionHistoryIntent(user, message, messageType, messageId);
+          
         default:
           // Check if user is awaiting PIN verification
           if (user.conversationState?.awaitingInput === 'pin_verification') {
@@ -1697,18 +1702,65 @@ class MessageProcessor {
       return;
     }
 
-    // Get account details
-    const walletService = require('./wallet');
-    const accountDetails = await walletService.getAccountDetails(user.id);
-    
-    if (accountDetails) {
-      const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${accountDetails.accountNumber}\n🏛️ Bank: ${accountDetails.bankName}\n💰 Balance: ₦${accountDetails.balance.toFixed(2)}\n👤 Name: ${user.firstName} ${user.lastName}\n📱 Phone: ${user.whatsappNumber}`;
-      const whatsappService = require('./whatsapp');
-      await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
-    } else {
+    try {
+      // Get wallet details using the correct method
+      const walletService = require('./wallet');
+      const walletDetails = await walletService.getWalletDetails(user.id);
+      
+      if (walletDetails) {
+        const accountMessage = `📋 *Account Details*\n\n` +
+          `🏦 *Virtual Account:* ${walletDetails.user.accountNumber || 'N/A'}\n` +
+          `🏛️ *Bank:* ${walletDetails.user.bankName || 'BellBank'}\n` +
+          `💰 *Balance:* ₦${parseFloat(walletDetails.wallet.balance).toLocaleString()}\n` +
+          `👤 *Name:* ${user.firstName} ${user.lastName}\n` +
+          `📱 *Phone:* ${user.whatsappNumber}\n\n` +
+          `📈 *Transaction Limits*\n` +
+          `• Daily: ₦${walletDetails.limits.daily.toLocaleString()}\n` +
+          `• Monthly: ₦${walletDetails.limits.monthly.toLocaleString()}\n` +
+          `• Single: ₦${walletDetails.limits.single.toLocaleString()}`;
+        
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
+      } else {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "Account details not available. Please contact support.");
+      }
+    } catch (error) {
+      logger.error('Failed to get account details', { error: error.message, userId: user.id });
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Account details not available. Please contact support.");
+        "❌ Unable to retrieve account details right now. Please try again later.");
+    }
+  }
+
+  /**
+   * Handle transaction history intent
+   */
+  async handleTransactionHistoryIntent(user, message, messageType, messageId) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "Please complete your account setup first to view transaction history.");
+      return;
+    }
+
+    try {
+      const aiAssistant = require('./aiAssistant');
+      await aiAssistant.handleTransactionHistory(user, { limit: 5 });
+      
+      logger.info('Transaction history sent via message processor', {
+        userId: user.id
+      });
+    } catch (error) {
+      logger.error('Failed to send transaction history via message processor', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "❌ Unable to retrieve transaction history right now. Please try again later.");
     }
   }
 

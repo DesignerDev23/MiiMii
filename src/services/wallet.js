@@ -420,6 +420,25 @@ class WalletService {
         virtualAccountName: virtualAccount.accountName
       });
 
+      // Send AI-generated welcome message with bank details
+      try {
+        const aiAssistant = require('./aiAssistant');
+        const whatsappService = require('./whatsapp');
+        
+        const accountDetails = {
+          accountNumber: virtualAccount.accountNumber,
+          accountName: virtualAccount.accountName,
+          bankName: virtualAccount.bankName || 'BellBank'
+        };
+        
+        const welcomeMessage = await aiAssistant.generateWelcomeMessage(user, accountDetails);
+        await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
+        
+        logger.info('AI welcome message sent for wallet virtual account', { userId });
+      } catch (welcomeError) {
+        logger.error('Failed to send AI welcome message for wallet', { userId, error: welcomeError.message });
+      }
+
       logger.info('Virtual account created for existing wallet', {
         userId,
         accountNumber: virtualAccount.accountNumber
