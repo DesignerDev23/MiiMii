@@ -96,8 +96,23 @@ class BankTransferService {
       }
 
       // Handle test accounts for development/testing
-      if (bankCode === '000023' || bankCode === '000024') {
+      if (bankCode === '000023' || bankCode === '000024' || bankCode === '010') {
         logger.info('Using test account validation', { accountNumber, bankCode });
+        
+        // Use official BellBank test credentials
+        if (bankCode === '010' && accountNumber === '1001011000') {
+          return {
+            valid: true,
+            accountNumber,
+            bankCode,
+            accountName: 'TEST ACCOUNT HOLDER',
+            bank: 'Test Bank',
+            currency: 'NGN',
+            test: true
+          };
+        }
+        
+        // Fallback for other test codes
         return {
           valid: true,
           accountNumber,

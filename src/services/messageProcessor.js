@@ -1299,7 +1299,7 @@ class MessageProcessor {
           'keystone': '082', 'gtb': '058', 'gtbank': '058', 'access': '044', 'uba': '033', 
           'fidelity': '070', 'wema': '035', 'union': '032', 'fcmb': '214', 'first': '011', 
           'fbn': '011', 'zenith': '057', 'stanbic': '221', 'sterling': '232',
-          'test': '000023', 'testbank': '000023' // For testing
+          'test': '010', 'testbank': '010' // Official BellBank test bank
         };
         
         const resolvedBankCode = bankCode || bankMap[bankName?.toLowerCase()];
@@ -1390,7 +1390,7 @@ class MessageProcessor {
     const bankMap = {
       zenith: '057', gtb: '058', gtbank: '058', access: '044', uba: '033', fidelity: '070', wema: '035',
       union: '032', fcmb: '214', first: '011', fbn: '011', keystone: '082', stanbic: '221', sterling: '232',
-      bell: '000023', bellbank: '000023', bells: '000023', test: '000023', testbank: '000023'
+      bell: '000023', bellbank: '000023', bells: '000023', test: '010', testbank: '010'
     };
     let bankCode = null;
     for (const key of Object.keys(bankMap)) {

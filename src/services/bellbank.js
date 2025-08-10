@@ -700,4 +700,251 @@ class BellBankService {
         const completionMessage = `✅ *Transfer Successful!*\n\n` +
                                 `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
                                 `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
-                                `
+                                `🏦 Bank: ${transaction.recipientDetails?.bankName}\n` +
+                                `📄 Reference: ${transaction.reference}\n\n` +
+                                `Your transfer has been completed successfully! 🎉`;
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
+      }
+
+      logger.info('Transfer completion processed successfully', {
+        transactionId: transaction.id,
+        reference: data.reference,
+        status: 'completed'
+      });
+
+      return { 
+        success: true, 
+        message: 'Transfer completion processed',
+        transaction: transaction.getTransactionSummary()
+      };
+
+    } catch (error) {
+      logger.error('Failed to process transfer completion', { 
+        error: error.message, 
+        webhookData 
+      });
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleTransferFailed(webhookData) {
+    try {
+      const { data } = webhookData;
+      
+      // Find the transaction by provider reference
+      const transaction = await Transaction.findOne({
+        where: { providerReference: data.reference }
+      });
+
+      if (!transaction) {
+        logger.warn('Transaction not found for transfer failure', { 
+          reference: data.reference 
+        });
+        return { success: false, message: 'Transaction not found' };
+      }
+
+      // Update transaction status
+      await transaction.update({
+        status: 'failed',
+        processedAt: new Date(),
+        providerResponse: data,
+        failureReason: data.failureReason || data.message || 'Transfer failed'
+      });
+
+      // Refund the user's wallet
+      const wallet = await Wallet.findOne({ where: { userId: transaction.userId } });
+      if (wallet) {
+        await wallet.updateBalance(transaction.totalAmount, 'credit', 'Transfer refund');
+      }
+
+      // Find user and send notification
+      const user = await User.findByPk(transaction.userId);
+      if (user) {
+        const failureMessage = `❌ *Transfer Failed*\n\n` +
+                             `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
+                             `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
+                             `📄 Reference: ${transaction.reference}\n\n` +
+                             `Your transfer could not be completed. The amount has been refunded to your wallet.\n\n` +
+                             `Please try again or contact support if the issue persists.`;
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, failureMessage);
+      }
+
+      logger.info('Transfer failure processed successfully', {
+        transactionId: transaction.id,
+        reference: data.reference,
+        status: 'failed',
+        refunded: true
+      });
+
+      return { 
+        success: true, 
+        message: 'Transfer failure processed and refunded',
+        transaction: transaction.getTransactionSummary()
+      };
+
+    } catch (error) {
+      logger.error('Failed to process transfer failure', { 
+        error: error.message, 
+        webhookData 
+      });
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleTransferReversed(webhookData) {
+    try {
+      const { data } = webhookData;
+      
+      // Find the transaction by provider reference
+      const transaction = await Transaction.findOne({
+        where: { providerReference: data.reference }
+      });
+
+      if (!transaction) {
+        logger.warn('Transaction not found for transfer reversal', { 
+          reference: data.reference 
+        });
+        return { success: false, message: 'Transaction not found' };
+      }
+
+      // Update transaction status
+      await transaction.update({
+        status: 'reversed',
+        processedAt: new Date(),
+        providerResponse: data,
+        failureReason: data.reversalReason || 'Transfer reversed'
+      });
+
+      // Refund the user's wallet
+      const wallet = await Wallet.findOne({ where: { userId: transaction.userId } });
+      if (wallet) {
+        await wallet.updateBalance(transaction.totalAmount, 'credit', 'Transfer reversal refund');
+      }
+
+      // Find user and send notification
+      const user = await User.findByPk(transaction.userId);
+      if (user) {
+        const reversalMessage = `🔄 *Transfer Reversed*\n\n` +
+                              `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
+                              `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
+                              `📄 Reference: ${transaction.reference}\n\n` +
+                              `Your transfer has been reversed. The amount has been refunded to your wallet.\n\n` +
+                              `Please contact support if you have any questions.`;
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, reversalMessage);
+      }
+
+      logger.info('Transfer reversal processed successfully', {
+        transactionId: transaction.id,
+        reference: data.reference,
+        status: 'reversed',
+        refunded: true
+      });
+
+      return { 
+        success: true, 
+        message: 'Transfer reversal processed and refunded',
+        transaction: transaction.getTransactionSummary()
+      };
+
+    } catch (error) {
+      logger.error('Failed to process transfer reversal', { 
+        error: error.message, 
+        webhookData 
+      });
+      return { success: false, error: error.message };
+    }
+  }
+
+  async makeRequest(method, endpoint, data = {}, headers = {}) {
+    try {
+      const url = `${this.baseURL}${endpoint}`;
+      const config = {
+        method,
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers
+        },
+        ...axiosConfig
+      };
+
+      if (method === 'GET') {
+        config.params = data;
+      } else {
+        config.data = data;
+      }
+
+      logger.info('Making BellBank API request', {
+        method,
+        endpoint,
+        url,
+        hasData: !!Object.keys(data).length,
+        hasHeaders: !!Object.keys(headers).length
+      });
+
+      const response = await axios(config);
+
+      logger.info('BellBank API response received', {
+        status: response.status,
+        statusText: response.statusText,
+        hasData: !!response.data
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message;
+      const status = error.response?.status;
+      
+      logger.error('BellBank API request failed', {
+        method,
+        endpoint,
+        status,
+        error: errorMessage,
+        response: error.response?.data
+      });
+
+      throw new Error(`HTTP ${status}: ${errorMessage}`);
+    }
+  }
+
+  formatPhoneNumber(phoneNumber) {
+    // Remove all non-digit characters
+    let cleaned = phoneNumber.replace(/\D/g, '');
+    
+    // Handle Nigerian numbers
+    if (cleaned.startsWith('234')) {
+      return cleaned;
+    } else if (cleaned.startsWith('0')) {
+      return '234' + cleaned.substring(1);
+    } else if (cleaned.length === 11 && cleaned.startsWith('1')) {
+      return '234' + cleaned;
+    }
+    
+    return cleaned;
+  }
+
+  formatDateForBellBank(dateString) {
+    const date = new Date(dateString);
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD format
+  }
+
+  verifyWebhookSignature(payload, signature) {
+    // Implement webhook signature verification if required by BellBank
+    // For now, return true as placeholder
+    return true;
+  }
+
+  async healthCheck() {
+    try {
+      const token = await this.generateToken();
+      return { success: true, message: 'BellBank service is healthy' };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  }
+}
+
+module.exports = new BellBankService();

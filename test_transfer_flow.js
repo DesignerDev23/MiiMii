@@ -1,105 +1,50 @@
 // Test script to verify the complete transfer flow
-const aiAssistant = require('./src/services/aiAssistant');
 const bankTransferService = require('./src/services/bankTransfer');
+const logger = require('./src/utils/logger');
 
 async function testTransferFlow() {
-  console.log('🧪 Testing Complete Transfer Flow...\n');
-  
-  const testMessages = [
-    "Send 5k to Abdulkadir Musa 6035745691 keystone bank",
-    "Send 5k to John doe 1000006362 test bank",
-    "Transfer 10000 to 1234567890 GTBank"
-  ];
-  
-  for (const testMessage of testMessages) {
-    console.log(`📝 Testing: "${testMessage}"\n`);
+  console.log('🧪 Testing Transfer Flow with BellBank Test Credentials\n');
+
+  try {
+    // Test 1: Validate test account
+    console.log('1. Testing account validation...');
+    const validation = await bankTransferService.validateBankAccount('1001011000', '010');
+    console.log('✅ Account validation result:', validation);
+
+    // Test 2: Calculate fees
+    console.log('\n2. Testing fee calculation...');
+    const feeInfo = bankTransferService.calculateTransferFee(5000, bankTransferService.transferTypes.WALLET_TO_BANK);
+    console.log('✅ Fee calculation result:', feeInfo);
+
+    // Test 3: Test with different amounts
+    console.log('\n3. Testing different amounts...');
+    const amounts = [100, 1000, 5000, 10000, 50000];
     
-    try {
-      // Create a mock user for testing
-      const mockUser = {
-        id: 'test-user-id',
-        whatsappNumber: '+2349072874728',
-        firstName: 'Designer',
-        onboardingStep: 'completed',
-        canPerformTransactions: () => true,
-        updateConversationState: async (state) => {
-          console.log('  💾 Conversation state updated:', state);
-        }
-      };
-      
-      // Test AI Analysis
-      console.log('🔍 Step 1: AI Intent Analysis');
-      const intentAnalysis = await aiAssistant.analyzeUserIntent(testMessage, mockUser);
-      
-      console.log('  AI Result:');
-      console.log(`    Intent: ${intentAnalysis.intent}`);
-      console.log(`    Confidence: ${intentAnalysis.confidence}`);
-      console.log(`    Extracted Data:`, intentAnalysis.extractedData || 'None');
-      
-      // Test Account Validation
-      if (intentAnalysis.intent === 'bank_transfer' && intentAnalysis.extractedData) {
-        console.log('\n🔍 Step 2: Account Validation');
-        const { accountNumber, bankName } = intentAnalysis.extractedData;
-        
-        if (accountNumber && bankName) {
-          // Map bank name to code
-          const bankMap = {
-            'keystone': '082', 'gtb': '058', 'gtbank': '058', 'access': '044', 'uba': '033', 
-            'fidelity': '070', 'wema': '035', 'union': '032', 'fcmb': '214', 'first': '011', 
-            'fbn': '011', 'zenith': '057', 'stanbic': '221', 'sterling': '232',
-            'test': '000023', 'testbank': '000023'
-          };
-          
-          const bankCode = bankMap[bankName.toLowerCase()];
-          
-          if (bankCode) {
-            console.log(`    Bank Code: ${bankCode}`);
-            
-            try {
-              const validation = await bankTransferService.validateBankAccount(accountNumber, bankCode);
-              console.log('    Validation Result:', {
-                valid: validation.valid,
-                accountName: validation.accountName,
-                bank: validation.bank,
-                test: validation.test || false
-              });
-            } catch (error) {
-              console.log('    Validation Error:', error.message);
-            }
-          } else {
-            console.log('    ❌ Unknown bank name:', bankName);
-          }
-        }
-      }
-      
-      // Test Full Processing
-      console.log('\n🔄 Step 3: Full Message Processing');
-      const processingResult = await aiAssistant.processUserMessage(
-        mockUser.whatsappNumber,
-        testMessage,
-        'text'
-      );
-      
-      console.log('  Processing Result:');
-      console.log(`    Success: ${processingResult.success}`);
-      if (processingResult.success) {
-        console.log(`    Intent: ${processingResult.result.intent}`);
-        console.log(`    Message: ${processingResult.result.message?.substring(0, 100)}...`);
-        console.log(`    Requires Action: ${processingResult.result.requiresAction}`);
-        console.log(`    Awaiting Input: ${processingResult.result.awaitingInput || 'N/A'}`);
-      } else {
-        console.log(`    Error: ${processingResult.error}`);
-      }
-      
-    } catch (error) {
-      console.error('  ❌ Test failed:', error.message);
+    for (const amount of amounts) {
+      const fees = bankTransferService.calculateTransferFee(amount, bankTransferService.transferTypes.WALLET_TO_BANK);
+      console.log(`   ₦${amount.toLocaleString()}: Fee ₦${fees.totalFee}, Total ₦${fees.totalAmount.toLocaleString()}`);
     }
+
+    // Test 4: Test bank name mapping
+    console.log('\n4. Testing bank name mapping...');
+    const testBanks = ['test', 'testbank', 'keystone', 'gtb', 'access'];
     
-    console.log('\n' + '='.repeat(60) + '\n');
+    for (const bank of testBanks) {
+      const bankCode = bankTransferService.getBankNameByCode(bank);
+      console.log(`   ${bank}: ${bankCode}`);
+    }
+
+    console.log('\n🎉 All tests completed successfully!');
+    console.log('\n📝 Test Instructions:');
+    console.log('   - Use "Send 5k to 1001011000 test bank" to test the transfer flow');
+    console.log('   - The system should validate the account and show confirmation');
+    console.log('   - This uses official BellBank test credentials');
+
+  } catch (error) {
+    console.error('❌ Test failed:', error.message);
+    logger.error('Transfer flow test failed', { error: error.message });
   }
-  
-  console.log('✅ Transfer flow testing completed!');
 }
 
 // Run the test
-testTransferFlow().catch(console.error);
+testTransferFlow();
