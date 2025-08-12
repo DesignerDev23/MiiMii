@@ -340,8 +340,8 @@ class BellBankService {
         // For now, we'll use a simple mapping for common banks
         const codeMapping = {
           '082': '000082', // Keystone Bank
-          '014': '000014', // Access Bank
-          '011': '000016', // First Bank
+          '044': '000044', // Access Bank
+          '011': '000011', // First Bank
           '058': '000058', // GTBank
           '057': '000057', // Zenith Bank
           '070': '000070', // Fidelity Bank
@@ -369,9 +369,16 @@ class BellBankService {
       // According to BellBank docs, the endpoint should be /v1/transfer/name-enquiry
       // and the payload should match their specification
       const payload = {
-        accountNumber: accountNumber.toString().padStart(10, '0'), // Ensure 10 digits
+        accountNumber: accountNumber.toString().trim(), // Don't pad, use as-is
         bankCode: institutionCode.toString() // Use 6-digit institution code
       };
+
+      // Log the exact payload being sent for debugging
+      logger.info('BellBank name enquiry payload', {
+        payload,
+        accountNumberLength: payload.accountNumber.length,
+        bankCodeLength: payload.bankCode.length
+      });
 
       logger.info('Making BellBank name enquiry', {
         accountNumber: payload.accountNumber,
@@ -696,8 +703,8 @@ class BellBankService {
         // For now, we'll use a simple mapping for common banks
         const codeMapping = {
           '082': '000082', // Keystone Bank
-          '014': '000014', // Access Bank
-          '011': '000016', // First Bank
+          '044': '000044', // Access Bank
+          '011': '000011', // First Bank
           '058': '000058', // GTBank
           '057': '000057', // Zenith Bank
           '070': '000070', // Fidelity Bank
