@@ -1427,9 +1427,16 @@ Should extract:
 - recipientName: "Musa Abdulkadir"
 
 And respond with something like:
-"Great! I can see you want to send ₦100 to Musa Abdulkadir. Let me help you with that! Just provide your PIN to authorize this transfer. 🔐"
+"I can help you send ₦100 to Musa Abdulkadir! 💸
 
-Example: "what's my current balance"
+For real money transfers, I need the recipient's bank details:
+• Account number (10 digits)
+• Bank name
+
+Please send the transfer request with bank details:
+*Send 100 to 1234567890 GTBank Musa Abdulkadir*"
+
+Example: "Send 5k to Abdulkadir Musa 6035745691 keystone bank"
 Should respond with:
 "I'll check your current balance for you right away! 💰"
 

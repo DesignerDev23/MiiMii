@@ -1528,61 +1528,18 @@ class MessageProcessor {
 
         } else if (phoneNumber) {
           // This is a P2P transfer
-          // Use AI-generated conversational response if available
-          if (aiAnalysis.response) {
-            await whatsappService.sendTextMessage(user.whatsappNumber, aiAnalysis.response);
-            
-            // Store conversation state for PIN verification
-            const conversationState = {
-              intent: 'transfer',
-              awaitingInput: 'pin_for_transfer',
-              context: 'transfer_pin',
-              step: 1,
-              data: {
-                phoneNumber: phoneNumber,
-                amount: transferAmount,
-                recipientName: recipientName,
-                narration: 'P2P transfer',
-                reference: `TXN${Date.now()}`
-              }
-            };
-            
-            logger.info('Storing P2P transfer conversation state', {
-              userId: user.id,
-              conversationState: conversationState
-            });
-            
-            await user.updateConversationState(conversationState);
-            return;
-          }
-
-          // Fallback response for P2P transfer
-          const p2pResponse = `Great! I can see you want to send ₦${transferAmount.toLocaleString()} to ${recipientName || phoneNumber}. Let me help you with that! Just provide your PIN to authorize this transfer. 🔐`;
-          await whatsappService.sendTextMessage(user.whatsappNumber, p2pResponse);
+          // For real money transfers, we need bank account details
+          // Guide the user to provide bank information
           
-          // Store conversation state for PIN verification
-          const conversationState = {
-            intent: 'transfer',
-            awaitingInput: 'pin_for_transfer',
-            context: 'transfer_pin',
-            step: 1,
-            data: {
-              phoneNumber: phoneNumber,
-              amount: transferAmount,
-              recipientName: recipientName,
-              narration: 'P2P transfer',
-              reference: `TXN${Date.now()}`
-            }
-          };
+          const guidanceMessage = `I can help you send ₦${transferAmount.toLocaleString()} to ${recipientName || phoneNumber}! 💸\n\n` +
+            `For real money transfers, I need the recipient's bank details:\n\n` +
+            `• Account number (10 digits)\n` +
+            `• Bank name\n\n` +
+            `Please send the transfer request with bank details:\n` +
+            `*Send ${transferAmount} to 1234567890 GTBank ${recipientName || phoneNumber}*`;
           
-          logger.info('Storing fallback P2P transfer conversation state', {
-            userId: user.id,
-            conversationState: conversationState
-          });
-          
-          await user.updateConversationState(conversationState);
+          await whatsappService.sendTextMessage(user.whatsappNumber, guidanceMessage);
           return;
-
         } else {
           // Not enough information for either type
           await whatsappService.sendTextMessage(user.whatsappNumber, 
@@ -1780,20 +1737,45 @@ class MessageProcessor {
         };
         result = await bankTransferService.processBankTransfer(user.id, bankTransferData, pin);
       } else {
-        // P2P transfer - for now, we'll use a mock implementation
-        // In a real implementation, you would integrate with a P2P transfer service
-        result = {
-          success: true,
-          transaction: {
+        // P2P transfer - treat as bank transfer to the recipient's bank account
+        // For P2P transfers, we need to determine the recipient's bank
+        // For now, we'll use a default bank or ask user to specify
+        
+        // Check if we have bank information in the transfer data
+        if (transferData.bankCode && transferData.accountNumber) {
+          // User provided bank details, treat as regular bank transfer
+          const bankTransferData = {
+            accountNumber: transferData.accountNumber,
+            bankCode: transferData.bankCode,
             amount: transferData.amount,
-            fee: 0,
-            totalAmount: transferData.amount,
-            accountName: transferData.recipientName || transferData.phoneNumber,
-            accountNumber: transferData.phoneNumber,
-            bankName: 'P2P Transfer',
+            narration: transferData.narration || 'P2P transfer',
             reference: transferData.reference
-          }
-        };
+          };
+          result = await bankTransferService.processBankTransfer(user.id, bankTransferData, pin);
+        } else {
+          // For P2P transfers without bank details, we need to ask user for bank information
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "For P2P transfers, I need the recipient's bank details. Please provide:\n\n" +
+            "• Account number (10 digits)\n" +
+            "• Bank name\n\n" +
+            "Example: *Send 100 to 1234567890 GTBank Musa Abdulkadir*");
+          
+          // Store conversation state to continue the transfer flow
+          await user.updateConversationState({
+            intent: 'transfer',
+            awaitingInput: 'bank_details',
+            context: 'p2p_bank_details',
+            step: 1,
+            data: {
+              phoneNumber: transferData.phoneNumber,
+              amount: transferData.amount,
+              recipientName: transferData.recipientName,
+              narration: 'P2P transfer',
+              reference: transferData.reference
+            }
+          });
+          return;
+        }
       }
       
       if (result.success) {
