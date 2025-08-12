@@ -1825,6 +1825,10 @@ class MessageProcessor {
         errorMessage = "❌ Invalid account details. Please check the account number and bank name.";
       } else if (error.message.includes('Transfer limit')) {
         errorMessage = "❌ Transfer limit exceeded. Please try a smaller amount or contact support.";
+      } else if (error.message.includes('Failed To Fecth Account Info')) {
+        errorMessage = "❌ The account number could not be found. Please check the account number and bank name, then try again.";
+      } else if (error.message.includes('could not be found in')) {
+        errorMessage = error.message; // Use the user-friendly message from bankTransfer service
       }
       
       await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);

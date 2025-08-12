@@ -124,6 +124,16 @@ class BankTransferService {
         };
       }
 
+      // Basic account number validation
+      const cleanAccountNumber = accountNumber.toString().trim();
+      if (!cleanAccountNumber || cleanAccountNumber.length < 8 || cleanAccountNumber.length > 11) {
+        throw new Error(`Invalid account number format. Account numbers should be 8-11 digits.`);
+      }
+      
+      if (!/^\d+$/.test(cleanAccountNumber)) {
+        throw new Error(`Invalid account number format. Account numbers should contain only digits.`);
+      }
+
       // Convert bank code to institution code if needed
       let institutionCode = bankCode;
       if (bankCode && bankCode.length !== 6) {
@@ -157,12 +167,12 @@ class BankTransferService {
       }
 
       // Use BellBank name enquiry for account validation
-      const accountDetails = await bellbankService.nameEnquiry(accountNumber, institutionCode);
+      const accountDetails = await bellbankService.nameEnquiry(cleanAccountNumber, institutionCode);
       
       if (accountDetails && (accountDetails.account_name || accountDetails.accountName)) {
         return {
           valid: true,
-          accountNumber,
+          accountNumber: cleanAccountNumber,
           bankCode,
           accountName: accountDetails.account_name || accountDetails.accountName,
           bank: accountDetails.bank_name || accountDetails.bankName || this.getBankNameByCode(bankCode),
@@ -179,7 +189,7 @@ class BankTransferService {
         });
         return {
           valid: true,
-          accountNumber,
+          accountNumber: cleanAccountNumber,
           bankCode,
           accountName: 'JOHN DOE (MOCK)',
           bank: this.getBankNameByCode(bankCode),
@@ -190,11 +200,21 @@ class BankTransferService {
 
       return {
         valid: false,
-        message: 'Could not validate account details'
+        message: `Could not validate account details for account number ${cleanAccountNumber}`
       };
     } catch (error) {
       logger.error('Account validation failed', { error: error.message, accountNumber, bankCode });
-      throw error;
+      
+      // Provide more user-friendly error messages
+      if (error.message.includes('Failed To Fecth Account Info')) {
+        throw new Error(`The account number ${cleanAccountNumber} could not be found in ${this.getBankNameByCode(bankCode)}. Please check the account number and try again.`);
+      } else if (error.message.includes('Destination Institution Code must be of 6 digits')) {
+        throw new Error(`Invalid bank code. Please try again with a valid bank.`);
+      } else if (error.message.includes('HTTP 400')) {
+        throw new Error(`Unable to validate account details. Please check the account number and bank name.`);
+      } else {
+        throw new Error(`Account validation failed: ${error.message}`);
+      }
     }
   }
 

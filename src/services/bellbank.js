@@ -396,7 +396,8 @@ class BellBankService {
         success: response.success,
         hasData: !!response.data,
         accountName: response.data?.accountName || response.data?.account_name,
-        bankName: response.data?.bankName || response.data?.bank_name
+        bankName: response.data?.bankName || response.data?.bank_name,
+        fullResponse: response // Log the full response for debugging
       });
 
       if (response.success && response.data) {
