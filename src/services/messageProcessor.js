@@ -244,11 +244,15 @@ class MessageProcessor {
               awaitingInput: user.conversationState?.awaitingInput,
               hasData: !!user.conversationState?.data,
               hasAmount: !!user.conversationState?.data?.amount,
-              hasAccountNumber: !!user.conversationState?.data?.accountNumber
+              hasAccountNumber: !!user.conversationState?.data?.accountNumber,
+              hasPhoneNumber: !!user.conversationState?.data?.phoneNumber
             });
             
-            // Only proceed if we have valid transfer data
-            if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
+            // Check if we have valid transfer data (either accountNumber for bank transfers or phoneNumber for P2P transfers)
+            const hasValidTransferData = user.conversationState?.data?.amount && 
+              (user.conversationState?.data?.accountNumber || user.conversationState?.data?.phoneNumber);
+            
+            if (hasValidTransferData) {
               return await this.handlePinVerification(user, message, messageType);
             } else {
               // Clear invalid conversation state and ask user to start over
@@ -741,11 +745,15 @@ class MessageProcessor {
             awaitingInput: user.conversationState?.awaitingInput,
             hasData: !!user.conversationState?.data,
             hasAmount: !!user.conversationState?.data?.amount,
-            hasAccountNumber: !!user.conversationState?.data?.accountNumber
+            hasAccountNumber: !!user.conversationState?.data?.accountNumber,
+            hasPhoneNumber: !!user.conversationState?.data?.phoneNumber
           });
           
-          // Only proceed if we have valid transfer data
-          if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
+          // Check if we have valid transfer data (either accountNumber for bank transfers or phoneNumber for P2P transfers)
+          const hasValidTransferData = user.conversationState?.data?.amount && 
+            (user.conversationState?.data?.accountNumber || user.conversationState?.data?.phoneNumber);
+          
+          if (hasValidTransferData) {
             return await this.handlePinVerification(user, { text: processedText }, messageType);
           } else {
             // Clear invalid conversation state and ask user to start over
@@ -810,8 +818,11 @@ class MessageProcessor {
       } else {
         // If AI couldn't determine intent, check if user is awaiting PIN verification
         if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
-          // Only proceed if we have valid transfer data
-          if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
+          // Check if we have valid transfer data (either accountNumber for bank transfers or phoneNumber for P2P transfers)
+          const hasValidTransferData = user.conversationState?.data?.amount && 
+            (user.conversationState?.data?.accountNumber || user.conversationState?.data?.phoneNumber);
+          
+          if (hasValidTransferData) {
             return await this.handlePinVerification(user, { text: processedText }, messageType);
           } else {
             // Clear invalid conversation state and ask user to start over
@@ -1740,7 +1751,10 @@ class MessageProcessor {
       }
 
       // Validate that we have the required transfer data
-      if (!transferData.amount || !transferData.accountNumber || !transferData.bankCode) {
+      const isBankTransfer = transferData.accountNumber && transferData.bankCode;
+      const isP2PTransfer = transferData.phoneNumber;
+      
+      if (!transferData.amount || (!isBankTransfer && !isP2PTransfer)) {
         await whatsappService.sendTextMessage(user.whatsappNumber, 
           "Transfer details are incomplete. Please try your transfer request again.");
         
@@ -1753,8 +1767,34 @@ class MessageProcessor {
       await whatsappService.sendTextMessage(user.whatsappNumber, 
         "🔐 Verifying your PIN and processing transfer... Please wait a moment.");
 
-      // Process the transfer
-      const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+      // Process the transfer based on type
+      let result;
+      if (isBankTransfer) {
+        // Bank transfer
+        const bankTransferData = {
+          accountNumber: transferData.accountNumber,
+          bankCode: transferData.bankCode,
+          amount: transferData.amount,
+          narration: transferData.narration || 'Wallet transfer',
+          reference: transferData.reference
+        };
+        result = await bankTransferService.processBankTransfer(user.id, bankTransferData, pin);
+      } else {
+        // P2P transfer - for now, we'll use a mock implementation
+        // In a real implementation, you would integrate with a P2P transfer service
+        result = {
+          success: true,
+          transaction: {
+            amount: transferData.amount,
+            fee: 0,
+            totalAmount: transferData.amount,
+            accountName: transferData.recipientName || transferData.phoneNumber,
+            accountNumber: transferData.phoneNumber,
+            bankName: 'P2P Transfer',
+            reference: transferData.reference
+          }
+        };
+      }
       
       if (result.success) {
         const successMsg = `✅ *Transfer Successful!*\n\n` +
