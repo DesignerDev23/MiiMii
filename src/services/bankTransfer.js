@@ -124,8 +124,40 @@ class BankTransferService {
         };
       }
 
+      // Convert bank code to institution code if needed
+      let institutionCode = bankCode;
+      if (bankCode && bankCode.length !== 6) {
+        // If it's a 3-digit code, we need to convert it
+        const codeMapping = {
+          '082': '000082', // Keystone Bank
+          '014': '000014', // Access Bank
+          '011': '000016', // First Bank
+          '058': '000058', // GTBank
+          '057': '000057', // Zenith Bank
+          '070': '000070', // Fidelity Bank
+          '032': '000032', // Union Bank
+          '035': '000035', // Wema Bank
+          '232': '000232', // Sterling Bank
+          '050': '000050', // Ecobank
+          '214': '000214', // FCMB
+          '221': '000221', // Stanbic IBTC
+          '068': '000068', // Standard Chartered
+          '023': '000023', // Citibank
+          '030': '000030', // Heritage Bank
+          '215': '000215', // Unity Bank
+          '084': '000084', // Enterprise Bank
+          '033': '000033'  // UBA
+        };
+        
+        institutionCode = codeMapping[bankCode] || bankCode;
+        logger.info('Converted bank code to institution code for validation', {
+          originalCode: bankCode,
+          institutionCode
+        });
+      }
+
       // Use BellBank name enquiry for account validation
-      const accountDetails = await bellbankService.nameEnquiry(accountNumber, bankCode);
+      const accountDetails = await bellbankService.nameEnquiry(accountNumber, institutionCode);
       
       if (accountDetails && (accountDetails.account_name || accountDetails.accountName)) {
         return {
@@ -171,6 +203,58 @@ class BankTransferService {
     const banks = this.getStaticBankList();
     const bank = banks.find(b => b.code === bankCode);
     return bank ? bank.name : 'Unknown Bank';
+  }
+
+  // Convert bank name to institution code using BellBank API
+  async getInstitutionCode(bankName) {
+    try {
+      return await bellbankService.getInstitutionCode(bankName);
+    } catch (error) {
+      logger.error('Failed to get institution code from BellBank', { 
+        bankName, 
+        error: error.message 
+      });
+      
+      // Fallback to static mapping
+      const fallbackMapping = {
+        'keystone': '000082',
+        'access': '000014',
+        'first': '000016',
+        'gtbank': '000058',
+        'gt bank': '000058',
+        'guaranty trust bank': '000058',
+        'zenith': '000057',
+        'fidelity': '000070',
+        'union': '000032',
+        'wema': '000035',
+        'sterling': '000232',
+        'ecobank': '000050',
+        'eco bank': '000050',
+        'fcmb': '000214',
+        'first city monument bank': '000214',
+        'stanbic ibtc': '000221',
+        'stanbic': '000221',
+        'ibtc': '000221',
+        'standard chartered': '000068',
+        'standard chartered bank': '000068',
+        'citibank': '000023',
+        'citi bank': '000023',
+        'heritage': '000030',
+        'unity': '000215',
+        'enterprise': '000084',
+        'uba': '000033',
+        'united bank for africa': '000033'
+      };
+
+      const lowerBankName = bankName.toLowerCase();
+      for (const [pattern, code] of Object.entries(fallbackMapping)) {
+        if (lowerBankName.includes(pattern)) {
+          return code;
+        }
+      }
+
+      throw new Error(`No institution code found for bank: ${bankName}`);
+    }
   }
 
   // Calculate transfer fees
@@ -415,8 +499,45 @@ class BankTransferService {
         };
       }
 
+      // Convert bank code to institution code if needed
+      let institutionCode = transferData.bankCode;
+      if (transferData.bankCode && transferData.bankCode.length !== 6) {
+        const codeMapping = {
+          '082': '000082', // Keystone Bank
+          '014': '000014', // Access Bank
+          '011': '000016', // First Bank
+          '058': '000058', // GTBank
+          '057': '000057', // Zenith Bank
+          '070': '000070', // Fidelity Bank
+          '032': '000032', // Union Bank
+          '035': '000035', // Wema Bank
+          '232': '000232', // Sterling Bank
+          '050': '000050', // Ecobank
+          '214': '000214', // FCMB
+          '221': '000221', // Stanbic IBTC
+          '068': '000068', // Standard Chartered
+          '023': '000023', // Citibank
+          '030': '000030', // Heritage Bank
+          '215': '000215', // Unity Bank
+          '084': '000084', // Enterprise Bank
+          '033': '000033'  // UBA
+        };
+        
+        institutionCode = codeMapping[transferData.bankCode] || transferData.bankCode;
+        logger.info('Converted bank code to institution code for transfer', {
+          originalCode: transferData.bankCode,
+          institutionCode
+        });
+      }
+
+      // Update transfer data with institution code
+      const updatedTransferData = {
+        ...transferData,
+        bankCode: institutionCode
+      };
+
       // Use BellBank service for actual transfer
-      const result = await bellbankService.initiateTransfer(transferData);
+      const result = await bellbankService.initiateTransfer(updatedTransferData);
       
       return {
         success: result.success || result.status === 'success',

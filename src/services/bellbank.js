@@ -39,6 +39,10 @@ class BellBankService {
     this.requestQueue = [];
     this.isProcessingQueue = false;
 
+    // Bank mapping cache
+    this.bankMappingCache = null;
+    this.bankMappingExpiry = null;
+
     // Safe runtime config log (no secrets leaked)
     const mask = (val) => {
       if (!val) return 'MISSING';
@@ -329,16 +333,50 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
+      // Convert bank code to institution code if it's not already 6 digits
+      let institutionCode = bankCode;
+      if (bankCode && bankCode.length !== 6) {
+        // If it's a 3-digit code, we need to convert it
+        // For now, we'll use a simple mapping for common banks
+        const codeMapping = {
+          '082': '000082', // Keystone Bank
+          '014': '000014', // Access Bank
+          '011': '000016', // First Bank
+          '058': '000058', // GTBank
+          '057': '000057', // Zenith Bank
+          '070': '000070', // Fidelity Bank
+          '032': '000032', // Union Bank
+          '035': '000035', // Wema Bank
+          '232': '000232', // Sterling Bank
+          '050': '000050', // Ecobank
+          '214': '000214', // FCMB
+          '221': '000221', // Stanbic IBTC
+          '068': '000068', // Standard Chartered
+          '023': '000023', // Citibank
+          '030': '000030', // Heritage Bank
+          '215': '000215', // Unity Bank
+          '084': '000084', // Enterprise Bank
+          '033': '000033'  // UBA
+        };
+        
+        institutionCode = codeMapping[bankCode] || bankCode;
+        logger.info('Converted bank code to institution code', {
+          originalCode: bankCode,
+          institutionCode
+        });
+      }
+      
       // According to BellBank docs, the endpoint should be /v1/transfer/name-enquiry
       // and the payload should match their specification
       const payload = {
         accountNumber: accountNumber.toString().padStart(10, '0'), // Ensure 10 digits
-        bankCode: bankCode.toString()
+        bankCode: institutionCode.toString() // Use 6-digit institution code
       };
 
       logger.info('Making BellBank name enquiry', {
         accountNumber: payload.accountNumber,
         bankCode: payload.bankCode,
+        originalBankCode: bankCode,
         endpoint: '/v1/transfer/name-enquiry'
       });
 
@@ -401,6 +439,244 @@ class BellBankService {
     }
   }
 
+  // Get bank mapping with caching
+  async getBankMapping() {
+    try {
+      // Check if we have a valid cached mapping
+      if (this.bankMappingCache && this.bankMappingExpiry && Date.now() < this.bankMappingExpiry) {
+        return this.bankMappingCache;
+      }
+
+      logger.info('Fetching bank mapping from BellBank API');
+      
+      const bankListResponse = await this.getBankList();
+      
+      if (!bankListResponse.success || !bankListResponse.banks) {
+        throw new Error('Failed to get bank list from BellBank API');
+      }
+
+      // Create mapping from bank names to institution codes
+      const bankMapping = {};
+      const bankNameMapping = {};
+      
+      for (const bank of bankListResponse.banks) {
+        if (bank.institutionCode && bank.institutionName) {
+          // Map by exact institution name
+          bankMapping[bank.institutionName.toLowerCase()] = bank.institutionCode;
+          
+          // Map by common bank name variations
+          const commonNames = this.getBankNameVariations(bank.institutionName);
+          for (const name of commonNames) {
+            bankMapping[name.toLowerCase()] = bank.institutionCode;
+          }
+          
+          // Store reverse mapping
+          bankNameMapping[bank.institutionCode] = bank.institutionName;
+        }
+      }
+
+      // Cache the mapping for 1 hour
+      this.bankMappingCache = {
+        bankMapping,
+        bankNameMapping,
+        banks: bankListResponse.banks
+      };
+      this.bankMappingExpiry = Date.now() + (60 * 60 * 1000); // 1 hour
+
+      logger.info('Bank mapping updated', {
+        totalBanks: bankListResponse.banks.length,
+        mappingEntries: Object.keys(bankMapping).length
+      });
+
+      return this.bankMappingCache;
+    } catch (error) {
+      logger.error('Failed to get bank mapping', { error: error.message });
+      
+      // Return fallback mapping for common banks
+      return this.getFallbackBankMapping();
+    }
+  }
+
+  // Get common name variations for a bank
+  getBankNameVariations(bankName) {
+    const variations = [bankName];
+    
+    // Remove common suffixes
+    const withoutSuffix = bankName
+      .replace(/\s+(plc|limited|ltd|inc|corporation|corp|bank|nigeria|nig)\s*$/i, '')
+      .trim();
+    
+    if (withoutSuffix !== bankName) {
+      variations.push(withoutSuffix);
+    }
+
+    // Add common abbreviations
+    const abbreviations = {
+      'access bank': ['access'],
+      'first bank of nigeria': ['first bank', 'firstbank'],
+      'guaranty trust bank': ['gtbank', 'gt bank'],
+      'united bank for africa': ['uba'],
+      'zenith bank': ['zenith'],
+      'keystone bank': ['keystone'],
+      'fidelity bank': ['fidelity'],
+      'union bank': ['union'],
+      'wema bank': ['wema'],
+      'sterling bank': ['sterling'],
+      'ecobank': ['eco bank'],
+      'fcmb': ['first city monument bank'],
+      'stanbic ibtc': ['stanbic', 'ibtc'],
+      'standard chartered': ['standard chartered bank'],
+      'citibank': ['citi bank'],
+      'heritage bank': ['heritage'],
+      'unity bank': ['unity'],
+      'enterprise bank': ['enterprise']
+    };
+
+    const lowerBankName = bankName.toLowerCase();
+    for (const [fullName, abbrevs] of Object.entries(abbreviations)) {
+      if (lowerBankName.includes(fullName) || fullName.includes(lowerBankName)) {
+        variations.push(...abbrevs);
+      }
+    }
+
+    return variations;
+  }
+
+  // Fallback bank mapping for when API is unavailable
+  getFallbackBankMapping() {
+    return {
+      bankMapping: {
+        'access bank': '000014',
+        'first bank': '000016',
+        'gtbank': '000058',
+        'gt bank': '000058',
+        'guaranty trust bank': '000058',
+        'zenith bank': '000057',
+        'zenith': '000057',
+        'keystone bank': '000082',
+        'keystone': '000082',
+        'fidelity bank': '000070',
+        'fidelity': '000070',
+        'union bank': '000032',
+        'union': '000032',
+        'wema bank': '000035',
+        'wema': '000035',
+        'sterling bank': '000232',
+        'sterling': '000232',
+        'ecobank': '000050',
+        'eco bank': '000050',
+        'fcmb': '000214',
+        'first city monument bank': '000214',
+        'stanbic ibtc': '000221',
+        'stanbic': '000221',
+        'ibtc': '000221',
+        'standard chartered': '000068',
+        'standard chartered bank': '000068',
+        'citibank': '000023',
+        'citi bank': '000023',
+        'heritage bank': '000030',
+        'heritage': '000030',
+        'unity bank': '000215',
+        'unity': '000215',
+        'enterprise bank': '000084',
+        'enterprise': '000084',
+        'uba': '000033',
+        'united bank for africa': '000033'
+      },
+      bankNameMapping: {
+        '000014': 'ACCESS BANK',
+        '000016': 'FIRST BANK OF NIGERIA',
+        '000058': 'GUARANTY TRUST BANK',
+        '000057': 'ZENITH BANK',
+        '000082': 'KEYSTONE BANK',
+        '000070': 'FIDELITY BANK',
+        '000032': 'UNION BANK',
+        '000035': 'WEMA BANK',
+        '000232': 'STERLING BANK',
+        '000050': 'ECOBANK',
+        '000214': 'FIRST CITY MONUMENT BANK',
+        '000221': 'STANBIC IBTC BANK',
+        '000068': 'STANDARD CHARTERED BANK',
+        '000023': 'CITIBANK NIGERIA',
+        '000030': 'HERITAGE BANK',
+        '000215': 'UNITY BANK',
+        '000084': 'ENTERPRISE BANK',
+        '000033': 'UNITED BANK FOR AFRICA'
+      },
+      banks: []
+    };
+  }
+
+  // Convert bank name to institution code
+  async getInstitutionCode(bankName) {
+    try {
+      if (!bankName) {
+        throw new Error('Bank name is required');
+      }
+
+      const mapping = await this.getBankMapping();
+      const lowerBankName = bankName.toLowerCase().trim();
+      
+      // Try exact match first
+      if (mapping.bankMapping[lowerBankName]) {
+        return mapping.bankMapping[lowerBankName];
+      }
+
+      // Try partial matches
+      for (const [name, code] of Object.entries(mapping.bankMapping)) {
+        if (name.includes(lowerBankName) || lowerBankName.includes(name)) {
+          logger.info('Found bank mapping by partial match', {
+            input: bankName,
+            matched: name,
+            institutionCode: code
+          });
+          return code;
+        }
+      }
+
+      // If no match found, try to find by common patterns
+      const commonPatterns = {
+        'keystone': '000082',
+        'access': '000014',
+        'first': '000016',
+        'gt': '000058',
+        'zenith': '000057',
+        'fidelity': '000070',
+        'union': '000032',
+        'wema': '000035',
+        'sterling': '000232',
+        'eco': '000050',
+        'fcmb': '000214',
+        'stanbic': '000221',
+        'standard': '000068',
+        'citi': '000023',
+        'heritage': '000030',
+        'unity': '000215',
+        'enterprise': '000084',
+        'uba': '000033'
+      };
+
+      for (const [pattern, code] of Object.entries(commonPatterns)) {
+        if (lowerBankName.includes(pattern)) {
+          logger.info('Found bank mapping by pattern match', {
+            input: bankName,
+            pattern,
+            institutionCode: code
+          });
+          return code;
+        }
+      }
+
+      throw new Error(`No institution code found for bank: ${bankName}`);
+    } catch (error) {
+      logger.error('Failed to get institution code', { 
+        bankName, 
+        error: error.message 
+      });
+      throw error;
+    }
+  }
+
   async initiateTransfer(transferData) {
     try {
       const token = await this.generateToken();
@@ -413,10 +689,43 @@ class BellBankService {
         }
       }
 
+      // Convert bank code to institution code if it's not already 6 digits
+      let institutionCode = transferData.bankCode;
+      if (transferData.bankCode && transferData.bankCode.length !== 6) {
+        // If it's a 3-digit code, we need to convert it
+        // For now, we'll use a simple mapping for common banks
+        const codeMapping = {
+          '082': '000082', // Keystone Bank
+          '014': '000014', // Access Bank
+          '011': '000016', // First Bank
+          '058': '000058', // GTBank
+          '057': '000057', // Zenith Bank
+          '070': '000070', // Fidelity Bank
+          '032': '000032', // Union Bank
+          '035': '000035', // Wema Bank
+          '232': '000232', // Sterling Bank
+          '050': '000050', // Ecobank
+          '214': '000214', // FCMB
+          '221': '000221', // Stanbic IBTC
+          '068': '000068', // Standard Chartered
+          '023': '000023', // Citibank
+          '030': '000030', // Heritage Bank
+          '215': '000215', // Unity Bank
+          '084': '000084', // Enterprise Bank
+          '033': '000033'  // UBA
+        };
+        
+        institutionCode = codeMapping[transferData.bankCode] || transferData.bankCode;
+        logger.info('Converted bank code to institution code for transfer', {
+          originalCode: transferData.bankCode,
+          institutionCode
+        });
+      }
+
       const payload = {
         amount: parseFloat(transferData.amount),
         accountNumber: transferData.accountNumber.toString(),
-        bankCode: transferData.bankCode.toString(),
+        bankCode: institutionCode.toString(), // Use 6-digit institution code
         narration: transferData.narration.substring(0, 30), // BellBank limit
         reference: transferData.reference,
         sessionId: transferData.sessionId,
@@ -432,7 +741,8 @@ class BellBankService {
         reference: transferData.reference,
         amount: transferData.amount,
         accountNumber: transferData.accountNumber,
-        bankCode: transferData.bankCode
+        bankCode: transferData.bankCode,
+        institutionCode
       });
 
       const response = await this.makeRequest('POST', '/v1/transfer', payload, {
