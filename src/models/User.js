@@ -261,8 +261,30 @@ User.prototype.canPerformTransactions = function() {
 };
 
 User.prototype.updateConversationState = async function(state) {
-  this.conversationState = { ...this.conversationState, ...state };
-  return this.save();
+  const logger = require('../utils/logger');
+  
+  logger.info('Updating conversation state', {
+    userId: this.id,
+    oldState: this.conversationState,
+    newState: state
+  });
+  
+  // If state is null, clear the conversation state
+  if (state === null) {
+    this.conversationState = null;
+  } else {
+    // Replace the entire conversation state with the new state
+    this.conversationState = state;
+  }
+  
+  const result = await this.save();
+  
+  logger.info('Conversation state updated successfully', {
+    userId: this.id,
+    finalState: this.conversationState
+  });
+  
+  return result;
 };
 
 User.prototype.clearConversationState = async function() {

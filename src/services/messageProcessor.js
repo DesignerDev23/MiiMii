@@ -160,7 +160,8 @@ class MessageProcessor {
         messageType,
         messageId,
         userName,
-        messageContent: messageContent || 'No text content'
+        messageContent: messageContent || 'No text content',
+        conversationState: user.conversationState
       });
 
       // Analyze user message with AI to determine intent
@@ -237,6 +238,15 @@ class MessageProcessor {
         default:
           // Check if user is awaiting PIN verification
           if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
+            logger.info('PIN verification detected in main switch', {
+              userId: user.id,
+              conversationState: user.conversationState,
+              awaitingInput: user.conversationState?.awaitingInput,
+              hasData: !!user.conversationState?.data,
+              hasAmount: !!user.conversationState?.data?.amount,
+              hasAccountNumber: !!user.conversationState?.data?.accountNumber
+            });
+            
             // Only proceed if we have valid transfer data
             if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
               return await this.handlePinVerification(user, message, messageType);
@@ -725,6 +735,15 @@ class MessageProcessor {
       if (aiAnalysis.intent && aiAnalysis.confidence > 0.7) {
         // Check if user is awaiting PIN verification
         if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
+          logger.info('PIN verification detected', {
+            userId: user.id,
+            conversationState: user.conversationState,
+            awaitingInput: user.conversationState?.awaitingInput,
+            hasData: !!user.conversationState?.data,
+            hasAmount: !!user.conversationState?.data?.amount,
+            hasAccountNumber: !!user.conversationState?.data?.accountNumber
+          });
+          
           // Only proceed if we have valid transfer data
           if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
             return await this.handlePinVerification(user, { text: processedText }, messageType);
@@ -1503,7 +1522,7 @@ class MessageProcessor {
             await whatsappService.sendTextMessage(user.whatsappNumber, aiAnalysis.response);
             
             // Store conversation state for PIN verification
-            await user.updateConversationState({
+            const conversationState = {
               intent: 'transfer',
               awaitingInput: 'pin_for_transfer',
               context: 'transfer_pin',
@@ -1515,7 +1534,14 @@ class MessageProcessor {
                 narration: 'P2P transfer',
                 reference: `TXN${Date.now()}`
               }
+            };
+            
+            logger.info('Storing P2P transfer conversation state', {
+              userId: user.id,
+              conversationState: conversationState
             });
+            
+            await user.updateConversationState(conversationState);
             return;
           }
 
@@ -1524,7 +1550,7 @@ class MessageProcessor {
           await whatsappService.sendTextMessage(user.whatsappNumber, p2pResponse);
           
           // Store conversation state for PIN verification
-          await user.updateConversationState({
+          const conversationState = {
             intent: 'transfer',
             awaitingInput: 'pin_for_transfer',
             context: 'transfer_pin',
@@ -1536,7 +1562,14 @@ class MessageProcessor {
               narration: 'P2P transfer',
               reference: `TXN${Date.now()}`
             }
+          };
+          
+          logger.info('Storing fallback P2P transfer conversation state', {
+            userId: user.id,
+            conversationState: conversationState
           });
+          
+          await user.updateConversationState(conversationState);
           return;
 
         } else {
