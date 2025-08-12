@@ -1529,13 +1529,13 @@ class MessageProcessor {
         } else if (phoneNumber) {
           // This is a P2P transfer
           // For real money transfers, we need bank account details
-          // Guide the user to provide bank information
+          // Guide the user to provide bank information in a more conversational way
           
-          const guidanceMessage = `I can help you send ₦${transferAmount.toLocaleString()} to ${recipientName || phoneNumber}! 💸\n\n` +
-            `For real money transfers, I need the recipient's bank details:\n\n` +
-            `• Account number (10 digits)\n` +
-            `• Bank name\n\n` +
-            `Please send the transfer request with bank details:\n` +
+          const guidanceMessage = `Great! I can help you send ₦${transferAmount.toLocaleString()} to ${recipientName || phoneNumber}! 💸\n\n` +
+            `To complete this transfer, I need the recipient's bank details:\n\n` +
+            `📝 *Account number* (10 digits)\n` +
+            `🏦 *Bank name*\n\n` +
+            `Please send the complete transfer request like this:\n` +
             `*Send ${transferAmount} to 1234567890 GTBank ${recipientName || phoneNumber}*`;
           
           await whatsappService.sendTextMessage(user.whatsappNumber, guidanceMessage);
@@ -1543,8 +1543,14 @@ class MessageProcessor {
         } else {
           // Not enough information for either type
           await whatsappService.sendTextMessage(user.whatsappNumber, 
-            "I can see you want to make a transfer! 💸\n\nTo help you better, I need:\n• The amount (like 5k or 5000)\n• Account number (10 digits) and bank name for bank transfers\n• Phone number for P2P transfers\n\nTry something like: *Send 5k to John 1234567890 GTBank* or *Send 100 to 08123456789*");
-          return;
+            "I can see you want to make a transfer! 💸\n\n" +
+            "To help you better, I need more details:\n\n" +
+            "📝 *Amount* (e.g., 1000, 5k, 10k)\n" +
+            "👤 *Recipient name*\n" +
+            "🏦 *Bank details* (account number + bank name)\n\n" +
+            "Try something like:\n" +
+            "• *Send 5k to John 1234567890 GTBank*\n" +
+            "• *Send 1000 to 1234567890 First Bank Jane Doe*");
         }
 
       } catch (error) {
