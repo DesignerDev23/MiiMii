@@ -236,7 +236,7 @@ class MessageProcessor {
           
         default:
           // Check if user is awaiting PIN verification
-          if (user.conversationState?.awaitingInput === 'pin_verification') {
+          if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
             // Only proceed if we have valid transfer data
             if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
               return await this.handlePinVerification(user, message, messageType);
@@ -628,6 +628,9 @@ class MessageProcessor {
 
   async handleCompletedUserMessage(user, message, messageType) {
     try {
+      // Get user's name for personalization
+      const userName = user.firstName || user.lastName || 'there';
+      
       // Process different message types
       let processedText = '';
       let extractedData = null;
@@ -721,7 +724,7 @@ class MessageProcessor {
       // Handle the AI analysis result
       if (aiAnalysis.intent && aiAnalysis.confidence > 0.7) {
         // Check if user is awaiting PIN verification
-        if (user.conversationState?.awaitingInput === 'pin_verification') {
+        if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
           // Only proceed if we have valid transfer data
           if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
             return await this.handlePinVerification(user, { text: processedText }, messageType);
@@ -786,6 +789,20 @@ class MessageProcessor {
             return await this.processMessageByType(user, userName, { text: processedText }, messageType);
         }
       } else {
+        // If AI couldn't determine intent, check if user is awaiting PIN verification
+        if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
+          // Only proceed if we have valid transfer data
+          if (user.conversationState?.data?.amount && user.conversationState?.data?.accountNumber) {
+            return await this.handlePinVerification(user, { text: processedText }, messageType);
+          } else {
+            // Clear invalid conversation state and ask user to start over
+            await user.updateConversationState(null);
+            await whatsappService.sendTextMessage(user.whatsappNumber, 
+              "I couldn't find your transfer details. Please try your transfer request again.");
+            return;
+          }
+        }
+        
         // If AI couldn't determine intent, try traditional processing
         return await this.processMessageByType(user, userName, { text: processedText }, messageType);
       }
@@ -1831,7 +1848,7 @@ class MessageProcessor {
    * Handle menu intent
    */
   async handleMenuIntent(user, message, messageType) {
-    const menuMessage = `📋 *MiiMii Services Menu*\n\n💰 *Money*\n• Check balance\n• Send money\n• Transaction history\n\n📱 *Airtime & Data*\n• Buy airtime\n• Buy data bundles\n\n💡 *Bills & Utilities*\n• Pay electricity\n• Pay water\n• Pay other bills\n\n📊 *Account*\n• Account details\n• Virtual account info\n\n❓ *Support*\n• Get help\n• Contact support\n\nJust say what you need!`;
+    const menuMessage = `📋 *MiiMii Services Menu*\n\n💰 *Money*\n• Check balance\n• Send money\n• Transaction history\n\n📱 *Airtime & Data*\n• Buy airtime\n• Buy data bundles\n\n�� *Bills & Utilities*\n• Pay electricity\n• Pay water\n• Pay other bills\n\n📊 *Account*\n• Account details\n• Virtual account info\n\n❓ *Support*\n• Get help\n• Contact support\n\nJust say what you need!`;
     
     const whatsappService = require('./whatsapp');
     await whatsappService.sendTextMessage(user.whatsappNumber, menuMessage);
