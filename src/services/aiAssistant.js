@@ -1346,7 +1346,7 @@ User Context:
 IMPORTANT: Use these exact intent names:
 1. "transfer" - User wants to send money to another person (P2P)
 2. "bank_transfer" - User wants to transfer money to a bank account
-3. "balance" - User wants to check account balance
+3. "balance" - User wants to check account balance (NOT balance_inquiry)
 4. "airtime" - User wants to buy airtime
 5. "data" - User wants to buy data
 6. "bills" - User wants to pay bills
@@ -1356,10 +1356,9 @@ IMPORTANT: Use these exact intent names:
 10. "wallet_details" - User wants to see wallet information, account details, balance, and transaction limits
 11. "transaction_history" - User wants to see transaction history, past transactions, or financial records
 12. "account_info" - User wants to see account information, account number, account name, or account details
-13. "balance_inquiry" - User wants to check wallet balance, account balance, or current balance
-14. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
-15. "greeting" - General greeting or hello
-16. "unknown" - Cannot determine intent
+13. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
+14. "greeting" - General greeting or hello
+15. "unknown" - Cannot determine intent
 
 NATURAL LANGUAGE UNDERSTANDING:
 - "what's my current balance" → balance
@@ -1371,6 +1370,7 @@ NATURAL LANGUAGE UNDERSTANDING:
 - "send 5k to Abdulkadir Musa 6035745691 keystone bank" → bank_transfer
 - "transfer 2000 to GTB 0123456789" → bank_transfer
 - "send money to John" → transfer
+- "send 100 to 9072874728 Musa Abdulkadir opay" → transfer (P2P transfer)
 - "buy airtime" → airtime
 - "recharge my phone" → airtime
 - "buy data" → data
@@ -1388,10 +1388,11 @@ For bank transfers, look for:
 - Bank name (e.g., "keystone", "gtb", "access", "test bank")
 - Recipient name (optional)
 
-For money transfers, look for:
+For money transfers (P2P), look for:
 - Amount
-- Phone number (11 digits)
+- Phone number (11 digits or 10 digits)
 - Recipient name
+- No bank name mentioned
 
 EXTRACTION RULES:
 1. Amount: Convert "5k" to 5000, "10k" to 10000, "2k" to 2000, etc.
@@ -1399,9 +1400,9 @@ EXTRACTION RULES:
 3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, test bank, etc.)
 4. Recipient Name: Look for names before account numbers or bank names
 5. Test Bank: "test bank" is a valid bank name for testing purposes
-6. Phone Number: Look for 11-digit numbers starting with 0
+6. Phone Number: Look for 11-digit numbers starting with 0 or 10-digit numbers
 
-CONVERSATIONAL RESPONSE GUIDELINES:
+CONVERSATIONAL RESPONSES:
 - Be friendly and conversational, like talking to a friend
 - Confirm the transfer details in a natural way
 - Use emojis appropriately (💰, 🔐, ✅, etc.)
@@ -1419,23 +1420,18 @@ Should extract:
 And respond with something like:
 "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. Let me help you with that! Just provide your PIN to authorize this transfer. 🔐"
 
-Example: "Send 5k to 1001011000 test bank"
+Example: "Send 100 to 9072874728 Musa Abdulkadir opay"
 Should extract:
-- amount: 5000
-- accountNumber: "1001011000"
-- bankName: "test bank"
-- recipientName: null
+- amount: 100
+- phoneNumber: "9072874728"
+- recipientName: "Musa Abdulkadir"
 
 And respond with something like:
-"Great! I can see you want to send ₦5,000 to the test account. Perfect for testing! Just provide your PIN to authorize this transfer. 🔐"
+"Great! I can see you want to send ₦100 to Musa Abdulkadir. Let me help you with that! Just provide your PIN to authorize this transfer. 🔐"
 
 Example: "what's my current balance"
 Should respond with:
 "I'll check your current balance for you right away! 💰"
-
-Example: "Let me have my transaction history"
-Should respond with:
-"I'll get your transaction history for you right away! 📊"
 
 Instructions:
 - Analyze the message content and context
@@ -1448,17 +1444,12 @@ Instructions:
 
 Response format:
 {
-  "intent": "bank_transfer",
+  "intent": "balance",
   "confidence": 0.95,
-  "extractedData": {
-    "amount": 5000,
-    "accountNumber": "6035745691",
-    "bankName": "keystone",
-    "recipientName": "Abdulkadir Musa"
-  },
-  "response": "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. Let me help you with that! Just provide your PIN to authorize this transfer. 🔐",
-  "suggestedAction": "Confirm transfer details and request PIN",
-  "reasoning": "Message contains amount (5k), account number (6035745691), and bank name (keystone)"
+  "extractedData": {},
+  "response": "I'll check your current balance for you right away! 💰",
+  "suggestedAction": "Show current balance information",
+  "reasoning": "Message contains balance inquiry keywords"
 }`;
 
       // Log the API key being used for intent analysis
@@ -1481,7 +1472,7 @@ Response format:
         messages: [
           {
             role: 'system',
-            content: 'You are an AI assistant that analyzes WhatsApp messages to determine user intent for a financial services bot. Be accurate and concise.'
+            content: 'You are an AI assistant that analyzes WhatsApp messages to determine user intent for a financial services bot. Be accurate and concise. Use the exact intent names specified.'
           },
           {
             role: 'user',
@@ -1504,6 +1495,12 @@ Response format:
       if (analysisText) {
         try {
           const analysis = JSON.parse(analysisText);
+          
+          // Fix intent mapping
+          if (analysis.intent === 'balance_inquiry') {
+            analysis.intent = 'balance';
+          }
+          
           logger.info('AI intent analysis completed', {
             message: message.substring(0, 50) + '...',
             intent: analysis.intent,
