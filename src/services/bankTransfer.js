@@ -287,10 +287,19 @@ class BankTransferService {
       // Calculate fees
       const feeCalculation = this.calculateTransferFee(amount, this.transferTypes.WALLET_TO_BANK);
       
-      // Check wallet balance
-      const walletBalance = await walletService.getWalletBalance(userId);
-      if (walletBalance < feeCalculation.totalAmount) {
-        throw new Error('Insufficient wallet balance');
+      // Check wallet balance BEFORE creating transaction
+      const wallet = await walletService.getUserWallet(userId);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+
+      const walletBalance = parseFloat(wallet.balance);
+      const totalAmount = feeCalculation.totalAmount;
+
+      // Check if user has sufficient balance
+      if (walletBalance < totalAmount) {
+        const shortfall = totalAmount - walletBalance;
+        throw new Error(`Insufficient wallet balance. You need ₦${totalAmount.toLocaleString()} but only have ₦${walletBalance.toLocaleString()}. Please fund your wallet with ₦${shortfall.toLocaleString()} more.`);
       }
 
       // Create transaction record

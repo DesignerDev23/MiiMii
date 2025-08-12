@@ -1276,14 +1276,50 @@ class MessageProcessor {
       return;
     }
 
-    // Get wallet balance
-    const walletService = require('./wallet');
-    const walletSummary = await walletService.getWalletBalance(user.id);
-    const available = typeof walletSummary === 'object' ? (walletSummary.available ?? walletSummary.availableBalance ?? walletSummary.balance) : walletSummary;
-    const balanceValue = Number(available || 0);
-    const balanceMessage = `💰 *Account Balance*\n\nCurrent Balance: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\nYour account is ready for transactions!`;
-    const whatsappService = require('./whatsapp');
-    await whatsappService.sendTextMessage(user.whatsappNumber, balanceMessage);
+    try {
+      // Get wallet balance
+      const walletService = require('./wallet');
+      const wallet = await walletService.getUserWallet(user.id);
+      
+      if (!wallet) {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "❌ Wallet not found. Please contact support.");
+        return;
+      }
+
+      const balanceValue = parseFloat(wallet.balance || 0);
+      const availableBalance = parseFloat(wallet.availableBalance || wallet.balance || 0);
+      const pendingBalance = parseFloat(wallet.pendingBalance || 0);
+
+      // Check if this is a natural language query and provide appropriate response
+      const messageText = (message?.text || '').toLowerCase();
+      const isNaturalQuery = /what'?s?\s+my\s+(current\s+)?balance|how\s+much\s+(do\s+)?i\s+have|check\s+my\s+balance|show\s+my\s+balance|my\s+balance/.test(messageText);
+
+      let responseMessage;
+      if (isNaturalQuery) {
+        responseMessage = `💰 *Your Current Balance*\n\n` +
+                         `💵 Available: ₦${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
+        
+        if (pendingBalance > 0) {
+          responseMessage += `⏳ Pending: ₦${pendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
+        }
+        
+        responseMessage += `📊 Total: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n` +
+                          `Your account is ready for transactions! 💳`;
+      } else {
+        responseMessage = `💰 *Account Balance*\n\nCurrent Balance: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\nYour account is ready for transactions!`;
+      }
+
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, responseMessage);
+      
+    } catch (error) {
+      logger.error('Failed to get balance', { error: error.message, userId: user.id });
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "❌ Unable to retrieve your balance at the moment. Please try again later.");
+    }
   }
 
   /**
@@ -1311,7 +1347,7 @@ class MessageProcessor {
     });
 
     // If AI detected bank_transfer intent with high confidence, use AI processing
-    if (aiAnalysis.intent === 'bank_transfer' && aiAnalysis.confidence > 0.8) {
+    if (aiAnalysis.intent === 'bank_transfer' && aiAnalysis.confidence > 0.7) {
       try {
         const extractedData = aiAnalysis.extractedData || {};
         const { amount, accountNumber, bankName, bankCode, recipientName } = extractedData;
@@ -1328,6 +1364,27 @@ class MessageProcessor {
         if (transferAmount < 100) {
           await whatsappService.sendTextMessage(user.whatsappNumber, 
             "The minimum transfer amount is ₦100. Please specify a higher amount.");
+          return;
+        }
+
+        // Check wallet balance first
+        const walletService = require('./wallet');
+        const wallet = await walletService.getUserWallet(user.id);
+        if (!wallet) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "❌ Wallet not found. Please contact support.");
+          return;
+        }
+
+        const walletBalance = parseFloat(wallet.balance);
+        const feeInfo = bankTransferService.calculateTransferFee(transferAmount, bankTransferService.transferTypes.WALLET_TO_BANK);
+        const totalAmount = feeInfo.totalAmount;
+
+        // Check if user has sufficient balance
+        if (walletBalance < totalAmount) {
+          const shortfall = totalAmount - walletBalance;
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            `❌ *Insufficient Balance*\n\nYou need ₦${totalAmount.toLocaleString()} for this transfer but only have ₦${walletBalance.toLocaleString()}.\n\n💰 Please fund your wallet with ₦${shortfall.toLocaleString()} more to complete this transfer.`);
           return;
         }
 
@@ -1358,7 +1415,7 @@ class MessageProcessor {
           // Store conversation state for PIN verification
           await user.updateConversationState({
             intent: 'bank_transfer',
-            awaitingInput: 'pin_verification',
+            awaitingInput: 'pin_for_transfer',
             context: 'bank_transfer_pin',
             step: 1,
             data: {
@@ -1387,9 +1444,6 @@ class MessageProcessor {
           return;
         }
 
-        // Calculate fees
-        const feeInfo = bankTransferService.calculateTransferFee(transferAmount, bankTransferService.transferTypes.WALLET_TO_BANK);
-        
         // Store transaction details and request confirmation
         await user.updateConversationState({
           intent: 'bank_transfer',
@@ -1427,6 +1481,12 @@ class MessageProcessor {
           userId: user.id,
           aiAnalysis 
         });
+        
+        // Check if it's a balance error and provide helpful message
+        if (error.message.includes('Insufficient')) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, error.message);
+          return;
+        }
         
         // Fallback to manual processing
         await whatsappService.sendTextMessage(user.whatsappNumber, 
@@ -1470,6 +1530,27 @@ class MessageProcessor {
     if (amount && accountNumber && bankCode) {
       // Process the transfer (same logic as above)
       try {
+        // Check wallet balance first
+        const walletService = require('./wallet');
+        const wallet = await walletService.getUserWallet(user.id);
+        if (!wallet) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "❌ Wallet not found. Please contact support.");
+          return;
+        }
+
+        const walletBalance = parseFloat(wallet.balance);
+        const feeInfo = bankTransferService.calculateTransferFee(amount, bankTransferService.transferTypes.WALLET_TO_BANK);
+        const totalAmount = feeInfo.totalAmount;
+
+        // Check if user has sufficient balance
+        if (walletBalance < totalAmount) {
+          const shortfall = totalAmount - walletBalance;
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            `❌ *Insufficient Balance*\n\nYou need ₦${totalAmount.toLocaleString()} for this transfer but only have ₦${walletBalance.toLocaleString()}.\n\n💰 Please fund your wallet with ₦${shortfall.toLocaleString()} more to complete this transfer.`);
+          return;
+        }
+
         await whatsappService.sendTextMessage(user.whatsappNumber, 
           "🔍 Validating account details... Please wait a moment.");
 
@@ -1481,8 +1562,6 @@ class MessageProcessor {
           return;
         }
 
-        const feeInfo = bankTransferService.calculateTransferFee(amount, bankTransferService.transferTypes.WALLET_TO_BANK);
-        
         await user.updateConversationState({
           intent: 'bank_transfer',
           awaitingInput: 'confirm_transfer',
@@ -1514,6 +1593,12 @@ class MessageProcessor {
         return;
 
       } catch (err) {
+        // Check if it's a balance error and provide helpful message
+        if (err.message.includes('Insufficient')) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, err.message);
+          return;
+        }
+        
         await whatsappService.sendTextMessage(user.whatsappNumber, 
           `❌ ${err.message}. Please recheck the details or try a different bank.`);
         return;
@@ -1570,8 +1655,11 @@ class MessageProcessor {
       if (result.success) {
         const successMsg = `✅ *Transfer Successful!*\n\n` +
                           `💰 Amount: ₦${result.transaction.amount.toLocaleString()}\n` +
+                          `💳 Fee: ₦${result.transaction.fee.toLocaleString()}\n` +
+                          `🧾 Total: ₦${result.transaction.totalAmount.toLocaleString()}\n\n` +
                           `👤 To: ${result.transaction.accountName}\n` +
                           `🏦 Bank: ${result.transaction.bankName}\n` +
+                          `🔢 Account: ${result.transaction.accountNumber}\n` +
                           `📄 Reference: ${result.transaction.reference}\n\n` +
                           `Your transfer has been completed! The recipient should receive the funds within 5-15 minutes. 🎉\n\n` +
                           `Is there anything else I can help you with?`;
@@ -1595,12 +1683,16 @@ class MessageProcessor {
       // Provide a more helpful error message
       let errorMessage = "❌ Transfer failed. Please try again or contact support if the issue persists.";
       
-      if (error.message.includes('createTransaction')) {
+      if (error.message.includes('Insufficient')) {
+        errorMessage = error.message; // Use the detailed balance error message
+      } else if (error.message.includes('createTransaction')) {
         errorMessage = "❌ System error: Transaction service unavailable. Please try again in a moment.";
-      } else if (error.message.includes('Insufficient')) {
-        errorMessage = "❌ Insufficient wallet balance. Please fund your wallet first.";
       } else if (error.message.includes('PIN')) {
         errorMessage = "❌ Invalid PIN. Please check your PIN and try again.";
+      } else if (error.message.includes('Invalid bank account')) {
+        errorMessage = "❌ Invalid account details. Please check the account number and bank name.";
+      } else if (error.message.includes('Transfer limit')) {
+        errorMessage = "❌ Transfer limit exceeded. Please try a smaller amount or contact support.";
       }
       
       await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);

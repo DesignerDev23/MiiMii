@@ -1361,10 +1361,32 @@ IMPORTANT: Use these exact intent names:
 15. "greeting" - General greeting or hello
 16. "unknown" - Cannot determine intent
 
+NATURAL LANGUAGE UNDERSTANDING:
+- "what's my current balance" → balance
+- "how much do I have" → balance
+- "check my balance" → balance
+- "show my balance" → balance
+- "my balance" → balance
+- "what's my balance" → balance
+- "send 5k to Abdulkadir Musa 6035745691 keystone bank" → bank_transfer
+- "transfer 2000 to GTB 0123456789" → bank_transfer
+- "send money to John" → transfer
+- "buy airtime" → airtime
+- "recharge my phone" → airtime
+- "buy data" → data
+- "internet bundle" → data
+- "pay electricity" → bills
+- "pay cable" → bills
+- "show transactions" → transaction_history
+- "my history" → transaction_history
+- "account details" → account_details
+- "my account" → account_details
+
 For bank transfers, look for:
-- Amount (e.g., "5k", "5000", "10k")
+- Amount (e.g., "5k", "5000", "10k", "2k")
 - Account number (10 digits)
-- Bank name (e.g., "keystone", "gtb", "access")
+- Bank name (e.g., "keystone", "gtb", "access", "test bank")
+- Recipient name (optional)
 
 For money transfers, look for:
 - Amount
@@ -1372,11 +1394,12 @@ For money transfers, look for:
 - Recipient name
 
 EXTRACTION RULES:
-1. Amount: Convert "5k" to 5000, "10k" to 10000, etc.
+1. Amount: Convert "5k" to 5000, "10k" to 10000, "2k" to 2000, etc.
 2. Account Number: Find 10-digit numbers
 3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, test bank, etc.)
 4. Recipient Name: Look for names before account numbers or bank names
 5. Test Bank: "test bank" is a valid bank name for testing purposes
+6. Phone Number: Look for 11-digit numbers starting with 0
 
 CONVERSATIONAL RESPONSE GUIDELINES:
 - Be friendly and conversational, like talking to a friend
@@ -1385,6 +1408,16 @@ CONVERSATIONAL RESPONSE GUIDELINES:
 - Ask for PIN in a friendly, secure way
 - Make the user feel confident about the transaction
 - Keep responses concise but warm
+
+Example: "Send 5k to Abdulkadir Musa 6035745691 keystone bank"
+Should extract:
+- amount: 5000
+- accountNumber: "6035745691"
+- bankName: "keystone"
+- recipientName: "Abdulkadir Musa"
+
+And respond with something like:
+"Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. Let me help you with that! Just provide your PIN to authorize this transfer. 🔐"
 
 Example: "Send 5k to 1001011000 test bank"
 Should extract:
@@ -1396,13 +1429,13 @@ Should extract:
 And respond with something like:
 "Great! I can see you want to send ₦5,000 to the test account. Perfect for testing! Just provide your PIN to authorize this transfer. 🔐"
 
+Example: "what's my current balance"
+Should respond with:
+"I'll check your current balance for you right away! 💰"
+
 Example: "Let me have my transaction history"
 Should respond with:
 "I'll get your transaction history for you right away! 📊"
-
-Example: "Check my balance"
-Should respond with:
-"I'll check your current balance for you! 💰"
 
 Instructions:
 - Analyze the message content and context
@@ -1423,7 +1456,7 @@ Response format:
     "bankName": "keystone",
     "recipientName": "Abdulkadir Musa"
   },
-  "response": "Nice! Are you sure you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank? That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐",
+  "response": "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. Let me help you with that! Just provide your PIN to authorize this transfer. 🔐",
   "suggestedAction": "Confirm transfer details and request PIN",
   "reasoning": "Message contains amount (5k), account number (6035745691), and bank name (keystone)"
 }`;
@@ -1521,18 +1554,13 @@ Response format:
       return { intent: 'account_details', confidence: 0.95, suggestedAction: 'Show virtual account details' };
     }
 
-    // Onboarding keywords (do NOT match generic 'account')
-    if (/(start|setup|set\s*up|onboard|register|create\s+account|open\s+account)/i.test(message)) {
-      return { intent: 'onboarding', confidence: 0.85, suggestedAction: 'Start onboarding flow' };
-    }
-
-    // Balance keywords (avoid generic 'money')
-    if (/(balance|how\s+much\s+(do\s+)?i\s+have)/i.test(message)) {
+    // Balance keywords - improved to catch more natural language
+    if (/(balance|how\s+much\s+(do\s+)?i\s+have|what'?s?\s+my\s+(current\s+)?balance|check\s+my\s+balance|show\s+my\s+balance|my\s+balance)/i.test(message)) {
       return { intent: 'balance', confidence: 0.9, suggestedAction: 'Check account balance' };
     }
 
     // Transaction history keywords
-    if (/(transaction\s+history|history|transactions?|statement|records?)/i.test(message)) {
+    if (/(transaction\s+history|history|transactions?|statement|records?|my\s+history)/i.test(message)) {
       return { intent: 'transaction_history', confidence: 0.9, suggestedAction: 'Show transaction history' };
     }
 
@@ -1546,7 +1574,16 @@ Response format:
       return { intent: 'transfer_limits', confidence: 0.9, suggestedAction: 'Show transfer limits' };
     }
 
-    // Transfer keywords
+    // Onboarding keywords (do NOT match generic 'account')
+    if (/(start|setup|set\s*up|onboard|register|create\s+account|open\s+account)/i.test(message)) {
+      return { intent: 'onboarding', confidence: 0.85, suggestedAction: 'Start onboarding flow' };
+    }
+
+    // Transfer keywords - improved to catch bank transfers
+    if (/(send\s+\d+[k]?\s+to\s+.*\d{10}|transfer\s+\d+[k]?\s+to\s+.*\d{10}|send\s+\d+[k]?\s+to\s+.*\s+(bank|gtb|access|keystone|test\s+bank))/i.test(message)) {
+      return { intent: 'bank_transfer', confidence: 0.9, suggestedAction: 'Initiate bank transfer' };
+    }
+
     if (/(transfer|send)(\s|$)/i.test(message)) {
       return { intent: 'transfer', confidence: 0.9, suggestedAction: 'Initiate money transfer' };
     }
