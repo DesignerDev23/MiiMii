@@ -731,26 +731,26 @@ class BellBankService {
       }
 
       const payload = {
-        amount: parseFloat(transferData.amount),
-        accountNumber: transferData.accountNumber.toString(),
-        bankCode: institutionCode.toString(), // Use 6-digit institution code
+        beneficiaryBankCode: institutionCode.toString(), // Use 6-digit institution code
+        beneficiaryAccountNumber: transferData.accountNumber.toString(),
         narration: transferData.narration.substring(0, 30), // BellBank limit
+        amount: parseFloat(transferData.amount),
         reference: transferData.reference,
-        sessionId: transferData.sessionId,
-        metadata: {
-          userId: transferData.userId,
-          transactionId: transferData.transactionId,
-          source: 'miimii_transfer',
-          timestamp: new Date().toISOString()
-        }
+        senderName: transferData.senderName || 'MiiMii User' // Optional sender name
       };
 
       logger.info('Initiating BellBank transfer', {
         reference: transferData.reference,
         amount: transferData.amount,
-        accountNumber: transferData.accountNumber,
-        bankCode: transferData.bankCode,
+        beneficiaryAccountNumber: transferData.accountNumber,
+        beneficiaryBankCode: transferData.bankCode,
         institutionCode
+      });
+
+      // Log the exact payload being sent for debugging
+      logger.info('BellBank transfer payload', {
+        payload,
+        payloadKeys: Object.keys(payload)
       });
 
       const response = await this.makeRequest('POST', '/v1/transfer', payload, {
@@ -779,7 +779,9 @@ class BellBankService {
       logger.error('BellBank transfer initiation failed', {
         error: error.message,
         reference: transferData.reference,
-        amount: transferData.amount
+        amount: transferData.amount,
+        beneficiaryAccountNumber: transferData.accountNumber,
+        beneficiaryBankCode: transferData.bankCode
       });
       throw error;
     }

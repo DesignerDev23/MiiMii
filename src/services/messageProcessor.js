@@ -145,7 +145,24 @@ class MessageProcessor {
               await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
             }
           } catch (err) {
-            await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${err.message}`);
+            // Provide user-friendly error messages
+            let errorMessage = "❌ Transfer failed. Please try again or contact support if the issue persists.";
+            
+            if (err.message.includes('Insufficient')) {
+              errorMessage = err.message; // Use the detailed balance error message
+            } else if (err.message.includes('Failed To Fecth Account Info')) {
+              errorMessage = "❌ The account number could not be found. Please check the account number and bank name, then try again.";
+            } else if (err.message.includes('could not be found in')) {
+              errorMessage = err.message; // Use the user-friendly message from bankTransfer service
+            } else if (err.message.includes('Invalid bank account')) {
+              errorMessage = "❌ Invalid account details. Please check the account number and bank name.";
+            } else if (err.message.includes('Transfer limit')) {
+              errorMessage = "❌ Transfer limit exceeded. Please try a smaller amount or contact support.";
+            } else if (err.message.includes('PIN')) {
+              errorMessage = "❌ Invalid PIN. Please check your PIN and try again.";
+            }
+            
+            await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
           } finally {
             await user.clearConversationState();
           }
