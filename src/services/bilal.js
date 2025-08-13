@@ -165,8 +165,15 @@ class BilalService {
 
       // Check user balance
       const wallet = await walletService.getUserWallet(user.id);
-      if (!wallet.canDebit(amount)) {
-        throw new Error(`Insufficient balance. Required: ₦${amount}, Available: ₦${wallet.balance}`);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+      
+      const walletBalance = parseFloat(wallet.balance);
+      const requiredAmount = parseFloat(amount);
+      
+      if (walletBalance < requiredAmount) {
+        throw new Error(`Insufficient balance. Required: ₦${requiredAmount}, Available: ₦${walletBalance}`);
       }
 
       // Generate unique request ID
@@ -280,8 +287,15 @@ class BilalService {
       // Check user balance (estimate amount)
       const estimatedAmount = dataPlan.price || 1000;
       const wallet = await walletService.getUserWallet(user.id);
-      if (!wallet.canDebit(estimatedAmount)) {
-        throw new Error(`Insufficient balance. Required: ₦${estimatedAmount}, Available: ₦${wallet.balance}`);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+      
+      const walletBalance = parseFloat(wallet.balance);
+      const requiredAmount = parseFloat(estimatedAmount);
+      
+      if (walletBalance < requiredAmount) {
+        throw new Error(`Insufficient balance. Required: ₦${requiredAmount}, Available: ₦${walletBalance}`);
       }
 
       // Generate unique request ID
@@ -399,8 +413,15 @@ class BilalService {
 
       // Check user balance
       const wallet = await walletService.getUserWallet(user.id);
-      if (!wallet.canDebit(amount)) {
-        throw new Error(`Insufficient balance. Required: ₦${amount}, Available: ₦${wallet.balance}`);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+      
+      const walletBalance = parseFloat(wallet.balance);
+      const requiredAmount = parseFloat(amount);
+      
+      if (walletBalance < requiredAmount) {
+        throw new Error(`Insufficient balance. Required: ₦${requiredAmount}, Available: ₦${walletBalance}`);
       }
 
       // Generate unique request ID

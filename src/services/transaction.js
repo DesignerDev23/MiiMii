@@ -777,6 +777,36 @@ class TransactionService {
       });
     }
   }
+
+  // Get recent transactions for a user
+  async getRecentTransactions(userId, limit = 5) {
+    try {
+      const transactions = await Transaction.findAll({
+        where: { userId },
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        attributes: ['id', 'type', 'category', 'amount', 'status', 'description', 'createdAt', 'reference']
+      });
+
+      return transactions.map(tx => ({
+        id: tx.id,
+        type: tx.type,
+        category: tx.category,
+        amount: parseFloat(tx.amount),
+        status: tx.status,
+        description: tx.description,
+        reference: tx.reference,
+        createdAt: tx.createdAt
+      }));
+    } catch (error) {
+      logger.error('Failed to get recent transactions', {
+        error: error.message,
+        userId,
+        limit
+      });
+      return [];
+    }
+  }
 }
 
 module.exports = new TransactionService();
