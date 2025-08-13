@@ -1,15 +1,25 @@
-# Use Node.js 22 LTS for better performance and latest features
-FROM node:22-alpine
+# Use Node.js 18 LTS for better compatibility with canvas package
+FROM node:18-slim
 
-# Install system dependencies for image processing and audio/video handling
-RUN apk add --no-cache \
+# Install system dependencies for canvas and other packages
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libpixman-1-dev \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
+    libpng-dev \
+    libfreetype6-dev \
+    libfontconfig1-dev \
     ffmpeg \
     tesseract-ocr \
     imagemagick \
     python3 \
     make \
     g++ \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -21,16 +31,15 @@ COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S miimii -u 1001 -G nodejs
+RUN groupadd -r miimii && useradd -r -g miimii miimii
 
 # Copy application code
-COPY --chown=miimii:nodejs . .
+COPY --chown=miimii:miimii . .
 
 # Create required directories with proper permissions
 RUN mkdir -p uploads/temp logs admin && \
-    chown -R miimii:nodejs uploads logs admin && \
-    chown -R miimii:nodejs /usr/src/app
+    chown -R miimii:miimii uploads logs admin && \
+    chown -R miimii:miimii /usr/src/app
 
 # Switch to non-root user
 USER miimii
