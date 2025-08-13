@@ -3,6 +3,7 @@ const onboardingService = require('./onboarding');
 const whatsappService = require('./whatsapp');
 const aiAssistantService = require('./aiAssistant');
 const whatsappFlowService = require('./whatsappFlowService');
+const bellbankService = require('./bellbank');
 const ActivityLog = require('../models/ActivityLog');
 const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
@@ -1456,37 +1457,101 @@ class MessageProcessor {
         // Determine if this is a bank transfer or P2P transfer
         if (accountNumber && bankName) {
           // This is a bank transfer
-          // Map bank name to 6-digit institution code for BellBank API
-          const bankMap = {
-            // Traditional Banks
-            'keystone': '000082', 'gtb': '000058', 'gtbank': '000058', 'access': '000014', 'uba': '000033', 
-            'fidelity': '000070', 'wema': '000035', 'union': '000032', 'fcmb': '000214', 'first': '000016', 
-            'fbn': '000016', 'zenith': '000057', 'stanbic': '000221', 'sterling': '000232',
-            'ecobank': '000050', 'heritage': '000030', 'unity': '000215', 'citibank': '000023',
-            'standard': '000068', 'standard chartered': '000068', 'enterprise': '000084',
-            
-            // Digital Banks and Fintech
-            'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
-            'alat': '000094', 'v bank': '000095', 'vbank': '000095', 'rubies': '000096',
-            'fintech': '000097', 'mintyn': '000098', 'fairmoney': '000099', 'branch': '000100',
-            'eyowo': '000101', 'flutterwave': '000102', 'paystack': '000103', 'moniepoint': '000104',
-            '9psb': '000105', 'providus': '000106', 'polaris': '000107', 'titan': '000108',
-            'titan trust': '000108', 'tcf': '000109', 'covenant': '000110', 'nova': '000111',
-            'optimus': '000112', 'bowen': '000113', 'sparkle': '000114', 'mutual': '000115',
-            'npf': '000116', 'signature': '000117', 'globus': '000118', 'jaiz': '000119',
-            'taj': '000120', 'vfd': '000121', 'parallex': '000122', 'premiumtrust': '000123',
-            'coronation': '000124', 'rand merchant': '000125', 'fbnquest': '000126', 'suntrust': '000127',
-            'diamond': '000129', 'heritage': '000130',
-            
-            // Test Bank
-            'test': '000010', 'testbank': '000010', 'test bank': '000010'
-          };
+          // Try to get dynamic bank mapping from BellBank API first
+          let resolvedBankCode = bankCode;
           
-          // More flexible bank name matching
-          const bankNameLower = bankName?.toLowerCase().trim();
-          const resolvedBankCode = bankCode || bankMap[bankNameLower] || 
-            Object.keys(bankMap).find(key => bankNameLower?.includes(key)) ? 
-            bankMap[Object.keys(bankMap).find(key => bankNameLower?.includes(key))] : null;
+          if (!resolvedBankCode) {
+            try {
+              logger.info('Attempting to fetch dynamic bank mapping for message processing');
+              const bankMapping = await bellbankService.getBankMapping();
+              
+              // More flexible bank name matching
+              const bankNameLower = bankName?.toLowerCase().trim();
+              
+              // Look for exact match or partial match in dynamic mapping
+              const foundCode = bankMapping.bankMapping[bankNameLower] || 
+                               Object.keys(bankMapping.bankMapping).find(key => 
+                                 bankNameLower?.includes(key) || key.includes(bankNameLower)
+                               );
+              
+              if (foundCode) {
+                resolvedBankCode = bankMapping.bankMapping[foundCode];
+                logger.info('Found dynamic bank code mapping for message processing', {
+                  bankName,
+                  resolvedBankCode,
+                  source: 'BellBank API'
+                });
+              } else {
+                // Fallback to static mapping if dynamic lookup fails
+                logger.warn('Dynamic bank mapping failed for message processing, using static fallback', {
+                  bankName
+                });
+                const bankMap = {
+                  // Traditional Banks
+                  'keystone': '000082', 'gtb': '000058', 'gtbank': '000058', 'access': '000014', 'uba': '000033', 
+                  'fidelity': '000070', 'wema': '000035', 'union': '000032', 'fcmb': '000214', 'first': '000016', 
+                  'fbn': '000016', 'zenith': '000057', 'stanbic': '000221', 'sterling': '000232',
+                  'ecobank': '000050', 'heritage': '000030', 'unity': '000215', 'citibank': '000023',
+                  'standard': '000068', 'standard chartered': '000068', 'enterprise': '000084',
+                  
+                  // Digital Banks and Fintech
+                  'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
+                  'alat': '000094', 'v bank': '000095', 'vbank': '000095', 'rubies': '000096',
+                  'fintech': '000097', 'mintyn': '000098', 'fairmoney': '000099', 'branch': '000100',
+                  'eyowo': '000101', 'flutterwave': '000102', 'paystack': '000103', 'moniepoint': '000104',
+                  '9psb': '000105', 'providus': '000106', 'polaris': '000107', 'titan': '000108',
+                  'titan trust': '000108', 'tcf': '000109', 'covenant': '000110', 'nova': '000111',
+                  'optimus': '000112', 'bowen': '000113', 'sparkle': '000114', 'mutual': '000115',
+                  'npf': '000116', 'signature': '000117', 'globus': '000118', 'jaiz': '000119',
+                  'taj': '000120', 'vfd': '000121', 'parallex': '000122', 'premiumtrust': '000123',
+                  'coronation': '000124', 'rand merchant': '000125', 'fbnquest': '000126', 'suntrust': '000127',
+                  'diamond': '000129', 'heritage': '000130',
+                  
+                  // Test Bank
+                  'test': '000010', 'testbank': '000010', 'test bank': '000010'
+                };
+                
+                resolvedBankCode = bankMap[bankNameLower] || 
+                  Object.keys(bankMap).find(key => bankNameLower?.includes(key)) ? 
+                  bankMap[Object.keys(bankMap).find(key => bankNameLower?.includes(key))] : null;
+              }
+            } catch (dynamicError) {
+              logger.warn('Dynamic bank mapping failed for message processing, using static fallback', {
+                error: dynamicError.message,
+                bankName
+              });
+              // Fallback to static mapping
+              const bankMap = {
+                // Traditional Banks
+                'keystone': '000082', 'gtb': '000058', 'gtbank': '000058', 'access': '000014', 'uba': '000033', 
+                'fidelity': '000070', 'wema': '000035', 'union': '000032', 'fcmb': '000214', 'first': '000016', 
+                'fbn': '000016', 'zenith': '000057', 'stanbic': '000221', 'sterling': '000232',
+                'ecobank': '000050', 'heritage': '000030', 'unity': '000215', 'citibank': '000023',
+                'standard': '000068', 'standard chartered': '000068', 'enterprise': '000084',
+                
+                // Digital Banks and Fintech
+                'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
+                'alat': '000094', 'v bank': '000095', 'vbank': '000095', 'rubies': '000096',
+                'fintech': '000097', 'mintyn': '000098', 'fairmoney': '000099', 'branch': '000100',
+                'eyowo': '000101', 'flutterwave': '000102', 'paystack': '000103', 'moniepoint': '000104',
+                '9psb': '000105', 'providus': '000106', 'polaris': '000107', 'titan': '000108',
+                'titan trust': '000108', 'tcf': '000109', 'covenant': '000110', 'nova': '000111',
+                'optimus': '000112', 'bowen': '000113', 'sparkle': '000114', 'mutual': '000115',
+                'npf': '000116', 'signature': '000117', 'globus': '000118', 'jaiz': '000119',
+                'taj': '000120', 'vfd': '000121', 'parallex': '000122', 'premiumtrust': '000123',
+                'coronation': '000124', 'rand merchant': '000125', 'fbnquest': '000126', 'suntrust': '000127',
+                'diamond': '000129', 'heritage': '000130',
+                
+                // Test Bank
+                'test': '000010', 'testbank': '000010', 'test bank': '000010'
+              };
+              
+              const bankNameLower = bankName?.toLowerCase().trim();
+              resolvedBankCode = bankMap[bankNameLower] || 
+                Object.keys(bankMap).find(key => bankNameLower?.includes(key)) ? 
+                bankMap[Object.keys(bankMap).find(key => bankNameLower?.includes(key))] : null;
+            }
+          }
           
           if (!resolvedBankCode) {
             await whatsappService.sendTextMessage(user.whatsappNumber, 

@@ -85,13 +85,16 @@ class BankTransferService {
 
   // Validate account number and get account name
   async validateBankAccount(accountNumber, bankCode) {
+    // Define cleanAccountNumber at the top level to ensure it's always in scope
+    let cleanAccountNumber;
+    
     try {
       if (!accountNumber || !bankCode) {
         throw new Error('Account number and bank code are required');
       }
 
       // Basic account number validation - allow 8-11 digits for flexibility
-      const cleanAccountNumber = accountNumber.toString().trim();
+      cleanAccountNumber = accountNumber.toString().trim();
       if (!cleanAccountNumber || cleanAccountNumber.length < 8 || cleanAccountNumber.length > 11) {
         throw new Error(`Invalid account number format. Account numbers should be 8-11 digits.`);
       }
@@ -132,99 +135,47 @@ class BankTransferService {
       // Convert bank code to 6-digit institution code for BellBank API
       let institutionCode = bankCode;
       if (bankCode && bankCode.length !== 6) {
-        // Comprehensive mapping of 3-digit codes to 6-digit institution codes
-        const codeMapping = {
-          // Traditional Banks
-          '082': '000082', // Keystone Bank
-          '014': '000014', // Access Bank
-          '011': '000016', // First Bank
-          '058': '000058', // GTBank
-          '057': '000057', // Zenith Bank
-          '070': '000070', // Fidelity Bank
-          '032': '000032', // Union Bank
-          '035': '000035', // Wema Bank
-          '232': '000232', // Sterling Bank
-          '050': '000050', // Ecobank
-          '214': '000214', // FCMB
-          '221': '000221', // Stanbic IBTC
-          '068': '000068', // Standard Chartered
-          '023': '000023', // Citibank
-          '030': '000030', // Heritage Bank
-          '215': '000215', // Unity Bank
-          '084': '000084', // Enterprise Bank
-          '033': '000033', // UBA
-          '044': '000044', // Access Bank (alternative)
-          '016': '000016', // First Bank (alternative)
+        // Try to get dynamic bank mapping from BellBank API first
+        try {
+          logger.info('Attempting to fetch dynamic bank mapping from BellBank API');
+          const bankMapping = await bellbankService.getBankMapping();
           
-          // Digital Banks and Fintech
-          '090': '000090', // OPay
-          '091': '000091', // Palmpay
-          '092': '000092', // Kuda
-          '093': '000093', // Carbon
-          '094': '000094', // ALAT
-          '095': '000095', // V Bank
-          '096': '000096', // Rubies
-          '097': '000097', // Fintech
-          '098': '000098', // Mintyn
-          '099': '000099', // Fairmoney
-          '100': '000100', // Branch
-          '101': '000101', // Eyowo
-          '102': '000102', // Flutterwave
-          '103': '000103', // Paystack
-          '104': '000104', // Moniepoint
-          '105': '000105', // 9PSB
-          '106': '000106', // Providus
-          '107': '000107', // Polaris
-          '108': '000108', // Titan Trust
-          '109': '000109', // TCF
-          '110': '000110', // Covenant
-          '111': '000111', // Nova
-          '112': '000112', // Optimus
-          '113': '000113', // Bowen
-          '114': '000114', // Sparkle
-          '115': '000115', // Mutual
-          '116': '000116', // NPF
-          '117': '000117', // Signature
-          '118': '000118', // Globus
-          '119': '000119', // Jaiz
-          '120': '000120', // TAJ
-          '121': '000121', // VFD
-          '122': '000122', // Parallex
-          '123': '000123', // PremiumTrust
-          '124': '000124', // Coronation
-          '125': '000125', // Rand Merchant
-          '126': '000126', // FBNQuest
-          '127': '000127', // SunTrust
-          '128': '000128', // Unity
-          '129': '000129', // Diamond
-          '130': '000130', // Heritage
-          '131': '000131', // Keystone
-          '132': '000132', // Polaris
-          '133': '000133', // Providus
-          '134': '000134', // Titan Trust
-          '135': '000135', // TCF
-          '136': '000136', // Covenant
-          '137': '000137', // Nova
-          '138': '000138', // Optimus
-          '139': '000139', // Bowen
-          '140': '000140', // Sparkle
-          '141': '000141', // Mutual
-          '142': '000142', // NPF
-          '143': '000143', // Signature
-          '144': '000144', // Globus
-          '145': '000145', // Jaiz
-          '146': '000146', // TAJ
-          '147': '000147', // VFD
-          '148': '000148', // Parallex
-          '149': '000149', // PremiumTrust
-          '150': '000150'  // Coronation
-        };
-        
-        institutionCode = codeMapping[bankCode] || bankCode;
-        logger.info('Converted bank code to institution code for validation', {
-          originalCode: bankCode,
-          institutionCode
-        });
+          // Try to find the bank by common name variations
+          const bankName = this.getBankNameByCode(bankCode);
+          const bankNameLower = bankName.toLowerCase();
+          
+          // Look for exact match or partial match
+          const foundCode = bankMapping.bankMapping[bankNameLower] || 
+                           Object.keys(bankMapping.bankMapping).find(key => 
+                             key.includes(bankNameLower) || bankNameLower.includes(key)
+                           );
+          
+          if (foundCode) {
+            institutionCode = bankMapping.bankMapping[foundCode];
+            logger.info('Found dynamic bank code mapping', {
+              originalCode: bankCode,
+              bankName,
+              institutionCode,
+              source: 'BellBank API'
+            });
+          } else {
+            // Fallback to static mapping if dynamic lookup fails
+            logger.warn('Dynamic bank mapping failed, using static fallback', {
+              bankCode,
+              bankName
+            });
+            const staticMapping = this.getStaticBankCodeMapping();
+            institutionCode = staticMapping[bankCode] || bankCode;
+          }
+        } catch (dynamicError) {
+          logger.warn('Dynamic bank mapping failed, using static fallback', {
+            error: dynamicError.message,
+            bankCode
+          });
+          // Fallback to static mapping
+          const staticMapping = this.getStaticBankCodeMapping();
+          institutionCode = staticMapping[bankCode] || bankCode;
+        }
       }
 
       // Use BellBank name enquiry for account validation
@@ -264,11 +215,15 @@ class BankTransferService {
         message: `Could not validate account details for account number ${cleanAccountNumber}`
       };
     } catch (error) {
-      logger.error('Account validation failed', { error: error.message, accountNumber, bankCode });
+      logger.error('Account validation failed', { 
+        error: error.message, 
+        accountNumber: cleanAccountNumber || accountNumber, 
+        bankCode 
+      });
       
       // Provide more user-friendly error messages
       if (error.message.includes('Failed To Fecth Account Info')) {
-        throw new Error(`The account number ${cleanAccountNumber} could not be found in ${this.getBankNameByCode(bankCode)}. Please check the account number and try again.`);
+        throw new Error(`The account number ${cleanAccountNumber || accountNumber} could not be found in ${this.getBankNameByCode(bankCode)}. Please check the account number and try again.`);
       } else if (error.message.includes('Destination Institution Code must be of 6 digits')) {
         throw new Error(`Invalid bank code. Please try again with a valid bank.`);
       } else if (error.message.includes('HTTP 400')) {
@@ -277,6 +232,96 @@ class BankTransferService {
         throw new Error(`Account validation failed: ${error.message}`);
       }
     }
+  }
+
+  // Get static bank code mapping as fallback
+  getStaticBankCodeMapping() {
+    return {
+      // Traditional Banks
+      '082': '000082', // Keystone Bank
+      '014': '000014', // Access Bank
+      '011': '000016', // First Bank
+      '058': '000058', // GTBank
+      '057': '000057', // Zenith Bank
+      '070': '000070', // Fidelity Bank
+      '032': '000032', // Union Bank
+      '035': '000035', // Wema Bank
+      '232': '000232', // Sterling Bank
+      '050': '000050', // Ecobank
+      '214': '000214', // FCMB
+      '221': '000221', // Stanbic IBTC
+      '068': '000068', // Standard Chartered
+      '023': '000023', // Citibank
+      '030': '000030', // Heritage Bank
+      '215': '000215', // Unity Bank
+      '084': '000084', // Enterprise Bank
+      '033': '000033', // UBA
+      '044': '000044', // Access Bank (alternative)
+      '016': '000016', // First Bank (alternative)
+      
+      // Digital Banks and Fintech
+      '090': '000090', // OPay
+      '091': '000091', // Palmpay
+      '092': '000092', // Kuda
+      '093': '000093', // Carbon
+      '094': '000094', // ALAT
+      '095': '000095', // V Bank
+      '096': '000096', // Rubies
+      '097': '000097', // Fintech
+      '098': '000098', // Mintyn
+      '099': '000099', // Fairmoney
+      '100': '000100', // Branch
+      '101': '000101', // Eyowo
+      '102': '000102', // Flutterwave
+      '103': '000103', // Paystack
+      '104': '000104', // Moniepoint
+      '105': '000105', // 9PSB
+      '106': '000106', // Providus
+      '107': '000107', // Polaris
+      '108': '000108', // Titan Trust
+      '109': '000109', // TCF
+      '110': '000110', // Covenant
+      '111': '000111', // Nova
+      '112': '000112', // Optimus
+      '113': '000113', // Bowen
+      '114': '000114', // Sparkle
+      '115': '000115', // Mutual
+      '116': '000116', // NPF
+      '117': '000117', // Signature
+      '118': '000118', // Globus
+      '119': '000119', // Jaiz
+      '120': '000120', // TAJ
+      '121': '000121', // VFD
+      '122': '000122', // Parallex
+      '123': '000123', // PremiumTrust
+      '124': '000124', // Coronation
+      '125': '000125', // Rand Merchant
+      '126': '000126', // FBNQuest
+      '127': '000127', // SunTrust
+      '128': '000128', // Unity
+      '129': '000129', // Diamond
+      '130': '000130', // Heritage
+      '131': '000131', // Keystone
+      '132': '000132', // Polaris
+      '133': '000133', // Providus
+      '134': '000134', // Titan Trust
+      '135': '000135', // TCF
+      '136': '000136', // Covenant
+      '137': '000137', // Nova
+      '138': '000138', // Optimus
+      '139': '000139', // Bowen
+      '140': '000140', // Sparkle
+      '141': '000141', // Mutual
+      '142': '000142', // NPF
+      '143': '000143', // Signature
+      '144': '000144', // Globus
+      '145': '000145', // Jaiz
+      '146': '000146', // TAJ
+      '147': '000147', // VFD
+      '148': '000148', // Parallex
+      '149': '000149', // PremiumTrust
+      '150': '000150'  // Coronation
+    };
   }
 
   // Get bank name by code
@@ -583,95 +628,48 @@ class BankTransferService {
       // Convert bank code to 6-digit institution code for BellBank API
       let institutionCode = transferData.bankCode;
       if (transferData.bankCode && transferData.bankCode.length !== 6) {
-        // Use the same comprehensive mapping as in validateBankAccount
-        const codeMapping = {
-          // Traditional Banks
-          '082': '000082', // Keystone Bank
-          '014': '000014', // Access Bank
-          '011': '000016', // First Bank
-          '058': '000058', // GTBank
-          '057': '000057', // Zenith Bank
-          '070': '000070', // Fidelity Bank
-          '032': '000032', // Union Bank
-          '035': '000035', // Wema Bank
-          '232': '000232', // Sterling Bank
-          '050': '000050', // Ecobank
-          '214': '000214', // FCMB
-          '221': '000221', // Stanbic IBTC
-          '068': '000068', // Standard Chartered
-          '023': '000023', // Citibank
-          '030': '000030', // Heritage Bank
-          '215': '000215', // Unity Bank
-          '084': '000084', // Enterprise Bank
-          '033': '000033', // UBA
-          '044': '000044', // Access Bank (alternative)
-          '016': '000016', // First Bank (alternative)
+        // Try to get dynamic bank mapping from BellBank API first
+        try {
+          logger.info('Attempting to fetch dynamic bank mapping for transfer');
+          const bankMapping = await bellbankService.getBankMapping();
           
-          // Digital Banks and Fintech
-          '090': '000090', // OPay
-          '091': '000091', // Palmpay
-          '092': '000092', // Kuda
-          '093': '000093', // Carbon
-          '094': '000094', // ALAT
-          '095': '000095', // V Bank
-          '096': '000096', // Rubies
-          '097': '000097', // Fintech
-          '098': '000098', // Mintyn
-          '099': '000099', // Fairmoney
-          '100': '000100', // Branch
-          '101': '000101', // Eyowo
-          '102': '000102', // Flutterwave
-          '103': '000103', // Paystack
-          '104': '000104', // Moniepoint
-          '105': '000105', // 9PSB
-          '106': '000106', // Providus
-          '107': '000107', // Polaris
-          '108': '000108', // Titan Trust
-          '109': '000109', // TCF
-          '110': '000110', // Covenant
-          '111': '000111', // Nova
-          '112': '000112', // Optimus
-          '113': '000113', // Bowen
-          '114': '000114', // Sparkle
-          '115': '000115', // Mutual
-          '116': '000116', // NPF
-          '117': '000117', // Signature
-          '118': '000118', // Globus
-          '119': '000119', // Jaiz
-          '120': '000120', // TAJ
-          '121': '000121', // VFD
-          '122': '000122', // Parallex
-          '123': '000123', // PremiumTrust
-          '124': '000124', // Coronation
-          '125': '000125', // Rand Merchant
-          '126': '000126', // FBNQuest
-          '127': '000127', // SunTrust
-          '128': '000128', // Unity
-          '129': '000129', // Diamond
-          '130': '000130', // Heritage
-          '131': '000131', // Keystone
-          '132': '000132', // Polaris
-          '133': '000133', // Providus
-          '134': '000134', // Titan Trust
-          '135': '000135', // TCF
-          '136': '000136', // Covenant
-          '137': '000137', // Nova
-          '138': '000138', // Optimus
-          '139': '000139', // Bowen
-          '140': '000140', // Sparkle
-          '141': '000141', // Mutual
-          '142': '000142', // NPF
-          '143': '000143', // Signature
-          '144': '000144', // Globus
-          '145': '000145', // Jaiz
-          '146': '000146', // TAJ
-          '147': '000147', // VFD
-          '148': '000148', // Parallex
-          '149': '000149', // PremiumTrust
-          '150': '000150'  // Coronation
-        };
+          // Try to find the bank by common name variations
+          const bankName = this.getBankNameByCode(transferData.bankCode);
+          const bankNameLower = bankName.toLowerCase();
+          
+          // Look for exact match or partial match
+          const foundCode = bankMapping.bankMapping[bankNameLower] || 
+                           Object.keys(bankMapping.bankMapping).find(key => 
+                             key.includes(bankNameLower) || bankNameLower.includes(key)
+                           );
+          
+          if (foundCode) {
+            institutionCode = bankMapping.bankMapping[foundCode];
+            logger.info('Found dynamic bank code mapping for transfer', {
+              originalCode: transferData.bankCode,
+              bankName,
+              institutionCode,
+              source: 'BellBank API'
+            });
+          } else {
+            // Fallback to static mapping if dynamic lookup fails
+            logger.warn('Dynamic bank mapping failed for transfer, using static fallback', {
+              bankCode: transferData.bankCode,
+              bankName
+            });
+            const staticMapping = this.getStaticBankCodeMapping();
+            institutionCode = staticMapping[transferData.bankCode] || transferData.bankCode;
+          }
+        } catch (dynamicError) {
+          logger.warn('Dynamic bank mapping failed for transfer, using static fallback', {
+            error: dynamicError.message,
+            bankCode: transferData.bankCode
+          });
+          // Fallback to static mapping
+          const staticMapping = this.getStaticBankCodeMapping();
+          institutionCode = staticMapping[transferData.bankCode] || transferData.bankCode;
+        }
         
-        institutionCode = codeMapping[transferData.bankCode] || transferData.bankCode;
         logger.info('Converted bank code to institution code for transfer', {
           originalCode: transferData.bankCode,
           institutionCode
