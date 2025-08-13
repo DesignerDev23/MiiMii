@@ -240,6 +240,7 @@ class BilalService {
           `${response.message}`;
 
         // Generate and send receipt
+        let receiptSent = false;
         try {
           const receiptData = {
             network: response.network,
@@ -260,6 +261,7 @@ class BilalService {
 
           const receiptBuffer = await receiptService.generateAirtimeReceipt(receiptData);
           await whatsappService.sendImageMessage(userPhoneNumber, receiptBuffer, 'receipt.png');
+          receiptSent = true;
         } catch (receiptError) {
           logger.warn('Failed to generate receipt, sending text message only', { error: receiptError.message });
           await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
@@ -276,7 +278,7 @@ class BilalService {
         return {
           success: true,
           data: response,
-          message: successMessage
+          message: receiptSent ? null : successMessage // Only return message if receipt wasn't sent
         };
 
       } else {
@@ -398,7 +400,7 @@ class BilalService {
         return {
           success: true,
           data: response,
-          message: successMessage
+          message: null // Don't return message since it's already sent
         };
 
       } else {
@@ -533,7 +535,7 @@ class BilalService {
         return {
           success: true,
           data: response,
-          message: successMessage
+          message: null // Don't return message since it's already sent
         };
 
       } else {
