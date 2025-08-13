@@ -2028,20 +2028,30 @@ class MessageProcessor {
       return;
     }
 
-    // Use AI assistant to process the airtime request
+    // Process the airtime request directly since AI has already analyzed it
     const aiAssistant = require('./aiAssistant');
-    const aiResponse = await aiAssistant.processUserMessage(user.whatsappNumber, message.text || message.content, messageType);
     
-    if (aiResponse.intent === 'airtime') {
-      const result = await aiAssistant.handleAirtimePurchase(user, aiResponse.extractedData, aiResponse);
+    try {
+      // Extract data from the message
+      const extractedData = {
+        amount: aiAssistant.extractAmount(message.text || message.content),
+        phoneNumber: aiAssistant.extractPhoneNumber(message.text || message.content),
+        network: aiAssistant.detectNetwork(aiAssistant.extractPhoneNumber(message.text || message.content) || user.whatsappNumber)
+      };
+      
+      // Process the airtime purchase
+      const result = await aiAssistant.handleAirtimePurchase(user, extractedData, { intent: 'airtime' });
+      
       if (result && result.message) {
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
       }
-    } else {
+    } catch (error) {
+      logger.error('Airtime purchase failed', { error: error.message, userId: user.id });
+      
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "📱 *Buy Airtime*\n\nTo buy airtime, please provide:\n\n• Phone number\n• Amount\n\nExample: Buy 1000 airtime for 08012345678");
+        "❌ Airtime purchase failed!\n\nReason: " + error.message + "\n\nPlease try again or contact support.");
     }
   }
 
@@ -2056,20 +2066,30 @@ class MessageProcessor {
       return;
     }
 
-    // Use AI assistant to process the data request
+    // Process the data request directly since AI has already analyzed it
     const aiAssistant = require('./aiAssistant');
-    const aiResponse = await aiAssistant.processUserMessage(user.whatsappNumber, message.text || message.content, messageType);
     
-    if (aiResponse.intent === 'data') {
-      const result = await aiAssistant.handleDataPurchase(user, aiResponse.extractedData, aiResponse);
+    try {
+      // Extract data from the message
+      const extractedData = {
+        amount: aiAssistant.extractAmount(message.text || message.content),
+        phoneNumber: aiAssistant.extractPhoneNumber(message.text || message.content),
+        network: aiAssistant.detectNetwork(aiAssistant.extractPhoneNumber(message.text || message.content) || user.whatsappNumber)
+      };
+      
+      // Process the data purchase
+      const result = await aiAssistant.handleDataPurchase(user, extractedData, { intent: 'data' });
+      
       if (result && result.message) {
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
       }
-    } else {
+    } catch (error) {
+      logger.error('Data purchase failed', { error: error.message, userId: user.id });
+      
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "📶 *Buy Data*\n\nTo buy data, please provide:\n\n• Phone number\n• Data plan\n\nExample: Buy 2GB data for 08012345678");
+        "❌ Data purchase failed!\n\nReason: " + error.message + "\n\nPlease try again or contact support.");
     }
   }
 
@@ -2084,20 +2104,30 @@ class MessageProcessor {
       return;
     }
 
-    // Use AI assistant to process the bills request
+    // Process the bills request directly since AI has already analyzed it
     const aiAssistant = require('./aiAssistant');
-    const aiResponse = await aiAssistant.processUserMessage(user.whatsappNumber, message.text || message.content, messageType);
     
-    if (aiResponse.intent === 'bills') {
-      const result = await aiAssistant.handleBillPayment(user, aiResponse.extractedData, aiResponse);
+    try {
+      // Extract data from the message
+      const extractedData = {
+        amount: aiAssistant.extractAmount(message.text || message.content),
+        phoneNumber: aiAssistant.extractPhoneNumber(message.text || message.content),
+        network: aiAssistant.detectNetwork(aiAssistant.extractPhoneNumber(message.text || message.content) || user.whatsappNumber)
+      };
+      
+      // Process the bill payment
+      const result = await aiAssistant.handleBillPayment(user, extractedData, { intent: 'bills' });
+      
       if (result && result.message) {
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
       }
-    } else {
+    } catch (error) {
+      logger.error('Bill payment failed', { error: error.message, userId: user.id });
+      
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "💡 *Pay Bills*\n\nTo pay bills, please provide:\n\n• Bill type (Electricity, Cable, etc.)\n• Provider (Ikeja, Eko, DSTV, etc.)\n• Meter/Account number\n• Amount\n\nExample: Pay 5000 electricity Ikeja 12345678901");
+        "❌ Bill payment failed!\n\nReason: " + error.message + "\n\nPlease try again or contact support.");
     }
   }
 

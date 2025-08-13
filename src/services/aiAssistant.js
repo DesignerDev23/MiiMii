@@ -1235,6 +1235,62 @@ Extract intent and data from this message. Consider the user context and any ext
   }
 
   // Helper methods
+  extractAmount(message) {
+    if (!message) return null;
+    
+    // Look for amount patterns like "100", "1000", "1k", "1.5k", etc.
+    const amountPatterns = [
+      /(\d+(?:\.\d+)?)\s*k\b/i,  // 1k, 1.5k, etc.
+      /₦\s*(\d+(?:\.\d+)?)/,    // ₦100, ₦1,000, etc.
+      /(\d+(?:,\d{3})*)/,       // 1,000, 10,000, etc.
+      /(\d+)\s*(?:naira|naira|ngn)/i,  // 100 naira, 1000 naira, etc.
+      /(\d+)/                   // plain numbers
+    ];
+    
+    for (const pattern of amountPatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        const amount = this.parseAmount(match[1]);
+        if (amount > 0) return amount;
+      }
+    }
+    
+    return null;
+  }
+
+  extractPhoneNumber(message) {
+    if (!message) return null;
+    
+    // Look for phone number patterns
+    const phonePatterns = [
+      /(\d{11})/,           // 11-digit numbers
+      /(\d{10})/,           // 10-digit numbers (without country code)
+      /(\+234\d{10})/,      // +234 followed by 10 digits
+      /(0\d{9})/            // 0 followed by 9 digits
+    ];
+    
+    for (const pattern of phonePatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        let phoneNumber = match[1];
+        
+        // Normalize to 11 digits
+        if (phoneNumber.startsWith('+234')) {
+          phoneNumber = '0' + phoneNumber.substring(4);
+        } else if (phoneNumber.length === 10) {
+          phoneNumber = '0' + phoneNumber;
+        }
+        
+        // Validate Nigerian phone number format
+        if (phoneNumber.length === 11 && phoneNumber.startsWith('0')) {
+          return phoneNumber;
+        }
+      }
+    }
+    
+    return null;
+  }
+
   parseAmount(amountStr) {
     if (!amountStr) return 0;
     
