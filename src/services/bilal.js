@@ -192,7 +192,7 @@ class BilalService {
         'request-id': requestId
       };
 
-      const response = await this.makeRequest('POST', '/topup', payload, tokenData.token);
+      const response = await this.makeRequest('POST', '/topup/', payload, tokenData.token);
 
       if (response.status === 'success') {
         // Debit user wallet with actual amount
@@ -675,8 +675,8 @@ class BilalService {
       };
 
       if (token) {
-        // Use token authentication for API calls
-        config.headers['Authorization'] = `Bearer ${token}`;
+        // Use token authentication for API calls (as per Bilal documentation)
+        config.headers['Authorization'] = `Token ${token}`;
       } else {
         // Use Basic Authentication for token generation
         const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
