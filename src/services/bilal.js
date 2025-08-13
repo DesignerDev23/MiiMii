@@ -10,7 +10,7 @@ const ActivityLog = require('../models/ActivityLog');
 
 class BilalService {
   constructor() {
-    this.baseURL = process.env.BILAL_BASE_URL || 'https://app.bilalsadasub.com/api';
+    this.baseURL = process.env.BILAL_BASE_URL || 'https://bilalsadasub.com/api';
     this.username = process.env.PROVIDER_USERNAME || process.env.BILAL_USERNAME;
     this.password = process.env.PROVIDER_PASSWORD || process.env.BILAL_PASSWORD;
     this.token = null;
@@ -675,7 +675,10 @@ class BilalService {
       };
 
       if (token) {
-        // Use Basic Authentication as per BILALSADASUB documentation
+        // Use token authentication for API calls
+        config.headers['Authorization'] = `Bearer ${token}`;
+      } else {
+        // Use Basic Authentication for token generation
         const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
         config.headers['Authorization'] = `Basic ${credentials}`;
       }
