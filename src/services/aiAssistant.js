@@ -194,10 +194,10 @@ IMPORTANT EXTRACTION RULES:
 1. Amount: Look for numbers followed by "k" (5k = 5000) or plain numbers
 2. Account Number: Look for 8-11 digit numbers (traditional banks use 10 digits, digital banks may use phone number format)
 3. Bank Name: Look for bank names in the message including:
-   - Traditional Banks: keystone, gtb, gtbank, access, uba, fidelity, wema, union, fcmb, first, fbn, zenith, stanbic, sterling, ecobank, heritage, unity, citibank, standard chartered, enterprise
+   - Traditional Banks: keystone, keystone bank, gtb, gtbank, guaranty trust, access, access bank, uba, united bank for africa, fidelity, fidelity bank, wema, wema bank, union, union bank, fcmb, first city monument bank, first, first bank, firstbank, fbn, first bank of nigeria, zenith, zenith bank, stanbic, stanbic ibtc, ibtc, sterling, sterling bank, ecobank, eco bank, heritage, heritage bank, unity, unity bank, citibank, citi bank, standard, standard chartered, standard chartered bank, enterprise, enterprise bank
    - Digital Banks: opay, palmpay, kuda, carbon, alat, v bank, vbank, rubies, fintech, mintyn, fairmoney, branch, eyowo, flutterwave, paystack, moniepoint, 9psb, providus, polaris, titan, titan trust, tcf, covenant, nova, optimus, bowen, sparkle, mutual, npf, signature, globus, jaiz, taj, vfd, parallex, premiumtrust, coronation, rand merchant, fbnquest, suntrust, diamond
 4. Recipient Name: Look for names before account numbers or bank names
-5. Test Bank: Recognize "test bank" as a valid bank name for testing
+5. Test Bank: Recognize "test bank", "testbank", "test" as valid bank names for testing
 
 CONVERSATIONAL RESPONSE GUIDELINES:
 - Be friendly and conversational, like talking to a friend
@@ -658,19 +658,59 @@ Extract intent and data from this message. Consider the user context and any ext
         };
       }
 
-      // Map bank name to bank code if not provided
-      const bankMap = {
-        'keystone': '082', 'gtb': '058', 'gtbank': '058', 'access': '044', 'uba': '033', 
-        'fidelity': '070', 'wema': '035', 'union': '032', 'fcmb': '214', 'first': '011', 
-        'fbn': '011', 'zenith': '057', 'stanbic': '221', 'sterling': '232'
-      };
+      // Try to get dynamic bank mapping from BellBank API first
+      let resolvedBankCode = bankCode;
       
-      const resolvedBankCode = bankCode || bankMap[bankName?.toLowerCase()];
+      if (!resolvedBankCode && bankName) {
+        try {
+          logger.info('Attempting to fetch dynamic bank mapping for AI assistant');
+          const bellbankService = require('./bellbank');
+          const bankMapping = await bellbankService.getBankMapping();
+          
+          // More flexible bank name matching
+          const bankNameLower = bankName?.toLowerCase().trim();
+          
+          // Look for exact match or partial match in dynamic mapping
+          const foundCode = bankMapping.bankMapping[bankNameLower] || 
+                           Object.keys(bankMapping.bankMapping).find(key => 
+                             bankNameLower?.includes(key) || key.includes(bankNameLower)
+                           );
+          
+          if (foundCode) {
+            resolvedBankCode = bankMapping.bankMapping[foundCode];
+            logger.info('Found dynamic bank code mapping for AI assistant', {
+              bankName,
+              resolvedBankCode,
+              source: 'BellBank API'
+            });
+          } else {
+            // Fallback to static mapping if dynamic lookup fails
+            logger.warn('Dynamic bank mapping failed for AI assistant, using static fallback', {
+              bankName
+            });
+            const staticMapping = this.getStaticBankCodeMapping();
+            resolvedBankCode = staticMapping[bankNameLower] || 
+              Object.keys(staticMapping).find(key => bankNameLower?.includes(key)) ? 
+              staticMapping[Object.keys(staticMapping).find(key => bankNameLower?.includes(key))] : null;
+          }
+        } catch (dynamicError) {
+          logger.warn('Dynamic bank mapping failed for AI assistant, using static fallback', {
+            error: dynamicError.message,
+            bankName
+          });
+          // Fallback to static mapping
+          const staticMapping = this.getStaticBankCodeMapping();
+          const bankNameLower = bankName?.toLowerCase().trim();
+          resolvedBankCode = staticMapping[bankNameLower] || 
+            Object.keys(staticMapping).find(key => bankNameLower?.includes(key)) ? 
+            staticMapping[Object.keys(staticMapping).find(key => bankNameLower?.includes(key))] : null;
+        }
+      }
       
       if (!resolvedBankCode) {
         return {
           intent: 'bank_transfer',
-          message: `I couldn't identify the bank "${bankName}". Please specify a valid bank name like GTBank, Access, UBA, etc.`,
+          message: `I couldn't identify the bank "${bankName}". Please specify a valid bank name like GTBank, Access, UBA, Zenith, Keystone, etc.`,
           awaitingInput: 'bank_transfer_details',
           context: 'bank_transfer'
         };
@@ -740,6 +780,48 @@ Extract intent and data from this message. Consider the user context and any ext
         requiresAction: 'ERROR'
       };
     }
+  }
+
+  // Add comprehensive static bank code mapping method
+  getStaticBankCodeMapping() {
+    return {
+      // Traditional Banks
+      'keystone': '000082', 'keystone bank': '000082',
+      'gtb': '000058', 'gtbank': '000058', 'guaranty trust': '000058',
+      'access': '000014', 'access bank': '000014',
+      'uba': '000033', 'united bank for africa': '000033',
+      'fidelity': '000070', 'fidelity bank': '000070',
+      'wema': '000035', 'wema bank': '000035',
+      'union': '000032', 'union bank': '000032',
+      'fcmb': '000214', 'first city monument bank': '000214',
+      'first': '000016', 'first bank': '000016', 'firstbank': '000016',
+      'fbn': '000016', 'first bank of nigeria': '000016',
+      'zenith': '000057', 'zenith bank': '000057',
+      'stanbic': '000221', 'stanbic ibtc': '000221', 'ibtc': '000221',
+      'sterling': '000232', 'sterling bank': '000232',
+      'ecobank': '000050', 'eco bank': '000050',
+      'heritage': '000030', 'heritage bank': '000030',
+      'unity': '000215', 'unity bank': '000215',
+      'citibank': '000023', 'citi bank': '000023',
+      'standard': '000068', 'standard chartered': '000068', 'standard chartered bank': '000068',
+      'enterprise': '000084', 'enterprise bank': '000084',
+      
+      // Digital Banks and Fintech
+      'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
+      'alat': '000094', 'v bank': '000095', 'vbank': '000095', 'rubies': '000096',
+      'fintech': '000097', 'mintyn': '000098', 'fairmoney': '000099', 'branch': '000100',
+      'eyowo': '000101', 'flutterwave': '000102', 'paystack': '000103', 'moniepoint': '000104',
+      '9psb': '000105', 'providus': '000106', 'polaris': '000107', 'titan': '000108',
+      'titan trust': '000108', 'tcf': '000109', 'covenant': '000110', 'nova': '000111',
+      'optimus': '000112', 'bowen': '000113', 'sparkle': '000114', 'mutual': '000115',
+      'npf': '000116', 'signature': '000117', 'globus': '000118', 'jaiz': '000119',
+      'taj': '000120', 'vfd': '000121', 'parallex': '000122', 'premiumtrust': '000123',
+      'coronation': '000124', 'rand merchant': '000125', 'fbnquest': '000126', 'suntrust': '000127',
+      'diamond': '000129',
+      
+      // Test Bank
+      'test': '000010', 'testbank': '000010', 'test bank': '000010'
+    };
   }
 
   async handleAirtimePurchase(user, extractedData, aiResponse) {

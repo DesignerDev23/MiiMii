@@ -1488,11 +1488,25 @@ class MessageProcessor {
                 });
                 const bankMap = {
                   // Traditional Banks
-                  'keystone': '000082', 'gtb': '000058', 'gtbank': '000058', 'access': '000014', 'uba': '000033', 
-                  'fidelity': '000070', 'wema': '000035', 'union': '000032', 'fcmb': '000214', 'first': '000016', 
-                  'fbn': '000016', 'zenith': '000057', 'stanbic': '000221', 'sterling': '000232',
-                  'ecobank': '000050', 'heritage': '000030', 'unity': '000215', 'citibank': '000023',
-                  'standard': '000068', 'standard chartered': '000068', 'enterprise': '000084',
+                  'keystone': '000082', 'keystone bank': '000082',
+                  'gtb': '000058', 'gtbank': '000058', 'guaranty trust': '000058',
+                  'access': '000014', 'access bank': '000014',
+                  'uba': '000033', 'united bank for africa': '000033',
+                  'fidelity': '000070', 'fidelity bank': '000070',
+                  'wema': '000035', 'wema bank': '000035',
+                  'union': '000032', 'union bank': '000032',
+                  'fcmb': '000214', 'first city monument bank': '000214',
+                  'first': '000016', 'first bank': '000016', 'firstbank': '000016',
+                  'fbn': '000016', 'first bank of nigeria': '000016',
+                  'zenith': '000057', 'zenith bank': '000057',
+                  'stanbic': '000221', 'stanbic ibtc': '000221', 'ibtc': '000221',
+                  'sterling': '000232', 'sterling bank': '000232',
+                  'ecobank': '000050', 'eco bank': '000050',
+                  'heritage': '000030', 'heritage bank': '000030',
+                  'unity': '000215', 'unity bank': '000215',
+                  'citibank': '000023', 'citi bank': '000023',
+                  'standard': '000068', 'standard chartered': '000068', 'standard chartered bank': '000068',
+                  'enterprise': '000084', 'enterprise bank': '000084',
                   
                   // Digital Banks and Fintech
                   'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
@@ -1505,7 +1519,7 @@ class MessageProcessor {
                   'npf': '000116', 'signature': '000117', 'globus': '000118', 'jaiz': '000119',
                   'taj': '000120', 'vfd': '000121', 'parallex': '000122', 'premiumtrust': '000123',
                   'coronation': '000124', 'rand merchant': '000125', 'fbnquest': '000126', 'suntrust': '000127',
-                  'diamond': '000129', 'heritage': '000130',
+                  'diamond': '000129',
                   
                   // Test Bank
                   'test': '000010', 'testbank': '000010', 'test bank': '000010'
@@ -1523,11 +1537,25 @@ class MessageProcessor {
               // Fallback to static mapping
               const bankMap = {
                 // Traditional Banks
-                'keystone': '000082', 'gtb': '000058', 'gtbank': '000058', 'access': '000014', 'uba': '000033', 
-                'fidelity': '000070', 'wema': '000035', 'union': '000032', 'fcmb': '000214', 'first': '000016', 
-                'fbn': '000016', 'zenith': '000057', 'stanbic': '000221', 'sterling': '000232',
-                'ecobank': '000050', 'heritage': '000030', 'unity': '000215', 'citibank': '000023',
-                'standard': '000068', 'standard chartered': '000068', 'enterprise': '000084',
+                'keystone': '000082', 'keystone bank': '000082',
+                'gtb': '000058', 'gtbank': '000058', 'guaranty trust': '000058',
+                'access': '000014', 'access bank': '000014',
+                'uba': '000033', 'united bank for africa': '000033',
+                'fidelity': '000070', 'fidelity bank': '000070',
+                'wema': '000035', 'wema bank': '000035',
+                'union': '000032', 'union bank': '000032',
+                'fcmb': '000214', 'first city monument bank': '000214',
+                'first': '000016', 'first bank': '000016', 'firstbank': '000016',
+                'fbn': '000016', 'first bank of nigeria': '000016',
+                'zenith': '000057', 'zenith bank': '000057',
+                'stanbic': '000221', 'stanbic ibtc': '000221', 'ibtc': '000221',
+                'sterling': '000232', 'sterling bank': '000232',
+                'ecobank': '000050', 'eco bank': '000050',
+                'heritage': '000030', 'heritage bank': '000030',
+                'unity': '000215', 'unity bank': '000215',
+                'citibank': '000023', 'citi bank': '000023',
+                'standard': '000068', 'standard chartered': '000068', 'standard chartered bank': '000068',
+                'enterprise': '000084', 'enterprise bank': '000084',
                 
                 // Digital Banks and Fintech
                 'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
@@ -1540,7 +1568,7 @@ class MessageProcessor {
                 'npf': '000116', 'signature': '000117', 'globus': '000118', 'jaiz': '000119',
                 'taj': '000120', 'vfd': '000121', 'parallex': '000122', 'premiumtrust': '000123',
                 'coronation': '000124', 'rand merchant': '000125', 'fbnquest': '000126', 'suntrust': '000127',
-                'diamond': '000129', 'heritage': '000130',
+                'diamond': '000129',
                 
                 // Test Bank
                 'test': '000010', 'testbank': '000010', 'test bank': '000010'
@@ -1555,7 +1583,7 @@ class MessageProcessor {
           
           if (!resolvedBankCode) {
             await whatsappService.sendTextMessage(user.whatsappNumber, 
-              `I couldn't identify the bank "${bankName}". Please use a valid bank name like GTBank, Access, UBA, Zenith, etc.`);
+              `I couldn't identify the bank "${bankName}". Please use a valid bank name like GTBank, Access, UBA, Zenith, Keystone, etc.`);
             return;
           }
 
