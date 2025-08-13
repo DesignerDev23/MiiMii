@@ -7,6 +7,7 @@ const bellbankService = require('./bellbank');
 const feesService = require('./fees');
 const RetryHelper = require('../utils/retryHelper');
 const ActivityLog = require('../models/ActivityLog');
+const receiptService = require('./receipt');
 
 class BilalService {
   constructor() {
@@ -122,7 +123,7 @@ class BilalService {
         transactionId: requestId
       };
 
-      const transferResult = await bellbankService.transferFunds(transferData);
+      const transferResult = await bellbankService.initiateTransfer(transferData);
 
       if (transferResult.success) {
         logger.info('Transfer to Bilal account successful', {
@@ -235,11 +236,34 @@ class BilalService {
           `Network: ${response.network}\n` +
           `Phone: ${response.phone_number}\n` +
           `Amount: ₦${response.amount}\n` +
-          `Discount: ₦${response.discount}\n` +
           `Reference: ${response['request-id']}\n\n` +
           `${response.message}`;
 
-        await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
+        // Generate and send receipt
+        try {
+          const receiptData = {
+            network: response.network,
+            phoneNumber: response.phone_number,
+            amount: response.amount,
+            reference: response['request-id'],
+            date: new Date().toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+            status: 'Successful',
+            discount: response.discount || 0
+          };
+
+          const receiptBuffer = await receiptService.generateAirtimeReceipt(receiptData);
+          await whatsappService.sendImageMessage(userPhoneNumber, receiptBuffer, 'receipt.png');
+        } catch (receiptError) {
+          logger.warn('Failed to generate receipt, sending text message only', { error: receiptError.message });
+          await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
+        }
 
         logger.info('Airtime purchase successful', {
           userId: user.id,

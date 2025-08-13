@@ -1406,21 +1406,20 @@ class BellBankService {
         status: 'completed'
       });
 
-      // Credit user's wallet
-      await walletService.creditWallet(user.id, transferData.netAmount, 
+      // Credit user's wallet with amountReceived (not netAmount)
+      await walletService.creditWallet(user.id, transferData.amountReceived, 
         `Incoming transfer from ${transferData.sourceAccountName}`, {
         category: 'wallet_funding',
         transactionId: transaction.id
       });
 
-      // Send notification to user
+      // Send notification to user (without transaction fee)
       const notificationMessage = `💰 *Money Received!*\n\n` +
-        `Amount: ₦${transferData.netAmount.toLocaleString()}\n` +
+        `Amount: ₦${transferData.amountReceived.toLocaleString()}\n` +
         `From: ${transferData.sourceAccountName}\n` +
         `Bank: ${transferData.sourceBankName}\n` +
         `Account: ${transferData.sourceAccountNumber}\n` +
-        `Reference: ${transferData.reference}\n` +
-        `Fee: ₦${transferData.transactionFee.toLocaleString()}\n\n` +
+        `Reference: ${transferData.reference}\n\n` +
         `Your wallet has been credited! 🎉\n\n` +
         `Check your balance: Type "balance"`;
 

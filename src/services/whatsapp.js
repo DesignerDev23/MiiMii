@@ -1,4 +1,5 @@
 const axios = require('axios');
+const FormData = require('form-data');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { axiosConfig } = require('../utils/httpsAgent');
@@ -1377,6 +1378,95 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          success: false,
          error: error.response?.data || error.message
        };
+     }
+   }
+
+   /**
+    * Send image message via WhatsApp Business API
+    * @param {string} to - Recipient phone number
+    * @param {Buffer} imageBuffer - Image buffer
+    * @param {string} filename - Filename for the image
+    * @returns {Promise<Object>} - Response from WhatsApp API
+    */
+   async sendImageMessage(to, imageBuffer, filename = 'image.png') {
+     try {
+       const formattedNumber = this.formatToE164(to);
+       
+       logger.info('WhatsApp sendImageMessage called', {
+         originalNumber: to,
+         formattedNumber,
+         messageType: 'image',
+         accessTokenPrefix: this.accessToken.substring(0, 20) + '...',
+         accessTokenLength: this.accessToken.length,
+         phoneNumberId: this.phoneNumberId
+       });
+
+       // First, upload the image to get a media ID
+       const uploadUrl = `https://graph.facebook.com/v18.0/${this.phoneNumberId}/media`;
+       
+       const formData = new FormData();
+       formData.append('messaging_product', 'whatsapp');
+       formData.append('file', imageBuffer, {
+         filename: filename,
+         contentType: 'image/png'
+       });
+
+       const uploadResponse = await axios.post(uploadUrl, formData, {
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           ...formData.getHeaders()
+         },
+         ...this.axiosConfig
+       });
+
+       if (!uploadResponse.data.id) {
+         throw new Error('Failed to upload image to WhatsApp');
+       }
+
+       const mediaId = uploadResponse.data.id;
+
+       // Send the image message
+       const messageUrl = `${this.baseURL}/messages`;
+       const messagePayload = {
+         messaging_product: 'whatsapp',
+         to: formattedNumber,
+         type: 'image',
+         image: {
+           id: mediaId
+         }
+       };
+
+       logger.info('WhatsApp API request details', {
+         url: messageUrl,
+         payload: messagePayload,
+         authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
+       });
+
+       const response = await axios.post(messageUrl, messagePayload, {
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           'Content-Type': 'application/json'
+         },
+         ...this.axiosConfig
+       });
+
+       logger.info('WhatsApp image message sent successfully', {
+         to: formattedNumber,
+         messageId: response.data.messages?.[0]?.id
+       });
+
+       return {
+         success: true,
+         messageId: response.data.messages?.[0]?.id,
+         response: response.data
+       };
+     } catch (error) {
+       logger.error('Failed to send WhatsApp image message', {
+         error: error.message,
+         to,
+         filename
+       });
+       throw error;
      }
    }
 

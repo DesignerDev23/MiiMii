@@ -222,9 +222,9 @@ class TransactionService {
     try {
       const { recipientPhone, amount, description, accountNumber, bankCode, accountName } = transferData;
       
-      // Calculate fees
-      const feeStructure = await bellBankService.calculateTransferFee(amount);
-      const totalAmount = feeStructure.totalAmount;
+      // Calculate fees - Fixed 25 naira fee for transfers
+      const transferFee = 25;
+      const totalAmount = parseFloat(amount) + transferFee;
 
       // Check user balance
       const wallet = await walletService.getUserWallet(user.id);
@@ -234,7 +234,7 @@ class TransactionService {
           userPhoneNumber,
           `❌ Insufficient balance!\n\n` +
           `Amount: ₦${parseFloat(amount).toLocaleString()}\n` +
-          `Fee: ₦${feeStructure.totalFee.toLocaleString()}\n` +
+          `Fee: ₦${transferFee.toLocaleString()}\n` +
           `Total: ₦${totalAmount.toLocaleString()}\n` +
           `Available: ₦${parseFloat(wallet.balance).toLocaleString()}\n\n` +
           `Please fund your wallet first.`
@@ -250,7 +250,7 @@ class TransactionService {
           bankCode,
           accountName,
           totalAmount,
-          fee: feeStructure.totalFee
+          fee: transferFee
         }, userPhoneNumber);
       }
 
