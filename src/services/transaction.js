@@ -420,15 +420,48 @@ class TransactionService {
         providerResponse: webhookData
       });
 
-      // Notify user
-      await whatsappService.sendTextMessage(
-        transaction.user.whatsappNumber,
-        `✅ *Transfer Completed!*\n\n` +
-        `Amount: ₦${parseFloat(amount).toLocaleString()}\n` +
-        `To: ${recipient_account}\n` +
-        `Reference: ${transaction.reference}\n\n` +
-        `Your transfer has been completed successfully! 🎉`
-      );
+      // Generate and send receipt
+      let receiptSent = false;
+      try {
+        const receiptData = {
+          transactionType: 'Bank Transfer',
+          amount: parseFloat(amount),
+          sender: transaction.user.name || 'MiiMii User',
+          beneficiary: recipient_account,
+          reference: transaction.reference,
+          date: new Date().toLocaleString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          }),
+          status: 'Successful',
+          remark: transaction.description || 'Bank transfer',
+          charges: transaction.fee || 25,
+          discount: 0
+        };
+
+        const receiptService = require('./receipt');
+        const receiptBuffer = await receiptService.generateReceipt(receiptData);
+        await whatsappService.sendImageMessage(transaction.user.whatsappNumber, receiptBuffer, 'transfer_receipt.png');
+        receiptSent = true;
+      } catch (receiptError) {
+        logger.warn('Failed to generate transfer receipt, sending text message only', { error: receiptError.message });
+      }
+
+      // Send text notification if receipt wasn't sent
+      if (!receiptSent) {
+        await whatsappService.sendTextMessage(
+          transaction.user.whatsappNumber,
+          `✅ *Transfer Completed!*\n\n` +
+          `Amount: ₦${parseFloat(amount).toLocaleString()}\n` +
+          `To: ${recipient_account}\n` +
+          `Reference: ${transaction.reference}\n\n` +
+          `Your transfer has been completed successfully! 🎉`
+        );
+      }
 
       logger.info('Bank transfer completed via webhook', {
         reference,

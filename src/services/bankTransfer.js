@@ -19,7 +19,7 @@ class BankTransferService {
     // Transfer fees structure
     this.fees = {
       sameBankFee: 10, // Fixed fee for same bank transfers
-      otherBankFee: 50, // Fixed fee for other bank transfers
+      otherBankFee: 25, // Fixed fee for other bank transfers (updated to 25 naira)
       percentageFee: 0.005, // 0.5% for amounts above certain threshold
       freeThreshold: 10000 // No percentage fee below this amount
     };
