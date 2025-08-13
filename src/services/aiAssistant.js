@@ -677,13 +677,33 @@ Extract intent and data from this message. Consider the user context and any ext
                            );
           
           if (foundCode) {
-            resolvedBankCode = bankMapping.bankMapping[foundCode];
+            // If foundCode is already an institution code (6 digits), use it directly
+            // Otherwise, it's a bank name key, so get the institution code from the mapping
+            const dynamicValue = bankMapping.bankMapping[foundCode];
+            resolvedBankCode = foundCode.length === 6 ? foundCode : dynamicValue;
             logger.info('Found dynamic bank code mapping for AI assistant', {
               bankName,
+              foundCode,
+              foundCodeLength: foundCode.length,
+              foundCodeIs6Digits: foundCode.length === 6,
+              bankMappingValue: dynamicValue,
               resolvedBankCode,
+              resolvedBankCodeType: typeof resolvedBankCode,
               source: 'BellBank API'
             });
-          } else {
+            
+            // If dynamic mapping didn't work (resolvedBankCode is undefined), fall back to static
+            if (!resolvedBankCode) {
+              logger.warn('Dynamic mapping found but value is undefined, falling back to static mapping', {
+                foundCode,
+                bankName
+              });
+              // Continue to static fallback below
+            }
+          }
+          
+          // If dynamic mapping failed or returned undefined, use static fallback
+          if (!resolvedBankCode) {
             // Fallback to static mapping if dynamic lookup fails
             logger.warn('Dynamic bank mapping failed for AI assistant, using static fallback', {
               bankName

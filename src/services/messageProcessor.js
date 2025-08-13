@@ -1475,13 +1475,34 @@ class MessageProcessor {
                                );
               
               if (foundCode) {
-                resolvedBankCode = bankMapping.bankMapping[foundCode];
+                // If foundCode is already an institution code (6 digits), use it directly
+                // Otherwise, it's a bank name key, so get the institution code from the mapping
+                const dynamicValue = bankMapping.bankMapping[foundCode];
+                resolvedBankCode = foundCode.length === 6 ? foundCode : dynamicValue;
+                
                 logger.info('Found dynamic bank code mapping for message processing', {
                   bankName,
+                  foundCode,
+                  foundCodeLength: foundCode.length,
+                  foundCodeIs6Digits: foundCode.length === 6,
+                  bankMappingValue: dynamicValue,
                   resolvedBankCode,
+                  resolvedBankCodeType: typeof resolvedBankCode,
                   source: 'BellBank API'
                 });
-              } else {
+                
+                // If dynamic mapping didn't work (resolvedBankCode is undefined), fall back to static
+                if (!resolvedBankCode) {
+                  logger.warn('Dynamic mapping found but value is undefined, falling back to static mapping', {
+                    foundCode,
+                    bankName
+                  });
+                  // Continue to static fallback below
+                }
+              }
+              
+              // If dynamic mapping failed or returned undefined, use static fallback
+              if (!resolvedBankCode) {
                 // Fallback to static mapping if dynamic lookup fails
                 logger.warn('Dynamic bank mapping failed for message processing, using static fallback', {
                   bankName
@@ -1528,6 +1549,16 @@ class MessageProcessor {
                 resolvedBankCode = bankMap[bankNameLower] || 
                   Object.keys(bankMap).find(key => bankNameLower?.includes(key)) ? 
                   bankMap[Object.keys(bankMap).find(key => bankNameLower?.includes(key))] : null;
+                
+                logger.info('Static bank mapping result', {
+                  bankNameLower,
+                  directMatch: bankMap[bankNameLower],
+                  partialMatch: Object.keys(bankMap).find(key => bankNameLower?.includes(key)),
+                  partialMatchValue: Object.keys(bankMap).find(key => bankNameLower?.includes(key)) ? 
+                    bankMap[Object.keys(bankMap).find(key => bankNameLower?.includes(key))] : null,
+                  resolvedBankCode,
+                  resolvedBankCodeType: typeof resolvedBankCode
+                });
               }
             } catch (dynamicError) {
               logger.warn('Dynamic bank mapping failed for message processing, using static fallback', {
@@ -1582,6 +1613,13 @@ class MessageProcessor {
           }
           
           if (!resolvedBankCode) {
+            logger.error('Bank code resolution failed', {
+              bankName,
+              bankNameLower: bankName?.toLowerCase().trim(),
+              resolvedBankCode,
+              resolvedBankCodeType: typeof resolvedBankCode,
+              resolvedBankCodeLength: resolvedBankCode?.length
+            });
             await whatsappService.sendTextMessage(user.whatsappNumber, 
               `I couldn't identify the bank "${bankName}". Please use a valid bank name like GTBank, Access, UBA, Zenith, Keystone, etc.`);
             return;
