@@ -83,26 +83,36 @@ class AIAssistantService {
         ]
       },
       BUY_AIRTIME: {
-        keywords: ['airtime', 'recharge', 'top up', 'credit', 'load', 'buy airtime'],
+        keywords: ['airtime', 'recharge', 'top up', 'credit', 'load', 'buy airtime', 'purchase airtime'],
         patterns: [
           /buy\s+(\d+k?|\d+(?:,\d{3})*)\s+airtime(?:\s+for)?\s*(\d{11})?/i,
           /(\d+k?|\d+(?:,\d{3})*)\s+airtime(?:\s+for)?\s*(\d{11})?/i,
-          /recharge\s+(\d{11})?\s*(?:with)?\s*(\d+k?|\d+(?:,\d{3})*)/i
+          /recharge\s+(\d{11})?\s*(?:with)?\s*(\d+k?|\d+(?:,\d{3})*)/i,
+          /top\s+up\s+(\d{11})?\s*(?:with)?\s*(\d+k?|\d+(?:,\d{3})*)/i,
+          /load\s+(\d{11})?\s*(?:with)?\s*(\d+k?|\d+(?:,\d{3})*)/i,
+          /credit\s+(\d{11})?\s*(?:with)?\s*(\d+k?|\d+(?:,\d{3})*)/i
         ]
       },
       BUY_DATA: {
-        keywords: ['data', 'internet', 'mb', 'gb', 'buy data'],
+        keywords: ['data', 'internet', 'mb', 'gb', 'buy data', 'purchase data', 'data bundle', 'internet bundle'],
         patterns: [
           /buy\s+(\d+(?:\.\d+)?(?:mb|gb))\s+data(?:\s+for)?\s*(\d{11})?/i,
           /(\d+(?:\.\d+)?(?:mb|gb))\s+data(?:\s+for)?\s*(\d{11})?/i,
-          /(\d+k?|\d+(?:,\d{3})*)\s+worth\s+of\s+data(?:\s+for)?\s*(\d{11})?/i
+          /(\d+k?|\d+(?:,\d{3})*)\s+worth\s+of\s+data(?:\s+for)?\s*(\d{11})?/i,
+          /buy\s+(\d+(?:\.\d+)?(?:mb|gb))\s+(?:internet|bundle)(?:\s+for)?\s*(\d{11})?/i,
+          /(\d+(?:\.\d+)?(?:mb|gb))\s+(?:internet|bundle)(?:\s+for)?\s*(\d{11})?/i,
+          /data\s+bundle\s+(\d+(?:\.\d+)?(?:mb|gb))(?:\s+for)?\s*(\d{11})?/i
         ]
       },
       PAY_BILL: {
-        keywords: ['bill', 'electric', 'electricity', 'cable', 'tv', 'water', 'internet bill', 'pay bill'],
+        keywords: ['bill', 'electric', 'electricity', 'cable', 'tv', 'water', 'internet bill', 'pay bill', 'utility', 'disco'],
         patterns: [
           /pay\s+(\d+k?|\d+(?:,\d{3})*)\s+(electricity|electric|cable|tv|water|internet)\s+(?:bill\s+)?(?:for\s+)?(\w+)?\s*(\d+)/i,
-          /(electricity|electric|cable|tv|water|internet)\s+bill\s+(\d+k?|\d+(?:,\d{3})*)\s+(\w+)?\s*(\d+)/i
+          /(electricity|electric|cable|tv|water|internet)\s+bill\s+(\d+k?|\d+(?:,\d{3})*)\s+(\w+)?\s*(\d+)/i,
+          /pay\s+(\d+k?|\d+(?:,\d{3})*)\s+(?:for\s+)?(ikeja|eko|kano|port\s+harcourt|joss|ibadan|enugu|kaduna|abuja|benin|phed)\s+(?:electricity|electric)\s+(?:bill\s+)?(?:for\s+)?(\d+)/i,
+          /(ikeja|eko|kano|port\s+harcourt|joss|ibadan|enugu|kaduna|abuja|benin|phed)\s+(?:electricity|electric)\s+bill\s+(\d+k?|\d+(?:,\d{3})*)\s+(?:for\s+)?(\d+)/i,
+          /pay\s+(\d+k?|\d+(?:,\d{3})*)\s+(?:for\s+)?(dstv|gotv|startime)\s+(?:subscription|bill)\s+(?:for\s+)?(\d+)/i,
+          /(dstv|gotv|startime)\s+(?:subscription|bill)\s+(\d+k?|\d+(?:,\d{3})*)\s+(?:for\s+)?(\d+)/i
         ]
       },
       CHECK_BALANCE: {
@@ -139,17 +149,18 @@ class AIAssistantService {
     this.systemPrompt = `You are MiiMii, a friendly and helpful financial assistant for a Nigerian fintech platform. Your role is to:
 
 1. Analyze user messages to understand their intent
-2. Extract relevant financial data (amounts, phone numbers, account details, bank names)
+2. Extract relevant financial data (amounts, phone numbers, account details, bank names, network providers, bill types)
 3. Generate conversational, human-like responses that feel natural and friendly
-4. Confirm transfer details and guide users through the process
+4. Confirm transaction details and guide users through the process
 5. Maintain a warm, professional tone with appropriate emojis
 
 Available Services:
 - Money transfers (P2P)
 - Bank transfers
-- Airtime purchases
-- Data purchases
-- Bill payments (electricity, cable, water, internet)
+- Airtime purchases (MTN, Airtel, Glo, 9mobile)
+- Data purchases (MTN, Airtel, Glo, 9mobile)
+- Bill payments (Electricity: Ikeja, Eko, Kano, Port Harcourt, Jos, Ibadan, Enugu, Kaduna, Abuja, Benin, PHED)
+- Cable TV payments (DSTV, GOtv, Startimes)
 - Balance inquiries
 - Transaction history
 
@@ -164,17 +175,24 @@ IMPORTANT: Use these exact intent names that match our system:
 - "menu" for service menu
 - "greeting" for greetings
 
+Examples of what users might say:
+- "Buy 1000 airtime for 08123456789"
+- "Recharge 08123456789 with 500"
+- "Buy 1GB data for 08123456789"
+- "Pay 5000 electricity Ikeja 12345678901"
+- "Pay 3000 DSTV 123456789"
+- "Top up 08123456789 with 200"
+
 Response Format (JSON):
 {
-  "intent": "bank_transfer",
+  "intent": "airtime",
   "confidence": 0.95,
   "extractedData": {
-    "amount": 5000,
-    "accountNumber": "6035745691",
-    "bankName": "keystone",
-    "recipientName": "Abdulkadir Musa"
+    "amount": 1000,
+    "phoneNumber": "08123456789",
+    "network": "auto_detect"
   },
-  "response": "Nice! Are you sure you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank? That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐",
+  "response": "Great! I'll help you buy ₦1,000 airtime for 08123456789. Please provide your PIN to complete the transaction. 🔐",
   "requiresConfirmation": true,
   "nextStep": "request_pin"
 }
@@ -859,11 +877,13 @@ Extract intent and data from this message. Consider the user context and any ext
     const targetPhone = phoneNumber || user.whatsappNumber;
     const airtimeAmount = this.parseAmount(amount);
     
-    return await airtimeService.purchaseAirtime(user, {
+    // Use bilal service for airtime purchase
+    const bilalService = require('./bilal');
+    return await bilalService.purchaseAirtime(user, {
       amount: airtimeAmount,
       phoneNumber: targetPhone,
       network: network || this.detectNetwork(targetPhone)
-    });
+    }, user.whatsappNumber);
   }
 
   async handleDataPurchase(user, extractedData, aiResponse) {
@@ -880,32 +900,101 @@ Extract intent and data from this message. Consider the user context and any ext
 
     const targetPhone = phoneNumber || user.whatsappNumber;
     
-    return await dataService.purchaseData(user, {
-      dataSize,
-      amount: amount ? this.parseAmount(amount) : null,
+    // Use bilal service for data purchase
+    const bilalService = require('./bilal');
+    
+    // Get data plans for the network
+    const dataPlans = await bilalService.getDataPlans(network || this.detectNetwork(targetPhone));
+    
+    // Find the appropriate data plan
+    let selectedPlan = null;
+    if (dataSize) {
+      selectedPlan = dataPlans.find(plan => 
+        plan.dataplan.toLowerCase().includes(dataSize.toLowerCase())
+      );
+    } else if (amount) {
+      const amountValue = this.parseAmount(amount);
+      selectedPlan = dataPlans.find(plan => 
+        parseFloat(plan.amount) === amountValue
+      );
+    }
+    
+    if (!selectedPlan) {
+      return {
+        intent: 'data',
+        message: `I couldn't find a matching data plan. Available plans for ${network || 'your network'}:\n\n${dataPlans.slice(0, 5).map(plan => `• ${plan.dataplan} - ₦${plan.amount}`).join('\n')}\n\nPlease specify a valid plan.`,
+        awaitingInput: 'data_plan_selection',
+        context: 'data_purchase'
+      };
+    }
+    
+    return await bilalService.purchaseData(user, {
       phoneNumber: targetPhone,
-      network: network || this.detectNetwork(targetPhone)
-    });
+      network: network || this.detectNetwork(targetPhone),
+      dataPlan: selectedPlan
+    }, user.whatsappNumber);
   }
 
   async handleBillPayment(user, extractedData, aiResponse) {
-    const { amount, utilityProvider, meterNumber, billType } = extractedData;
+    const { amount, utilityProvider, meterNumber, billType, disco, provider } = extractedData;
     
-    if (!utilityProvider || !meterNumber) {
+    if (!amount) {
       return {
         intent: 'bills',
-        message: "To pay a bill, I need the utility provider and meter/account number.\n\n📝 Examples:\n• 'Pay 5000 electricity EKEDC 12345678901'\n• 'Pay 3000 cable DStv 123456789'",
-        awaitingInput: 'bill_details',
+        message: "How much would you like to pay for your bill?\n\n📝 Examples:\n• 'Pay 5000 electricity Ikeja 12345678901'\n• 'Pay 3000 DSTV 123456789'",
+        awaitingInput: 'bill_amount',
         context: 'bill_payment'
       };
     }
 
-    return await utilityService.payBill(user, {
-      amount: amount ? this.parseAmount(amount) : null,
-      utilityProvider,
-      meterNumber,
-      billType: billType || 'electricity'
-    });
+    const billAmount = this.parseAmount(amount);
+    
+    // Determine bill type and provider
+    let actualBillType = billType;
+    let actualProvider = utilityProvider || disco || provider;
+    
+    if (!actualProvider) {
+      return {
+        intent: 'bills',
+        message: "I need to know which service provider you want to pay.\n\n📝 Examples:\n• 'Pay 5000 electricity Ikeja 12345678901'\n• 'Pay 3000 DSTV 123456789'",
+        awaitingInput: 'bill_provider',
+        context: 'bill_payment'
+      };
+    }
+
+    if (!meterNumber) {
+      return {
+        intent: 'bills',
+        message: "I need the meter/account number to process your payment.\n\n📝 Examples:\n• 'Pay 5000 electricity Ikeja 12345678901'\n• 'Pay 3000 DSTV 123456789'",
+        awaitingInput: 'bill_meter_number',
+        context: 'bill_payment'
+      };
+    }
+
+    // Use bills service for bill payment
+    const billsService = require('./bills');
+    
+    if (actualBillType === 'electricity' || actualProvider.toLowerCase().includes('electric')) {
+      return await billsService.payElectricityBill(user, {
+        disco: actualProvider,
+        meterType: 'prepaid', // Default to prepaid, could be made configurable
+        meterNumber: meterNumber,
+        amount: billAmount
+      }, user.whatsappNumber);
+    } else if (actualBillType === 'cable' || ['dstv', 'gotv', 'startime'].includes(actualProvider.toLowerCase())) {
+      return await billsService.payCableBill(user, {
+        provider: actualProvider,
+        iucNumber: meterNumber,
+        amount: billAmount
+      }, user.whatsappNumber);
+    } else {
+      return {
+        intent: 'bills',
+        message: `I don't recognize the provider "${actualProvider}". Supported providers:\n\nElectricity: Ikeja, Eko, Kano, Port Harcourt, Jos, Ibadan, Enugu, Kaduna, Abuja, Benin, PHED\nCable: DSTV, GOtv, Startimes`,
+        awaitingInput: 'bill_provider',
+        context: 'bill_payment'
+      };
+    }
   }
 
   async handleBalanceInquiry(user) {

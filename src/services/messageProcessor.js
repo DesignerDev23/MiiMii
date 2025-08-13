@@ -2028,9 +2028,21 @@ class MessageProcessor {
       return;
     }
 
-    const whatsappService = require('./whatsapp');
-    await whatsappService.sendTextMessage(user.whatsappNumber, 
-      "📱 *Buy Airtime*\n\nTo buy airtime, please provide:\n\n• Phone number\n• Amount\n\nExample: Buy 1000 airtime for 08012345678");
+    // Use AI assistant to process the airtime request
+    const aiAssistant = require('./aiAssistant');
+    const aiResponse = await aiAssistant.processUserMessage(user.whatsappNumber, message.text || message.content, messageType);
+    
+    if (aiResponse.intent === 'airtime') {
+      const result = await aiAssistant.handleAirtimePurchase(user, aiResponse.extractedData, aiResponse);
+      if (result && result.message) {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
+      }
+    } else {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "📱 *Buy Airtime*\n\nTo buy airtime, please provide:\n\n• Phone number\n• Amount\n\nExample: Buy 1000 airtime for 08012345678");
+    }
   }
 
   /**
@@ -2044,9 +2056,21 @@ class MessageProcessor {
       return;
     }
 
-    const whatsappService = require('./whatsapp');
-    await whatsappService.sendTextMessage(user.whatsappNumber, 
-      "📶 *Buy Data*\n\nTo buy data, please provide:\n\n• Phone number\n• Data plan\n\nExample: Buy 2GB data for 08012345678");
+    // Use AI assistant to process the data request
+    const aiAssistant = require('./aiAssistant');
+    const aiResponse = await aiAssistant.processUserMessage(user.whatsappNumber, message.text || message.content, messageType);
+    
+    if (aiResponse.intent === 'data') {
+      const result = await aiAssistant.handleDataPurchase(user, aiResponse.extractedData, aiResponse);
+      if (result && result.message) {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
+      }
+    } else {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "📶 *Buy Data*\n\nTo buy data, please provide:\n\n• Phone number\n• Data plan\n\nExample: Buy 2GB data for 08012345678");
+    }
   }
 
   /**
@@ -2060,9 +2084,21 @@ class MessageProcessor {
       return;
     }
 
-    const whatsappService = require('./whatsapp');
-    await whatsappService.sendTextMessage(user.whatsappNumber, 
-      "💡 *Pay Bills*\n\nTo pay bills, please provide:\n\n• Bill type (PHCN, Water, etc.)\n• Meter number\n• Amount\n\nExample: Pay PHCN bill for meter 12345");
+    // Use AI assistant to process the bills request
+    const aiAssistant = require('./aiAssistant');
+    const aiResponse = await aiAssistant.processUserMessage(user.whatsappNumber, message.text || message.content, messageType);
+    
+    if (aiResponse.intent === 'bills') {
+      const result = await aiAssistant.handleBillPayment(user, aiResponse.extractedData, aiResponse);
+      if (result && result.message) {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
+      }
+    } else {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "💡 *Pay Bills*\n\nTo pay bills, please provide:\n\n• Bill type (Electricity, Cable, etc.)\n• Provider (Ikeja, Eko, DSTV, etc.)\n• Meter/Account number\n• Amount\n\nExample: Pay 5000 electricity Ikeja 12345678901");
+    }
   }
 
   /**
