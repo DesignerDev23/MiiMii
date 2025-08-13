@@ -361,6 +361,39 @@ class TransactionService {
         userId: user.id,
         transferData
       });
+
+      // Check if this is a timeout error
+      if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+        // For timeout errors, the transfer might still succeed on BellBank's side
+        // The user will be notified via webhook when the transfer completes
+        await whatsappService.sendTextMessage(
+          userPhoneNumber,
+          `⏳ *Transfer Processing*\n\n` +
+          `Amount: ₦${parseFloat(amount).toLocaleString()}\n` +
+          `To: ${validatedAccount.accountName}\n` +
+          `Account: ${accountNumber}\n` +
+          `Reference: ${reference}\n\n` +
+          `Your transfer is being processed. This may take a few minutes.\n` +
+          `You'll receive confirmation once it's completed.`
+        );
+
+        logger.info('Bank transfer timeout - user notified of processing status', {
+          userId: user.id,
+          amount,
+          accountNumber,
+          reference
+        });
+
+        return {
+          reference,
+          amount,
+          status: 'processing',
+          accountName: validatedAccount.accountName,
+          accountNumber,
+          message: 'Transfer is being processed - you will be notified when completed'
+        };
+      }
+
       throw error;
     }
   }

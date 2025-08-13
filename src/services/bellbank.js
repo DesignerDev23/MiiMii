@@ -685,6 +685,17 @@ class BellBankService {
     }
   }
 
+  /**
+   * Initiate a bank transfer via BellBank API
+   * 
+   * Note: BellBank transfers can take longer than the standard timeout (up to 2-3 minutes).
+   * If the API request times out, the transfer may still succeed on BellBank's side.
+   * In such cases, BellBank will send a webhook notification when the transfer completes.
+   * The webhook handler will update the transaction status and notify the user accordingly.
+   * 
+   * @param {Object} transferData - Transfer details
+   * @returns {Object} Transfer result
+   */
   async initiateTransfer(transferData) {
     try {
       const token = await this.generateToken();
@@ -818,28 +829,73 @@ class BellBankService {
         payloadKeys: Object.keys(payload)
       });
 
-      const response = await this.makeRequest('POST', '/v1/transfer', payload, {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      });
+      // Add retry logic for transfer operations
+      const maxRetries = 3;
+      let lastError;
 
-      if (response.success) {
-        logger.info('BellBank transfer initiated successfully', {
-          reference: transferData.reference,
-          providerReference: response.data?.reference,
-          status: response.data?.status
-        });
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          logger.info(`BellBank transfer attempt ${attempt}/${maxRetries}`, {
+            reference: transferData.reference,
+            amount: transferData.amount
+          });
 
-        return {
-          success: true,
-          providerReference: response.data?.reference,
-          status: response.data?.status || 'pending',
-          message: response.message,
-          data: response.data
-        };
-      } else {
-        throw new Error(response.message || 'Transfer initiation failed');
+          const response = await this.makeRequest('POST', '/v1/transfer', payload, {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          });
+
+          if (response.success) {
+            logger.info('BellBank transfer initiated successfully', {
+              reference: transferData.reference,
+              providerReference: response.data?.reference,
+              status: response.data?.status,
+              attempt
+            });
+
+            return {
+              success: true,
+              providerReference: response.data?.reference,
+              status: response.data?.status || 'pending',
+              message: response.message,
+              data: response.data
+            };
+          } else {
+            throw new Error(response.message || 'Transfer initiation failed');
+          }
+        } catch (error) {
+          lastError = error;
+          
+          // Log the attempt failure
+          logger.warn(`BellBank transfer attempt ${attempt} failed`, {
+            error: error.message,
+            reference: transferData.reference,
+            attempt,
+            maxRetries
+          });
+
+          // If this is the last attempt, don't retry
+          if (attempt === maxRetries) {
+            break;
+          }
+
+          // Wait before retrying (exponential backoff)
+          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Max 10 seconds
+          logger.info(`Waiting ${waitTime}ms before retry attempt ${attempt + 1}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
       }
+
+      // All retries failed
+      logger.error('BellBank transfer failed after all retries', {
+        error: lastError.message,
+        reference: transferData.reference,
+        amount: transferData.amount,
+        beneficiaryAccountNumber: transferData.accountNumber,
+        beneficiaryBankCode: transferData.bankCode,
+        attempts: maxRetries
+      });
+      throw lastError;
     } catch (error) {
       logger.error('BellBank transfer initiation failed', {
         error: error.message,
@@ -1595,8 +1651,14 @@ class BellBankService {
   async makeRequest(method, endpoint, data = {}, headers = {}) {
     try {
       const url = `${this.baseURL}${endpoint}`;
+      
+      // Use longer timeout for transfer operations
+      const isTransferOperation = endpoint === '/v1/transfer' || endpoint === '/v1/transfer/requery';
+      const requestTimeout = isTransferOperation ? 180000 : 120000; // 3 minutes for transfers, 2 minutes for others
+      
       const config = {
         ...axiosConfig,
+        timeout: requestTimeout, // Override timeout for transfer operations
         method,
         url,
         headers: {
@@ -1626,6 +1688,7 @@ class BellBankService {
         method,
         endpoint,
         url,
+        timeout: requestTimeout,
         hasData: !!Object.keys(data).length,
         hasHeaders: !!Object.keys(headers).length,
         dataKeys: typeof data === 'object' ? Object.keys(data) : ['string_data'],

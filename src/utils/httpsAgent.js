@@ -7,21 +7,21 @@ const http = require('http');
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false, // Allow self-signed certificates
   keepAlive: true,
-  timeout: 30000,
+  timeout: 120000, // Increased from 30000 to 120000 (2 minutes) for BellBank API
   maxSockets: 50,
   maxFreeSockets: 10
 });
 
 const httpAgent = new http.Agent({
   keepAlive: true,
-  timeout: 30000,
+  timeout: 120000, // Increased from 30000 to 120000 (2 minutes) for BellBank API
   maxSockets: 50,
   maxFreeSockets: 10
 });
 
 // Axios configuration with custom agents
 const axiosConfig = {
-  timeout: 30000,
+  timeout: 120000, // Increased from 30000 to 120000 (2 minutes) for BellBank API
   httpsAgent: httpsAgent,
   httpAgent: httpAgent,
   // Additional axios defaults
