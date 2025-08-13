@@ -181,8 +181,8 @@ Response Format (JSON):
 
 For bank transfers, extract:
 - amount (convert "5k" to 5000, "10k" to 10000, etc.)
-- accountNumber (10-digit number)
-- bankName (bank name like "keystone", "gtb", "access", etc.)
+- accountNumber (8-11 digit number - traditional banks use 10 digits, digital banks may use phone number format)
+- bankName (bank name like "keystone", "gtb", "access", "opay", etc.)
 - recipientName (if provided)
 
 For money transfers, extract:
@@ -192,8 +192,10 @@ For money transfers, extract:
 
 IMPORTANT EXTRACTION RULES:
 1. Amount: Look for numbers followed by "k" (5k = 5000) or plain numbers
-2. Account Number: Look for 10-digit numbers
-3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, etc.)
+2. Account Number: Look for 8-11 digit numbers (traditional banks use 10 digits, digital banks may use phone number format)
+3. Bank Name: Look for bank names in the message including:
+   - Traditional Banks: keystone, gtb, gtbank, access, uba, fidelity, wema, union, fcmb, first, fbn, zenith, stanbic, sterling, ecobank, heritage, unity, citibank, standard chartered, enterprise
+   - Digital Banks: opay, palmpay, kuda, carbon, alat, v bank, vbank, rubies, fintech, mintyn, fairmoney, branch, eyowo, flutterwave, paystack, moniepoint, 9psb, providus, polaris, titan, titan trust, tcf, covenant, nova, optimus, bowen, sparkle, mutual, npf, signature, globus, jaiz, taj, vfd, parallex, premiumtrust, coronation, rand merchant, fbnquest, suntrust, diamond
 4. Recipient Name: Look for names before account numbers or bank names
 5. Test Bank: Recognize "test bank" as a valid bank name for testing
 
@@ -213,6 +215,13 @@ Should extract:
 - accountNumber: "6035745691"
 - bankName: "keystone"
 - recipientName: "Abdulkadir Musa"
+
+Example: "Send 10k to John 9072874728 opay"
+Should extract:
+- amount: 10000
+- accountNumber: "9072874728"
+- bankName: "opay"
+- recipientName: "John"
 
 And respond with something like:
 "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐"
