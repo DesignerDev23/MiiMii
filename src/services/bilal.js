@@ -6,7 +6,7 @@ const whatsappService = require('./whatsapp');
 const bellbankService = require('./bellbank');
 const feesService = require('./fees');
 const RetryHelper = require('../utils/retryHelper');
-const ActivityLog = require('../models/ActivityLog');
+const { ActivityLog } = require('../models');
 const receiptService = require('./receipt');
 
 class BilalService {

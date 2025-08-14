@@ -1,11 +1,10 @@
-const { Wallet, Transaction, User } = require('../models');
+const { Wallet, Transaction, User, ActivityLog } = require('../models');
 const { sequelize } = require('../database/connection');
 const bellBankService = require('./bellbank');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize'); // Added Op for date range queries
 const userService = require('./user'); // Added userService for getUserById
-const ActivityLog = require('./activityLog'); // Added ActivityLog for logging
 
 class WalletService {
   async createWallet(userId) {

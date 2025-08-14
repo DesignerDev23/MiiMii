@@ -4,7 +4,7 @@ const whatsappService = require('./whatsapp');
 const aiAssistantService = require('./aiAssistant');
 const whatsappFlowService = require('./whatsappFlowService');
 const bellbankService = require('./bellbank');
-const ActivityLog = require('../models/ActivityLog');
+const { ActivityLog } = require('../models');
 const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
 
