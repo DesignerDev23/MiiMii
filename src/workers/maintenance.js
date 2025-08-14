@@ -4,11 +4,15 @@ const cron = require('node-cron');
 const logger = require('../utils/logger');
 const redisClient = require('../utils/redis');
 const { databaseManager } = require('../database/connection');
+const { User, Wallet, ActivityLog } = require('../models');
+const walletService = require('../services/wallet');
+const whatsappService = require('../services/whatsapp');
 
 class MaintenanceWorker {
   constructor() {
     this.isRunning = false;
     this.jobs = new Map();
+    this.retryInterval = 5 * 60 * 1000; // 5 minutes
   }
 
   async start() {
@@ -28,6 +32,7 @@ class MaintenanceWorker {
 
       this.isRunning = true;
       await this.scheduleJobs();
+      this.retryLoop(); // Start the retry loop
       
       logger.info('Maintenance worker started successfully');
     } catch (error) {
@@ -249,6 +254,140 @@ class MaintenanceWorker {
     } catch (error) {
       logger.error('Error applying maintenance fees:', error);
     }
+  }
+
+  async retryLoop() {
+    while (this.isRunning) {
+      try {
+        await this.retryFailedVirtualAccounts();
+        await this.sleep(this.retryInterval);
+      } catch (error) {
+        logger.error('Error in maintenance worker retry loop', { error: error.message });
+        await this.sleep(60000); // Wait 1 minute on error
+      }
+    }
+  }
+
+  async retryFailedVirtualAccounts() {
+    try {
+      logger.info('Checking for failed virtual account creations to retry');
+
+      // Find users who have wallets but no virtual accounts
+      const walletsWithoutVA = await Wallet.findAll({
+        where: {
+          virtualAccountNumber: null,
+          userId: { [require('sequelize').Op.not]: null }
+        },
+        include: [
+          {
+            model: User,
+            as: 'user',
+            where: {
+              isActive: true,
+              isBanned: false
+            }
+          }
+        ],
+        limit: 10 // Process in batches
+      });
+
+      if (walletsWithoutVA.length === 0) {
+        logger.debug('No wallets without virtual accounts found');
+        return;
+      }
+
+      logger.info(`Found ${walletsWithoutVA.length} wallets without virtual accounts to retry`);
+
+      for (const wallet of walletsWithoutVA) {
+        try {
+          const user = wallet.user;
+          
+          // Check if user has all required fields
+          const requiredFields = ['firstName', 'lastName', 'whatsappNumber', 'bvn', 'gender', 'dateOfBirth'];
+          const missingFields = requiredFields.filter(field => !user[field]);
+          
+          if (missingFields.length > 0) {
+            logger.warn('User missing required fields for virtual account creation', {
+              userId: user.id,
+              missingFields
+            });
+            continue;
+          }
+
+          // Check if there was a recent BellBank API error for this user
+          const recentBellBankError = await ActivityLog.findOne({
+            where: {
+              userId: user.id,
+              action: 'virtual_account_creation_bellbank_error',
+              createdAt: {
+                [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
+              }
+            },
+            order: [['createdAt', 'DESC']]
+          });
+
+          if (recentBellBankError) {
+            logger.info('Retrying virtual account creation for user with recent BellBank error', {
+              userId: user.id,
+              lastErrorTime: recentBellBankError.createdAt
+            });
+          }
+
+          // Attempt to create virtual account
+          const virtualAccount = await walletService.createVirtualAccountForWallet(user.id);
+          
+          if (virtualAccount && virtualAccount.success) {
+            logger.info('Successfully retried virtual account creation', {
+              userId: user.id,
+              accountNumber: virtualAccount.accountNumber
+            });
+
+            // Send success notification to user
+            try {
+              const successMessage = `🎉 Great news! Your virtual account has been created successfully.\n\n` +
+                `🏦 Bank: ${virtualAccount.bankName}\n` +
+                `📝 Account Name: ${virtualAccount.accountName}\n` +
+                `🔢 Account Number: ${virtualAccount.accountNumber}\n\n` +
+                `You can now receive payments and use all MiiMii features! 🚀`;
+              
+              await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+              
+              logger.info('Sent virtual account creation success message', { userId: user.id });
+            } catch (messageError) {
+              logger.error('Failed to send virtual account success message', {
+                userId: user.id,
+                error: messageError.message
+              });
+            }
+          }
+
+        } catch (error) {
+          logger.error('Failed to retry virtual account creation for user', {
+            userId: wallet.user?.id,
+            error: error.message,
+            errorType: error.name || 'Unknown'
+          });
+
+          // If it's still a BellBank API error, log it but don't give up
+          if (error.name === 'BellBankAPIError' || error.isRetryable) {
+            logger.warn('BellBank API still unavailable for user retry', {
+              userId: wallet.user?.id,
+              error: error.message
+            });
+          }
+        }
+
+        // Small delay between retries to avoid overwhelming the API
+        await this.sleep(2000);
+      }
+
+    } catch (error) {
+      logger.error('Error in retryFailedVirtualAccounts', { error: error.message });
+    }
+  }
+
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   async stop() {

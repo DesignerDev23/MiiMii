@@ -1,402 +1,265 @@
-# MiiMii - WhatsApp Fintech Platform
+# MiiMii.AI - WhatsApp Banking Assistant
 
-A comprehensive WhatsApp-based fintech assistant platform built with Node.js, integrating AI/NLP for natural language processing, multiple payment providers, and advanced features like voice transcription and OCR.
+A comprehensive WhatsApp-based banking and financial services platform that allows users to perform various financial transactions through WhatsApp messaging.
 
 ## 🚀 Features
 
-### Core Functionality
-- **AI-Powered Assistant**: Natural language understanding via OpenAI GPT-4
-- **WhatsApp Integration**: Native WhatsApp Business API (not third-party)
-- **Multi-Modal Input**: Text, voice notes, and image processing
-- **Virtual Banking**: BellBank integration for virtual accounts and transfers
-- **Bill Payments**: Bilal integration for airtime, data, and utility bills
-- **KYC Verification**: Dojah integration for identity verification
-- **OCR Processing**: Tesseract for extracting text from bank documents
-- **Voice Transcription**: Google Cloud Speech-to-Text
+### Core Banking Services
+- **Bank Transfers**: Send money to any Nigerian bank account
+- **Airtime Purchase**: Buy airtime for all major networks (MTN, Airtel, Glo, 9mobile)
+- **Data Purchase**: Purchase data bundles for all networks
+- **Bill Payments**: Pay electricity bills and other utilities
+- **Wallet Management**: Check balance, view transaction history
 
-### Technical Features
-- **Production-Ready**: Scalable architecture with proper error handling
-- **Security**: JWT authentication, webhook verification, rate limiting
-- **Admin Dashboard**: Complete management interface
-- **Fee Management**: Configurable fee structures
-- **Logging & Monitoring**: Comprehensive logging with Winston
+### Advanced Features
+- **AI-Powered Intent Recognition**: Automatically detects user intent from natural language
+- **Receipt Generation**: Automatic generation of transaction receipts as images
+- **Multi-Provider Integration**: Supports multiple payment providers (Bilal, BellBank)
+- **Real-time Notifications**: Instant WhatsApp notifications for all transactions
+- **Security**: PIN-based authentication for sensitive operations
+
+## 🛠️ Technology Stack
+
+- **Backend**: Node.js with Express.js
 - **Database**: PostgreSQL with Sequelize ORM
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
-│   WhatsApp      │    │   MiiMii     │    │   External      │
-│   Business API  │◄───┤   Platform   ├───►│   Services      │
-└─────────────────┘    └──────────────┘    └─────────────────┘
-                              │
-                    ┌─────────┼─────────┐
-                    │         │         │
-              ┌──────▼───┐ ┌───▼───┐ ┌───▼────┐
-              │PostgreSQL│ │ Redis │ │ Logs   │
-              └──────────┘ └───────┘ └────────┘
-```
-
-### External Integrations
-- **BellBank**: Virtual accounts and bank transfers
-- **Bilal**: Airtime, data, and utility bill payments
-- **Dojah**: KYC and identity verification
-- **OpenAI**: AI/NLP for intent recognition
-- **Google Cloud**: Speech-to-text transcription
-- **WhatsApp Business API**: Message handling
+- **AI/ML**: OpenAI GPT-4 for intent recognition
+- **Payment Providers**: 
+  - Bilal API (Airtime, Data, Electricity)
+  - BellBank API (Bank Transfers)
+- **WhatsApp Integration**: WhatsApp Business API
+- **Image Generation**: Canvas.js for receipt generation
 
 ## 📋 Prerequisites
 
-- Node.js 18+ 
-- PostgreSQL 14+
-- Redis 7+ (optional, for caching)
-- API keys for:
-  - WhatsApp Business API
-  - BellBank
-  - Bilal
-  - Dojah
-  - OpenAI
-  - Google Cloud Speech (optional)
+- Node.js 18.x or higher
+- PostgreSQL 12.x or higher
+- WhatsApp Business API access
+- Bilal API credentials
+- BellBank API credentials
+- OpenAI API key
 
-## 🛠️ Installation
+## 🚀 Installation
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/your-username/miimii-platform.git
-cd miimii-platform
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd MiiMii
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   Create a `.env` file in the root directory:
+   ```env
+   # Database
+   DATABASE_URL=postgresql://username:password@localhost:5432/miimii_db
+   
+   # WhatsApp Business API
+   BOT_ACCESS_TOKEN=your_whatsapp_access_token
+   BOT_PHONE_NUMBER_ID=your_phone_number_id
+   WEBHOOK_SECRET=your_webhook_secret
+   
+   # OpenAI
+   OPENAI_API_KEY=your_openai_api_key
+   
+   # Bilal API
+   BILAL_BASE_URL=https://bilalsadasub.com/api
+   BILAL_USERNAME=your_bilal_username
+   BILAL_PASSWORD=your_bilal_password
+   
+   # BellBank API
+   BANK_CONSUMER_KEY=your_bellbank_consumer_key
+   BANK_CONSUMER_SECRET=your_bellbank_consumer_secret
+   BANK_ENVIRONMENT=production
+   
+   # Server
+   PORT=3000
+   NODE_ENV=production
+   ```
+
+4. **Set up the database**
+   ```bash
+   npm run db:migrate
+   npm run db:seed
+   ```
+
+5. **Start the application**
+   ```bash
+   npm start
+   ```
+
+## 📁 Project Structure
+
 ```
-
-### 2. Install Dependencies
-```bash
-npm install
-```
-
-### 3. Environment Setup
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
-### 4. Database Setup
-```bash
-# Create database
-createdb miimii_db
-
-# Run migrations
-npm run migrate
-```
-
-### 5. Start Development Server
-```bash
-npm run dev
+MiiMii/
+├── src/
+│   ├── config/           # Configuration files
+│   ├── models/           # Database models
+│   ├── routes/           # API routes
+│   ├── services/         # Business logic services
+│   ├── utils/            # Utility functions
+│   └── app.js           # Main application file
+├── assets/
+│   ├── fonts/           # Custom fonts (Outfit)
+│   ├── images/          # Logo and images
+│   └── templates/       # Receipt templates
+├── Dockerfile           # Docker configuration
+├── package.json
+└── README.md
 ```
 
 ## 🔧 Configuration
 
-### Environment Variables
+### WhatsApp Business API Setup
+1. Create a WhatsApp Business account
+2. Set up a phone number
+3. Configure webhook URL: `https://your-domain.com/webhook/whatsapp`
+4. Add webhook verification token to environment variables
 
-#### Required
-```env
-# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/miimii_db
+### Bilal API Setup
+1. Register for Bilal API access
+2. Get username and password credentials
+3. Add credentials to environment variables
 
-# WhatsApp Business API
-WHATSAPP_ACCESS_TOKEN=your_access_token
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-WHATSAPP_WEBHOOK_VERIFY_TOKEN=your_verify_token
+### BellBank API Setup
+1. Register for BellBank API access
+2. Get consumer key and secret
+3. Add credentials to environment variables
 
-# BellBank API
-BELLBANK_API_URL=https://api.bellmfb.com
-BELLBANK_API_KEY=your_api_key
-BELLBANK_MERCHANT_ID=your_merchant_id
+## 📱 Usage
 
-# Bilal API
-BILAL_API_URL=https://app.bilalsadasub.com/api
-BILAL_API_KEY=your_api_key
+### User Commands
 
-# Dojah KYC
-DOJAH_API_URL=https://api.dojah.io
-DOJAH_APP_ID=your_app_id
-DOJAH_SECRET_KEY=your_secret
-
-# OpenAI
-OPENAI_API_KEY=your-openai-api-key-here
+#### Bank Transfers
+```
+Send 1000 to 1234567890 GTBank John Doe
+Transfer 500 to 9876543210 Access Bank
 ```
 
-#### Optional
-```env
-# Google Cloud Speech (for voice transcription)
-GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
-
-# Redis (for caching)
-REDIS_URL=redis://localhost:6379
-
-# Fees Configuration
-TRANSFER_FEE_PERCENTAGE=0.5
-PLATFORM_FEE=5
-BELLBANK_FEE=20
-MAINTENANCE_FEE=100
-DATA_PURCHASE_FEE=10
+#### Airtime Purchase
+```
+Buy 100 airtime for 07035437910
+Recharge 500 for 08123456789
 ```
 
-## 🚀 Deployment
-
-### DigitalOcean App Platform (Recommended)
-
-This application is optimized for DigitalOcean App Platform with Managed Databases.
-
-1. **Prerequisites**
-   - GitHub repository with your code
-   - DigitalOcean account
-
-2. **Create App**
-   ```bash
-   # Push your code to GitHub
-   git push origin main
-   ```
-
-3. **Deploy via App Platform**
-   - Go to DigitalOcean App Platform console
-   - Create new app from GitHub repository
-   - Use the provided `.digitalocean/app.yaml` configuration
-   - App Platform will automatically:
-     - Create PostgreSQL managed database
-     - Create Redis managed database
-     - Set up autoscaling (1-5 instances)
-     - Configure health checks
-
-4. **Environment Variables**
-   Set these in DigitalOcean App Platform dashboard:
-   ```env
-   JWT_SECRET=your-secure-jwt-secret
-   WHATSAPP_ACCESS_TOKEN=your-whatsapp-token
-   WHATSAPP_PHONE_NUMBER_ID=your-phone-id
-   WHATSAPP_BUSINESS_ACCOUNT_ID=your-business-id
-   WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-verify-token
-   BELLBANK_API_URL=https://api.bellbank.com
-   BELLBANK_API_KEY=your-bellbank-api-key-here
-   BELLBANK_MERCHANT_ID=your-merchant-id
-   BILAL_API_URL=https://api.bilal.com
-   BILAL_API_KEY=your-bilal-api-key-here
-   BILAL_MERCHANT_ID=your-bilal-merchant-id
-   DOJAH_API_URL=https://api.dojah.io
-   DOJAH_APP_ID=your-dojah-app-id
-   DOJAH_SECRET_KEY=your-dojah-secret
-   OPENAI_API_KEY=your-openai-api-key-here
-   WEBHOOK_SECRET=your-webhook-secret
-   ADMIN_EMAIL=admin@yourdomain.com
-   ADMIN_PASSWORD=secure-admin-password
-   ```
-
-5. **Post-Deployment Setup**
-   - Configure WhatsApp webhook URL: `https://your-app.ondigitalocean.app/webhook/whatsapp`
-   - Set up other provider webhooks as needed
-   - Test application health: `https://your-app.ondigitalocean.app/health`
-
-6. **Monitoring**
-   - App Platform provides built-in monitoring
-   - Redis and PostgreSQL have separate monitoring dashboards
-   - Check logs in App Platform console
-
-### Docker Deployment
-```bash
-# Build image
-docker build -t miimii-platform .
-
-# Run container
-docker run -d \
-  --name miimii \
-  -p 3000:3000 \
-  --env-file .env \
-  miimii-platform
+#### Data Purchase
+```
+Buy 1GB data for 07035437910
+Purchase 2000 worth of data
 ```
 
-## 📖 API Documentation
-
-### WhatsApp Integration
-
-#### Webhook Endpoint
-```http
-POST /webhook/whatsapp
+#### Balance & History
+```
+Check balance
+Show transaction history
 ```
 
-#### Send Message
-```http
-POST /api/whatsapp/send-message
-Content-Type: application/json
-
-{
-  "to": "2348012345678",
-  "message": "Hello from MiiMii!"
-}
+### Admin Commands
 ```
-
-### User Management
-
-#### Get User Balance
-```http
-GET /api/wallet/balance/08012345678
+/help - Show available commands
+/status - Check system status
 ```
-
-#### User Transactions
-```http
-GET /api/wallet/transactions/08012345678?limit=10
-```
-
-### Admin Operations
-
-#### Dashboard Overview
-```http
-GET /api/admin/dashboard
-```
-
-#### Manage Users
-```http
-GET /api/admin/users?page=1&limit=20&search=john
-POST /api/admin/users/:userId/ban
-POST /api/admin/users/:userId/unban
-```
-
-#### Transaction Management
-```http
-GET /api/admin/transactions?status=pending
-PATCH /api/transactions/:reference/status
-```
-
-## 🤖 AI Integration
-
-### Supported Commands
-
-Users can interact naturally with MiiMii using these patterns:
-
-**Money Transfers**
-- "Send 5000 to John 08012345678"
-- "Transfer 10k to my brother 08098765432"
-
-**Airtime Purchase**
-- "Buy 1000 airtime"
-- "Buy 500 airtime for 08012345678"
-
-**Data Purchase**
-- "Buy 2GB data"
-- "Get 1GB data for 08098765432"
-
-**Balance & History**
-- "What's my balance?"
-- "Check balance"
-- "Show my transactions"
-
-**Utility Bills**
-- "Pay PHCN bill for meter 12345678"
-- "Pay DStv bill for 1234567890"
-
-### Voice & Image Support
-
-**Voice Messages**: Automatically transcribed and processed
-**Images**: OCR extraction for bank details, receipts, etc.
-
-## 💳 Fee Structure
-
-### Incoming Transfers
-- ₦0 - ₦500: Free
-- Above ₦1,000: 0.5% of amount
-
-### Outgoing Transfers
-- MiiMii → MiiMii: Free
-- Bank transfers: ₦25 (₦20 BellBank + ₦5 platform)
-
-### Services
-- Airtime/Data: ₦10 fee
-- Utility bills: Standard provider fees
-- Monthly maintenance: ₦100
 
 ## 🔒 Security Features
 
-- **Webhook Verification**: All incoming webhooks are verified
-- **Rate Limiting**: API endpoints are rate-limited
-- **PIN Protection**: 4-digit PIN for transactions
-- **KYC Compliance**: Required for financial operations
-- **Audit Logging**: All operations are logged
-- **Data Encryption**: Sensitive data is encrypted
+- **PIN Authentication**: All financial transactions require PIN verification
+- **Rate Limiting**: Prevents abuse and spam
+- **Input Validation**: Comprehensive validation for all inputs
+- **Error Handling**: Secure error messages without exposing sensitive data
+- **Logging**: Detailed logging for audit trails
 
-## 🧪 Testing
+## 📊 Transaction Limits
 
+- **Minimum Transfer**: ₦100
+- **Maximum Transfer**: ₦1,000,000
+- **Daily Limit**: ₦5,000,000
+- **Monthly Limit**: ₦50,000,000
+- **Transfer Fee**: ₦25 (fixed)
+
+## 🧾 Receipt Generation
+
+The system automatically generates transaction receipts as images with:
+- Company logo and branding
+- Transaction details
+- QR codes for verification
+- Professional formatting
+- WhatsApp-compatible format (JPEG)
+
+## 🔄 API Endpoints
+
+### Webhook Endpoints
+- `POST /webhook/whatsapp` - WhatsApp webhook for incoming messages
+- `POST /webhook/bellbank` - BellBank webhook for transfer updates
+
+### User Endpoints
+- `GET /api/user/balance` - Get user wallet balance
+- `GET /api/user/transactions` - Get transaction history
+- `POST /api/transfer` - Initiate bank transfer
+- `POST /api/airtime` - Purchase airtime
+- `POST /api/data` - Purchase data
+
+## 🐳 Docker Deployment
+
+1. **Build the image**
+   ```bash
+   docker build -t miimii-ai .
+   ```
+
+2. **Run the container**
+   ```bash
+   docker run -p 3000:3000 --env-file .env miimii-ai
+   ```
+
+## 🔍 Monitoring & Logging
+
+The application includes comprehensive logging:
+- Transaction logs
+- Error tracking
+- Performance metrics
+- User activity logs
+
+## 🛠️ Development
+
+### Running in Development Mode
 ```bash
-# Run tests
+npm run dev
+```
+
+### Running Tests
+```bash
 npm test
-
-# Run tests with coverage
-npm run test:coverage
-
-# Test specific endpoint
-curl -X GET http://localhost:3000/health
 ```
 
-## 📊 Monitoring
-
-### Health Check
-```http
-GET /health
-```
-
-### Logs
-- Application logs: `logs/combined.log`
-- Error logs: `logs/error.log`
-- Winston logger with structured JSON logging
-
-### Admin Dashboard
-Access the admin interface at `/admin` to monitor:
-- User activities
-- Transaction volumes
-- System health
-- Webhook logs
-
-## 🔧 Maintenance
-
-### Database Maintenance
+### Database Migrations
 ```bash
-# Run migrations
-npm run migrate
-
-# Backup database
-pg_dump miimii_db > backup.sql
+npm run db:migrate
+npm run db:rollback
 ```
-
-### Cron Jobs
-The platform includes automated maintenance:
-- Monthly maintenance fee charging
-- Cleanup of old logs
-- Health checks
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 📞 Support
 
 For technical support or questions:
-- Email: support@miimii.com
-- Documentation: [docs.miimii.com](https://docs.miimii.com)
-- Issues: [GitHub Issues](https://github.com/your-username/miimii-platform/issues)
+- **Phone**: +234 907 110 2959, +234 701 405 5875
+- **Email**: contactcenter@chatmiimiiai.com
+- **WhatsApp**: Send "help" to the bot
 
-## 🗺️ Roadmap
+## 📄 License
 
-- [ ] Multi-language support
-- [ ] Advanced analytics dashboard
-- [ ] Mobile app companion
-- [ ] Cryptocurrency integration
-- [ ] Loan and savings features
-- [ ] Merchant payment processing
-- [ ] International transfers
+This project is proprietary software. All rights reserved.
 
----
+## 🔄 Changelog
 
-**Built with ❤️ for the Nigerian fintech ecosystem**
+### Version 2.0.0
+- Added receipt generation for all transactions
+- Fixed duplicate message issues
+- Updated transfer fees to 25 naira
+- Improved error handling
+- Enhanced AI intent recognition
+
+### Version 1.0.0
+- Initial release with basic banking features
+- WhatsApp integration
+- Multi-provider support

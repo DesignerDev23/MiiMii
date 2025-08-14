@@ -43,6 +43,14 @@ class BellBankService {
     this.bankMappingCache = null;
     this.bankMappingExpiry = null;
 
+    // Circuit breaker for BellBank API
+    this.circuitBreaker = RetryHelper.createCircuitBreaker({
+      failureThreshold: 3,
+      resetTimeout: 300000, // 5 minutes
+      monitoringPeriod: 60000, // 1 minute
+      operationName: 'bellbank_api'
+    });
+
     // Safe runtime config log (no secrets leaked)
     const mask = (val) => {
       if (!val) return 'MISSING';
@@ -107,7 +115,7 @@ class BellBankService {
       // The payload for generate-token endpoint is empty as per documentation
       const payload = {}; 
 
-      const response = await this.makeRequest('POST', '/v1/generate-token', payload, headers);
+      const response = await this.makeRequestWithRetry('POST', '/v1/generate-token', payload, headers);
 
       if (response.success) {
         this.token = response.token;
@@ -167,8 +175,8 @@ class BellBankService {
         environment: process.env.NODE_ENV
       });
 
-      // Use the correct endpoint from BellBank documentation
-      const response = await this.makeRequest('POST', '/v1/account/clients/individual', payload, {
+      // Use retry logic for virtual account creation
+      const response = await this.makeRequestWithRetry('POST', '/v1/account/clients/individual', payload, {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       });
@@ -260,7 +268,7 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
-      const response = await this.makeRequest('GET', `/v1/account/clients/${externalReference}/accounts`, {}, {
+      const response = await this.makeRequestWithRetry('GET', `/v1/account/clients/${externalReference}/accounts`, {}, {
         'Authorization': `Bearer ${token}`
       });
 
@@ -283,7 +291,7 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
-      const response = await this.makeRequest('GET', `/v1/account/info/${accountNumber}`, {}, {
+      const response = await this.makeRequestWithRetry('GET', `/v1/account/info/${accountNumber}`, {}, {
         'Authorization': `Bearer ${token}`
       });
 
@@ -305,7 +313,7 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
-      const response = await this.makeRequest('POST', '/v1/transfer/name-enquiry/internal', {
+      const response = await this.makeRequestWithRetry('POST', '/v1/transfer/name-enquiry/internal', {
         accountNumber: accountNumber.toString()
       }, {
         'Content-Type': 'application/json',
@@ -387,7 +395,7 @@ class BellBankService {
         endpoint: '/v1/transfer/name-enquiry'
       });
 
-      const response = await this.makeRequest('POST', '/v1/transfer/name-enquiry', payload, {
+      const response = await this.makeRequestWithRetry('POST', '/v1/transfer/name-enquiry', payload, {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       });
@@ -429,7 +437,7 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
-      const response = await this.makeRequest('GET', '/v1/transfer/banks', {}, {
+      const response = await this.makeRequestWithRetry('GET', '/v1/transfer/banks', {}, {
         'Authorization': `Bearer ${token}`
       });
 
@@ -840,7 +848,7 @@ class BellBankService {
             amount: transferData.amount
           });
 
-          const response = await this.makeRequest('POST', '/v1/transfer', payload, {
+          const response = await this.makeRequestWithRetry('POST', '/v1/transfer', payload, {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           });
@@ -912,7 +920,7 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
-      const response = await this.makeRequest('POST', '/v1/transfer/requery', {
+      const response = await this.makeRequestWithRetry('POST', '/v1/transfer/requery', {
         reference: reference
       }, {
         'Content-Type': 'application/json',
@@ -953,7 +961,7 @@ class BellBankService {
         limit: limit.toString()
       });
 
-      const response = await this.makeRequest('GET', `/v1/transactions?${params}`, {}, {
+      const response = await this.makeRequestWithRetry('GET', `/v1/transactions?${params}`, {}, {
         'Authorization': `Bearer ${token}`
       });
 
@@ -981,7 +989,7 @@ class BellBankService {
     try {
       const token = await this.generateToken();
       
-      const response = await this.makeRequest('GET', `/v1/transactions/${reference}`, {}, {
+      const response = await this.makeRequestWithRetry('GET', `/v1/transactions/${reference}`, {}, {
         'Authorization': `Bearer ${token}`
       });
 
@@ -1682,13 +1690,70 @@ class BellBankService {
     }
   }
 
+  // New method with retry logic and circuit breaker
+  async makeRequestWithRetry(method, endpoint, data = {}, headers = {}) {
+    const apiCall = async () => {
+      return await this.makeRequest(method, endpoint, data, headers);
+    };
+
+    // Use circuit breaker with retry logic
+    return await this.circuitBreaker(async () => {
+      return await RetryHelper.retryBankApiCall(apiCall, {
+        maxAttempts: 5,
+        baseDelay: 3000, // Start with 3 seconds
+        maxDelay: 60000, // Max 60 seconds
+        backoffMultiplier: 2,
+        shouldRetry: (error, attempt) => {
+          // Don't retry authentication errors
+          if (error.response && [401, 403].includes(error.response.status)) {
+            logger.warn('BellBank API authentication error, not retrying', {
+              status: error.response.status,
+              endpoint,
+              attempt
+            });
+            return false;
+          }
+          
+          // Don't retry client errors (400-499) except specific ones
+          if (error.response && error.response.status >= 400 && error.response.status < 500) {
+            const retryableClientErrors = [408, 429, 499]; // Request timeout, too many requests, client closed request
+            const shouldRetry = retryableClientErrors.includes(error.response.status);
+            
+            if (!shouldRetry) {
+              logger.warn('BellBank API client error, not retrying', {
+                status: error.response.status,
+                endpoint,
+                attempt
+              });
+            }
+            
+            return shouldRetry;
+          }
+          
+          // Always retry server errors (500+) and network issues
+          if (error.response && error.response.status >= 500) {
+            logger.warn('BellBank API server error, will retry', {
+              status: error.response.status,
+              endpoint,
+              attempt
+            });
+          }
+          
+          return true;
+        },
+        operationName: `bellbank_${method}_${endpoint.replace(/\//g, '_')}`
+      });
+    });
+  }
+
   async makeRequest(method, endpoint, data = {}, headers = {}) {
     try {
       const url = `${this.baseURL}${endpoint}`;
       
-      // Use longer timeout for transfer operations
+      // Use longer timeout for transfer operations and virtual account creation
       const isTransferOperation = endpoint === '/v1/transfer' || endpoint === '/v1/transfer/requery';
-      const requestTimeout = isTransferOperation ? 180000 : 120000; // 3 minutes for transfers, 2 minutes for others
+      const isVirtualAccountCreation = endpoint === '/v1/account/clients/individual';
+      const requestTimeout = isTransferOperation || isVirtualAccountCreation ? 180000 : 120000; // 3 minutes for transfers and VA creation, 2 minutes for others
       
       const config = {
         ...axiosConfig,

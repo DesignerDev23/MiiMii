@@ -462,4 +462,193 @@ router.post('/users/:userId/kyc-status',
   }
 );
 
+// Admin endpoint to retry failed virtual account creations
+router.post('/retry-virtual-accounts', async (req, res) => {
+  try {
+    const { userId, force } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    const walletService = require('../services/wallet');
+    const { User, Wallet } = require('../models');
+
+    // Check if user exists
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if wallet exists
+    const wallet = await Wallet.findOne({ where: { userId } });
+    if (!wallet) {
+      return res.status(404).json({
+        success: false,
+        message: 'Wallet not found for user'
+      });
+    }
+
+    // Check if virtual account already exists
+    if (wallet.virtualAccountNumber && !force) {
+      return res.status(400).json({
+        success: false,
+        message: 'Virtual account already exists. Use force=true to recreate.',
+        existingAccount: {
+          accountNumber: wallet.virtualAccountNumber,
+          bankName: wallet.virtualAccountBank,
+          accountName: wallet.virtualAccountName
+        }
+      });
+    }
+
+    // If force is true and account exists, clear it first
+    if (force && wallet.virtualAccountNumber) {
+      await wallet.update({
+        virtualAccountNumber: null,
+        virtualAccountBank: null,
+        virtualAccountName: null
+      });
+    }
+
+    // Attempt to create virtual account
+    const result = await walletService.createVirtualAccountForWallet(userId);
+
+    res.json({
+      success: true,
+      message: 'Virtual account creation retry completed',
+      result
+    });
+
+  } catch (error) {
+    logger.error('Admin retry virtual account creation failed', {
+      error: error.message,
+      userId: req.body.userId
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retry virtual account creation',
+      error: error.message
+    });
+  }
+});
+
+// Admin endpoint to check BellBank API status
+router.get('/bellbank-status', async (req, res) => {
+  try {
+    const bellBankService = require('../services/bellbank');
+    
+    // Test token generation
+    const startTime = Date.now();
+    const token = await bellBankService.generateToken();
+    const responseTime = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: 'BellBank API is accessible',
+      data: {
+        environment: bellBankService.selectedEnvironment,
+        baseURL: bellBankService.baseURL,
+        tokenGenerated: !!token,
+        responseTime: `${responseTime}ms`,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('BellBank API status check failed', { error: error.message });
+
+    res.status(500).json({
+      success: false,
+      message: 'BellBank API is not accessible',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Admin endpoint to get users without virtual accounts
+router.get('/users-without-va', async (req, res) => {
+  try {
+    const { limit = 20, offset = 0 } = req.query;
+    
+    const { User, Wallet } = require('../models');
+
+    const usersWithoutVA = await User.findAll({
+      include: [
+        {
+          model: Wallet,
+          as: 'wallet',
+          where: {
+            virtualAccountNumber: null
+          }
+        }
+      ],
+      where: {
+        isActive: true,
+        isBanned: false
+      },
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['createdAt', 'DESC']]
+    });
+
+    const totalCount = await User.count({
+      include: [
+        {
+          model: Wallet,
+          as: 'wallet',
+          where: {
+            virtualAccountNumber: null
+          }
+        }
+      ],
+      where: {
+        isActive: true,
+        isBanned: false
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        users: usersWithoutVA.map(user => ({
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          whatsappNumber: user.whatsappNumber,
+          hasBvn: !!user.bvn,
+          hasGender: !!user.gender,
+          hasDateOfBirth: !!user.dateOfBirth,
+          createdAt: user.createdAt,
+          missingFields: ['firstName', 'lastName', 'whatsappNumber', 'bvn', 'gender', 'dateOfBirth']
+            .filter(field => !user[field])
+        })),
+        pagination: {
+          total: totalCount,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasMore: (parseInt(offset) + parseInt(limit)) < totalCount
+        }
+      }
+    });
+
+  } catch (error) {
+    logger.error('Failed to get users without virtual accounts', { error: error.message });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get users without virtual accounts',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

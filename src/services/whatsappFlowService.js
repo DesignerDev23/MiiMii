@@ -247,12 +247,59 @@ class WhatsAppFlowService {
       if (result?.success && result?.userId) {
         try {
           const walletService = require('./wallet');
+          const whatsappService = require('./whatsapp');
+          
           const wallet = await walletService.getUserWallet(result.userId);
           if (!wallet.virtualAccountNumber) {
-            await walletService.createVirtualAccountForWallet(result.userId);
+            logger.info('Creating virtual account for new user', { userId: result.userId });
+            
+            try {
+              await walletService.createVirtualAccountForWallet(result.userId);
+              logger.info('Virtual account created successfully during onboarding', { userId: result.userId });
+            } catch (vaError) {
+              // Handle BellBank API errors specifically
+              if (vaError.name === 'BellBankAPIError' || vaError.isRetryable) {
+                logger.warn('BellBank API temporarily unavailable during onboarding', { 
+                  userId: result.userId, 
+                  error: vaError.message 
+                });
+                
+                // Send user a message about the temporary issue
+                try {
+                  const user = await require('../models').User.findByPk(result.userId);
+                  if (user) {
+                    const fallbackMessage = `🎉 Welcome to MiiMii! Your account has been created successfully.\n\n` +
+                      `⚠️ We're experiencing temporary issues with our banking partner. Your virtual account will be created automatically once the service is restored.\n\n` +
+                      `You can still use all other features of MiiMii. We'll notify you once your virtual account is ready.\n\n` +
+                      `Thank you for your patience! 🙏`;
+                    
+                    await whatsappService.sendTextMessage(user.whatsappNumber, fallbackMessage);
+                    
+                    logger.info('Sent fallback message for BellBank API issue', { userId: result.userId });
+                  }
+                } catch (messageError) {
+                  logger.error('Failed to send fallback message for BellBank API issue', { 
+                    userId: result.userId, 
+                    error: messageError.message 
+                  });
+                }
+              } else {
+                // For non-retryable errors, log but don't block onboarding
+                logger.warn('Non-retryable virtual account creation error during onboarding', { 
+                  userId: result.userId, 
+                  error: vaError.message,
+                  errorType: vaError.name || 'Unknown'
+                });
+              }
+            }
+          } else {
+            logger.info('Virtual account already exists for user', { userId: result.userId });
           }
         } catch (vaErr) {
-          logger.warn('Optional virtual account creation post-onboarding failed', { error: vaErr.message });
+          logger.warn('Optional virtual account creation post-onboarding failed', { 
+            error: vaErr.message,
+            userId: result.userId 
+          });
         }
       }
 

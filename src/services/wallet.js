@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize'); // Added Op for date range queries
 const userService = require('./user'); // Added userService for getUserById
+const ActivityLog = require('./activityLog'); // Added ActivityLog for logging
 
 class WalletService {
   async createWallet(userId) {
@@ -390,18 +391,61 @@ class WalletService {
   async createVirtualAccountForWallet(userId) {
     try {
       const user = await User.findByPk(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
       const wallet = await this.getUserWallet(userId);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
 
-      // KYC is handled by provider during VA creation; don't block here
-
+      // Check if virtual account already exists
       if (wallet.virtualAccountNumber) {
+        logger.info('Virtual account already exists for wallet', {
+          userId,
+          accountNumber: wallet.virtualAccountNumber,
+          bankName: wallet.virtualAccountBank,
+          accountName: wallet.virtualAccountName
+        });
         return {
+          success: true,
           accountNumber: wallet.virtualAccountNumber,
           bankName: wallet.virtualAccountBank,
           accountName: wallet.virtualAccountName
         };
       }
 
+      // Validate required user data for virtual account creation
+      const requiredFields = ['firstName', 'lastName', 'whatsappNumber', 'bvn', 'gender', 'dateOfBirth'];
+      const missingFields = requiredFields.filter(field => !user[field]);
+      
+      if (missingFields.length > 0) {
+        logger.error('Missing required fields for virtual account creation', {
+          userId,
+          missingFields,
+          userData: {
+            hasFirstName: !!user.firstName,
+            hasLastName: !!user.lastName,
+            hasWhatsappNumber: !!user.whatsappNumber,
+            hasBvn: !!user.bvn,
+            hasGender: !!user.gender,
+            hasDateOfBirth: !!user.dateOfBirth
+          }
+        });
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+
+      logger.info('Attempting to create virtual account with BellBank', {
+        userId,
+        phoneNumber: user.whatsappNumber,
+        hasBvn: !!user.bvn,
+        gender: user.gender,
+        dateOfBirth: user.dateOfBirth
+      });
+
+      const bellBankService = require('./bellbank');
+      
       const virtualAccount = await bellBankService.createVirtualAccount({
         firstName: user.firstName,
         lastName: user.lastName,
@@ -439,17 +483,85 @@ class WalletService {
         logger.error('Failed to send AI welcome message for wallet', { userId, error: welcomeError.message });
       }
 
-      logger.info('Virtual account created for existing wallet', {
+      logger.info('Virtual account created successfully for wallet', {
         userId,
-        accountNumber: virtualAccount.accountNumber
+        accountNumber: virtualAccount.accountNumber,
+        bankName: virtualAccount.bankName,
+        accountName: virtualAccount.accountName
       });
 
       return virtualAccount;
     } catch (error) {
+      // Handle specific BellBank API errors
+      const isBellBankError = error.message && (
+        error.message.includes('504') || 
+        error.message.includes('Gateway time-out') ||
+        error.message.includes('BellBank') ||
+        error.message.includes('HTTP 5')
+      );
+
+      if (isBellBankError) {
+        logger.error('BellBank API error during virtual account creation', {
+          userId,
+          error: error.message,
+          errorType: 'bellbank_api_error',
+          stack: error.stack
+        });
+
+        // Log activity for BellBank API failure
+        try {
+          await ActivityLog.logUserActivity(
+            userId,
+            'wallet_funding',
+            'virtual_account_creation_bellbank_error',
+            {
+              description: 'Virtual account creation failed due to BellBank API error',
+              provider: 'bellbank',
+              success: false,
+              error: error.message,
+              errorType: 'bellbank_api_error',
+              source: 'api'
+            }
+          );
+        } catch (logError) {
+          logger.error('Failed to log BellBank error activity', { userId, logError: logError.message });
+        }
+
+        // Return a structured error that can be handled by the calling service
+        const bellBankError = new Error(`BellBank API temporarily unavailable: ${error.message}`);
+        bellBankError.name = 'BellBankAPIError';
+        bellBankError.isRetryable = true;
+        bellBankError.originalError = error;
+        throw bellBankError;
+      }
+
+      // Handle other errors
       logger.error('Failed to create virtual account for wallet', {
         error: error.message,
-        userId
+        userId,
+        errorType: 'general_error',
+        stack: error.stack
       });
+
+      // Log activity for general failure
+      try {
+        await ActivityLog.logUserActivity(
+          userId,
+          'wallet_funding',
+          'virtual_account_creation_failed',
+          {
+            description: 'Virtual account creation failed',
+            provider: 'bellbank',
+            success: false,
+            error: error.message,
+            errorType: 'general_error',
+            source: 'api'
+          }
+        );
+      } catch (logError) {
+        logger.error('Failed to log general error activity', { userId, logError: logError.message });
+      }
+
       throw error;
     }
   }
