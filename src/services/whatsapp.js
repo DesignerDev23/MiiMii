@@ -1408,7 +1408,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        formData.append('messaging_product', 'whatsapp');
        formData.append('file', imageBuffer, {
          filename: filename,
-         contentType: 'image/png'
+         contentType: 'image/jpeg' // Changed from image/png to image/jpeg for better compatibility
        });
 
        const uploadResponse = await axios.post(uploadUrl, formData, {

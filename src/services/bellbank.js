@@ -1170,14 +1170,48 @@ class BellBankService {
       // Find user and send notification
       const user = await User.findByPk(transaction.userId);
       if (user) {
-        const completionMessage = `✅ *Transfer Successful!*\n\n` +
-                                `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
-                                `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
-                                `🏦 Bank: ${transaction.recipientDetails?.bankName}\n` +
-                                `📄 Reference: ${transaction.reference}\n\n` +
-                                `Your transfer has been completed successfully! 🎉`;
+        // Generate and send receipt
+        let receiptSent = false;
+        try {
+          const receiptData = {
+            transactionType: 'Bank Transfer',
+            amount: parseFloat(transaction.amount),
+            sender: user.name || 'MiiMii User',
+            beneficiary: transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber,
+            reference: transaction.reference,
+            date: new Date().toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+            status: 'Successful',
+            remark: transaction.description || 'Bank transfer',
+            charges: transaction.fee || 25,
+            discount: 0
+          };
 
-        await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
+          const receiptService = require('./receipt');
+          const receiptBuffer = await receiptService.generateReceipt(receiptData);
+          await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer_receipt.jpg');
+          receiptSent = true;
+        } catch (receiptError) {
+          logger.warn('Failed to generate transfer receipt, sending text message only', { error: receiptError.message });
+        }
+
+        // Send text notification if receipt wasn't sent
+        if (!receiptSent) {
+          const completionMessage = `✅ *Transfer Successful!*\n\n` +
+                                  `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
+                                  `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
+                                  `🏦 Bank: ${transaction.recipientDetails?.bankName}\n` +
+                                  `📄 Reference: ${transaction.reference}\n\n` +
+                                  `Your transfer has been completed successfully! 🎉`;
+
+          await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
+        }
       }
 
       logger.info('Transfer completion processed successfully', {

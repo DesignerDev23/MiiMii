@@ -134,14 +134,12 @@ class MessageProcessor {
             };
             const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
             if (result.success) {
-              const receipt = `✅ *Transfer Successful*\n\n` +
-                             `💰 Amount: ₦${Number(result.transaction.amount).toLocaleString()}\n` +
-                             `💳 Fee: ₦${Number(result.transaction.fee).toLocaleString()}\n` +
-                             `🧾 Total: ₦${Number(result.transaction.totalAmount).toLocaleString()}\n` +
-                             `📄 Reference: ${result.transaction.reference}\n` +
-                             `👤 Recipient: ${result.transaction.accountName} (${result.transaction.accountNumber})\n` +
-                             `🏦 Bank: ${result.transaction.bankName}`;
-              await whatsappService.sendTextMessage(user.whatsappNumber, receipt);
+              // Don't send message here - let the bellbank service handle completion messages
+              // This prevents duplicate messages when transfer completes via webhook
+              logger.info('Transfer initiated successfully, waiting for completion notification', {
+                userId: user.id,
+                reference: result.transaction.reference
+              });
             } else {
               await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
             }
@@ -1951,18 +1949,12 @@ class MessageProcessor {
       }
       
       if (result.success) {
-        const successMsg = `✅ *Transfer Successful!*\n\n` +
-                          `💰 Amount: ₦${result.transaction.amount.toLocaleString()}\n` +
-                          `💳 Fee: ₦${result.transaction.fee.toLocaleString()}\n` +
-                          `🧾 Total: ₦${result.transaction.totalAmount.toLocaleString()}\n\n` +
-                          `👤 To: ${result.transaction.accountName}\n` +
-                          `🏦 Bank: ${result.transaction.bankName}\n` +
-                          `🔢 Account: ${result.transaction.accountNumber}\n` +
-                          `📄 Reference: ${result.transaction.reference}\n\n` +
-                          `Your transfer has been completed! The recipient should receive the funds within 5-15 minutes. 🎉\n\n` +
-                          `Is there anything else I can help you with?`;
-
-        await whatsappService.sendTextMessage(user.whatsappNumber, successMsg);
+        // Don't send message here - let the bellbank service handle completion messages
+        // This prevents duplicate messages when transfer completes via webhook
+        logger.info('Transfer initiated successfully, waiting for completion notification', {
+          userId: user.id,
+          reference: result.transaction.reference
+        });
       } else {
         await whatsappService.sendTextMessage(user.whatsappNumber, 
           `❌ Transfer failed: ${result.message}. Please try again or contact support if the issue persists.`);
@@ -2042,10 +2034,8 @@ class MessageProcessor {
       // Process the airtime purchase
       const result = await aiAssistant.handleAirtimePurchase(user, extractedData, { intent: 'airtime' });
       
-      if (result && result.message) {
-        const whatsappService = require('./whatsapp');
-        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
-      }
+      // Don't send message here as bilal service already handles it
+      // The result.message will be null if receipt was sent successfully
     } catch (error) {
       logger.error('Airtime purchase failed', { error: error.message, userId: user.id });
       
@@ -2080,10 +2070,8 @@ class MessageProcessor {
       // Process the data purchase
       const result = await aiAssistant.handleDataPurchase(user, extractedData, { intent: 'data' });
       
-      if (result && result.message) {
-        const whatsappService = require('./whatsapp');
-        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
-      }
+      // Don't send message here as bilal service already handles it
+      // The result.message will be null if receipt was sent successfully
     } catch (error) {
       logger.error('Data purchase failed', { error: error.message, userId: user.id });
       

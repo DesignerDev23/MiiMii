@@ -169,7 +169,7 @@ class ReceiptService {
       ctx.fillText('Thank you for using The MiiMii.AI', 200, 590);
 
       // Convert to buffer
-      const buffer = canvas.toBuffer('image/png');
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
       
       logger.info('Receipt generated successfully', {
         reference,
@@ -304,7 +304,7 @@ class ReceiptService {
       ctx.fillText('Thank you for using The MiiMii.AI', 200, 590);
 
       // Convert to buffer
-      const buffer = canvas.toBuffer('image/png');
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
       
       logger.info('Airtime receipt generated successfully', {
         reference,

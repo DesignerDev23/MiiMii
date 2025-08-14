@@ -260,11 +260,12 @@ class BilalService {
           };
 
           const receiptBuffer = await receiptService.generateAirtimeReceipt(receiptData);
-          await whatsappService.sendImageMessage(userPhoneNumber, receiptBuffer, 'receipt.png');
+          await whatsappService.sendImageMessage(userPhoneNumber, receiptBuffer, 'receipt.jpg');
           receiptSent = true;
         } catch (receiptError) {
           logger.warn('Failed to generate receipt, sending text message only', { error: receiptError.message });
           await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
+          receiptSent = true; // Mark as sent even if it's text fallback
         }
 
         logger.info('Airtime purchase successful', {

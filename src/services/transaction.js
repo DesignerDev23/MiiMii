@@ -445,7 +445,7 @@ class TransactionService {
 
         const receiptService = require('./receipt');
         const receiptBuffer = await receiptService.generateReceipt(receiptData);
-        await whatsappService.sendImageMessage(transaction.user.whatsappNumber, receiptBuffer, 'transfer_receipt.png');
+        await whatsappService.sendImageMessage(transaction.user.whatsappNumber, receiptBuffer, 'transfer_receipt.jpg');
         receiptSent = true;
       } catch (receiptError) {
         logger.warn('Failed to generate transfer receipt, sending text message only', { error: receiptError.message });

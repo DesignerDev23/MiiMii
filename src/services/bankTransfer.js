@@ -570,6 +570,43 @@ class BankTransferService {
             reference: transaction.reference
           });
 
+          // Generate and send receipt for immediate completion
+          try {
+            const receiptService = require('./receipt');
+            const whatsappService = require('./whatsapp');
+            
+            const receiptData = {
+              transactionType: 'Bank Transfer',
+              amount: parseFloat(feeCalculation.amount),
+              sender: `${user.firstName} ${user.lastName}`.trim() || 'MiiMii User',
+              beneficiary: accountValidation.accountName,
+              reference: transaction.reference,
+              date: new Date().toLocaleString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              }),
+              status: 'Successful',
+              remark: narration || 'Bank transfer',
+              charges: feeCalculation.totalFee,
+              discount: 0
+            };
+            
+            const receiptBuffer = await receiptService.generateReceipt(receiptData);
+            await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer_receipt.jpg');
+            
+            logger.info('Transfer receipt sent successfully', {
+              userId,
+              reference: transaction.reference
+            });
+          } catch (receiptError) {
+            logger.warn('Failed to generate transfer receipt', { error: receiptError.message });
+            // Don't fail the transfer if receipt generation fails
+          }
+
           return {
             success: true,
             transaction: {
