@@ -342,13 +342,12 @@ class MaintenanceWorker {
               accountNumber: virtualAccount.accountNumber
             });
 
-            // Send success notification to user
+            // Send success notification to user (35 words max)
             try {
-              const successMessage = `🎉 Great news! Your virtual account has been created successfully.\n\n` +
+              const successMessage = `🎉 Your virtual account is ready!\n\n` +
                 `🏦 Bank: ${virtualAccount.bankName}\n` +
-                `📝 Account Name: ${virtualAccount.accountName}\n` +
-                `🔢 Account Number: ${virtualAccount.accountNumber}\n\n` +
-                `You can now receive payments and use all MiiMii features! 🚀`;
+                `💳 Account: ${virtualAccount.accountNumber}\n\n` +
+                `You can now receive payments! 💰`;
               
               await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
               

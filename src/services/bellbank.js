@@ -1182,10 +1182,13 @@ class BellBankService {
         let receiptSent = false;
         try {
           const receiptData = {
-            transactionType: 'Bank Transfer',
+            type: 'Bank Transfer',
             amount: parseFloat(transaction.amount),
-            sender: user.name || 'MiiMii User',
-            beneficiary: transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber,
+            fee: parseFloat(transaction.fee || 0),
+            totalAmount: parseFloat(transaction.totalAmount),
+            recipientName: transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber,
+            recipientBank: transaction.recipientDetails?.bankName,
+            recipientAccount: transaction.recipientDetails?.accountNumber,
             reference: transaction.reference,
             date: new Date().toLocaleString('en-US', {
               year: 'numeric',
@@ -1196,21 +1199,17 @@ class BellBankService {
               second: '2-digit'
             }),
             status: 'Successful',
-            remark: transaction.description || 'Bank transfer',
-            charges: transaction.fee || 25,
-            discount: 0
+            senderName: user.firstName || user.whatsappNumber
           };
 
           const receiptService = require('./receipt');
-          const receiptBuffer = await receiptService.generateReceipt(receiptData);
-          await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer_receipt.jpg');
+          const receiptBuffer = await receiptService.generateTransferReceipt(receiptData);
+          await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'receipt.jpg');
           receiptSent = true;
         } catch (receiptError) {
           logger.warn('Failed to generate transfer receipt, sending text message only', { error: receiptError.message });
-        }
-
-        // Send text notification if receipt wasn't sent
-        if (!receiptSent) {
+          
+          // Send text notification if receipt wasn't sent
           const completionMessage = `✅ *Transfer Successful!*\n\n` +
                                   `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
                                   `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
@@ -1219,6 +1218,7 @@ class BellBankService {
                                   `Your transfer has been completed successfully! 🎉`;
 
           await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
+          receiptSent = true; // Mark as sent even if it's text fallback
         }
       }
 

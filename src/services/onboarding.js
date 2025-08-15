@@ -1219,28 +1219,16 @@ class OnboardingService {
       // Mark onboarding completed
       await user.update({ onboardingStep: 'completed', kycStatus: 'not_required' });
 
-      // Send completion message with account details
-      let completionMessage = `🎉 *Congratulations!* 🎉\n\n` +
-        `Your MiiMii account has been successfully created!\n\n` +
-        `✅ Account created\n` +
-        `✅ PIN set up\n` +
-        `✅ Wallet created\n`;
+      // Send completion message with account details (35 words max)
+      let completionMessage = `🎉 *Welcome to MiiMii!* 🎉\n\n` +
+        `Your account is ready! You can now send money, buy airtime, and pay bills.`;
 
       if (virtualAccountDetails) {
-        completionMessage += `✅ Virtual account created\n\n` +
-                           `💳 *Your Virtual Account Details:*\n` +
-                           `📱 *Account Number:* ${virtualAccountDetails.accountNumber}\n` +
-                           `🏦 *Bank:* ${virtualAccountDetails.bankName}\n` +
-                           `👤 *Account Name:* ${virtualAccountDetails.accountName}\n\n` +
-                           `💰 You can fund your wallet by transferring money to this account from any Nigerian bank.\n\n`;
+        completionMessage += `\n\n💳 *Account:* ${virtualAccountDetails.accountNumber}\n` +
+                           `🏦 *Bank:* ${virtualAccountDetails.bankName}`;
       }
 
-      completionMessage += `You can now:\n` +
-        `💰 Send and receive money\n` +
-        `📱 Pay bills and buy airtime\n` +
-        `💳 Get virtual cards\n` +
-        `📊 Track your expenses\n\n` +
-        `Welcome to the future of banking! 🚀`;
+      completionMessage += `\n\nStart by checking your balance or sending money! 💰`;
 
       await whatsappService.sendTextMessage(
         user.whatsappNumber,

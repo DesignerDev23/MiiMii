@@ -387,7 +387,35 @@ class BilalService {
           `Reference: ${response['request-id']}\n\n` +
           `${response.message}`;
 
-        await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
+        // Generate and send receipt
+        let receiptSent = false;
+        try {
+          const receiptData = {
+            network: response.network,
+            phoneNumber: response.phone_number,
+            dataPlan: response.dataplan,
+            amount: response.amount,
+            reference: response['request-id'],
+            date: new Date().toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+            status: 'Successful',
+            discount: response.discount || 0
+          };
+
+          const receiptBuffer = await receiptService.generateDataReceipt(receiptData);
+          await whatsappService.sendImageMessage(userPhoneNumber, receiptBuffer, 'receipt.jpg');
+          receiptSent = true;
+        } catch (receiptError) {
+          logger.warn('Failed to generate data receipt, sending text message only', { error: receiptError.message });
+          await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
+          receiptSent = true; // Mark as sent even if it's text fallback
+        }
 
         logger.info('Data purchase successful', {
           userId: user.id,
@@ -401,7 +429,7 @@ class BilalService {
         return {
           success: true,
           data: response,
-          message: null // Don't return message since it's already sent
+          message: receiptSent ? null : successMessage // Only return message if receipt wasn't sent
         };
 
       } else {
@@ -522,7 +550,36 @@ class BilalService {
           successMessage += `\n\n🔑 *Meter Token:* ${response.token}`;
         }
 
-        await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
+        // Generate and send receipt
+        let receiptSent = false;
+        try {
+          const receiptData = {
+            disco: response.disco_name,
+            meterType: response.meter_type.toUpperCase(),
+            meterNumber: response.meter_number,
+            amount: response.amount,
+            charges: response.charges,
+            reference: response['request-id'],
+            date: new Date().toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+            status: 'Successful',
+            token: response.token || null
+          };
+
+          const receiptBuffer = await receiptService.generateElectricityReceipt(receiptData);
+          await whatsappService.sendImageMessage(userPhoneNumber, receiptBuffer, 'receipt.jpg');
+          receiptSent = true;
+        } catch (receiptError) {
+          logger.warn('Failed to generate electricity receipt, sending text message only', { error: receiptError.message });
+          await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
+          receiptSent = true; // Mark as sent even if it's text fallback
+        }
 
         logger.info('Electricity bill payment successful', {
           userId: user.id,
@@ -536,7 +593,7 @@ class BilalService {
         return {
           success: true,
           data: response,
-          message: null // Don't return message since it's already sent
+          message: receiptSent ? null : successMessage // Only return message if receipt wasn't sent
         };
 
       } else {
