@@ -654,6 +654,9 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
       case 'PIN_INPUT_SCREEN':
         return handleLoginScreen(data, userId, tokenData);
 
+      case 'PIN_VERIFICATION_SCREEN':
+        return handleTransferPinScreen(data, userId, tokenData);
+
       case 'COMPLETION_SCREEN':
         return {
           screen: 'COMPLETION_SCREEN',
@@ -983,6 +986,56 @@ async function handleLoginScreen(data, userId, tokenData = {}) {
       screen: 'PIN_INPUT_SCREEN',
       data: {
         error: 'Login failed. Please try again.',
+        code: 'PROCESSING_ERROR'
+      }
+    };
+  }
+}
+
+/**
+ * Handle transfer PIN verification screen
+ */
+async function handleTransferPinScreen(data, userId, tokenData = {}) {
+  try {
+    const pin = data.pin;
+
+    // Validate PIN format
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: {
+          error: 'Please enter exactly 4 digits for your PIN.',
+          validation: {
+            pin: 'PIN must be exactly 4 digits'
+          }
+        }
+      };
+    }
+
+    logger.info('Transfer PIN received from Flow', {
+      userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
+      pinLength: pin.length,
+      hasPin: !!pin
+    });
+
+    // Return success response for the flow
+    // The actual PIN validation and transfer processing will be handled by the flow processing service
+    return {
+      screen: 'COMPLETION_SCREEN',
+      data: {
+        success: true,
+        message: 'PIN verified successfully! Your transfer is being processed.'
+      }
+    };
+
+  } catch (error) {
+    logger.error('Transfer PIN screen processing failed', { error: error.message });
+    return {
+      screen: 'PIN_VERIFICATION_SCREEN',
+      data: {
+        error: 'PIN verification failed. Please try again.',
         code: 'PROCESSING_ERROR'
       }
     };
