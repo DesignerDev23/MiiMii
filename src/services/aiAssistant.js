@@ -162,7 +162,7 @@ Your personality:
 
 Available Services:
 - Money transfers (P2P)
-- Bank transfers  
+- Bank transfers
 - Airtime purchases (MTN, Airtel, Glo, 9mobile)
 - Data purchases (MTN, Airtel, Glo, 9mobile)
 - Bill payments (Electricity, Cable TV)
@@ -733,7 +733,7 @@ Extract intent and data from this message. Consider the user context and any ext
               resolvedBankName = matchingBank.institutionName;
               logger.info('Found bank in BellBank API list', {
                 originalBankName: bankName,
-                resolvedBankCode,
+              resolvedBankCode,
                 resolvedBankName
               });
             } else {

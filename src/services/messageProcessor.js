@@ -61,8 +61,8 @@ class MessageProcessor {
               phoneNumber: user.whatsappNumber,
               flowId: config.getWhatsappConfig().loginFlowId
             });
-            return;
-          }
+              return;
+            }
         }
       } catch (error) {
         logger.error('Failed to send daily login flow', {
@@ -229,6 +229,23 @@ class MessageProcessor {
             
             // Send transfer PIN flow instead of manual PIN entry
             const config = require('../config');
+            const whatsappFlowService = require('./whatsappFlowService');
+            const redisClient = require('../utils/redis');
+            
+            // Generate a flow token for this session
+            const flowToken = whatsappFlowService.generateFlowToken(user.id);
+            
+            // Store session mapping in Redis for 30 minutes
+            try {
+              await redisClient.setSession(`flow:${flowToken}`, {
+                userId: user.id,
+                phoneNumber: user.whatsappNumber,
+                context: 'transfer_pin_verification',
+                transferData: state.data
+              }, 1800);
+            } catch (error) {
+              logger.error('Failed to store flow session', { error: error.message, userId: user.id });
+            }
             
             // Update state to wait for flow completion
             await user.updateConversationState({ 
@@ -242,7 +259,7 @@ class MessageProcessor {
               user.whatsappNumber,
               {
                 flowId: config.getWhatsappConfig().transferPinFlowId,
-                flowToken: 'unused', // Transfer PIN flow doesn't need a token
+                flowToken: flowToken, // Use the generated token
                 header: {
                   type: 'text',
                   text: 'Transfer PIN Verification'
@@ -279,10 +296,10 @@ class MessageProcessor {
         if (state.awaitingInput === 'pin_for_transfer') {
           // This should not happen anymore as we send the flow immediately after confirmation
           logger.warn('Unexpected pin_for_transfer state - should have been handled in confirmation step', {
-            userId: user.id,
+                userId: user.id,
             state: state
           });
-          await user.clearConversationState();
+            await user.clearConversationState();
           await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Something went wrong. Please try your transfer again.');
           return;
         }

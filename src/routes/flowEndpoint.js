@@ -621,6 +621,8 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         if (session) {
           userId = session.userId || userId;
           phoneNumber = session.phoneNumber || phoneNumber;
+          // Store session data for use in screen handlers
+          tokenData.sessionData = session;
         }
       } catch (_) {}
     }
@@ -655,7 +657,7 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         return handleLoginScreen(data, userId, tokenData);
 
       case 'PIN_VERIFICATION_SCREEN':
-        return handleTransferPinScreen(data, userId, tokenData);
+        return handleTransferPinScreen(data, userId, tokenData, flowToken);
 
       case 'COMPLETION_SCREEN':
         return {
@@ -995,7 +997,7 @@ async function handleLoginScreen(data, userId, tokenData = {}) {
 /**
  * Handle transfer PIN verification screen
  */
-async function handleTransferPinScreen(data, userId, tokenData = {}) {
+async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken = null) {
   try {
     const pin = data.pin;
 
@@ -1020,15 +1022,184 @@ async function handleTransferPinScreen(data, userId, tokenData = {}) {
       hasPin: !!pin
     });
 
-    // Return success response for the flow
-    // The actual PIN validation and transfer processing will be handled by the flow processing service
-    return {
-      screen: 'COMPLETION_SCREEN',
-      data: {
-        success: true,
-        message: 'PIN verified successfully! Your transfer is being processed.'
+    // For WhatsApp Flow, we need to process the transfer here
+    // Get the user from the flow token or phone number
+    const userService = require('../services/user');
+    const bankTransferService = require('../services/bankTransfer');
+    
+    let user = null;
+    
+    // Try to get user from token data if available
+    if (tokenData.userId) {
+      user = await userService.getUserById(tokenData.userId);
+    }
+    
+    // If no user found, try to get from phone number in token data
+    if (!user && tokenData.phoneNumber) {
+      user = await userService.getUserByPhoneNumber(tokenData.phoneNumber);
+    }
+    
+    if (!user) {
+      logger.error('No user found for transfer PIN verification', {
+        tokenData,
+        hasUserId: !!tokenData.userId,
+        hasPhoneNumber: !!tokenData.phoneNumber
+      });
+      
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: {
+          error: 'User not found. Please try again.',
+          error_message: 'Unable to identify user for transfer'
+        }
+      };
+    }
+    
+    // Get the transfer data from session data or user's conversation state
+    let transferData = null;
+    
+    // First try to get from session data (preferred for flows)
+    if (tokenData.sessionData && tokenData.sessionData.transferData) {
+      transferData = tokenData.sessionData.transferData;
+      logger.info('Using transfer data from session', {
+        userId: user.id,
+        hasSessionData: !!tokenData.sessionData,
+        dataKeys: Object.keys(transferData || {})
+      });
+    } else {
+      // Fallback to conversation state
+      const conversationState = user.conversationState;
+      if (!conversationState || conversationState.context !== 'transfer_pin_verification') {
+        logger.error('No transfer context found for user', {
+          userId: user.id,
+          hasConversationState: !!conversationState,
+          context: conversationState?.context
+        });
+        
+        return {
+          screen: 'PIN_VERIFICATION_SCREEN',
+          data: {
+            error: 'Transfer session expired. Please try again.',
+            error_message: 'Transfer context not found'
+          }
+        };
       }
-    };
+      transferData = conversationState.data;
+    }
+    if (!transferData || !transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
+      logger.error('Missing transfer data for PIN verification', {
+        userId: user.id,
+        hasData: !!transferData,
+        dataKeys: transferData ? Object.keys(transferData) : []
+      });
+      
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: {
+          error: 'Transfer details not found. Please try again.',
+          error_message: 'Missing transfer information'
+        }
+      };
+    }
+    
+    try {
+      // Process the bank transfer
+      const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+      
+      if (result.success) {
+        logger.info('Transfer processed successfully via flow', {
+          userId: user.id,
+          reference: result.transaction?.reference,
+          amount: transferData.amount
+        });
+        
+        // Clear conversation state and session
+        await user.clearConversationState();
+        
+        // Clean up flow session
+        if (flowToken) {
+          try {
+            const redisClient = require('../utils/redis');
+            await redisClient.deleteSession(`flow:${flowToken}`);
+          } catch (error) {
+            logger.warn('Failed to cleanup flow session', { error: error.message });
+          }
+        }
+        
+        return {
+          screen: 'COMPLETION_SCREEN',
+          data: {
+            success: true,
+            message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`
+          }
+        };
+      } else {
+        logger.error('Transfer failed via flow', {
+          userId: user.id,
+          error: result.message,
+          transferData
+        });
+        
+              // Clean up flow session on error
+        if (flowToken) {
+          try {
+            const redisClient = require('../utils/redis');
+            await redisClient.deleteSession(`flow:${flowToken}`);
+          } catch (error) {
+            logger.warn('Failed to cleanup flow session on error', { error: error.message });
+          }
+        }
+        
+        return {
+          screen: 'PIN_VERIFICATION_SCREEN',
+          data: {
+            error: result.message || 'Transfer failed. Please try again.',
+            error_message: result.message || 'Transfer processing failed'
+          }
+        };
+      }
+    } catch (error) {
+      logger.error('Transfer processing failed via flow', {
+        userId: user.id,
+        error: error.message,
+        transferData
+      });
+      
+      // Provide user-friendly error messages
+      let errorMessage = "❌ Transfer failed. Try again or contact support";
+      
+      if (error.message.includes('Insufficient')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('Failed To Fecth Account Info')) {
+        errorMessage = "❌ Account not found. Check the account number and bank name";
+      } else if (error.message.includes('could not be found in')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('Invalid bank account')) {
+        errorMessage = "❌ Invalid account details. Check account number and bank name";
+      } else if (error.message.includes('Transfer limit')) {
+        errorMessage = "❌ Transfer limit exceeded. Try a smaller amount";
+      } else if (error.message.includes('PIN')) {
+        errorMessage = "❌ Wrong PIN. Check and try again";
+      }
+      
+      // Clean up flow session on error
+      if (flowToken) {
+        try {
+          const redisClient = require('../utils/redis');
+          await redisClient.deleteSession(`flow:${flowToken}`);
+        } catch (cleanupError) {
+          logger.warn('Failed to cleanup flow session on error', { error: cleanupError.message });
+        }
+      }
+      
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: {
+          error: errorMessage,
+          error_message: error.message
+        }
+      };
+    }
 
   } catch (error) {
     logger.error('Transfer PIN screen processing failed', { error: error.message });
@@ -1036,6 +1207,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}) {
       screen: 'PIN_VERIFICATION_SCREEN',
       data: {
         error: 'PIN verification failed. Please try again.',
+        error_message: error.message,
         code: 'PROCESSING_ERROR'
       }
     };
