@@ -112,11 +112,12 @@ class ReceiptService {
       // Transaction details
       const details = [
         { label: 'Transaction Amount', value: `₦ ${parseFloat(amount).toLocaleString()}.00` },
-        { label: 'Transaction Type', value: transactionType },
+        { label: 'Transaction Type', value: transactionType || 'Bank Transfer' },
         { label: 'Transaction Date', value: date },
         { label: 'Sender', value: sender || 'N/A' },
         { label: 'Beneficiary', value: beneficiary || 'N/A' },
         { label: 'Remark', value: remark || 'N/A' },
+        { label: 'Transaction Fee', value: `₦ ${parseFloat(charges || 0).toLocaleString()}.00` },
         { label: 'Transaction Reference', value: reference },
         { label: 'Transaction Status', value: status }
       ];

@@ -1386,9 +1386,10 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
     * @param {string} to - Recipient phone number
     * @param {Buffer} imageBuffer - Image buffer
     * @param {string} filename - Filename for the image
+    * @param {string} caption - Optional caption for the image
     * @returns {Promise<Object>} - Response from WhatsApp API
     */
-   async sendImageMessage(to, imageBuffer, filename = 'image.png') {
+   async sendImageMessage(to, imageBuffer, filename = 'image.png', caption = null) {
      try {
        const formattedNumber = this.formatToE164(to);
        
@@ -1396,6 +1397,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          originalNumber: to,
          formattedNumber,
          messageType: 'image',
+         hasCaption: !!caption,
          accessTokenPrefix: this.accessToken.substring(0, 20) + '...',
          accessTokenLength: this.accessToken.length,
          phoneNumberId: this.phoneNumberId
@@ -1458,9 +1460,15 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          }
        };
 
+       // Add caption if provided
+       if (caption) {
+         messagePayload.image.caption = caption;
+       }
+
        logger.info('WhatsApp API request details', {
          url: messageUrl,
          payload: messagePayload,
+         hasCaption: !!caption,
          authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
        });
 
@@ -1483,7 +1491,8 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        logger.info('WhatsApp image message sent successfully', {
          to: formattedNumber,
          messageId: response.data.messages[0].id,
-         mediaId
+         mediaId,
+         hasCaption: !!caption
        });
 
        return {
@@ -1499,6 +1508,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          errorHeaders: error.response?.headers,
          to,
          filename,
+         hasCaption: !!caption,
          imageBufferSize: imageBuffer ? imageBuffer.length : 0,
          imageBufferType: imageBuffer ? typeof imageBuffer : 'undefined'
        });

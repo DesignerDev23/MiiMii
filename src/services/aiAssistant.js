@@ -854,8 +854,8 @@ Extract intent and data from this message. Consider the user context and any ext
           bankCode: resolvedBankCode,
           bankName: resolvedBankName,
           amount: transferAmount,
-          totalFee: feeInfo.fee,
-          totalAmount: transferAmount + feeInfo.fee,
+          totalFee: feeInfo.totalFee,
+          totalAmount: feeInfo.totalAmount,
           narration: 'Wallet transfer',
           reference: this.generateReference(),
           recipientName: validation.accountName
@@ -865,8 +865,8 @@ Extract intent and data from this message. Consider the user context and any ext
       // Generate AI confirmation message
       const confirmationMessage = await this.generateTransferConfirmationMessage({
         amount: transferAmount,
-        fee: feeInfo.fee,
-        totalAmount: transferAmount + feeInfo.fee,
+        fee: feeInfo.totalFee,
+        totalAmount: feeInfo.totalAmount,
         recipientName: validation.accountName,
         bankName: resolvedBankName,
         accountNumber
@@ -879,8 +879,8 @@ Extract intent and data from this message. Consider the user context and any ext
         context: 'bank_transfer_confirmation',
         transactionDetails: {
           amount: transferAmount,
-          fee: feeInfo.fee,
-          totalAmount: transferAmount + feeInfo.fee,
+          fee: feeInfo.totalFee,
+          totalAmount: feeInfo.totalAmount,
           recipientName: validation.accountName,
           bankName: resolvedBankName,
           accountNumber
@@ -2023,31 +2023,34 @@ Response format:
   // Generate AI-powered transfer confirmation message
   async generateTransferConfirmationMessage(transferData) {
     try {
-      const { amount, fee, totalAmount, recipientName, bankName, accountNumber } = transferData;
+      const { amount, recipientName, bankName, accountNumber } = transferData;
       
-      const prompt = `Generate a friendly and professional bank transfer confirmation message in exactly 3 lines. 
+      // Ensure all values are properly defined
+      const safeAmount = amount || 0;
+      const safeRecipientName = recipientName || 'Recipient';
+      const safeBankName = bankName || 'Bank';
+      const safeAccountNumber = accountNumber || 'Account';
+      
+      const prompt = `Generate a friendly and professional bank transfer confirmation message in exactly 2 lines. 
 
 Transfer details:
-- Amount: ₦${amount.toLocaleString()}
-- Fee: ₦${fee.toLocaleString()}
-- Total: ₦${totalAmount.toLocaleString()}
-- Recipient: ${recipientName}
-- Bank: ${bankName}
-- Account: ${accountNumber}
+- Amount: ₦${safeAmount.toLocaleString()}
+- Recipient: ${safeRecipientName}
+- Bank: ${safeBankName}
+- Account: ${safeAccountNumber}
 
 Requirements:
 1. First line: Confirm the transfer amount and recipient
-2. Second line: Show fee and total amount
-3. Third line: Ask for confirmation (YES/NO)
+2. Second line: Ask for confirmation (YES/NO)
 
-Make it warm, professional, and easy to read. Use emojis sparingly but effectively.`;
+Make it warm, professional, and easy to read. Use emojis sparingly but effectively. Do NOT mention fees in the confirmation message.`;
 
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4-turbo',
+      const response = await axios.post(`${this.openaiBaseUrl}/chat/completions`, {
+        model: this.model,
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful banking assistant. Generate concise, friendly confirmation messages.'
+            content: 'You are a helpful banking assistant. Generate concise, friendly confirmation messages without mentioning fees.'
           },
           {
             role: 'user',
@@ -2056,6 +2059,11 @@ Make it warm, professional, and easy to read. Use emojis sparingly but effective
         ],
         max_tokens: 150,
         temperature: 0.7
+      }, {
+        headers: {
+          'Authorization': `Bearer ${this.openaiApiKey}`,
+          'Content-Type': 'application/json'
+        }
       });
 
       const aiMessage = response.choices[0]?.message?.content?.trim();
@@ -2065,14 +2073,18 @@ Make it warm, professional, and easy to read. Use emojis sparingly but effective
       }
       
       // Fallback message if AI fails
-      return `💸 Ready to send ₦${amount.toLocaleString()} to ${recipientName} at ${bankName}?\n💰 Fee: ₦${fee.toLocaleString()} | Total: ₦${totalAmount.toLocaleString()}\n✅ Reply YES to confirm or NO to cancel.`;
+      return `💸 Ready to send ₦${safeAmount.toLocaleString()} to ${safeRecipientName} at ${safeBankName}?\n✅ Reply YES to confirm or NO to cancel.`;
       
     } catch (error) {
-      logger.error('Failed to generate AI confirmation message', { error: error.message });
+      logger.error('Failed to generate AI confirmation message', { error: error.message, transferData });
       
-      // Fallback message
-      const { amount, fee, totalAmount, recipientName, bankName } = transferData;
-      return `💸 Ready to send ₦${amount.toLocaleString()} to ${recipientName} at ${bankName}?\n💰 Fee: ₦${fee.toLocaleString()} | Total: ₦${totalAmount.toLocaleString()}\n✅ Reply YES to confirm or NO to cancel.`;
+      // Fallback message with safe values
+      const { amount, recipientName, bankName } = transferData;
+      const safeAmount = amount || 0;
+      const safeRecipientName = recipientName || 'Recipient';
+      const safeBankName = bankName || 'Bank';
+      
+      return `💸 Ready to send ₦${safeAmount.toLocaleString()} to ${safeRecipientName} at ${safeBankName}?\n✅ Reply YES to confirm or NO to cancel.`;
     }
   }
 

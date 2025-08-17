@@ -596,9 +596,22 @@ class BankTransferService {
             };
             
             const receiptBuffer = await receiptService.generateReceipt(receiptData);
-            await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer_receipt.jpg');
             
-            logger.info('Transfer receipt sent successfully', {
+            // Send receipt with caption
+            await whatsappService.sendImageMessage(
+              user.whatsappNumber, 
+              receiptBuffer, 
+              'transfer_receipt.jpg',
+              `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n\nYour transfer has been processed successfully! 🎉`
+            );
+            
+            // Send additional success message
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              `🎉 *Transfer Completed Successfully!*\n\nYour transfer of ₦${feeCalculation.amount.toLocaleString()} to ${accountValidation.accountName} has been processed.\n\n📋 *Reference:* ${transaction.reference}\n⏰ *Estimated Arrival:* 5-15 minutes\n\nThank you for using MiiMii! 💙`
+            );
+            
+            logger.info('Transfer receipt and success message sent successfully', {
               userId,
               reference: transaction.reference
             });

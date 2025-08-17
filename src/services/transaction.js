@@ -445,7 +445,21 @@ class TransactionService {
 
         const receiptService = require('./receipt');
         const receiptBuffer = await receiptService.generateReceipt(receiptData);
-        await whatsappService.sendImageMessage(transaction.user.whatsappNumber, receiptBuffer, 'transfer_receipt.jpg');
+        
+        // Send receipt with caption
+        await whatsappService.sendImageMessage(
+          transaction.user.whatsappNumber, 
+          receiptBuffer, 
+          'transfer_receipt.jpg',
+          `✅ *Transfer Successful!*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n\nYour transfer has been processed successfully! 🎉`
+        );
+        
+        // Send additional success message
+        await whatsappService.sendTextMessage(
+          transaction.user.whatsappNumber,
+          `🎉 *Transfer Completed Successfully!*\n\nYour transfer of ₦${parseFloat(amount).toLocaleString()} to ${recipient_account} has been processed.\n\n📋 *Reference:* ${transaction.reference}\n⏰ *Estimated Arrival:* 5-15 minutes\n\nThank you for using MiiMii! 💙`
+        );
+        
         receiptSent = true;
       } catch (receiptError) {
         logger.warn('Failed to generate transfer receipt, sending text message only', { error: receiptError.message });
