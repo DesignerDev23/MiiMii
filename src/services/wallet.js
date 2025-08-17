@@ -125,7 +125,9 @@ class WalletService {
       await wallet.update({
         previousBalance: balanceBefore,
         balance: balanceAfter,
-        ledgerBalance: balanceAfter
+        availableBalance: parseFloat(wallet.availableBalance || 0) + creditAmount,
+        ledgerBalance: balanceAfter,
+        totalCredits: parseFloat(wallet.totalCredits || 0) + creditAmount
       }, { transaction });
 
       await transaction.commit();
@@ -194,7 +196,9 @@ class WalletService {
       await wallet.update({
         previousBalance: balanceBefore,
         balance: balanceAfter,
-        ledgerBalance: balanceAfter
+        availableBalance: parseFloat(wallet.availableBalance || 0) - debitAmount,
+        ledgerBalance: balanceAfter,
+        totalDebits: parseFloat(wallet.totalDebits || 0) + debitAmount
       }, { transaction });
 
       await transaction.commit();
@@ -646,8 +650,10 @@ class WalletService {
     try {
       const wallet = await this.getUserWallet(userId);
       return {
-        available: parseFloat(wallet.balance),
+        available: parseFloat(wallet.availableBalance),
+        total: parseFloat(wallet.balance),
         ledger: parseFloat(wallet.ledgerBalance),
+        pending: parseFloat(wallet.pendingBalance),
         currency: wallet.currency
       };
     } catch (error) {

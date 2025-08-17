@@ -713,9 +713,31 @@ Extract intent and data from this message. Consider the user context and any ext
       // Check wallet balance
       const wallet = await walletService.getUserWallet(user.id);
       if (!wallet.canDebit(transferAmount)) {
+        const availableBalance = parseFloat(wallet.availableBalance || 0);
+        const totalBalance = parseFloat(wallet.balance || 0);
+        const pendingBalance = parseFloat(wallet.pendingBalance || 0);
+        
+        let errorMessage = `❌ *Insufficient Available Balance*\n\n`;
+        errorMessage += `💰 You need: ₦${transferAmount.toLocaleString()}\n`;
+        errorMessage += `💵 Available: ₦${availableBalance.toLocaleString()}\n`;
+        
+        if (pendingBalance > 0) {
+          errorMessage += `⏳ Pending: ₦${pendingBalance.toLocaleString()}\n`;
+        }
+        
+        errorMessage += `📊 Total: ₦${totalBalance.toLocaleString()}\n\n`;
+        
+        if (pendingBalance > 0) {
+          errorMessage += `You have ₦${pendingBalance.toLocaleString()} in pending transactions. Please wait for them to complete before making new transfers.`;
+        } else if (totalBalance >= transferAmount) {
+          errorMessage += `You have sufficient total balance but some funds may be held. Please contact support if this persists.`;
+        } else {
+          errorMessage += `Please fund your wallet to continue.`;
+        }
+        
         return {
           intent: 'bank_transfer',
-          message: `Insufficient balance! You need ₦${transferAmount.toLocaleString()} but only have ₦${parseFloat(wallet.availableBalance).toLocaleString()}.`,
+          message: errorMessage,
           requiresAction: 'FUND_WALLET'
         };
       }
