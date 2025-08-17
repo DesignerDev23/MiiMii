@@ -42,8 +42,7 @@ class MessageProcessor {
           if (user.conversationState?.awaitingInput === 'login_pin') {
             const pin = (message?.text || '').replace(/\D/g, '');
             if (!/^\d{4}$/.test(pin)) {
-              const whatsappService = require('./whatsapp');
-              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN. Please enter exactly 4 digits.');
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Need exactly 4 digits. Try again');
               return;
             }
             try {
@@ -104,16 +103,31 @@ class MessageProcessor {
         if (state.awaitingInput === 'confirm_transfer') {
           const lower = (messageContent || '').toLowerCase();
           if (/(^|\b)(yes|y|confirm|ok|sure)(\b|$)/.test(lower)) {
-            await user.updateConversationState({ awaitingInput: 'pin_for_transfer', step: 2 });
-            await whatsappService.sendTextMessage(user.whatsappNumber, '🔐 Please enter your 4-digit transaction PIN to confirm.');
+            // Preserve existing data and only update awaitingInput
+            const updatedState = { 
+              ...state,
+              awaitingInput: 'pin_for_transfer', 
+              step: 2 
+            };
+            
+            logger.info('User confirmed transfer, updating conversation state', {
+              userId: user.id,
+              oldState: state,
+              newState: updatedState,
+              hasTransferData: !!state.data,
+              transferDataKeys: state.data ? Object.keys(state.data) : []
+            });
+            
+            await user.updateConversationState(updatedState);
+            await whatsappService.sendTextMessage(user.whatsappNumber, '🔐 Drop your 4-digit PIN');
             return;
           }
           if (/(^|\b)(no|n|cancel|stop)(\b|$)/.test(lower)) {
-            await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Transfer cancelled. To try again, send: "Send 5000 to 00308267834627 bellbank"');
+            await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Cancelled! Try again: "Send 5k to 00308267834627 bellbank"');
             await user.clearConversationState();
             return;
           }
-          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply YES to confirm or NO to cancel.');
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Just reply YES or NO');
           return;
         }
 
@@ -121,7 +135,7 @@ class MessageProcessor {
         if (state.awaitingInput === 'pin_for_transfer') {
           const pin = (messageContent || '').replace(/\D/g, '');
           if (!/^\d{4}$/.test(pin)) {
-            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please enter exactly 4 digits.');
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Need exactly 4 digits. Try again');
             return;
           }
           
@@ -130,8 +144,29 @@ class MessageProcessor {
             userId: user.id,
             hasTransferData: !!state.data,
             transferData: state.data,
-            pinLength: pin.length
+            pinLength: pin.length,
+            fullState: state,
+            awaitingInput: state.awaitingInput,
+            step: state.step
           });
+          
+          // Check if we have the required transfer data
+          if (!state.data || !state.data.accountNumber || !state.data.bankCode || !state.data.amount) {
+            logger.error('Missing transfer data for PIN verification', {
+              userId: user.id,
+              hasData: !!state.data,
+              dataKeys: state.data ? Object.keys(state.data) : [],
+              requiredFields: {
+                hasAccountNumber: !!state.data?.accountNumber,
+                hasBankCode: !!state.data?.bankCode,
+                hasAmount: !!state.data?.amount
+              }
+            });
+            
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Try again');
+            await user.clearConversationState();
+            return;
+          }
           
           try {
             const transferData = {
@@ -159,7 +194,7 @@ class MessageProcessor {
                 reference: result.transaction.reference
               });
             } else {
-              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
+              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Failed: ${result.message || 'Unknown error'}`);
             }
           } catch (err) {
             logger.error('Transfer processing failed', {
@@ -169,20 +204,20 @@ class MessageProcessor {
             });
             
             // Provide user-friendly error messages
-            let errorMessage = "❌ Transfer failed. Please try again or contact support if the issue persists.";
+            let errorMessage = "❌ Transfer failed. Try again or contact support";
             
             if (err.message.includes('Insufficient')) {
               errorMessage = err.message; // Use the detailed balance error message
             } else if (err.message.includes('Failed To Fecth Account Info')) {
-              errorMessage = "❌ The account number could not be found. Please check the account number and bank name, then try again.";
+              errorMessage = "❌ Account not found. Check the account number and bank name";
             } else if (err.message.includes('could not be found in')) {
               errorMessage = err.message; // Use the user-friendly message from bankTransfer service
             } else if (err.message.includes('Invalid bank account')) {
-              errorMessage = "❌ Invalid account details. Please check the account number and bank name.";
+              errorMessage = "❌ Invalid account details. Check account number and bank name";
             } else if (err.message.includes('Transfer limit')) {
-              errorMessage = "❌ Transfer limit exceeded. Please try a smaller amount or contact support.";
+              errorMessage = "❌ Transfer limit exceeded. Try a smaller amount";
             } else if (err.message.includes('PIN')) {
-              errorMessage = "❌ Invalid PIN. Please check your PIN and try again.";
+              errorMessage = "❌ Wrong PIN. Check and try again";
             }
             
             await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
@@ -1344,7 +1379,7 @@ class MessageProcessor {
   }
 
   async sendHelpMenu(user) {
-    const helpMessage = `🤖 *MiiMii Help Center*\n\n` +
+    const helpMessage = `🤖 *MiiMii Help*\n\n` +
                        `💰 *Money Transfer*\n` +
                        `• "Send 5000 to John 08123456789"\n` +
                        `• "Transfer 2000 to GTB 0123456789"\n\n` +
@@ -1354,15 +1389,15 @@ class MessageProcessor {
                        `⚡ *Bill Payments*\n` +
                        `• "Pay 5000 electricity EKEDC 12345"\n` +
                        `• "Pay 3000 cable DStv 123456789"\n\n` +
-                       `📊 *Account Management*\n` +
+                       `📊 *Account*\n` +
                        `• "Check balance"\n` +
                        `• "Show transactions"\n` +
                        `• "Account details"\n\n` +
-                       `🎯 *Tips*\n` +
+                       `💡 *Tips*\n` +
                        `• Send voice notes - I understand speech!\n` +
                        `• Send images of bills - I can read them!\n` +
                        `• Just type naturally - I'm smart! 😊\n\n` +
-                       `Need human help? Type "support" 💬`;
+                       `Need help? Type "support" 💬`;
 
     await whatsappService.sendTextMessage(user.whatsappNumber, helpMessage);
   }
@@ -1390,7 +1425,7 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Please complete your account setup first before checking your balance.");
+        "Complete your account setup first before checking balance");
       return;
     }
 
@@ -1402,7 +1437,7 @@ class MessageProcessor {
       if (!wallet) {
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "❌ Wallet not found. Please contact support.");
+          "❌ Wallet not found. Contact support");
         return;
       }
 
@@ -1416,7 +1451,7 @@ class MessageProcessor {
 
       let responseMessage;
       if (isNaturalQuery) {
-        responseMessage = `💰 *Your Current Balance*\n\n` +
+        responseMessage = `💰 *Your Balance*\n\n` +
                          `💵 Available: ₦${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
         
         if (pendingBalance > 0) {
@@ -1424,7 +1459,7 @@ class MessageProcessor {
         }
         
         responseMessage += `📊 Total: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n` +
-                          `Your account is ready for transactions! 💳`;
+                          `Ready to go! 💳`;
       } else {
         responseMessage = `💰 *Account Balance*\n\nCurrent Balance: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\nYour account is ready for transactions!`;
       }
