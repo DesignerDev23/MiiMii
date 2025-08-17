@@ -79,7 +79,11 @@ class AIAssistantService {
         keywords: ['bank transfer', 'transfer to bank', 'send to bank', 'pay bank'],
         patterns: [
           /transfer\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\w+\s*bank|\w+)\s+(\d{10})/i,
-          /send\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\w+\s*bank|\w+)\s+(\d{10})/i
+          /send\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\w+\s*bank|\w+)\s+(\d{10})/i,
+          /send\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\d{8,11})\s+(\w+\s*bank|\w+)/i,
+          /transfer\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\d{8,11})\s+(\w+\s*bank|\w+)/i,
+          /send\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\d{8,11})\s+(\w+)/i,
+          /transfer\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\d{8,11})\s+(\w+)/i
         ]
       },
       BUY_AIRTIME: {
@@ -217,7 +221,19 @@ IMPORTANT EXTRACTION RULES:
 4. Recipient Name: Look for names before account numbers or bank names
 5. Test Bank: Recognize "test bank", "testbank", "test" as valid bank names for testing
 
-CONVERSATIONAL RESPONSE GUIDELINES:
+NEW SIMPLIFIED BANK TRANSFER FORMAT:
+Users can now send messages like:
+- "send 4k to 9072874728 Opay Bank"
+- "send 4000 to 9072874728 Opay"
+- "transfer 5k to 1001011000 test bank"
+
+The system will automatically:
+1. Extract amount, account number, and bank name
+2. Get the bank code from the BellBank API bank list
+3. Use name enquiry to get the recipient name
+4. Show confirmation with recipient name
+
+CONVERSATIONAL RESPONSES:
 - Be friendly and conversational, like talking to a friend
 - Confirm the transfer details in a natural way
 - Use emojis appropriately (💰, 🔐, ✅, etc.)
@@ -234,15 +250,18 @@ Should extract:
 - bankName: "keystone"
 - recipientName: "Abdulkadir Musa"
 
-Example: "Send 10k to John 9072874728 opay"
-Should extract:
-- amount: 10000
-- accountNumber: "9072874728"
-- bankName: "opay"
-- recipientName: "John"
-
 And respond with something like:
 "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐"
+
+Example: "Send 4k to 9072874728 Opay Bank"
+Should extract:
+- amount: 4000
+- accountNumber: "9072874728"
+- bankName: "opay"
+- recipientName: null (will be fetched via name enquiry)
+
+And respond with something like:
+"Great! I can see you want to send ₦4,000 to Opay Bank. Let me verify the account details and get the recipient name for you. 🔍"
 
 Example: "Send 5k to 1001011000 test bank"
 Should extract:
@@ -647,7 +666,7 @@ Extract intent and data from this message. Consider the user context and any ext
     if (!amount || !accountNumber) {
       return {
         intent: 'bank_transfer',
-        message: "To transfer to a bank account, I need the amount, bank name, and account number.\n\n📝 Example: 'Transfer 10000 to GTBank 0123456789'",
+        message: "To transfer to a bank account, I need the amount, bank name, and account number.\n\n📝 Example: 'Transfer 10000 to GTBank 0123456789' or 'Send 4k to 9072874728 Opay Bank'",
         awaitingInput: 'bank_transfer_details',
         context: 'bank_transfer'
       };
@@ -676,85 +695,66 @@ Extract intent and data from this message. Consider the user context and any ext
         };
       }
 
-      // Try to get dynamic bank mapping from BellBank API first
+      // Get bank code from BellBank API bank list
       let resolvedBankCode = bankCode;
+      let resolvedBankName = bankName;
       
       if (!resolvedBankCode && bankName) {
         try {
-          logger.info('Attempting to fetch dynamic bank mapping for AI assistant');
+          logger.info('Getting bank code from BellBank API bank list', { bankName });
           const bellbankService = require('./bellbank');
-          const bankMapping = await bellbankService.getBankMapping();
+          const bankListResponse = await bellbankService.getBankList();
           
-          // More flexible bank name matching
-          const bankNameLower = bankName?.toLowerCase().trim();
-          
-          // Look for exact match or partial match in dynamic mapping
-          const foundCode = bankMapping.bankMapping[bankNameLower] || 
-                           Object.keys(bankMapping.bankMapping).find(key => 
-                             bankNameLower?.includes(key) || key.includes(bankNameLower)
-                           );
-          
-          if (foundCode) {
-            // If foundCode is already an institution code (6 digits), use it directly
-            // Otherwise, it's a bank name key, so get the institution code from the mapping
-            const dynamicValue = bankMapping.bankMapping[foundCode];
-            resolvedBankCode = foundCode.length === 6 ? foundCode : dynamicValue;
-            logger.info('Found dynamic bank code mapping for AI assistant', {
-              bankName,
-              foundCode,
-              foundCodeLength: foundCode.length,
-              foundCodeIs6Digits: foundCode.length === 6,
-              bankMappingValue: dynamicValue,
-              resolvedBankCode,
-              resolvedBankCodeType: typeof resolvedBankCode,
-              source: 'BellBank API'
+          if (bankListResponse.success && bankListResponse.banks) {
+            const bankNameLower = bankName.toLowerCase().trim();
+            
+            // Look for matching bank in the list
+            const matchingBank = bankListResponse.banks.find(bank => {
+              const institutionName = bank.institutionName.toLowerCase();
+              return institutionName.includes(bankNameLower) || bankNameLower.includes(institutionName);
             });
             
-            // If dynamic mapping didn't work (resolvedBankCode is undefined), fall back to static
-            if (!resolvedBankCode) {
-              logger.warn('Dynamic mapping found but value is undefined, falling back to static mapping', {
-                foundCode,
-                bankName
+            if (matchingBank) {
+              resolvedBankCode = matchingBank.institutionCode;
+              resolvedBankName = matchingBank.institutionName;
+              logger.info('Found bank in BellBank API list', {
+                originalBankName: bankName,
+                resolvedBankCode,
+                resolvedBankName
               });
-              // Continue to static fallback below
+            } else {
+              // Fallback to static mapping if not found in API list
+              logger.warn('Bank not found in BellBank API list, using static mapping', { bankName });
+              const staticMapping = this.getStaticBankCodeMapping();
+              resolvedBankCode = staticMapping[bankNameLower];
             }
-          }
-          
-          // If dynamic mapping failed or returned undefined, use static fallback
-          if (!resolvedBankCode) {
-            // Fallback to static mapping if dynamic lookup fails
-            logger.warn('Dynamic bank mapping failed for AI assistant, using static fallback', {
-              bankName
-            });
+          } else {
+            // Fallback to static mapping if API call fails
+            logger.warn('BellBank API bank list call failed, using static mapping', { bankName });
             const staticMapping = this.getStaticBankCodeMapping();
-            resolvedBankCode = staticMapping[bankNameLower] || 
-              Object.keys(staticMapping).find(key => bankNameLower?.includes(key)) ? 
-              staticMapping[Object.keys(staticMapping).find(key => bankNameLower?.includes(key))] : null;
+            resolvedBankCode = staticMapping[bankName.toLowerCase()];
           }
-        } catch (dynamicError) {
-          logger.warn('Dynamic bank mapping failed for AI assistant, using static fallback', {
-            error: dynamicError.message,
+        } catch (error) {
+          logger.warn('Error getting bank code from BellBank API, using static mapping', {
+            error: error.message,
             bankName
           });
           // Fallback to static mapping
           const staticMapping = this.getStaticBankCodeMapping();
-          const bankNameLower = bankName?.toLowerCase().trim();
-          resolvedBankCode = staticMapping[bankNameLower] || 
-            Object.keys(staticMapping).find(key => bankNameLower?.includes(key)) ? 
-            staticMapping[Object.keys(staticMapping).find(key => bankNameLower?.includes(key))] : null;
+          resolvedBankCode = staticMapping[bankName.toLowerCase()];
         }
       }
       
       if (!resolvedBankCode) {
         return {
           intent: 'bank_transfer',
-          message: `I couldn't identify the bank "${bankName}". Please specify a valid bank name like GTBank, Access, UBA, Zenith, Keystone, etc.`,
+          message: `I couldn't identify the bank "${bankName}". Please specify a valid bank name like GTBank, Access, UBA, Zenith, Keystone, Opay, etc.`,
           awaitingInput: 'bank_transfer_details',
           context: 'bank_transfer'
         };
       }
 
-      // Validate account via BellBank API
+      // Validate account and get recipient name via BellBank name enquiry
       const bankTransferService = require('./bankTransfer');
       const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
       
@@ -779,7 +779,7 @@ Extract intent and data from this message. Consider the user context and any ext
         data: {
           accountNumber: validation.accountNumber,
           bankCode: resolvedBankCode,
-          bankName: validation.bank,
+          bankName: resolvedBankName || validation.bank,
           amount: transferAmount,
           totalFee: feeInfo.totalFee,
           totalAmount: feeInfo.totalAmount,
@@ -794,7 +794,7 @@ Extract intent and data from this message. Consider the user context and any ext
                         `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
                         `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
                         `👤 Recipient: ${validation.accountName}\n` +
-                        `🏦 Bank: ${validation.bank}\n` +
+                        `🏦 Bank: ${resolvedBankName || validation.bank}\n` +
                         `🔢 Account: ${validation.accountNumber}\n\n` +
                         `Reply YES to confirm, or NO to cancel.`;
 
@@ -802,11 +802,19 @@ Extract intent and data from this message. Consider the user context and any ext
         intent: 'bank_transfer',
         message: confirmMsg,
         awaitingInput: 'confirm_transfer',
-        context: 'bank_transfer_confirmation'
+        context: 'bank_transfer_confirmation',
+        transactionDetails: {
+          amount: transferAmount,
+          fee: feeInfo.totalFee,
+          totalAmount: feeInfo.totalAmount,
+          recipientName: validation.accountName,
+          bankName: resolvedBankName || validation.bank,
+          accountNumber: validation.accountNumber
+        }
       };
 
     } catch (error) {
-      logger.error('Bank transfer initiation failed', { 
+      logger.error('Bank transfer handling failed', { 
         error: error.message, 
         userId: user.id,
         extractedData 
@@ -814,8 +822,9 @@ Extract intent and data from this message. Consider the user context and any ext
       
       return {
         intent: 'bank_transfer',
-        message: `❌ Failed to process bank transfer: ${error.message}. Please try again or contact support.`,
-        requiresAction: 'ERROR'
+        message: `❌ I encountered an error processing your bank transfer. Please try again or contact support if the issue persists.`,
+        awaitingInput: 'bank_transfer_details',
+        context: 'bank_transfer'
       };
     }
   }
@@ -1627,6 +1636,7 @@ NATURAL LANGUAGE UNDERSTANDING:
 - "what's my balance" → balance
 - "send 5k to Abdulkadir Musa 6035745691 keystone bank" → bank_transfer
 - "transfer 2000 to GTB 0123456789" → bank_transfer
+- "send 4k to 9072874728 Opay Bank" → bank_transfer
 - "send money to John" → transfer
 - "send 100 to 9072874728 Musa Abdulkadir opay" → transfer (P2P transfer)
 - "buy airtime" → airtime
@@ -1641,9 +1651,9 @@ NATURAL LANGUAGE UNDERSTANDING:
 - "my account" → account_details
 
 For bank transfers, look for:
-- Amount (e.g., "5k", "5000", "10k", "2k")
-- Account number (10 digits)
-- Bank name (e.g., "keystone", "gtb", "access", "test bank")
+- Amount (e.g., "5k", "5000", "10k", "2k", "4k")
+- Account number (8-11 digits, can be phone number format for digital banks)
+- Bank name (e.g., "keystone", "gtb", "access", "opay", "test bank")
 - Recipient name (optional)
 
 For money transfers (P2P), look for:
@@ -1653,12 +1663,24 @@ For money transfers (P2P), look for:
 - No bank name mentioned
 
 EXTRACTION RULES:
-1. Amount: Convert "5k" to 5000, "10k" to 10000, "2k" to 2000, etc.
-2. Account Number: Find 10-digit numbers
-3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, test bank, etc.)
+1. Amount: Convert "5k" to 5000, "10k" to 10000, "2k" to 2000, "4k" to 4000, etc.
+2. Account Number: Find 8-11 digit numbers (traditional banks use 10 digits, digital banks may use phone number format)
+3. Bank Name: Look for bank names in the message (keystone, gtb, access, uba, opay, test bank, etc.)
 4. Recipient Name: Look for names before account numbers or bank names
 5. Test Bank: "test bank" is a valid bank name for testing purposes
 6. Phone Number: Look for 11-digit numbers starting with 0 or 10-digit numbers
+
+NEW SIMPLIFIED BANK TRANSFER FORMAT:
+Users can now send messages like:
+- "send 4k to 9072874728 Opay Bank"
+- "send 4000 to 9072874728 Opay"
+- "transfer 5k to 1001011000 test bank"
+
+The system will automatically:
+1. Extract amount, account number, and bank name
+2. Get the bank code from the BellBank API bank list
+3. Use name enquiry to get the recipient name
+4. Show confirmation with recipient name
 
 CONVERSATIONAL RESPONSES:
 - Be friendly and conversational, like talking to a friend
@@ -1667,6 +1689,8 @@ CONVERSATIONAL RESPONSES:
 - Ask for PIN in a friendly, secure way
 - Make the user feel confident about the transaction
 - Keep responses concise but warm
+- When transfer details are incomplete, guide the user naturally
+- Provide clear examples of what information is needed
 
 Example: "Send 5k to Abdulkadir Musa 6035745691 keystone bank"
 Should extract:
@@ -1677,6 +1701,16 @@ Should extract:
 
 And respond with something like:
 "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐"
+
+Example: "Send 4k to 9072874728 Opay Bank"
+Should extract:
+- amount: 4000
+- accountNumber: "9072874728"
+- bankName: "opay"
+- recipientName: null (will be fetched via name enquiry)
+
+And respond with something like:
+"Great! I can see you want to send ₦4,000 to Opay Bank. Let me verify the account details and get the recipient name for you. 🔍"
 
 Example: "Send 5k to 1001011000 test bank"
 Should extract:
@@ -1832,7 +1866,7 @@ Response format:
     }
 
     // Transfer keywords - improved to catch bank transfers
-    if (/(send\s+\d+[k]?\s+to\s+.*\d{10}|transfer\s+\d+[k]?\s+to\s+.*\d{10}|send\s+\d+[k]?\s+to\s+.*\s+(bank|gtb|access|keystone|test\s+bank))/i.test(message)) {
+    if (/(send\s+\d+[k]?\s+to\s+.*\d{8,11}|transfer\s+\d+[k]?\s+to\s+.*\d{8,11}|send\s+\d+[k]?\s+to\s+.*\s+(bank|gtb|access|keystone|opay|test\s+bank)|transfer\s+\d+[k]?\s+to\s+.*\s+(bank|gtb|access|keystone|opay|test\s+bank))/i.test(message)) {
       return { intent: 'bank_transfer', confidence: 0.9, suggestedAction: 'Initiate bank transfer' };
     }
 

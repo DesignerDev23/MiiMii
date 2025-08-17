@@ -214,7 +214,21 @@ class MessageProcessor {
         case 'transfer':
         case 'send_money':
         case 'bank_transfer':
-          return await this.handleTransferIntent(user, message, messageType, messageId);
+          // Use AI assistant's processUserMessage for all transfer types
+          const aiAssistant = require('./aiAssistant');
+          const aiResult = await aiAssistant.processUserMessage(user.whatsappNumber, messageContent, messageType);
+          
+          if (aiResult.success) {
+            // Send the AI response to the user
+            const whatsappService = require('./whatsapp');
+            await whatsappService.sendTextMessage(user.whatsappNumber, aiResult.result.message);
+          } else {
+            // Handle AI processing error
+            const whatsappService = require('./whatsapp');
+            await whatsappService.sendTextMessage(user.whatsappNumber, 
+              aiResult.userFriendlyResponse || "I'm having trouble understanding your transfer request. Please try rephrasing it.");
+          }
+          return;
           
         case 'airtime':
         case 'buy_airtime':

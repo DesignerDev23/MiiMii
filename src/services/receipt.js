@@ -171,10 +171,17 @@ class ReceiptService {
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
       
+      // Validate the generated buffer
+      if (!buffer || !Buffer.isBuffer(buffer)) {
+        throw new Error('Failed to generate valid image buffer');
+      }
+      
+      const bufferSizeInKB = buffer.length / 1024;
       logger.info('Receipt generated successfully', {
         reference,
         transactionType,
-        amount
+        amount,
+        bufferSize: `${bufferSizeInKB.toFixed(2)}KB`
       });
 
       return buffer;
@@ -306,11 +313,18 @@ class ReceiptService {
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
       
+      // Validate the generated buffer
+      if (!buffer || !Buffer.isBuffer(buffer)) {
+        throw new Error('Failed to generate valid image buffer');
+      }
+      
+      const bufferSizeInKB = buffer.length / 1024;
       logger.info('Airtime receipt generated successfully', {
         reference,
         network,
         phoneNumber,
-        amount
+        amount,
+        bufferSize: `${bufferSizeInKB.toFixed(2)}KB`
       });
 
       return buffer;
@@ -442,12 +456,19 @@ class ReceiptService {
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
       
+      // Validate the generated buffer
+      if (!buffer || !Buffer.isBuffer(buffer)) {
+        throw new Error('Failed to generate valid image buffer');
+      }
+      
+      const bufferSizeInKB = buffer.length / 1024;
       logger.info('Data receipt generated successfully', {
         reference,
         network,
         phoneNumber,
         dataPlan,
-        amount
+        amount,
+        bufferSize: `${bufferSizeInKB.toFixed(2)}KB`
       });
 
       return buffer;
@@ -602,11 +623,18 @@ class ReceiptService {
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
       
+      // Validate the generated buffer
+      if (!buffer || !Buffer.isBuffer(buffer)) {
+        throw new Error('Failed to generate valid image buffer');
+      }
+      
+      const bufferSizeInKB = buffer.length / 1024;
       logger.info('Electricity receipt generated successfully', {
         reference,
         disco,
         meterNumber,
-        amount
+        amount,
+        bufferSize: `${bufferSizeInKB.toFixed(2)}KB`
       });
 
       return buffer;
@@ -743,10 +771,17 @@ class ReceiptService {
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
       
+      // Validate the generated buffer
+      if (!buffer || !Buffer.isBuffer(buffer)) {
+        throw new Error('Failed to generate valid image buffer');
+      }
+      
+      const bufferSizeInKB = buffer.length / 1024;
       logger.info('Transfer receipt generated successfully', {
         reference,
         recipientName,
-        amount
+        amount,
+        bufferSize: `${bufferSizeInKB.toFixed(2)}KB`
       });
 
       return buffer;

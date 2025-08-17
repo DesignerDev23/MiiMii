@@ -227,6 +227,73 @@ if (process.env.NODE_ENV !== 'production') {
     }
   });
 
+  // Test WhatsApp image sending
+  router.post('/whatsapp/send-image', async (req, res) => {
+    try {
+      const { to, imageType = 'test' } = req.body;
+      if (!to) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Phone number (to) is required' 
+        });
+      }
+      
+      // Generate a test receipt based on type
+      const receiptService = require('../services/receipt');
+      let imageBuffer;
+      
+      if (imageType === 'transfer') {
+        const testData = {
+          type: 'Bank Transfer',
+          amount: 5000,
+          fee: 25,
+          totalAmount: 5025,
+          recipientName: 'John Doe',
+          recipientBank: 'Test Bank',
+          recipientAccount: '1234567890',
+          reference: 'TEST123456',
+          date: new Date().toLocaleString('en-US'),
+          status: 'Successful',
+          senderName: 'Test User'
+        };
+        imageBuffer = await receiptService.generateTransferReceipt(testData);
+      } else if (imageType === 'data') {
+        const testData = {
+          network: 'MTN',
+          phoneNumber: '08012345678',
+          dataPlan: '1GB',
+          amount: 500,
+          reference: 'DATA123456',
+          date: new Date().toLocaleString('en-US'),
+          status: 'Successful',
+          discount: 0
+        };
+        imageBuffer = await receiptService.generateDataReceipt(testData);
+      } else {
+        // Default test image
+        const testData = {
+          transactionType: 'Test Transaction',
+          amount: 1000,
+          sender: 'Test Sender',
+          beneficiary: 'Test Recipient',
+          reference: 'TEST123',
+          date: new Date().toLocaleString('en-US'),
+          status: 'Successful',
+          remark: 'Test transaction',
+          charges: 25,
+          discount: 0
+        };
+        imageBuffer = await receiptService.generateReceipt(testData);
+      }
+      
+      const result = await whatsappService.sendImageMessage(to, imageBuffer, `${imageType}_receipt.jpg`);
+      res.json({ success: true, result });
+    } catch (error) {
+      logger.error('WhatsApp image send test failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   // Test OCR service
   router.post('/ocr', async (req, res) => {
     try {

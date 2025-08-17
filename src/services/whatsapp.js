@@ -1404,11 +1404,29 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        // First, upload the image to get a media ID
        const uploadUrl = `https://graph.facebook.com/v18.0/${this.phoneNumberId}/media`;
        
+       // Validate image buffer
+       if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+         throw new Error('Invalid image buffer provided');
+       }
+       
+       // Check file size (WhatsApp has a 16MB limit)
+       const fileSizeInMB = imageBuffer.length / (1024 * 1024);
+       if (fileSizeInMB > 16) {
+         throw new Error(`Image file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 16MB limit`);
+       }
+       
        const formData = new FormData();
        formData.append('messaging_product', 'whatsapp');
        formData.append('file', imageBuffer, {
          filename: filename,
          contentType: 'image/jpeg' // Changed from image/png to image/jpeg for better compatibility
+       });
+
+       logger.info('Uploading image to WhatsApp', {
+         uploadUrl,
+         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
+         filename,
+         contentType: 'image/jpeg'
        });
 
        const uploadResponse = await axios.post(uploadUrl, formData, {
@@ -1420,7 +1438,11 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        });
 
        if (!uploadResponse.data.id) {
-         throw new Error('Failed to upload image to WhatsApp');
+         logger.error('WhatsApp upload response missing media ID', {
+           response: uploadResponse.data,
+           status: uploadResponse.status
+         });
+         throw new Error('Failed to upload image to WhatsApp - no media ID returned');
        }
 
        const mediaId = uploadResponse.data.id;
@@ -1450,9 +1472,18 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          ...this.axiosConfig
        });
 
+       if (!response.data.messages || !response.data.messages[0]?.id) {
+         logger.error('WhatsApp message response missing message ID', {
+           response: response.data,
+           status: response.status
+         });
+         throw new Error('Failed to send image message - no message ID returned');
+       }
+
        logger.info('WhatsApp image message sent successfully', {
          to: formattedNumber,
-         messageId: response.data.messages?.[0]?.id
+         messageId: response.data.messages[0].id,
+         mediaId
        });
 
        return {
@@ -1463,8 +1494,13 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
      } catch (error) {
        logger.error('Failed to send WhatsApp image message', {
          error: error.message,
+         errorResponse: error.response?.data,
+         errorStatus: error.response?.status,
+         errorHeaders: error.response?.headers,
          to,
-         filename
+         filename,
+         imageBufferSize: imageBuffer ? imageBuffer.length : 0,
+         imageBufferType: imageBuffer ? typeof imageBuffer : 'undefined'
        });
        throw error;
      }
