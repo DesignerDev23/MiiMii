@@ -850,39 +850,40 @@ Extract intent and data from this message. Consider the user context and any ext
         context: 'bank_transfer_confirmation',
         step: 1,
         data: {
-          accountNumber: validation.accountNumber,
+          accountNumber,
           bankCode: resolvedBankCode,
-          bankName: resolvedBankName || validation.bank,
+          bankName: resolvedBankName,
           amount: transferAmount,
-          totalFee: feeInfo.totalFee,
-          totalAmount: feeInfo.totalAmount,
+          totalFee: feeInfo.fee,
+          totalAmount: transferAmount + feeInfo.fee,
           narration: 'Wallet transfer',
-          reference: `TXN${Date.now()}`,
-          recipientName: extractedData.recipientName || validation.accountName
+          reference: this.generateReference(),
+          recipientName: validation.accountName
         }
       });
 
-      const confirmMsg = `💸 *Bank Transfer Confirmation*\n\n` +
-                        `💰 Amount: ₦${transferAmount.toLocaleString()}\n` +
-                        `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
-                        `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
-                        `👤 Recipient: ${validation.accountName}\n` +
-                        `🏦 Bank: ${resolvedBankName || validation.bank}\n` +
-                        `🔢 Account: ${validation.accountNumber}\n\n` +
-                        `Reply YES to confirm, or NO to cancel.`;
+      // Generate AI confirmation message
+      const confirmationMessage = await this.generateTransferConfirmationMessage({
+        amount: transferAmount,
+        fee: feeInfo.fee,
+        totalAmount: transferAmount + feeInfo.fee,
+        recipientName: validation.accountName,
+        bankName: resolvedBankName,
+        accountNumber
+      });
 
       return {
         intent: 'bank_transfer',
-        message: confirmMsg,
+        message: confirmationMessage,
         awaitingInput: 'confirm_transfer',
         context: 'bank_transfer_confirmation',
         transactionDetails: {
           amount: transferAmount,
-          fee: feeInfo.totalFee,
-          totalAmount: feeInfo.totalAmount,
+          fee: feeInfo.fee,
+          totalAmount: transferAmount + feeInfo.fee,
           recipientName: validation.accountName,
-          bankName: resolvedBankName || validation.bank,
-          accountNumber: validation.accountNumber
+          bankName: resolvedBankName,
+          accountNumber
         }
       };
 
@@ -2017,6 +2018,67 @@ Response format:
     }
 
     return { intent: 'unknown', confidence: 0.5, suggestedAction: 'Ask for clarification' };
+  }
+
+  // Generate AI-powered transfer confirmation message
+  async generateTransferConfirmationMessage(transferData) {
+    try {
+      const { amount, fee, totalAmount, recipientName, bankName, accountNumber } = transferData;
+      
+      const prompt = `Generate a friendly and professional bank transfer confirmation message in exactly 3 lines. 
+
+Transfer details:
+- Amount: ₦${amount.toLocaleString()}
+- Fee: ₦${fee.toLocaleString()}
+- Total: ₦${totalAmount.toLocaleString()}
+- Recipient: ${recipientName}
+- Bank: ${bankName}
+- Account: ${accountNumber}
+
+Requirements:
+1. First line: Confirm the transfer amount and recipient
+2. Second line: Show fee and total amount
+3. Third line: Ask for confirmation (YES/NO)
+
+Make it warm, professional, and easy to read. Use emojis sparingly but effectively.`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful banking assistant. Generate concise, friendly confirmation messages.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.7
+      });
+
+      const aiMessage = response.choices[0]?.message?.content?.trim();
+      
+      if (aiMessage) {
+        return aiMessage;
+      }
+      
+      // Fallback message if AI fails
+      return `💸 Ready to send ₦${amount.toLocaleString()} to ${recipientName} at ${bankName}?\n💰 Fee: ₦${fee.toLocaleString()} | Total: ₦${totalAmount.toLocaleString()}\n✅ Reply YES to confirm or NO to cancel.`;
+      
+    } catch (error) {
+      logger.error('Failed to generate AI confirmation message', { error: error.message });
+      
+      // Fallback message
+      const { amount, fee, totalAmount, recipientName, bankName } = transferData;
+      return `💸 Ready to send ₦${amount.toLocaleString()} to ${recipientName} at ${bankName}?\n💰 Fee: ₦${fee.toLocaleString()} | Total: ₦${totalAmount.toLocaleString()}\n✅ Reply YES to confirm or NO to cancel.`;
+    }
+  }
+
+  // Generate reference for transactions
+  generateReference() {
+    return `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
   }
 }
 

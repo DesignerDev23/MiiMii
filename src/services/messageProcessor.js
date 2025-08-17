@@ -124,6 +124,15 @@ class MessageProcessor {
             await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please enter exactly 4 digits.');
             return;
           }
+          
+          // Log the transfer data for debugging
+          logger.info('Processing PIN verification with transfer data', {
+            userId: user.id,
+            hasTransferData: !!state.data,
+            transferData: state.data,
+            pinLength: pin.length
+          });
+          
           try {
             const transferData = {
               accountNumber: state.data.accountNumber,
@@ -132,6 +141,15 @@ class MessageProcessor {
               narration: state.data.narration || 'Wallet transfer',
               reference: state.data.reference
             };
+            
+            logger.info('Calling bank transfer service', {
+              userId: user.id,
+              transferData,
+              hasAccountNumber: !!transferData.accountNumber,
+              hasBankCode: !!transferData.bankCode,
+              hasAmount: !!transferData.amount
+            });
+            
             const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
             if (result.success) {
               // Don't send message here - let the bellbank service handle completion messages
@@ -144,6 +162,12 @@ class MessageProcessor {
               await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
             }
           } catch (err) {
+            logger.error('Transfer processing failed', {
+              userId: user.id,
+              error: err.message,
+              transferData: state.data
+            });
+            
             // Provide user-friendly error messages
             let errorMessage = "❌ Transfer failed. Please try again or contact support if the issue persists.";
             
