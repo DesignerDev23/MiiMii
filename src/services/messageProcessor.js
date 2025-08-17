@@ -226,7 +226,40 @@ class MessageProcessor {
             });
             
             await user.updateConversationState(updatedState);
-            await whatsappService.sendTextMessage(user.whatsappNumber, '🔐 Drop your 4-digit PIN');
+            
+            // Send transfer PIN flow instead of manual PIN entry
+            const config = require('../config');
+            
+            // Update state to wait for flow completion
+            await user.updateConversationState({ 
+              ...updatedState,
+              awaitingInput: 'transfer_pin_flow', 
+              context: 'transfer_pin_verification'
+            });
+            
+            // Send the transfer PIN flow
+            await whatsappService.sendFlowMessage(
+              user.whatsappNumber,
+              {
+                flowId: config.getWhatsappConfig().transferPinFlowId,
+                flowToken: 'unused', // Transfer PIN flow doesn't need a token
+                header: {
+                  type: 'text',
+                  text: 'Transfer PIN Verification'
+                },
+                body: `Please enter your 4-digit PIN to complete the transfer of ₦${state.data.amount.toLocaleString()} to ${state.data.recipientName}.`,
+                footer: 'Secure transfer verification',
+                flowCta: 'Enter PIN'
+              }
+            );
+            
+            logger.info('Transfer PIN flow sent to user', {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              flowId: config.getWhatsappConfig().transferPinFlowId,
+              transferAmount: state.data.amount,
+              recipientName: state.data.recipientName
+            });
             return;
           }
           if (/(^|\b)(no|n|cancel|stop)(\b|$)/.test(lower)) {
@@ -238,42 +271,15 @@ class MessageProcessor {
           return;
         }
 
-        // PIN entry step - now using WhatsApp Flow
+        // PIN entry step - now handled in confirmation step above
         if (state.awaitingInput === 'pin_for_transfer') {
-          // Send transfer PIN flow instead of manual PIN entry
-          const config = require('../config');
-          const whatsappService = require('./whatsapp');
-          
-          // Update state to wait for flow completion
-          await user.updateConversationState({ 
-            ...state,
-            awaitingInput: 'transfer_pin_flow', 
-            context: 'transfer_pin_verification'
-          });
-          
-          // Send the transfer PIN flow
-          await whatsappService.sendFlowMessage(
-            user.whatsappNumber,
-            {
-              flowId: config.getWhatsappConfig().transferPinFlowId,
-              flowToken: 'unused', // Transfer PIN flow doesn't need a token
-              header: {
-                type: 'text',
-                text: 'Transfer PIN Verification'
-              },
-              body: `Please enter your 4-digit PIN to complete the transfer of ₦${state.data.amount.toLocaleString()} to ${state.data.recipientName}.`,
-              footer: 'Secure transfer verification',
-              flowCta: 'Enter PIN'
-            }
-          );
-          
-          logger.info('Transfer PIN flow sent to user', {
+          // This should not happen anymore as we send the flow immediately after confirmation
+          logger.warn('Unexpected pin_for_transfer state - should have been handled in confirmation step', {
             userId: user.id,
-            phoneNumber: user.whatsappNumber,
-            flowId: config.getWhatsappConfig().transferPinFlowId,
-            transferAmount: state.data.amount,
-            recipientName: state.data.recipientName
+            state: state
           });
+          await user.clearConversationState();
+          await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Something went wrong. Please try your transfer again.');
           return;
         }
       }
