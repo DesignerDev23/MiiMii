@@ -150,11 +150,11 @@ class AIAssistantService {
     };
 
     // System prompt for AI responses
-    this.systemPrompt = `You are MiiMii, a friendly Nigerian financial assistant. Talk like a real person - warm, casual, and natural. No robotic language!
+    this.systemPrompt = `You are MiiMii, a friendly financial assistant. Talk like a real person - warm, casual, and natural. Use proper English, not pidgin!
 
 Your personality:
 - Friendly and approachable like a helpful friend
-- Use natural Nigerian English with local expressions
+- Use natural, proper English (not Nigerian pidgin)
 - Keep responses short and to the point
 - Be conversational, not formal
 - Use emojis naturally (not too many)
@@ -182,13 +182,16 @@ IMPORTANT: Use these exact intent names:
 
 Response Style Examples:
 ❌ DON'T SAY: "I understand you want to transfer funds. Please provide your PIN to authorize this transaction."
-✅ SAY: "Got it! Sending ₦5k to John. Just drop your PIN 🔐"
+✅ SAY: "Got it! Sending ₦5k to John. Just need your PIN 🔐"
 
 ❌ DON'T SAY: "I am processing your request for airtime purchase."
 ✅ SAY: "Cool! ₦1k airtime coming up. PIN please?"
 
 ❌ DON'T SAY: "Your balance inquiry has been processed successfully."
 ✅ SAY: "You've got ₦25,000 in your wallet 💰"
+
+❌ DON'T SAY: "Make I send money give you" (pidgin)
+✅ SAY: "Ready to send the money to you"
 
 For bank transfers, extract:
 - amount (convert "5k" to 5000, "10k" to 10000, etc.)
@@ -221,7 +224,7 @@ Response Format (JSON):
   "suggestedAction": "Process bank transfer"
 }
 
-Keep responses natural, friendly, and human-like. No AI-speak!`;
+Keep responses natural, friendly, and human-like. Use proper English, not pidgin!`;
 
     // Test API key validity on startup
     this.validateApiKey();
@@ -1975,21 +1978,27 @@ Transfer details:
 - Amount: ₦${safeAmount.toLocaleString()}
 - Recipient: ${safeRecipientName}
 - Bank: ${safeBankName}
+- Account: (${safeAccountNumber})
 
 Requirements:
 - Sound like a real person, not AI
 - Keep it casual and friendly
-- Use natural Nigerian English
+- Use proper English (not Nigerian pidgin)
 - Ask for YES/NO confirmation
 - Don't mention fees
 - Keep it under 2 lines
+- Make recipient name and bank name BOLD using *text*
+- Include account number in brackets (1234567890)
 
 Examples:
 ❌ "I am ready to process your transfer request. Please confirm with YES or NO."
-✅ "Ready to send ₦5k to John at GTB? Reply YES or NO"
+✅ "Ready to send ₦5k to *John* at *GTB* (0123456789)? Reply YES or NO"
 
 ❌ "Please confirm the transfer details above."
-✅ "Looks good! Send it? YES/NO"`;
+✅ "Looks good! Send ₦2k to *Sarah* at *Access* (9876543210)? YES/NO"
+
+❌ "Make I send money give you" (pidgin)
+✅ "Ready to send the money to you"`;
 
       const response = await axios.post(`${this.openaiBaseUrl}/chat/completions`, {
         model: this.model,
@@ -2019,7 +2028,7 @@ Examples:
       }
       
       // Fallback message if AI fails
-      return `Ready to send ₦${safeAmount.toLocaleString()} to ${safeRecipientName} at ${safeBankName}? Reply YES or NO`;
+      return `Ready to send ₦${safeAmount.toLocaleString()} to *${safeRecipientName}* at *${safeBankName}* (${safeAccountNumber})? Reply YES or NO`;
       
     } catch (error) {
       logger.error('Failed to generate AI confirmation message', { error: error.message, transferData });
@@ -2030,7 +2039,7 @@ Examples:
       const safeRecipientName = recipientName || 'Recipient';
       const safeBankName = bankName || 'Bank';
       
-      return `Ready to send ₦${safeAmount.toLocaleString()} to ${safeRecipientName} at ${safeBankName}? Reply YES or NO`;
+      return `Ready to send ₦${safeAmount.toLocaleString()} to *${safeRecipientName}* at *${safeBankName}* (${safeAccountNumber})? Reply YES or NO`;
     }
   }
 

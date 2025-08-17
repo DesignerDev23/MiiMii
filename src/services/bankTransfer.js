@@ -597,13 +597,40 @@ class BankTransferService {
             
             const receiptBuffer = await receiptService.generateReceipt(receiptData);
             
-            // Send receipt with caption
-            await whatsappService.sendImageMessage(
-              user.whatsappNumber, 
-              receiptBuffer, 
-              'transfer_receipt.jpg',
-              `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n\nYour transfer has been processed successfully! 🎉`
-            );
+            // Try to send receipt as image, fallback to text if it fails
+            try {
+              await whatsappService.sendImageMessage(
+                user.whatsappNumber, 
+                receiptBuffer, 
+                'transfer_receipt.jpg',
+                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n\nYour transfer has been processed successfully! 🎉`
+              );
+              
+              logger.info('Transfer receipt sent as image successfully', {
+                userId,
+                reference: transaction.reference
+              });
+            } catch (imageError) {
+              logger.warn('Failed to send receipt as image, sending as text instead', { 
+                error: imageError.message,
+                userId,
+                reference: transaction.reference
+              });
+              
+              // Send receipt details as text message instead
+              const receiptText = `✅ *Transfer Receipt*\n\n` +
+                `💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n` +
+                `💸 Fee: ₦${feeCalculation.totalFee.toLocaleString()}\n` +
+                `👤 To: ${accountValidation.accountName}\n` +
+                `🏦 Bank: ${accountValidation.bank}\n` +
+                `📱 Account: ${accountValidation.accountNumber}\n` +
+                `📋 Reference: ${transaction.reference}\n` +
+                `📅 Date: ${new Date().toLocaleString('en-NG')}\n` +
+                `✅ Status: Successful\n\n` +
+                `Your transfer has been processed! 🎉`;
+              
+              await whatsappService.sendTextMessage(user.whatsappNumber, receiptText);
+            }
             
             // Send additional success message
             await whatsappService.sendTextMessage(
