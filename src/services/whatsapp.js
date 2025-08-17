@@ -9,7 +9,7 @@ class WhatsAppService {
     const whatsappConfig = config.getWhatsappConfig();
     this.accessToken = whatsappConfig.accessToken;
     this.phoneNumberId = whatsappConfig.phoneNumberId;
-    this.baseURL = `https://graph.facebook.com/v18.0/${this.phoneNumberId}`;
+    this.baseURL = `https://graph.facebook.com/v23.0/${this.phoneNumberId}`;
     this.verifyToken = whatsappConfig.webhookSecret; // Changed from webhookVerifyToken to webhookSecret
     this.axiosConfig = axiosConfig;
   }
@@ -587,7 +587,7 @@ class WhatsAppService {
       
       // Use WhatsApp Business API to get contact info
       const response = await axios.get(
-        `https://graph.facebook.com/v18.0/${formattedNumber}?fields=profile`,
+        `https://graph.facebook.com/v23.0/${formattedNumber}?fields=profile`,
         {
           ...this.axiosConfig,
           headers: {
@@ -689,7 +689,7 @@ class WhatsAppService {
 
       // First get media URL
       const mediaResponse = await axios.get(
-        `https://graph.facebook.com/v18.0/${mediaId}`,
+        `https://graph.facebook.com/v23.0/${mediaId}`,
         {
           ...this.axiosConfig,
           headers: {
@@ -756,14 +756,14 @@ class WhatsAppService {
 
       // Log the validation request details
       logger.info('WhatsApp token validation request details', {
-        url: `https://graph.facebook.com/v18.0/${this.phoneNumberId}`,
+        url: `https://graph.facebook.com/v23.0/${this.phoneNumberId}`,
         authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`,
         service: 'whatsapp-service'
       });
 
       // Test the token by making a simple API call
       const response = await axios.get(
-        `https://graph.facebook.com/v18.0/${this.phoneNumberId}`,
+        `https://graph.facebook.com/v23.0/${this.phoneNumberId}`,
         {
           ...this.axiosConfig,
           headers: {
@@ -1404,7 +1404,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        });
 
        // First, upload the image to get a media ID
-       const uploadUrl = `https://graph.facebook.com/v18.0/${this.phoneNumberId}/media`;
+       const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
        
        // Validate image buffer
        if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
@@ -1511,6 +1511,142 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          hasCaption: !!caption,
          imageBufferSize: imageBuffer ? imageBuffer.length : 0,
          imageBufferType: imageBuffer ? typeof imageBuffer : 'undefined'
+       });
+       throw error;
+     }
+   }
+
+   /**
+    * Send a document message via WhatsApp Business API
+    * @param {string} to - Recipient phone number
+    * @param {Buffer} documentBuffer - Document buffer
+    * @param {string} filename - Document filename
+    * @param {string} contentType - Document content type (e.g., 'application/pdf')
+    * @param {string} caption - Optional caption for the document
+    * @returns {Promise<Object>} - Response from WhatsApp API
+    */
+   async sendDocumentMessage(to, documentBuffer, filename, contentType, caption = null) {
+     try {
+       const formattedNumber = this.formatToE164(to);
+       
+       logger.info('WhatsApp sendDocumentMessage called', {
+         originalNumber: to,
+         formattedNumber,
+         messageType: 'document',
+         hasCaption: !!caption,
+         accessTokenPrefix: this.accessToken.substring(0, 20) + '...',
+         accessTokenLength: this.accessToken.length,
+         phoneNumberId: this.phoneNumberId
+       });
+
+       // First, upload the document to get a media ID
+       const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
+       
+       // Validate document buffer
+       if (!documentBuffer || !Buffer.isBuffer(documentBuffer)) {
+         throw new Error('Invalid document buffer provided');
+       }
+       
+       // Check file size (WhatsApp has a 16MB limit)
+       const fileSizeInMB = documentBuffer.length / (1024 * 1024);
+       if (fileSizeInMB > 16) {
+         throw new Error(`Document file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 16MB limit`);
+       }
+       
+       const formData = new FormData();
+       formData.append('messaging_product', 'whatsapp');
+       formData.append('file', documentBuffer, {
+         filename: filename,
+         contentType: contentType
+       });
+
+       logger.info('Uploading document to WhatsApp', {
+         uploadUrl,
+         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
+         filename,
+         contentType
+       });
+
+       const uploadResponse = await axios.post(uploadUrl, formData, {
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           ...formData.getHeaders()
+         },
+         ...this.axiosConfig
+       });
+
+       if (!uploadResponse.data.id) {
+         logger.error('WhatsApp upload response missing media ID', {
+           response: uploadResponse.data,
+           status: uploadResponse.status
+         });
+         throw new Error('Failed to upload document to WhatsApp - no media ID returned');
+       }
+
+       const mediaId = uploadResponse.data.id;
+
+       // Send the document message
+       const messageUrl = `${this.baseURL}/messages`;
+       const messagePayload = {
+         messaging_product: 'whatsapp',
+         to: formattedNumber,
+         type: 'document',
+         document: {
+           id: mediaId
+         }
+       };
+
+       // Add caption if provided
+       if (caption) {
+         messagePayload.document.caption = caption;
+       }
+
+       logger.info('WhatsApp API request details', {
+         url: messageUrl,
+         payload: messagePayload,
+         hasCaption: !!caption,
+         authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
+       });
+
+       const response = await axios.post(messageUrl, messagePayload, {
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           'Content-Type': 'application/json'
+         },
+         ...this.axiosConfig
+       });
+
+       if (!response.data.messages || !response.data.messages[0]?.id) {
+         logger.error('WhatsApp message response missing message ID', {
+           response: response.data,
+           status: response.status
+         });
+         throw new Error('Failed to send document message - no message ID returned');
+       }
+
+       logger.info('WhatsApp document message sent successfully', {
+         to: formattedNumber,
+         messageId: response.data.messages[0].id,
+         mediaId,
+         hasCaption: !!caption
+       });
+
+       return {
+         success: true,
+         messageId: response.data.messages?.[0]?.id,
+         response: response.data
+       };
+     } catch (error) {
+       logger.error('Failed to send WhatsApp document message', {
+         error: error.message,
+         errorResponse: error.response?.data,
+         errorStatus: error.response?.status,
+         errorHeaders: error.response?.headers,
+         to,
+         filename,
+         hasCaption: !!caption,
+         documentBufferSize: documentBuffer ? documentBuffer.length : 0,
+         documentBufferType: documentBuffer ? typeof documentBuffer : 'undefined'
        });
        throw error;
      }

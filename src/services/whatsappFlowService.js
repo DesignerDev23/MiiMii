@@ -356,7 +356,7 @@ class WhatsAppFlowService {
       }
 
       const response = await axios.post(
-        `https://graph.facebook.com/v18.0/${whatsappConfig.phoneNumberId}/messages`,
+        `https://graph.facebook.com/v23.0/${whatsappConfig.phoneNumberId}/messages`,
         messageData,
         {
           ...axiosConfig,
