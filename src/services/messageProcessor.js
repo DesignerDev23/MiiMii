@@ -96,6 +96,88 @@ class MessageProcessor {
             return;
           }
           
+          // Handle transfer PIN flow completion
+          if (user.conversationState?.context === 'transfer_pin_verification') {
+            const state = user.conversationState;
+            const whatsappService = require('./whatsapp');
+            const bankTransferService = require('./bankTransfer');
+            
+            // Extract PIN from flow response
+            const pin = flowData.pin || flowData.pin_number || flowData.pin_code;
+            
+            if (!pin || !/^\d{4}$/.test(pin)) {
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+              return;
+            }
+            
+            // Check if we have the required transfer data
+            if (!state.data || !state.data.accountNumber || !state.data.bankCode || !state.data.amount) {
+              logger.error('Missing transfer data for PIN verification', {
+                userId: user.id,
+                hasData: !!state.data,
+                dataKeys: state.data ? Object.keys(state.data) : []
+              });
+              
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Try again');
+              await user.clearConversationState();
+              return;
+            }
+            
+            try {
+              const transferData = {
+                accountNumber: state.data.accountNumber,
+                bankCode: state.data.bankCode,
+                amount: state.data.amount,
+                narration: state.data.narration || 'Wallet transfer',
+                reference: state.data.reference
+              };
+              
+              logger.info('Processing transfer PIN verification via flow', {
+                userId: user.id,
+                transferData,
+                pinLength: pin.length
+              });
+              
+              const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+              if (result.success) {
+                logger.info('Transfer initiated successfully via flow', {
+                  userId: user.id,
+                  reference: result.transaction.reference
+                });
+              } else {
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Failed: ${result.message || 'Unknown error'}`);
+              }
+            } catch (err) {
+              logger.error('Transfer processing failed via flow', {
+                userId: user.id,
+                error: err.message,
+                transferData: state.data
+              });
+              
+              // Provide user-friendly error messages
+              let errorMessage = "❌ Transfer failed. Try again or contact support";
+              
+              if (err.message.includes('Insufficient')) {
+                errorMessage = err.message;
+              } else if (err.message.includes('Failed To Fecth Account Info')) {
+                errorMessage = "❌ Account not found. Check the account number and bank name";
+              } else if (err.message.includes('could not be found in')) {
+                errorMessage = err.message;
+              } else if (err.message.includes('Invalid bank account')) {
+                errorMessage = "❌ Invalid account details. Check account number and bank name";
+              } else if (err.message.includes('Transfer limit')) {
+                errorMessage = "❌ Transfer limit exceeded. Try a smaller amount";
+              } else if (err.message.includes('PIN')) {
+                errorMessage = "❌ Wrong PIN. Check and try again";
+              }
+              
+              await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+            } finally {
+              await user.clearConversationState();
+            }
+            return;
+          }
+          
           // If onboarding just completed, send bank details to user
           const refreshedUser = await userService.getUserById(user.id);
           const walletService = require('./wallet');
@@ -156,99 +238,42 @@ class MessageProcessor {
           return;
         }
 
-        // PIN entry step
+        // PIN entry step - now using WhatsApp Flow
         if (state.awaitingInput === 'pin_for_transfer') {
-          const pin = (messageContent || '').replace(/\D/g, '');
-          if (!/^\d{4}$/.test(pin)) {
-            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Need exactly 4 digits. Try again');
-            return;
-          }
+          // Send transfer PIN flow instead of manual PIN entry
+          const config = require('../config');
+          const whatsappService = require('./whatsapp');
           
-          // Log the transfer data for debugging
-          logger.info('Processing PIN verification with transfer data', {
-            userId: user.id,
-            hasTransferData: !!state.data,
-            transferData: state.data,
-            pinLength: pin.length,
-            fullState: state,
-            awaitingInput: state.awaitingInput,
-            step: state.step
+          // Update state to wait for flow completion
+          await user.updateConversationState({ 
+            ...state,
+            awaitingInput: 'transfer_pin_flow', 
+            context: 'transfer_pin_verification'
           });
           
-          // Check if we have the required transfer data
-          if (!state.data || !state.data.accountNumber || !state.data.bankCode || !state.data.amount) {
-            logger.error('Missing transfer data for PIN verification', {
-              userId: user.id,
-              hasData: !!state.data,
-              dataKeys: state.data ? Object.keys(state.data) : [],
-              requiredFields: {
-                hasAccountNumber: !!state.data?.accountNumber,
-                hasBankCode: !!state.data?.bankCode,
-                hasAmount: !!state.data?.amount
-              }
-            });
-            
-            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Try again');
-            await user.clearConversationState();
-            return;
-          }
+          // Send the transfer PIN flow
+          await whatsappService.sendFlowMessage(
+            user.whatsappNumber,
+            {
+              flowId: config.getWhatsappConfig().transferPinFlowId,
+              flowToken: 'unused', // Transfer PIN flow doesn't need a token
+              header: {
+                type: 'text',
+                text: 'Transfer PIN Verification'
+              },
+              body: `Please enter your 4-digit PIN to complete the transfer of ₦${state.data.amount.toLocaleString()} to ${state.data.recipientName}.`,
+              footer: 'Secure transfer verification',
+              flowCta: 'Enter PIN'
+            }
+          );
           
-          try {
-            const transferData = {
-              accountNumber: state.data.accountNumber,
-              bankCode: state.data.bankCode,
-              amount: state.data.amount,
-              narration: state.data.narration || 'Wallet transfer',
-              reference: state.data.reference
-            };
-            
-            logger.info('Calling bank transfer service', {
-              userId: user.id,
-              transferData,
-              hasAccountNumber: !!transferData.accountNumber,
-              hasBankCode: !!transferData.bankCode,
-              hasAmount: !!transferData.amount
-            });
-            
-            const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
-            if (result.success) {
-              // Don't send message here - let the bellbank service handle completion messages
-              // This prevents duplicate messages when transfer completes via webhook
-              logger.info('Transfer initiated successfully, waiting for completion notification', {
-                userId: user.id,
-                reference: result.transaction.reference
-              });
-            } else {
-              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Failed: ${result.message || 'Unknown error'}`);
-            }
-          } catch (err) {
-            logger.error('Transfer processing failed', {
-              userId: user.id,
-              error: err.message,
-              transferData: state.data
-            });
-            
-            // Provide user-friendly error messages
-            let errorMessage = "❌ Transfer failed. Try again or contact support";
-            
-            if (err.message.includes('Insufficient')) {
-              errorMessage = err.message; // Use the detailed balance error message
-            } else if (err.message.includes('Failed To Fecth Account Info')) {
-              errorMessage = "❌ Account not found. Check the account number and bank name";
-            } else if (err.message.includes('could not be found in')) {
-              errorMessage = err.message; // Use the user-friendly message from bankTransfer service
-            } else if (err.message.includes('Invalid bank account')) {
-              errorMessage = "❌ Invalid account details. Check account number and bank name";
-            } else if (err.message.includes('Transfer limit')) {
-              errorMessage = "❌ Transfer limit exceeded. Try a smaller amount";
-            } else if (err.message.includes('PIN')) {
-              errorMessage = "❌ Wrong PIN. Check and try again";
-            }
-            
-            await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
-          } finally {
-            await user.clearConversationState();
-          }
+          logger.info('Transfer PIN flow sent to user', {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            flowId: config.getWhatsappConfig().transferPinFlowId,
+            transferAmount: state.data.amount,
+            recipientName: state.data.recipientName
+          });
           return;
         }
       }

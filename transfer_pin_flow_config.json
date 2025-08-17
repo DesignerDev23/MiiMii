@@ -1,0 +1,52 @@
+{
+  "version": "7.2",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "PIN_VERIFICATION_SCREEN": []
+  },
+  "screens": [
+    {
+      "id": "PIN_VERIFICATION_SCREEN",
+      "title": "Transfer PIN Verification",
+      "terminal": true,
+      "success": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "transfer_pin_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Transfer PIN Verification"
+              },
+              {
+                "type": "TextBody",
+                "text": "Please enter your 4-digit PIN to complete the transfer."
+              },
+              {
+                "type": "TextInput",
+                "required": true,
+                "label": "PIN",
+                "name": "pin",
+                "input-type": "passcode"
+              },
+              {
+                "type": "Footer",
+                "label": "Verify PIN",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "pin": "${form.pin}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
