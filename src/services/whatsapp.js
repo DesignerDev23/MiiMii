@@ -1403,7 +1403,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          phoneNumberId: this.phoneNumberId
        });
 
-       // First, upload the image to get a media ID
+       // Step 1: Upload media to get media ID
        const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
        
        // Validate image buffer
@@ -1419,9 +1419,10 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        
        const formData = new FormData();
        formData.append('messaging_product', 'whatsapp');
+       formData.append('type', 'image/jpeg');
        formData.append('file', imageBuffer, {
          filename: filename,
-         contentType: 'image/jpeg' // Changed from image/png to image/jpeg for better compatibility
+         contentType: 'image/jpeg'
        });
 
        logger.info('Uploading image to WhatsApp', {
@@ -1449,8 +1450,8 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
 
        const mediaId = uploadResponse.data.id;
 
-       // Send the image message
-       const messageUrl = `${this.baseURL}/messages`;
+       // Step 2: Send message with media ID
+       const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
        const messagePayload = {
          messaging_product: 'whatsapp',
          to: formattedNumber,
@@ -1539,7 +1540,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          phoneNumberId: this.phoneNumberId
        });
 
-       // First, upload the document to get a media ID
+       // Step 1: Upload media to get media ID
        const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
        
        // Validate document buffer
@@ -1555,6 +1556,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        
        const formData = new FormData();
        formData.append('messaging_product', 'whatsapp');
+       formData.append('type', contentType);
        formData.append('file', documentBuffer, {
          filename: filename,
          contentType: contentType
@@ -1585,8 +1587,8 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
 
        const mediaId = uploadResponse.data.id;
 
-       // Send the document message
-       const messageUrl = `${this.baseURL}/messages`;
+       // Step 2: Send message with media ID
+       const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
        const messagePayload = {
          messaging_product: 'whatsapp',
          to: formattedNumber,
