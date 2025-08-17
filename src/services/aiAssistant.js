@@ -710,14 +710,34 @@ Extract intent and data from this message. Consider the user context and any ext
         };
       }
 
-      // Check wallet balance
+      // Check wallet balance with auto-sync
       const wallet = await walletService.getUserWallet(user.id);
-      if (!wallet.canDebit(transferAmount)) {
-        const availableBalance = parseFloat(wallet.availableBalance || 0);
-        const totalBalance = parseFloat(wallet.balance || 0);
-        const pendingBalance = parseFloat(wallet.pendingBalance || 0);
-        
-        let errorMessage = `❌ *Insufficient Available Balance*\n\n`;
+      
+      const totalBalance = parseFloat(wallet.balance || 0);
+      const availableBalance = parseFloat(wallet.availableBalance || 0);
+      const pendingBalance = parseFloat(wallet.pendingBalance || 0);
+      
+      // Auto-sync available balance if it's 0 but total balance is sufficient
+      if (availableBalance === 0 && totalBalance >= transferAmount) {
+        await wallet.update({
+          availableBalance: totalBalance
+        });
+        logger.info('Auto-synced available balance for transfer', {
+          userId: user.id,
+          oldAvailableBalance: availableBalance,
+          newAvailableBalance: totalBalance,
+          totalBalance
+        });
+      }
+      
+      // Check if user can perform the transfer
+      const canPerformTransfer = !wallet.isFrozen && 
+                                wallet.isActive && 
+                                wallet.complianceStatus === 'compliant' &&
+                                (availableBalance >= transferAmount || totalBalance >= transferAmount);
+      
+      if (!canPerformTransfer) {
+        let errorMessage = `❌ *Transfer Not Allowed*\n\n`;
         errorMessage += `💰 You need: ₦${transferAmount.toLocaleString()}\n`;
         errorMessage += `💵 Available: ₦${availableBalance.toLocaleString()}\n`;
         
@@ -727,8 +747,14 @@ Extract intent and data from this message. Consider the user context and any ext
         
         errorMessage += `📊 Total: ₦${totalBalance.toLocaleString()}\n\n`;
         
-        if (pendingBalance > 0) {
-          errorMessage += `You have ₦${pendingBalance.toLocaleString()} in pending transactions. Please wait for them to complete before making new transfers.`;
+        if (wallet.isFrozen) {
+          errorMessage += `❄️ Your wallet is frozen. Please contact support.`;
+        } else if (!wallet.isActive) {
+          errorMessage += `🚫 Your wallet is inactive. Please contact support.`;
+        } else if (wallet.complianceStatus !== 'compliant') {
+          errorMessage += `⚠️ Your account needs verification. Please complete KYC.`;
+        } else if (pendingBalance > 0) {
+          errorMessage += `You have ₦${pendingBalance.toLocaleString()} in pending transactions. Please wait for them to complete.`;
         } else if (totalBalance >= transferAmount) {
           errorMessage += `You have sufficient total balance but some funds may be held. Please contact support if this persists.`;
         } else {

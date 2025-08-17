@@ -173,10 +173,19 @@ const Wallet = sequelize.define('Wallet', {
 // Instance methods
 Wallet.prototype.canDebit = function(amount) {
   const requestedAmount = parseFloat(amount);
+  const totalBalance = parseFloat(this.balance);
+  const availableBalance = parseFloat(this.availableBalance);
+  
+  // If availableBalance is 0 but total balance is sufficient, sync them
+  if (availableBalance === 0 && totalBalance >= requestedAmount) {
+    this.availableBalance = totalBalance;
+    this.save().catch(err => console.error('Failed to sync available balance:', err));
+  }
+  
   return !this.isFrozen && 
          this.isActive && 
          this.complianceStatus === 'compliant' &&
-         parseFloat(this.availableBalance) >= requestedAmount &&
+         (availableBalance >= requestedAmount || totalBalance >= requestedAmount) &&
          this.checkDailyLimit(requestedAmount) &&
          this.checkMonthlyLimit(requestedAmount);
 };
