@@ -25,6 +25,7 @@ class Config {
       webhookSecret: process.env.WEBHOOK_SECRET, // Changed from WHATSAPP_WEBHOOK_SECRET
       // Flow Configuration
       welcomeFlowId: process.env.WELCOME_FLOW_ID || '1223628202852216',
+      loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID || '3207800556061779',
       flowSecretKey: process.env.FLOW_SECRET_KEY || 'default-flow-secret-key'
     };
 
@@ -183,11 +184,10 @@ class Config {
     // Add runtime logging for Flow ID debugging
     const logger = require('../utils/logger');
     logger.info('🔍 Config: WhatsApp Flow IDs at runtime', {
-      // Removed Flow ID dependencies since we're using flow_json approach
-      hasOnboardingFlowId: false,
-      hasLoginFlowId: false,
-      onboardingFlowIdLength: 0,
-      loginFlowIdLength: 0,
+      hasOnboardingFlowId: !!this.whatsapp.welcomeFlowId,
+      hasLoginFlowId: !!this.whatsapp.loginFlowId,
+      onboardingFlowIdLength: this.whatsapp.welcomeFlowId ? this.whatsapp.welcomeFlowId.length : 0,
+      loginFlowIdLength: this.whatsapp.loginFlowId ? this.whatsapp.loginFlowId.length : 0,
       environment: process.env.NODE_ENV
     });
     

@@ -446,12 +446,10 @@ class TransactionService {
         const receiptService = require('./receipt');
         const receiptBuffer = await receiptService.generateReceipt(receiptData);
         
-        // Send receipt with caption
-        await whatsappService.sendImageMessage(
-          transaction.user.whatsappNumber, 
-          receiptBuffer, 
-          'transfer_receipt.jpg',
-          `✅ *Transfer Successful!*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n\nYour transfer has been processed successfully! 🎉`
+        // Send receipt as text message (simplified for test numbers)
+        await whatsappService.sendTextMessage(
+          transaction.user.whatsappNumber,
+          `✅ *Transfer Receipt*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n💸 Fee: ₦${transaction.fee || 25}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
         );
         
         // Send additional success message

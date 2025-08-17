@@ -597,53 +597,12 @@ class BankTransferService {
             
             const receiptBuffer = await receiptService.generateReceipt(receiptData);
             
-            // Try to send receipt as image first, then as document, then as text
-            try {
-              await whatsappService.sendImageMessage(
-                user.whatsappNumber, 
-                receiptBuffer, 
-                'transfer_receipt.jpg',
-                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n\nYour transfer has been processed successfully! 🎉`
-              );
-              
-              logger.info('Transfer receipt sent as image successfully', {
-                userId: user.id,
-                reference: transaction.reference
-              });
-            } catch (imageError) {
-              logger.warn('Failed to send receipt as image, trying as document', {
-                error: imageError.message,
-                userId: user.id,
-                reference: transaction.reference
-              });
-              
-              try {
-                await whatsappService.sendDocumentMessage(
-                  user.whatsappNumber, 
-                  receiptBuffer, 
-                  'transfer_receipt.jpg',
-                  'image/jpeg',
-                  `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n\nYour transfer has been processed successfully! 🎉`
-                );
-                
-                logger.info('Transfer receipt sent as document successfully', {
-                  userId: user.id,
-                  reference: transaction.reference
-                });
-              } catch (documentError) {
-                logger.warn('Failed to send receipt as document, sending as text instead', {
-                  error: documentError.message,
-                  userId: user.id,
-                  reference: transaction.reference
-                });
-                
-                // Send text-based receipt as fallback
-                await whatsappService.sendTextMessage(
-                  user.whatsappNumber,
-                  `✅ *Transfer Receipt*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
-                );
-              }
-            }
+            // Send receipt as text message (simplified for test numbers)
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              `✅ *Transfer Receipt*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
+            );
+            logger.info('Transfer receipt sent as text successfully', { userId: user.id, reference: transaction.reference });
             
             // Send additional success message
             await whatsappService.sendTextMessage(

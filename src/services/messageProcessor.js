@@ -27,39 +27,49 @@ class MessageProcessor {
         // Non-fatal
       }
 
-      // Daily login: if user onboarded, require PIN once every 24h
+      // Daily login: if user onboarded, require login via WhatsApp Flow once every 24h
       try {
         const redisClient = require('../utils/redis');
         if (user.onboardingStep === 'completed') {
           const sessionKey = `auth:${user.id}`;
           const hasSession = await redisClient.get(sessionKey);
-          if (!hasSession && user.conversationState?.awaitingInput !== 'login_pin') {
-            await user.updateConversationState({ awaitingInput: 'login_pin', context: 'daily_login' });
+          if (!hasSession && user.conversationState?.awaitingInput !== 'login_flow') {
+            // Send login flow instead of manual PIN entry
+            const config = require('../config');
             const whatsappService = require('./whatsapp');
-            await whatsappService.sendTextMessage(user.whatsappNumber, '🔐 Please enter your 4-digit PIN to unlock your session.');
-            return;
-          }
-          if (user.conversationState?.awaitingInput === 'login_pin') {
-            const pin = (message?.text || '').replace(/\D/g, '');
-            if (!/^\d{4}$/.test(pin)) {
-              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Need exactly 4 digits. Try again');
-              return;
-            }
-            try {
-              const userService = require('./user');
-              await userService.validateUserPin(user.id, pin);
-              await redisClient.set(`auth:${user.id}`, { ok: true }, 86400);
-              await user.clearConversationState();
-              const whatsappService = require('./whatsapp');
-              await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Login successful. How can I help you today?');
-            } catch (e) {
-              const whatsappService = require('./whatsapp');
-              await whatsappService.sendTextMessage(user.whatsappNumber, e.message || '❌ Incorrect PIN. Try again.');
-            }
+            
+            await user.updateConversationState({ awaitingInput: 'login_flow', context: 'daily_login' });
+            
+            // Send the login flow
+            await whatsappService.sendFlowMessage(
+              user.whatsappNumber,
+              {
+                flowId: config.getWhatsappConfig().loginFlowId,
+                flowToken: 'unused', // Login flow doesn't need a token
+                header: {
+                  type: 'text',
+                  text: 'Login to MiiMii'
+                },
+                body: 'Please complete the login flow to access your account.',
+                footer: 'Secure login process',
+                flowCta: 'Login Now'
+              }
+            );
+            
+            logger.info('Daily login flow sent to user', {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              flowId: config.getWhatsappConfig().loginFlowId
+            });
             return;
           }
         }
-      } catch (_) {}
+      } catch (error) {
+        logger.error('Failed to send daily login flow', {
+          error: error.message,
+          userId: user.id
+        });
+      }
 
       // If this is a Flow completion (nfm_reply), process immediately (bypass AI)
       if (messageType === 'interactive' && message?.flowResponse?.responseJson) {
@@ -71,6 +81,21 @@ class MessageProcessor {
         const result = await whatsappFlowService.processFlowData(flowData, user.whatsappNumber);
 
         if (result.success) {
+          // Handle login flow completion
+          if (user.conversationState?.context === 'daily_login') {
+            const redisClient = require('../utils/redis');
+            await redisClient.set(`auth:${user.id}`, { ok: true }, 86400);
+            await user.clearConversationState();
+            const whatsappService = require('./whatsapp');
+            await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Login successful! How can I help you today?');
+            
+            logger.info('Daily login completed via flow', {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber
+            });
+            return;
+          }
+          
           // If onboarding just completed, send bank details to user
           const refreshedUser = await userService.getUserById(user.id);
           const walletService = require('./wallet');
