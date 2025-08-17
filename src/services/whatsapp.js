@@ -1411,10 +1411,10 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          throw new Error('Invalid image buffer provided');
        }
        
-       // Check file size (WhatsApp has a 16MB limit)
+       // Check file size (WhatsApp images max 5MB)
        const fileSizeInMB = imageBuffer.length / (1024 * 1024);
-       if (fileSizeInMB > 16) {
-         throw new Error(`Image file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 16MB limit`);
+       if (fileSizeInMB > 5) {
+         throw new Error(`Image file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 5MB limit for images`);
        }
        
        const formData = new FormData();
@@ -1449,6 +1449,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        }
 
        const mediaId = uploadResponse.data.id;
+       logger.info('Media uploaded successfully', { mediaId });
 
        // Step 2: Send message with media ID
        const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
@@ -1466,7 +1467,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          messagePayload.image.caption = caption;
        }
 
-       logger.info('WhatsApp API request details', {
+       logger.info('Sending image message', {
          url: messageUrl,
          payload: messagePayload,
          hasCaption: !!caption,
@@ -1548,10 +1549,10 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          throw new Error('Invalid document buffer provided');
        }
        
-       // Check file size (WhatsApp has a 16MB limit)
+       // Check file size (WhatsApp documents max 100MB)
        const fileSizeInMB = documentBuffer.length / (1024 * 1024);
-       if (fileSizeInMB > 16) {
-         throw new Error(`Document file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 16MB limit`);
+       if (fileSizeInMB > 100) {
+         throw new Error(`Document file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 100MB limit for documents`);
        }
        
        const formData = new FormData();
@@ -1586,6 +1587,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        }
 
        const mediaId = uploadResponse.data.id;
+       logger.info('Document uploaded successfully', { mediaId });
 
        // Step 2: Send message with media ID
        const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
@@ -1603,7 +1605,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          messagePayload.document.caption = caption;
        }
 
-       logger.info('WhatsApp API request details', {
+       logger.info('Sending document message', {
          url: messageUrl,
          payload: messagePayload,
          hasCaption: !!caption,
