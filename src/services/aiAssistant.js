@@ -253,6 +253,16 @@ Should extract:
 And respond with something like:
 "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐"
 
+Example: "Send 100 naira to 6035745691 keystone bank"
+Should extract:
+- amount: 100
+- accountNumber: "6035745691"
+- bankName: "keystone"
+- recipientName: null (will be fetched via name enquiry)
+
+And respond with something like:
+"Great! I can see you want to send ₦100 to Keystone Bank. Let me verify the account details and get the recipient name for you. 🔍"
+
 Example: "Send 4k to 9072874728 Opay Bank"
 Should extract:
 - amount: 4000
@@ -663,7 +673,22 @@ Extract intent and data from this message. Consider the user context and any ext
   async handleBankTransfer(user, extractedData, aiResponse) {
     const { amount, accountNumber, bankName, bankCode } = extractedData;
     
+    // Debug: Log the extracted data
+    logger.info('handleBankTransfer called with extracted data', {
+      extractedData,
+      amount,
+      accountNumber,
+      bankName,
+      bankCode,
+      aiResponse
+    });
+    
     if (!amount || !accountNumber) {
+      logger.warn('Missing required data for bank transfer', {
+        hasAmount: !!amount,
+        hasAccountNumber: !!accountNumber,
+        extractedData
+      });
       return {
         intent: 'bank_transfer',
         message: "To transfer to a bank account, I need the amount, bank name, and account number.\n\n📝 Example: 'Transfer 10000 to GTBank 0123456789' or 'Send 4k to 9072874728 Opay Bank'",
@@ -1702,6 +1727,16 @@ Should extract:
 And respond with something like:
 "Perfect! I can see you want to send ₦5,000 to Abdulkadir Musa at Keystone Bank. That's amazing! Let me help you out - just give me your PIN to authorize your transfer. 🔐"
 
+Example: "Send 100 naira to 6035745691 keystone bank"
+Should extract:
+- amount: 100
+- accountNumber: "6035745691"
+- bankName: "keystone"
+- recipientName: null (will be fetched via name enquiry)
+
+And respond with something like:
+"Great! I can see you want to send ₦100 to Keystone Bank. Let me verify the account details and get the recipient name for you. 🔍"
+
 Example: "Send 4k to 9072874728 Opay Bank"
 Should extract:
 - amount: 4000
@@ -1733,12 +1768,17 @@ Instructions:
 
 Response format:
 {
-  "intent": "balance",
+  "intent": "bank_transfer",
   "confidence": 0.95,
-  "extractedData": {},
-  "response": "I'll check your current balance for you right away! 💰",
-  "suggestedAction": "Show current balance information",
-  "reasoning": "Message contains balance inquiry keywords"
+  "extractedData": {
+    "amount": 100,
+    "accountNumber": "6035745691",
+    "bankName": "keystone",
+    "recipientName": null
+  },
+  "response": "Great! I can see you want to send ₦100 to Keystone Bank. Let me verify the account details and get the recipient name for you. 🔍",
+  "suggestedAction": "Process bank transfer",
+  "reasoning": "Message contains bank transfer keywords and account details"
 }`;
 
       // Log the API key being used for intent analysis
@@ -1784,6 +1824,14 @@ Response format:
       if (analysisText) {
         try {
           const analysis = JSON.parse(analysisText);
+          
+          // Debug: Log the raw AI response
+          logger.info('Raw AI response for intent analysis', {
+            rawResponse: analysisText,
+            parsedAnalysis: analysis,
+            hasExtractedData: !!analysis.extractedData,
+            extractedDataKeys: analysis.extractedData ? Object.keys(analysis.extractedData) : []
+          });
           
           // Fix intent mapping
           if (analysis.intent === 'balance_inquiry') {
@@ -1866,8 +1914,24 @@ Response format:
     }
 
     // Transfer keywords - improved to catch bank transfers
-    if (/(send\s+\d+[k]?\s+to\s+.*\d{8,11}|transfer\s+\d+[k]?\s+to\s+.*\d{8,11}|send\s+\d+[k]?\s+to\s+.*\s+(bank|gtb|access|keystone|opay|test\s+bank)|transfer\s+\d+[k]?\s+to\s+.*\s+(bank|gtb|access|keystone|opay|test\s+bank))/i.test(message)) {
-      return { intent: 'bank_transfer', confidence: 0.9, suggestedAction: 'Initiate bank transfer' };
+    if (/(send\s+\d+[k]?\s+(?:naira\s+)?to\s+.*\d{8,11}|transfer\s+\d+[k]?\s+(?:naira\s+)?to\s+.*\d{8,11}|send\s+\d+[k]?\s+(?:naira\s+)?to\s+.*\s+(bank|gtb|access|keystone|opay|test\s+bank)|transfer\s+\d+[k]?\s+(?:naira\s+)?to\s+.*\s+(bank|gtb|access|keystone|opay|test\s+bank))/i.test(message)) {
+      // Try to extract data from the message
+      const amountMatch = message.match(/(\d+[k]?)/i);
+      const accountMatch = message.match(/(\d{8,11})/);
+      const bankMatch = message.match(/(bank|gtb|access|keystone|opay|test\s+bank)/i);
+      
+      const extractedData = {
+        amount: amountMatch ? amountMatch[1] : null,
+        accountNumber: accountMatch ? accountMatch[1] : null,
+        bankName: bankMatch ? bankMatch[1].toLowerCase() : null
+      };
+      
+      return { 
+        intent: 'bank_transfer', 
+        confidence: 0.9, 
+        extractedData,
+        suggestedAction: 'Initiate bank transfer' 
+      };
     }
 
     if (/(transfer|send)(\s|$)/i.test(message)) {

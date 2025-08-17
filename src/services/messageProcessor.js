@@ -214,19 +214,35 @@ class MessageProcessor {
         case 'transfer':
         case 'send_money':
         case 'bank_transfer':
-          // Use AI assistant's processUserMessage for all transfer types
+          // Use the existing intent analysis result instead of making a new AI call
           const aiAssistant = require('./aiAssistant');
-          const aiResult = await aiAssistant.processUserMessage(user.whatsappNumber, messageContent, messageType);
           
-          if (aiResult.success) {
+          // Debug: Log the intent analysis
+          logger.info('Processing bank transfer with intent analysis', {
+            intent: intentAnalysis.intent,
+            confidence: intentAnalysis.confidence,
+            extractedData: intentAnalysis.extractedData,
+            fullIntentAnalysis: intentAnalysis
+          });
+          
+          const aiResult = await aiAssistant.processIntent(intentAnalysis, user, messageContent);
+          
+          // Debug: Log the processing result
+          logger.info('Bank transfer processing result', {
+            success: !!aiResult,
+            hasMessage: !!aiResult?.message,
+            result: aiResult
+          });
+          
+          if (aiResult && aiResult.message) {
             // Send the AI response to the user
             const whatsappService = require('./whatsapp');
-            await whatsappService.sendTextMessage(user.whatsappNumber, aiResult.result.message);
+            await whatsappService.sendTextMessage(user.whatsappNumber, aiResult.message);
           } else {
             // Handle AI processing error
             const whatsappService = require('./whatsapp');
             await whatsappService.sendTextMessage(user.whatsappNumber, 
-              aiResult.userFriendlyResponse || "I'm having trouble understanding your transfer request. Please try rephrasing it.");
+              "I'm having trouble understanding your transfer request. Please try rephrasing it.");
           }
           return;
           
