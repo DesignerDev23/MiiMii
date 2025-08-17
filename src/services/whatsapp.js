@@ -9,6 +9,7 @@ class WhatsAppService {
     const whatsappConfig = config.getWhatsappConfig();
     this.accessToken = whatsappConfig.accessToken;
     this.phoneNumberId = whatsappConfig.phoneNumberId;
+    this.businessAccountId = whatsappConfig.businessAccountId;
     this.baseURL = `https://graph.facebook.com/v23.0/${this.phoneNumberId}`;
     this.verifyToken = whatsappConfig.webhookSecret; // Changed from webhookVerifyToken to webhookSecret
     this.axiosConfig = axiosConfig;
@@ -1403,62 +1404,24 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          phoneNumberId: this.phoneNumberId
        });
 
-       // Step 1: Upload media to get media ID
-       const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
-       
-       // Validate image buffer
-       if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
-         throw new Error('Invalid image buffer provided');
-       }
+       // Convert buffer to base64 and create data URL
+       const base64Image = imageBuffer.toString('base64');
+       const dataUrl = `data:image/jpeg;base64,${base64Image}`;
        
        // Check file size (WhatsApp images max 5MB)
        const fileSizeInMB = imageBuffer.length / (1024 * 1024);
        if (fileSizeInMB > 5) {
          throw new Error(`Image file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 5MB limit for images`);
        }
-       
-       const formData = new FormData();
-       formData.append('messaging_product', 'whatsapp');
-       formData.append('type', 'image/jpeg');
-       formData.append('file', imageBuffer, {
-         filename: filename,
-         contentType: 'image/jpeg'
-       });
 
-       logger.info('Uploading image to WhatsApp', {
-         uploadUrl,
-         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
-         filename,
-         contentType: 'image/jpeg'
-       });
-
-       const uploadResponse = await axios.post(uploadUrl, formData, {
-         headers: {
-           'Authorization': `Bearer ${this.accessToken}`,
-           ...formData.getHeaders()
-         },
-         ...this.axiosConfig
-       });
-
-       if (!uploadResponse.data.id) {
-         logger.error('WhatsApp upload response missing media ID', {
-           response: uploadResponse.data,
-           status: uploadResponse.status
-         });
-         throw new Error('Failed to upload image to WhatsApp - no media ID returned');
-       }
-
-       const mediaId = uploadResponse.data.id;
-       logger.info('Media uploaded successfully', { mediaId });
-
-       // Step 2: Send message with media ID
+       // Use Meta's suggested approach: send image with URL
        const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
        const messagePayload = {
          messaging_product: 'whatsapp',
          to: formattedNumber,
          type: 'image',
          image: {
-           id: mediaId
+           link: dataUrl
          }
        };
 
@@ -1467,10 +1430,11 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          messagePayload.image.caption = caption;
        }
 
-       logger.info('Sending image message', {
+       logger.info('Sending image message using URL approach', {
          url: messageUrl,
          payload: messagePayload,
          hasCaption: !!caption,
+         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
          authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
        });
 
@@ -1493,7 +1457,6 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        logger.info('WhatsApp image message sent successfully', {
          to: formattedNumber,
          messageId: response.data.messages[0].id,
-         mediaId,
          hasCaption: !!caption
        });
 
@@ -1541,62 +1504,25 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          phoneNumberId: this.phoneNumberId
        });
 
-       // Step 1: Upload media to get media ID
-       const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
-       
-       // Validate document buffer
-       if (!documentBuffer || !Buffer.isBuffer(documentBuffer)) {
-         throw new Error('Invalid document buffer provided');
-       }
+       // Convert buffer to base64 and create data URL
+       const base64Document = documentBuffer.toString('base64');
+       const dataUrl = `data:${contentType};base64,${base64Document}`;
        
        // Check file size (WhatsApp documents max 100MB)
        const fileSizeInMB = documentBuffer.length / (1024 * 1024);
        if (fileSizeInMB > 100) {
          throw new Error(`Document file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 100MB limit for documents`);
        }
-       
-       const formData = new FormData();
-       formData.append('messaging_product', 'whatsapp');
-       formData.append('type', contentType);
-       formData.append('file', documentBuffer, {
-         filename: filename,
-         contentType: contentType
-       });
 
-       logger.info('Uploading document to WhatsApp', {
-         uploadUrl,
-         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
-         filename,
-         contentType
-       });
-
-       const uploadResponse = await axios.post(uploadUrl, formData, {
-         headers: {
-           'Authorization': `Bearer ${this.accessToken}`,
-           ...formData.getHeaders()
-         },
-         ...this.axiosConfig
-       });
-
-       if (!uploadResponse.data.id) {
-         logger.error('WhatsApp upload response missing media ID', {
-           response: uploadResponse.data,
-           status: uploadResponse.status
-         });
-         throw new Error('Failed to upload document to WhatsApp - no media ID returned');
-       }
-
-       const mediaId = uploadResponse.data.id;
-       logger.info('Document uploaded successfully', { mediaId });
-
-       // Step 2: Send message with media ID
+       // Use Meta's suggested approach: send document with URL
        const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
        const messagePayload = {
          messaging_product: 'whatsapp',
          to: formattedNumber,
          type: 'document',
          document: {
-           id: mediaId
+           link: dataUrl,
+           filename: filename
          }
        };
 
@@ -1605,10 +1531,13 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          messagePayload.document.caption = caption;
        }
 
-       logger.info('Sending document message', {
+       logger.info('Sending document message using URL approach', {
          url: messageUrl,
          payload: messagePayload,
          hasCaption: !!caption,
+         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
+         filename,
+         contentType,
          authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
        });
 
@@ -1631,7 +1560,6 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        logger.info('WhatsApp document message sent successfully', {
          to: formattedNumber,
          messageId: response.data.messages[0].id,
-         mediaId,
          hasCaption: !!caption
        });
 
