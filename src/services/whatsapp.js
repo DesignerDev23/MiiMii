@@ -286,8 +286,13 @@ class WhatsAppService {
           flow_cta: flowData.flowCta || 'Complete Onboarding',
           flow_action: flowData.flowAction || 'navigate',
           flow_action_payload: flowData.flowActionPayload || {
-            screen: 'QUESTION_ONE',
-            data: {}
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              transfer_amount: flowData.transferAmount || '',
+              recipient_name: flowData.recipientName || '',
+              bank_name: flowData.bankName || '',
+              account_number: flowData.accountNumber || ''
+            }
           }
         }
       }

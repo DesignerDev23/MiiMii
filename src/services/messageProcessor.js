@@ -249,7 +249,11 @@ class MessageProcessor {
                 },
                 body: `Please enter your 4-digit PIN to complete the transfer of ₦${state.data.amount.toLocaleString()} to ${state.data.recipientName}.`,
                 footer: 'Secure transfer verification',
-                flowCta: 'Enter PIN'
+                flowCta: 'Enter PIN',
+                transferAmount: state.data.amount.toString(),
+                recipientName: state.data.recipientName,
+                bankName: state.data.bankName,
+                accountNumber: state.data.accountNumber
               }
             );
             
