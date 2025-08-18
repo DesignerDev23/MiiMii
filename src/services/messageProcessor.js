@@ -27,49 +27,7 @@ class MessageProcessor {
         // Non-fatal
       }
 
-      // Daily login: if user onboarded, require login via WhatsApp Flow once every 24h
-      try {
-        const redisClient = require('../utils/redis');
-        if (user.onboardingStep === 'completed') {
-          const sessionKey = `auth:${user.id}`;
-          const hasSession = await redisClient.get(sessionKey);
-          if (!hasSession && user.conversationState?.awaitingInput !== 'login_flow') {
-            // Send login flow instead of manual PIN entry
-            const config = require('../config');
-            const whatsappService = require('./whatsapp');
-            
-            await user.updateConversationState({ awaitingInput: 'login_flow', context: 'daily_login' });
-            
-            // Send the login flow
-            await whatsappService.sendFlowMessage(
-              user.whatsappNumber,
-              {
-                flowId: config.getWhatsappConfig().loginFlowId,
-                flowToken: 'unused', // Login flow doesn't need a token
-                header: {
-                  type: 'text',
-                  text: 'Login to MiiMii'
-                },
-                body: 'Please complete the login flow to access your account.',
-                footer: 'Secure login process',
-                flowCta: 'Login Now'
-              }
-            );
-            
-            logger.info('Daily login flow sent to user', {
-              userId: user.id,
-              phoneNumber: user.whatsappNumber,
-              flowId: config.getWhatsappConfig().loginFlowId
-            });
-              return;
-            }
-        }
-      } catch (error) {
-        logger.error('Failed to send daily login flow', {
-          error: error.message,
-          userId: user.id
-        });
-      }
+      // Daily login check will be moved to after transfer conversation handling
 
       // If this is a Flow completion (nfm_reply), process immediately (bypass AI)
       if (messageType === 'interactive' && message?.flowResponse?.responseJson) {
@@ -258,10 +216,19 @@ class MessageProcessor {
             }
             
             // Update state to wait for flow completion
-            await user.updateConversationState({ 
+            const finalState = { 
               ...updatedState,
               awaitingInput: 'transfer_pin_flow', 
               context: 'transfer_pin_verification'
+            };
+            
+            await user.updateConversationState(finalState);
+            
+            logger.info('Transfer conversation state updated for flow', {
+              userId: user.id,
+              finalState,
+              hasTransferData: !!finalState.data,
+              transferDataKeys: finalState.data ? Object.keys(finalState.data) : []
             });
             
             // Send the transfer PIN flow
@@ -301,7 +268,9 @@ class MessageProcessor {
               phoneNumber: user.whatsappNumber,
               flowId: config.getWhatsappConfig().transferPinFlowId,
               transferAmount: state.data.amount,
-              recipientName: state.data.recipientName
+              recipientName: state.data.recipientName,
+              flowToken: flowToken,
+              sessionStored: true
             });
             return;
           }
@@ -470,6 +439,51 @@ class MessageProcessor {
           
           // If AI couldn't determine intent, try traditional processing
           return await this.processMessageByType(user, userName, message, messageType, messageId);
+      }
+
+      // Daily login: if user onboarded, require login via WhatsApp Flow once every 24h
+      // Only check if no other conversation was handled and user is not in a transfer conversation
+      if (user.onboardingStep === 'completed' && messageType === 'text' && !messageContent?.toLowerCase().includes('start') && user.conversationState?.intent !== 'bank_transfer') {
+        try {
+          const redisClient = require('../utils/redis');
+          const sessionKey = `auth:${user.id}`;
+          const hasSession = await redisClient.get(sessionKey);
+          if (!hasSession && user.conversationState?.awaitingInput !== 'login_flow') {
+            // Send login flow instead of manual PIN entry
+            const config = require('../config');
+            const whatsappService = require('./whatsapp');
+            
+            await user.updateConversationState({ awaitingInput: 'login_flow', context: 'daily_login' });
+            
+            // Send the login flow
+            await whatsappService.sendFlowMessage(
+              user.whatsappNumber,
+              {
+                flowId: config.getWhatsappConfig().loginFlowId,
+                flowToken: 'unused', // Login flow doesn't need a token
+                header: {
+                  type: 'text',
+                  text: 'Login to MiiMii'
+                },
+                body: 'Please complete the login flow to access your account.',
+                footer: 'Secure login process',
+                flowCta: 'Login Now'
+              }
+            );
+            
+            logger.info('Daily login flow sent to user', {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              flowId: config.getWhatsappConfig().loginFlowId
+            });
+            return;
+          }
+        } catch (error) {
+          logger.error('Failed to send daily login flow', {
+            error: error.message,
+            userId: user.id
+          });
+        }
       }
 
     } catch (error) {
