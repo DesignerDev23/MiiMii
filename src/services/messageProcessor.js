@@ -236,13 +236,23 @@ class MessageProcessor {
             const flowToken = whatsappFlowService.generateFlowToken(user.id);
             
             // Store session mapping in Redis for 30 minutes
+            const sessionData = {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              context: 'transfer_pin_verification',
+              transferData: state.data
+            };
+            
             try {
-              await redisClient.setSession(`flow:${flowToken}`, {
+              const sessionKey = `flow:${flowToken}`;
+              const stored = await redisClient.setSession(sessionKey, sessionData, 1800);
+              logger.info('Flow session stored in Redis', { 
+                sessionKey, 
+                stored, 
                 userId: user.id,
-                phoneNumber: user.whatsappNumber,
-                context: 'transfer_pin_verification',
-                transferData: state.data
-              }, 1800);
+                hasTransferData: !!state.data,
+                transferDataKeys: Object.keys(state.data || {})
+              });
             } catch (error) {
               logger.error('Failed to store flow session', { error: error.message, userId: user.id });
             }
@@ -267,6 +277,18 @@ class MessageProcessor {
                 body: `Please enter your 4-digit PIN to complete the transfer of ₦${state.data.amount.toLocaleString()} to ${state.data.recipientName}.`,
                 footer: 'Secure transfer verification',
                 flowCta: 'Enter PIN',
+                flowAction: 'navigate',
+                flowActionPayload: {
+                  screen: 'PIN_VERIFICATION_SCREEN',
+                  data: {
+                    transfer_amount: state.data.amount.toString(),
+                    recipient_name: state.data.recipientName,
+                    bank_name: state.data.bankName,
+                    account_number: state.data.accountNumber,
+                    user_id: user.id,
+                    phone_number: user.whatsappNumber
+                  }
+                },
                 transferAmount: state.data.amount.toString(),
                 recipientName: state.data.recipientName,
                 bankName: state.data.bankName,

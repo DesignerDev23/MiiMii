@@ -556,7 +556,8 @@ async function processFlowRequest(requestData) {
 
     logger.info('Verifying flow token', { 
       tokenLength: flow_token.length,
-      tokenPrefix: flow_token.substring(0, 10) + '...'
+      tokenPrefix: flow_token.substring(0, 10) + '...',
+      fullToken: flow_token
     });
     
     const tokenData = whatsappFlowService.verifyFlowToken(flow_token);
@@ -617,14 +618,27 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
     if (!userId && flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const session = await redisClient.getSession(`flow:${flowToken}`);
+        const sessionKey = `flow:${flowToken}`;
+        logger.info('Looking up session in Redis', { sessionKey, flowToken });
+        const session = await redisClient.getSession(sessionKey);
         if (session) {
           userId = session.userId || userId;
           phoneNumber = session.phoneNumber || phoneNumber;
           // Store session data for use in screen handlers
           tokenData.sessionData = session;
+          logger.info('Session found in Redis', { 
+            sessionKey, 
+            hasUserId: !!session.userId, 
+            hasPhoneNumber: !!session.phoneNumber,
+            hasTransferData: !!session.transferData,
+            sessionKeys: Object.keys(session)
+          });
+        } else {
+          logger.warn('No session found in Redis', { sessionKey, flowToken });
         }
-      } catch (_) {}
+      } catch (error) {
+        logger.error('Error looking up session in Redis', { error: error.message, flowToken });
+      }
     }
 
     if (!userId && phoneNumber) {
@@ -638,7 +652,11 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
       tokenData,
       flowId: tokenData.flowId,
       source: tokenData.source,
-      dataKeys: Object.keys(data || {})
+      dataKeys: Object.keys(data || {}),
+      hasSessionData: !!tokenData.sessionData,
+      sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+      userId,
+      phoneNumber
     });
 
     // Process based on screen
@@ -1019,7 +1037,11 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       flowId: tokenData.flowId || 'unknown',
       source: tokenData.source || 'unknown',
       pinLength: pin.length,
-      hasPin: !!pin
+      hasPin: !!pin,
+      hasSessionData: !!tokenData.sessionData,
+      sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+      dataKeys: Object.keys(data || {}),
+      flowToken: flowToken
     });
 
     // For WhatsApp Flow, we need to process the transfer here

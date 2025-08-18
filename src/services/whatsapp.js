@@ -304,9 +304,11 @@ class WhatsAppService {
       flowIdType: typeof flowData.flowId,
       flowIdLength: flowData.flowId ? flowData.flowId.length : 0,
       flowTokenLength: flowData.flowToken ? flowData.flowToken.length : 0,
+      flowToken: flowData.flowToken,
       interactiveType: interactive.type,
       actionName: interactive.action.name,
       parameters: interactive.action.parameters,
+      flowActionPayload: interactive.action.parameters.flow_action_payload,
       phoneNumberId: this.phoneNumberId,
       environment: process.env.NODE_ENV
     });
