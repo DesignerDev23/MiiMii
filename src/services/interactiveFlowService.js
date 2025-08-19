@@ -15,7 +15,8 @@ class InteractiveFlowService {
         main_menu: this.createMainServiceMenuFlow(),
         money_transfer: this.createMoneyTransferFlow(),
         bill_payment: this.createBillPaymentFlow(),
-        airtime_data: this.createAirtimeDataFlow()
+        airtime_data: this.createAirtimeDataFlow(),
+        data_purchase: this.createDataPurchaseFlow()
       },
       support: {
         help_center: this.createHelpCenterFlow(),
@@ -321,6 +322,19 @@ class InteractiveFlowService {
           message.buttonText,
           message.sections
         );
+      }
+    };
+  }
+
+  createDataPurchaseFlow() {
+    return {
+      id: 'data_purchase_flow',
+      name: 'Data Purchase',
+      description: 'Interactive data bundle purchase',
+      handler: async (phoneNumber, userData, flowData) => {
+        // Send the data purchase flow
+        const whatsappService = require('./whatsapp');
+        return await whatsappService.sendDataPurchaseFlow(phoneNumber, userData);
       }
     };
   }

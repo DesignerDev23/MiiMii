@@ -1859,8 +1859,19 @@ Response format:
       
       if (status === 401) {
         logger.error('🔑 AI_API_KEY is invalid or expired for intent analysis');
+        this.isConfigured = false; // Disable AI for future requests
       } else if (status === 429) {
         logger.warn('⚠️ Rate limit exceeded during intent analysis');
+        // Don't disable AI for rate limits, just use fallback
+      }
+      
+      // Return fallback analysis and disable AI temporarily for rate limits
+      if (status === 429) {
+        this.isConfigured = false;
+        setTimeout(() => {
+          this.isConfigured = true;
+          logger.info('Re-enabling AI analysis after rate limit cooldown');
+        }, 60000); // 1 minute cooldown
       }
       
       return this.basicIntentAnalysis(message);
@@ -1872,6 +1883,16 @@ Response format:
    */
   basicIntentAnalysis(message) {
     const lowerMessage = (message || '').toLowerCase();
+
+    // Handle common responses in flows
+    if (['yes', 'no', 'cancel', 'ok', 'okay', 'confirm', 'proceed'].includes(lowerMessage)) {
+      return { 
+        intent: 'unknown', 
+        confidence: 0.5, 
+        suggestedAction: 'Ask for clarification',
+        response: "I'm not sure what you'd like to do. Could you please tell me what you need help with? You can say things like:\n\n• Check balance\n• Send money\n• Buy airtime\n• Buy data\n• Pay bills\n• View transactions"
+      };
+    }
 
     // Highest priority: explicit account details requests
     if (/(virtual\s+account|account\s+(details|detail|info|information|number|no)|bank\s+details)/i.test(message)) {

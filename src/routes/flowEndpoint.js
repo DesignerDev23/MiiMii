@@ -657,6 +657,25 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
       return result;
     }
 
+    // Handle data purchase PIN verification
+    if (screen === 'PIN_VERIFICATION_SCREEN' && data.network && data.phoneNumber && data.dataPlan) {
+      const result = await handleDataPurchaseScreen(data, tokenData.userId, tokenData, flowToken);
+      
+      // If data purchase was successful, return completion response
+      if (result.data?.success) {
+        return {
+          screen: 'COMPLETION_SCREEN',
+          data: {
+            success: true,
+            message: 'Data purchase completed successfully!'
+          }
+        };
+      }
+      
+      // If there was an error, return error response
+      return result;
+    }
+
     // For other terminal flows, return success response
     return {
       screen: screen,
@@ -1028,6 +1047,122 @@ async function handlePinSetupScreen(data, userId, tokenData = {}) {
       }
     };
   }
+}
+
+/**
+ * Handle data purchase screen (PIN verification)
+ */
+async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken = null) {
+  try {
+    const { network, phoneNumber, dataPlan, pin, confirm } = data;
+
+    // Check if user confirmed the purchase
+    if (confirm !== 'yes') {
+      return {
+        screen: 'CONFIRMATION_SCREEN',
+        data: {
+          error: 'Purchase was not confirmed. Please try again.',
+          validation: {
+            confirm: 'Please confirm the purchase to proceed'
+          }
+        }
+      };
+    }
+
+    // Validate PIN format
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: {
+          error: 'Please enter exactly 4 digits for your PIN.',
+          validation: {
+            pin: 'PIN must be exactly 4 digits'
+          }
+        }
+      };
+    }
+
+    // Get user
+    const userService = require('../services/user');
+    const user = await userService.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Validate user PIN
+    await userService.validateUserPin(userId, pin);
+
+    // Process data purchase using Bilal service
+    const bilalService = require('../services/bilal');
+    const dataPurchaseData = {
+      phoneNumber,
+      network,
+      dataPlan: { id: dataPlan, price: getDataPlanPrice(dataPlan) },
+      pin
+    };
+
+    const result = await bilalService.purchaseData(user, dataPurchaseData, user.whatsappNumber);
+
+    if (result.success) {
+      logger.info('Data purchase successful via flow', {
+        userId: user.id,
+        network,
+        phoneNumber,
+        dataPlan,
+        reference: result.data?.['request-id']
+      });
+
+      // Clear conversation state and session
+      await user.clearConversationState();
+
+      // Clean up flow session
+      if (flowToken) {
+        try {
+          const redisClient = require('../utils/redis');
+          await redisClient.deleteSession(`flow:${flowToken}`);
+          logger.info('Flow session cleaned up successfully', { flowToken });
+        } catch (error) {
+          logger.warn('Failed to cleanup flow session', { error: error.message });
+        }
+      }
+
+      return {
+        data: {
+          success: true,
+          message: 'Data purchase completed successfully!'
+        }
+      };
+    } else {
+      throw new Error(result.message || 'Data purchase failed');
+    }
+
+  } catch (error) {
+    logger.error('Data purchase processing failed', { error: error.message });
+    return {
+      screen: 'PIN_VERIFICATION_SCREEN',
+      data: {
+        error: `Data purchase failed: ${error.message}`,
+        code: 'PURCHASE_ERROR'
+      }
+    };
+  }
+}
+
+/**
+ * Get data plan price from plan ID
+ */
+function getDataPlanPrice(planId) {
+  const planPrices = {
+    '100MB-100': 100,
+    '500MB-200': 200,
+    '1GB-300': 300,
+    '2GB-500': 500,
+    '1GB-500': 500,
+    '2GB-1000': 1000,
+    '3GB-1500': 1500,
+    '5GB-2500': 2500
+  };
+  return planPrices[planId] || 1000; // Default fallback
 }
 
 /**

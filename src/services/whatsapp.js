@@ -1669,6 +1669,40 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
    }
 
    /**
+    * Send data purchase flow
+    * @param {string} phoneNumber - The recipient phone number
+    * @param {Object} userData - User data for flow token generation
+    * @returns {Promise<Object>} - Response from WhatsApp API
+    */
+   async sendDataPurchaseFlow(phoneNumber, userData = {}) {
+     try {
+       const flowService = require('./whatsappFlowService');
+       
+       const flowData = {
+         flowToken: await flowService.generateFlowToken({
+           userId: userData.id,
+           flowId: 'data_purchase',
+           source: 'whatsapp',
+           userPhone: phoneNumber
+         }),
+         flowId: process.env.DATA_PURCHASE_FLOW_ID || 'data_purchase_flow',
+         flowCta: 'Buy Data',
+         header: {
+           type: 'text',
+           text: '📶 Buy Data'
+         },
+         body: 'Purchase data bundles for yourself or gift to friends and family. Select network, phone number, and plan.',
+         footer: 'Secure payment via your MiiMii wallet'
+       };
+
+       return await this.sendFlowMessage(phoneNumber, flowData);
+     } catch (error) {
+       logger.error('Failed to send data purchase flow', { error: error.message, phoneNumber });
+       throw error;
+     }
+   }
+
+   /**
     * Get current public key from WhatsApp Business API
     * @param {string} phoneNumberId - The phone number ID
     * @returns {Promise<Object>} - Response from WhatsApp API

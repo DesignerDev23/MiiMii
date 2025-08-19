@@ -409,6 +409,14 @@ class MessageProcessor {
           return await this.handleTransactionHistoryIntent(user, message, messageType, messageId);
           
         default:
+          // Handle unknown intent with helpful response
+          if (aiResponse.intent === 'unknown') {
+            const whatsappService = require('./whatsapp');
+            await whatsappService.sendTextMessage(user.whatsappNumber, 
+              aiResponse.response || "I'm not sure what you'd like to do. Here are some things I can help you with:\n\n💰 Check balance\n💸 Send money\n📱 Buy airtime\n📶 Buy data\n⚡ Pay bills\n📊 View transactions\n\nJust tell me what you need!");
+            return;
+          }
+          
           // Check if user is awaiting PIN verification
           if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
             logger.info('PIN verification detected in main switch', {
@@ -2258,28 +2266,21 @@ class MessageProcessor {
       return;
     }
 
-    // Process the data request directly since AI has already analyzed it
-    const aiAssistant = require('./aiAssistant');
-    
+    // Send data purchase flow
     try {
-      // Extract data from the message
-      const extractedData = {
-        amount: aiAssistant.extractAmount(message.text || message.content),
-        phoneNumber: aiAssistant.extractPhoneNumber(message.text || message.content),
-        network: aiAssistant.detectNetwork(aiAssistant.extractPhoneNumber(message.text || message.content) || user.whatsappNumber)
-      };
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendDataPurchaseFlow(user.whatsappNumber, user);
       
-      // Process the data purchase
-      const result = await aiAssistant.handleDataPurchase(user, extractedData, { intent: 'data' });
-      
-      // Don't send message here as bilal service already handles it
-      // The result.message will be null if receipt was sent successfully
+      logger.info('Data purchase flow sent to user', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
     } catch (error) {
-      logger.error('Data purchase failed', { error: error.message, userId: user.id });
+      logger.error('Failed to send data purchase flow', { error: error.message, userId: user.id });
       
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "❌ Data purchase failed!\n\nReason: " + error.message + "\n\nPlease try again or contact support.");
+        "❌ Failed to start data purchase flow!\n\nPlease try again or contact support.");
     }
   }
 
@@ -2335,7 +2336,7 @@ class MessageProcessor {
    * Handle menu intent
    */
   async handleMenuIntent(user, message, messageType) {
-    const menuMessage = `📋 *MiiMii Services Menu*\n\n💰 *Money*\n• Check balance\n• Send money\n• Transaction history\n\n📱 *Airtime & Data*\n• Buy airtime\n• Buy data bundles\n\n�� *Bills & Utilities*\n• Pay electricity\n• Pay water\n• Pay other bills\n\n📊 *Account*\n• Account details\n• Virtual account info\n\n❓ *Support*\n• Get help\n• Contact support\n\nJust say what you need!`;
+    const menuMessage = `📋 *MiiMii Services Menu*\n\n💰 *Money*\n• Check balance\n• Send money\n• Transaction history\n\n📱 *Airtime & Data*\n• Buy airtime\n• Buy data bundles\n• Data subscriptions\n\n�� *Bills & Utilities*\n• Pay electricity\n• Pay water\n• Pay other bills\n\n📊 *Account*\n• Account details\n• Virtual account info\n\n❓ *Support*\n• Get help\n• Contact support\n\nJust say what you need!`;
     
     const whatsappService = require('./whatsapp');
     await whatsappService.sendTextMessage(user.whatsappNumber, menuMessage);
