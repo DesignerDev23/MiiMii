@@ -1136,45 +1136,49 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
     // Validate user PIN
     await userService.validateUserPin(userId, pin);
 
-    // Process data purchase using Bilal service
-    const bilalService = require('../services/bilal');
-    const dataPurchaseData = {
-      phoneNumber,
-      network,
-      dataPlan: { id: dataPlan, price: getDataPlanPrice(dataPlan) },
-      pin
+    // Store the PIN and data purchase data for background processing
+    const processingData = {
+      userId: user.id,
+      pin: pin,
+      dataPurchaseData: {
+        phoneNumber,
+        network,
+        dataPlan: { id: dataPlan, price: getDataPlanPrice(dataPlan) }
+      },
+      flowToken: flowToken,
+      timestamp: Date.now()
     };
-
-    const result = await bilalService.purchaseData(user, dataPurchaseData, user.whatsappNumber);
-
-    if (result.success) {
-      logger.info('Data purchase successful via flow', {
-        userId: user.id,
+    
+    // Store in Redis for background processing (5 minute TTL)
+    const redisClient = require('../utils/redis');
+    const processingKey = `data_purchase_processing:${user.id}:${Date.now()}`;
+    await redisClient.setSession(processingKey, processingData, 300);
+    
+    logger.info('Data purchase data stored for background processing', {
+      userId: user.id,
+      processingKey,
+      dataPurchaseData: {
         network,
         phoneNumber,
-        dataPlan,
-        reference: result.data?.['request-id']
-      });
-
-      // Clear conversation state and session
-      await user.clearConversationState();
-
-      // Clean up flow session
-      if (flowToken) {
-        try {
-          const redisClient = require('../utils/redis');
-          await redisClient.deleteSession(`flow:${flowToken}`);
-          logger.info('Flow session cleaned up successfully', { flowToken });
-        } catch (error) {
-          logger.warn('Failed to cleanup flow session', { error: error.message });
-        }
+        dataPlan
       }
-
-      // Return empty response to close terminal flow
-      return {};
-    } else {
-      throw new Error(result.message || 'Data purchase failed');
+    });
+    
+    // Clean up flow session
+    if (flowToken) {
+      try {
+        await redisClient.deleteSession(`flow:${flowToken}`);
+        logger.info('Flow session cleaned up successfully', { flowToken });
+      } catch (error) {
+        logger.warn('Failed to cleanup flow session', { error: error.message });
+      }
     }
+    
+    // Process the data purchase in the background
+    processDataPurchaseInBackground(processingKey, processingData);
+    
+    // Return empty response to close terminal flow immediately
+    return {};
 
   } catch (error) {
     logger.error('Data purchase processing failed', { error: error.message });
@@ -1185,6 +1189,123 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
         code: 'PURCHASE_ERROR'
       }
     };
+  }
+}
+
+/**
+ * Process data purchase in background after flow closes
+ */
+async function processDataPurchaseInBackground(processingKey, processingData) {
+  try {
+    const { userId, pin, dataPurchaseData, flowToken } = processingData;
+    
+    logger.info('Starting background data purchase processing', {
+      userId,
+      processingKey,
+      dataPurchaseData: {
+        network: dataPurchaseData.network,
+        phoneNumber: dataPurchaseData.phoneNumber,
+        dataPlan: dataPurchaseData.dataPlan.id
+      }
+    });
+    
+    // Get user and process data purchase
+    const userService = require('../services/user');
+    const bilalService = require('../services/bilal');
+    const whatsappService = require('../services/whatsapp');
+    
+    const user = await userService.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found for background data purchase processing');
+    }
+    
+    // Process the data purchase
+    const result = await bilalService.purchaseData(user, dataPurchaseData, user.whatsappNumber);
+    
+    if (result.success) {
+      logger.info('Background data purchase processed successfully', {
+        userId: user.id,
+        network: dataPurchaseData.network,
+        phoneNumber: dataPurchaseData.phoneNumber,
+        dataPlan: dataPurchaseData.dataPlan.id,
+        reference: result.data?.['request-id']
+      });
+      
+      // Clear conversation state
+      await user.clearConversationState();
+      
+      // Send success messages via WhatsApp
+      const successMessage = `✅ *Data Purchase Successful!*\n\n` +
+                            `📱 Network: ${dataPurchaseData.network}\n` +
+                            `📞 Phone: ${dataPurchaseData.phoneNumber}\n` +
+                            `📦 Plan: ${dataPurchaseData.dataPlan.id}\n` +
+                            `💰 Amount: ₦${dataPurchaseData.dataPlan.price.toLocaleString()}\n` +
+                            `📋 Reference: ${result.data?.['request-id']}\n` +
+                            `📅 Date: ${new Date().toLocaleString('en-GB')}\n\n` +
+                            `Your data has been purchased successfully! 🎉`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+      
+      logger.info('Data purchase success message sent via WhatsApp', {
+        userId: user.id,
+        reference: result.data?.['request-id']
+      });
+      
+    } else {
+      logger.error('Background data purchase failed', {
+        userId: user.id,
+        error: result.message,
+        dataPurchaseData
+      });
+      
+      // Send error message via WhatsApp
+      const errorMessage = `❌ Data purchase failed: ${result.message || 'Unknown error'}\n\nPlease try again or contact support.`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+      
+      logger.info('Data purchase error message sent via WhatsApp', {
+        userId: user.id,
+        error: result.message
+      });
+    }
+    
+    // Clean up processing data
+    const redisClient = require('../utils/redis');
+    await redisClient.deleteSession(processingKey);
+    
+    logger.info('Background data purchase processing completed', {
+      userId,
+      processingKey,
+      success: result.success
+    });
+    
+  } catch (error) {
+    logger.error('Background data purchase processing failed', {
+      processingKey,
+      error: error.message,
+      processingData
+    });
+    
+    // Try to send error message to user
+    try {
+      const userService = require('../services/user');
+      const whatsappService = require('../services/whatsapp');
+      
+      const user = await userService.getUserById(processingData.userId);
+      if (user) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, "❌ Data purchase processing failed. Please try again or contact support.");
+      }
+    } catch (sendError) {
+      logger.error('Failed to send error message to user', { error: sendError.message });
+    }
+    
+    // Clean up processing data
+    try {
+      const redisClient = require('../utils/redis');
+      await redisClient.deleteSession(processingKey);
+    } catch (cleanupError) {
+      logger.warn('Failed to cleanup processing data on error', { error: cleanupError.message });
+    }
   }
 }
 
@@ -1264,43 +1385,18 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
   try {
     const pin = data.pin;
     
-    // Add request deduplication to prevent multiple processing
-    const requestId = `${userId}-${flowToken}-${Date.now()}`;
-    const redisClient = require('../utils/redis');
-    const processingKey = `processing:${requestId}`;
-    
-    // Check if this request is already being processed
-    const isProcessing = await redisClient.getSession(processingKey);
-    if (isProcessing) {
-      logger.warn('Duplicate transfer PIN request detected, skipping', {
-        userId,
-        flowToken,
-        requestId
-      });
-              return {
-          screen: 'PIN_VERIFICATION_SCREEN',
-          data: {
-            error: 'Request already being processed. Please wait.',
-            error_message: 'Duplicate request detected'
-          }
-        };
-    }
-    
-    // Mark this request as being processed (5 minute TTL)
-    await redisClient.setSession(processingKey, { processing: true, timestamp: Date.now() }, 300);
-
     // Validate PIN format
     if (!pin || !/^\d{4}$/.test(pin)) {
-                             return {
-           screen: 'PIN_VERIFICATION_SCREEN',
-           data: {
-             error: 'Please enter exactly 4 digits for your PIN.',
-             validation: {
-               pin: 'PIN must be exactly 4 digits'
-             },
-             retry: true
-           }
-         };
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: {
+          error: 'Please enter exactly 4 digits for your PIN.',
+          validation: {
+            pin: 'PIN must be exactly 4 digits'
+          },
+          retry: true
+        }
+      };
     }
 
     logger.info('Transfer PIN received from Flow', {
@@ -1311,15 +1407,12 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       hasPin: !!pin,
       hasSessionData: !!tokenData.sessionData,
       sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
-      sessionData: tokenData.sessionData,
       dataKeys: Object.keys(data || {}),
       flowToken: flowToken
     });
 
-    // For WhatsApp Flow, we need to process the transfer here
     // Get the user from the flow token or phone number
     const userService = require('../services/user');
-    const bankTransferService = require('../services/bankTransfer');
     
     let user = null;
     
@@ -1349,7 +1442,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       };
     }
     
-    // Get the transfer data from session data or user's conversation state
+    // Get the transfer data from session data or flow action payload
     let transferData = null;
     
     // First try to get from session data (preferred for flows)
@@ -1361,46 +1454,34 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         dataKeys: Object.keys(transferData || {})
       });
     } else {
-      // Fallback to conversation state
-      const conversationState = user.conversationState;
-      if (!conversationState || conversationState.context !== 'transfer_pin_verification') {
-        logger.error('No transfer context found for user', {
-          userId: user.id,
-          hasConversationState: !!conversationState,
-          context: conversationState?.context,
-          sessionData: tokenData.sessionData
-        });
+      // Try to get transfer data from flow action payload if available
+      if (data && (data.transfer_amount || data.recipient_name)) {
+        transferData = {
+          amount: parseFloat(data.transfer_amount) || 0,
+          recipientName: data.recipient_name || 'Recipient',
+          bankName: data.bank_name || 'Unknown Bank',
+          accountNumber: data.account_number || '',
+          bankCode: data.bank_code || '',
+          narration: 'Wallet transfer',
+          reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+        };
         
-        // Try to get transfer data from flow action payload if available
-        if (data && (data.transfer_amount || data.recipient_name)) {
-          transferData = {
-            amount: parseFloat(data.transfer_amount) || 0,
-            recipientName: data.recipient_name || 'Recipient',
-            bankName: data.bank_name || 'Unknown Bank',
-            accountNumber: data.account_number || '',
-            bankCode: data.bank_code || '',
-            narration: 'Wallet transfer',
-            reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
-          };
-          
-          logger.info('Using transfer data from flow action payload', {
-            userId: user.id,
-            transferData,
-            dataKeys: Object.keys(data || {})
-          });
-        } else {
-                                     return {
-           screen: 'PIN_VERIFICATION_SCREEN',
-           data: {
-             error: 'Transfer session expired. Please try again.',
-             error_message: 'Transfer context not found'
-           }
-         };
-        }
+        logger.info('Using transfer data from flow action payload', {
+          userId: user.id,
+          transferData,
+          dataKeys: Object.keys(data || {})
+        });
       } else {
-        transferData = conversationState.data;
+        return {
+          screen: 'PIN_VERIFICATION_SCREEN',
+          data: {
+            error: 'Transfer session expired. Please try again.',
+            error_message: 'Transfer context not found'
+          }
+        };
       }
     }
+    
     if (!transferData || !transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
       logger.error('Missing transfer data for PIN verification', {
         userId: user.id,
@@ -1408,144 +1489,67 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         dataKeys: transferData ? Object.keys(transferData) : []
       });
       
-                                 return {
-           screen: 'PIN_VERIFICATION_SCREEN',
-           data: {
-             error: 'Transfer details not found. Please try again.',
-             error_message: 'Missing transfer information'
-           }
-         };
-    }
-    
-    try {
-      // Process the bank transfer
-      const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
-      
-      if (result.success) {
-        logger.info('Transfer processed successfully via flow', {
-          userId: user.id,
-          reference: result.transaction?.reference,
-          amount: transferData.amount
-        });
-        
-        // Clear conversation state and session
-        await user.clearConversationState();
-        
-        // Clean up flow session and processing key
-        if (flowToken) {
-          try {
-            const redisClient = require('../utils/redis');
-            await redisClient.deleteSession(`flow:${flowToken}`);
-            await redisClient.deleteSession(processingKey);
-            logger.info('Flow session cleaned up successfully', { flowToken });
-          } catch (error) {
-            logger.warn('Failed to cleanup flow session', { error: error.message });
-          }
-        }
-        
-        // Return empty response to close terminal flow
-        const successResponse = {};
-        
-        logger.info('Returning empty response to close terminal flow', {
-          userId: user.id,
-          transferData: {
-            amount: transferData.amount,
-            recipientName: transferData.recipientName,
-            reference: result.transaction?.reference
-          }
-        });
-        
-        // Add additional logging for debugging
-        logger.info('Flow response structure for terminal flow', {
-          hasScreen: !!successResponse.screen,
-          hasData: !!successResponse.data,
-          responseType: 'empty_response_to_close'
-        });
-        
-        return successResponse;
-      } else {
-        logger.error('Transfer failed via flow', {
-          userId: user.id,
-          error: result.message,
-          transferData
-        });
-        
-              // Clean up flow session and processing key on error
-        if (flowToken) {
-          try {
-            const redisClient = require('../utils/redis');
-            await redisClient.deleteSession(`flow:${flowToken}`);
-            await redisClient.deleteSession(processingKey);
-          } catch (error) {
-            logger.warn('Failed to cleanup flow session on error', { error: error.message });
-          }
-        }
-        
-        return {
-          screen: 'PIN_VERIFICATION_SCREEN',
-          data: {
-            error: result.message || 'Transfer failed. Please try again.',
-            error_message: result.message || 'Transfer processing failed',
-            retry: true
-          }
-        };
-      }
-    } catch (error) {
-      logger.error('Transfer processing failed via flow', {
-        userId: user.id,
-        error: error.message,
-        transferData
-      });
-      
-      // Provide user-friendly error messages
-      let errorMessage = "❌ Transfer failed. Try again or contact support";
-      
-      if (error.message.includes('Insufficient')) {
-        errorMessage = error.message;
-      } else if (error.message.includes('Failed To Fecth Account Info')) {
-        errorMessage = "❌ Account not found. Check the account number and bank name";
-      } else if (error.message.includes('could not be found in')) {
-        errorMessage = error.message;
-      } else if (error.message.includes('Invalid bank account')) {
-        errorMessage = "❌ Invalid account details. Check account number and bank name";
-      } else if (error.message.includes('Transfer limit')) {
-        errorMessage = "❌ Transfer limit exceeded. Try a smaller amount";
-      } else if (error.message.includes('PIN')) {
-        errorMessage = "❌ Wrong PIN. Check and try again";
-      }
-      
-      // Clean up flow session and processing key on error
-      if (flowToken) {
-        try {
-          const redisClient = require('../utils/redis');
-          await redisClient.deleteSession(`flow:${flowToken}`);
-          await redisClient.deleteSession(processingKey);
-        } catch (cleanupError) {
-          logger.warn('Failed to cleanup flow session on error', { error: cleanupError.message });
-        }
-      }
-      
       return {
         screen: 'PIN_VERIFICATION_SCREEN',
         data: {
-          error: errorMessage,
-          error_message: error.message
+          error: 'Transfer details not found. Please try again.',
+          error_message: 'Missing transfer information'
         }
       };
     }
+    
+    // Store the PIN and transfer data for background processing
+    const processingData = {
+      userId: user.id,
+      pin: pin,
+      transferData: transferData,
+      flowToken: flowToken,
+      timestamp: Date.now()
+    };
+    
+    // Store in Redis for background processing (5 minute TTL)
+    const redisClient = require('../utils/redis');
+    const processingKey = `transfer_processing:${user.id}:${Date.now()}`;
+    await redisClient.setSession(processingKey, processingData, 300);
+    
+    logger.info('Transfer data stored for background processing', {
+      userId: user.id,
+      processingKey,
+      transferData: {
+        amount: transferData.amount,
+        recipientName: transferData.recipientName,
+        accountNumber: transferData.accountNumber
+      }
+    });
+    
+    // Clean up flow session
+    if (flowToken) {
+      try {
+        await redisClient.deleteSession(`flow:${flowToken}`);
+        logger.info('Flow session cleaned up successfully', { flowToken });
+      } catch (error) {
+        logger.warn('Failed to cleanup flow session', { error: error.message });
+      }
+    }
+    
+    // Return empty response to close terminal flow immediately
+    const successResponse = {};
+    
+    logger.info('Returning empty response to close terminal flow', {
+      userId: user.id,
+      transferData: {
+        amount: transferData.amount,
+        recipientName: transferData.recipientName
+      }
+    });
+    
+    // Process the transfer in the background
+    processTransferInBackground(processingKey, processingData);
+    
+    return successResponse;
 
   } catch (error) {
     logger.error('Transfer PIN screen processing failed', { error: error.message });
-    
-    // Clean up processing key on error
-    if (flowToken) {
-      try {
-        const redisClient = require('../utils/redis');
-        await redisClient.deleteSession(processingKey);
-      } catch (cleanupError) {
-        logger.warn('Failed to cleanup processing key on error', { error: cleanupError.message });
-      }
-    }
     
     return {
       screen: 'PIN_VERIFICATION_SCREEN',
@@ -1555,6 +1559,144 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         code: 'PROCESSING_ERROR'
       }
     };
+  }
+}
+
+/**
+ * Process transfer in background after flow closes
+ */
+async function processTransferInBackground(processingKey, processingData) {
+  try {
+    const { userId, pin, transferData, flowToken } = processingData;
+    
+    logger.info('Starting background transfer processing', {
+      userId,
+      processingKey,
+      transferData: {
+        amount: transferData.amount,
+        recipientName: transferData.recipientName,
+        accountNumber: transferData.accountNumber
+      }
+    });
+    
+    // Get user and process transfer
+    const userService = require('../services/user');
+    const bankTransferService = require('../services/bankTransfer');
+    const whatsappService = require('../services/whatsapp');
+    
+    const user = await userService.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found for background transfer processing');
+    }
+    
+    // Process the bank transfer
+    const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+    
+    if (result.success) {
+      logger.info('Background transfer processed successfully', {
+        userId: user.id,
+        reference: result.transaction?.reference,
+        amount: transferData.amount
+      });
+      
+      // Clear conversation state
+      await user.clearConversationState();
+      
+      // Send success messages via WhatsApp
+      const receiptMessage = `✅ *Transfer Receipt*\n\n` +
+                            `💰 Amount: ₦${transferData.amount.toLocaleString()}\n` +
+                            `💸 Fee: ₦25\n` +
+                            `👤 To: ${transferData.recipientName}\n` +
+                            `🏦 Bank: ${transferData.bankName}\n` +
+                            `📱 Account: ${transferData.accountNumber}\n` +
+                            `📋 Reference: ${result.transaction?.reference}\n` +
+                            `📅 Date: ${new Date().toLocaleString('en-GB')}\n` +
+                            `✅ Status: Successful\n\n` +
+                            `Your transfer has been processed! 🎉`;
+      
+      const successMessage = `🎉 *Transfer Completed Successfully!*\n\n` +
+                            `Your transfer of ₦${transferData.amount.toLocaleString()} to ${transferData.recipientName} has been processed.\n\n` +
+                            `📋 *Reference:* ${result.transaction?.reference}\n` +
+                            `⏰ *Estimated Arrival:* 5-15 minutes\n\n` +
+                            `Thank you for using MiiMii! 💙`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, receiptMessage);
+      await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+      
+      logger.info('Transfer success messages sent via WhatsApp', {
+        userId: user.id,
+        reference: result.transaction?.reference
+      });
+      
+    } else {
+      logger.error('Background transfer failed', {
+        userId: user.id,
+        error: result.message,
+        transferData
+      });
+      
+      // Send error message via WhatsApp
+      let errorMessage = "❌ Transfer failed. Try again or contact support";
+      
+      if (result.message.includes('Insufficient')) {
+        errorMessage = result.message;
+      } else if (result.message.includes('Failed To Fecth Account Info')) {
+        errorMessage = "❌ Account not found. Check the account number and bank name";
+      } else if (result.message.includes('could not be found in')) {
+        errorMessage = result.message;
+      } else if (result.message.includes('Invalid bank account')) {
+        errorMessage = "❌ Invalid account details. Check account number and bank name";
+      } else if (result.message.includes('Transfer limit')) {
+        errorMessage = "❌ Transfer limit exceeded. Try a smaller amount";
+      } else if (result.message.includes('PIN')) {
+        errorMessage = "❌ Wrong PIN. Check and try again";
+      }
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+      
+      logger.info('Transfer error message sent via WhatsApp', {
+        userId: user.id,
+        error: result.message
+      });
+    }
+    
+    // Clean up processing data
+    const redisClient = require('../utils/redis');
+    await redisClient.deleteSession(processingKey);
+    
+    logger.info('Background transfer processing completed', {
+      userId,
+      processingKey,
+      success: result.success
+    });
+    
+  } catch (error) {
+    logger.error('Background transfer processing failed', {
+      processingKey,
+      error: error.message,
+      processingData
+    });
+    
+    // Try to send error message to user
+    try {
+      const userService = require('../services/user');
+      const whatsappService = require('../services/whatsapp');
+      
+      const user = await userService.getUserById(processingData.userId);
+      if (user) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, "❌ Transfer processing failed. Please try again or contact support.");
+      }
+    } catch (sendError) {
+      logger.error('Failed to send error message to user', { error: sendError.message });
+    }
+    
+    // Clean up processing data
+    try {
+      const redisClient = require('../utils/redis');
+      await redisClient.deleteSession(processingKey);
+    } catch (cleanupError) {
+      logger.warn('Failed to cleanup processing data on error', { error: cleanupError.message });
+    }
   }
 }
 
