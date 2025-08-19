@@ -27,6 +27,7 @@ class Config {
       welcomeFlowId: process.env.WELCOME_FLOW_ID || '1223628202852216',
       loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID || '3207800556061779',
       transferPinFlowId: process.env.WHATSAPP_TRANSFER_PIN_FLOW_ID || '3207800556061780',
+      dataPurchaseFlowId: process.env.DATA_PURCHASE_FLOW_ID || '1115202507372002',
       flowSecretKey: process.env.FLOW_SECRET_KEY || 'default-flow-secret-key'
     };
 
@@ -188,9 +189,11 @@ class Config {
       hasOnboardingFlowId: !!this.whatsapp.welcomeFlowId,
       hasLoginFlowId: !!this.whatsapp.loginFlowId,
       hasTransferPinFlowId: !!this.whatsapp.transferPinFlowId,
+      hasDataPurchaseFlowId: !!this.whatsapp.dataPurchaseFlowId,
       onboardingFlowIdLength: this.whatsapp.welcomeFlowId ? this.whatsapp.welcomeFlowId.length : 0,
       loginFlowIdLength: this.whatsapp.loginFlowId ? this.whatsapp.loginFlowId.length : 0,
       transferPinFlowIdLength: this.whatsapp.transferPinFlowId ? this.whatsapp.transferPinFlowId.length : 0,
+      dataPurchaseFlowIdLength: this.whatsapp.dataPurchaseFlowId ? this.whatsapp.dataPurchaseFlowId.length : 0,
       environment: process.env.NODE_ENV
     });
     
