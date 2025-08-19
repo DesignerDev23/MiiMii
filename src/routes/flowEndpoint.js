@@ -626,13 +626,14 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           phoneNumber = session.phoneNumber || phoneNumber;
           // Store session data for use in screen handlers
           tokenData.sessionData = session;
-          logger.info('Session found in Redis', { 
-            sessionKey, 
-            hasUserId: !!session.userId, 
-            hasPhoneNumber: !!session.phoneNumber,
-            hasTransferData: !!session.transferData,
-            sessionKeys: Object.keys(session)
-          });
+                  logger.info('Session found in Redis', { 
+          sessionKey, 
+          hasUserId: !!session.userId, 
+          hasPhoneNumber: !!session.phoneNumber,
+          hasTransferData: !!session.transferData,
+          sessionKeys: Object.keys(session),
+          sessionData: session
+        });
         } else {
           logger.warn('No session found in Redis', { sessionKey, flowToken });
         }
@@ -1040,6 +1041,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       hasPin: !!pin,
       hasSessionData: !!tokenData.sessionData,
       sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+      sessionData: tokenData.sessionData,
       dataKeys: Object.keys(data || {}),
       flowToken: flowToken
     });
@@ -1095,18 +1097,39 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         logger.error('No transfer context found for user', {
           userId: user.id,
           hasConversationState: !!conversationState,
-          context: conversationState?.context
+          context: conversationState?.context,
+          sessionData: tokenData.sessionData
         });
         
-        return {
-          screen: 'PIN_VERIFICATION_SCREEN',
-          data: {
-            error: 'Transfer session expired. Please try again.',
-            error_message: 'Transfer context not found'
-          }
-        };
+        // Try to get transfer data from flow action payload if available
+        if (data && (data.transfer_amount || data.recipient_name)) {
+          transferData = {
+            amount: parseFloat(data.transfer_amount) || 0,
+            recipientName: data.recipient_name || 'Recipient',
+            bankName: data.bank_name || 'Unknown Bank',
+            accountNumber: data.account_number || '',
+            bankCode: data.bank_code || '',
+            narration: 'Wallet transfer',
+            reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+          };
+          
+          logger.info('Using transfer data from flow action payload', {
+            userId: user.id,
+            transferData,
+            dataKeys: Object.keys(data || {})
+          });
+        } else {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: 'Transfer session expired. Please try again.',
+              error_message: 'Transfer context not found'
+            }
+          };
+        }
+      } else {
+        transferData = conversationState.data;
       }
-      transferData = conversationState.data;
     }
     if (!transferData || !transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
       logger.error('Missing transfer data for PIN verification', {
@@ -1148,8 +1171,9 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           }
         }
         
+        // Return success response to close the flow
         return {
-          screen: 'COMPLETION_SCREEN',
+          screen: 'PIN_VERIFICATION_SCREEN',
           data: {
             success: true,
             message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`
