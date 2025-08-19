@@ -231,6 +231,33 @@ class MessageProcessor {
               transferDataKeys: finalState.data ? Object.keys(finalState.data) : []
             });
             
+            // Store transfer data in session for the flow
+            const redisClient = require('../utils/redis');
+            const sessionKey = `flow:${flowToken}`;
+            await redisClient.setSession(sessionKey, {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              transferData: {
+                amount: state.data.amount,
+                recipientName: state.data.recipientName,
+                bankName: state.data.bankName,
+                accountNumber: state.data.accountNumber,
+                bankCode: state.data.bankCode,
+                narration: 'Wallet transfer',
+                reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+              }
+            }, 1800); // 30 minutes TTL
+            
+            logger.info('Transfer data stored in session', {
+              sessionKey,
+              userId: user.id,
+              transferData: {
+                amount: state.data.amount,
+                recipientName: state.data.recipientName,
+                accountNumber: state.data.accountNumber
+              }
+            });
+            
             // Send the transfer PIN flow
             await whatsappService.sendFlowMessage(
               user.whatsappNumber,
@@ -2265,6 +2292,15 @@ class MessageProcessor {
       await whatsappService.sendTextMessage(user.whatsappNumber, 
         "Please complete your account setup first before buying data.");
       return;
+    }
+
+    // Clear any existing conversation state before starting data purchase
+    if (user.conversationState) {
+      await user.clearConversationState();
+      logger.info('Cleared existing conversation state for data purchase', {
+        userId: user.id,
+        previousState: user.conversationState
+      });
     }
 
     // Send data purchase flow

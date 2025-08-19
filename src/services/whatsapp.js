@@ -285,10 +285,7 @@ class WhatsAppService {
           ...(flowData.flowJson ? { flow_json: flowData.flowJson } : { flow_id: flowData.flowId }),
           flow_cta: flowData.flowCta || 'Complete Onboarding',
           flow_action: flowData.flowAction || 'navigate',
-          flow_action_payload: flowData.flowActionPayload || {
-            screen: flowData.initialScreen || 'NETWORK_SELECTION_SCREEN',
-            data: {}
-          }
+          ...(flowData.flowActionPayload && { flow_action_payload: flowData.flowActionPayload })
         }
       }
     };
@@ -1689,12 +1686,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          },
          body: 'Purchase data bundles for yourself or gift to friends and family. Select network, phone number, and plan.',
          footer: 'Secure payment via your MiiMii wallet',
-         flowActionPayload: {
-           screen: 'NETWORK_SELECTION_SCREEN',
-           data: {
-             // Empty data for data purchase flow - data will be collected through the flow
-           }
-         }
+         // No flowActionPayload needed for data purchase flow - data will be collected through the flow
        };
 
        return await this.sendFlowMessage(phoneNumber, flowData);

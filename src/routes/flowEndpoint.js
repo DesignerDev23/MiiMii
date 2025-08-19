@@ -621,16 +621,39 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
 
     // Handle transfer PIN verification
     if (screen === 'PIN_VERIFICATION_SCREEN') {
-      const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
-      
-      // If transfer was successful, return empty response to close terminal flow
-      if (result.data?.success || Object.keys(result).length === 0) {
-        logger.info('Transfer successful, returning empty response to close flow');
-        return result; // Empty response closes terminal flow
+      // Check if this is a data purchase flow or transfer flow
+      if (data.network && data.phoneNumber && data.dataPlan) {
+        logger.info('Detected data purchase flow in complete action');
+        const result = await handleDataPurchaseScreen(data, tokenData.userId, tokenData, flowToken);
+        
+        // If data purchase was successful, return empty response to close terminal flow
+        if (Object.keys(result).length === 0) {
+          logger.info('Data purchase successful, returning empty response to close flow');
+          return result;
+        }
+        
+        return result;
+      } else if (tokenData.sessionData && tokenData.sessionData.transferData) {
+        logger.info('Detected transfer flow in complete action');
+        const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+        
+        // If transfer was successful, return empty response to close terminal flow
+        if (Object.keys(result).length === 0) {
+          logger.info('Transfer successful, returning empty response to close flow');
+          return result;
+        }
+        
+        return result;
+      } else {
+        logger.error('Unable to determine flow type in complete action');
+        return {
+          screen: 'PIN_VERIFICATION_SCREEN',
+          data: {
+            error: 'Unable to determine transaction type. Please try again.',
+            error_message: 'Flow context not found'
+          }
+        };
       }
-      
-      // If there was an error, return error response
-      return result;
     }
 
     // Handle login PIN verification
@@ -652,24 +675,7 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
       return result;
     }
 
-    // Handle data purchase PIN verification
-    if (screen === 'PIN_VERIFICATION_SCREEN' && data.network && data.phoneNumber && data.dataPlan) {
-      const result = await handleDataPurchaseScreen(data, tokenData.userId, tokenData, flowToken);
-      
-      // If data purchase was successful, return completion response
-      if (result.data?.success) {
-        return {
-          screen: 'COMPLETION_SCREEN',
-          data: {
-            success: true,
-            message: 'Data purchase completed successfully!'
-          }
-        };
-      }
-      
-      // If there was an error, return error response
-      return result;
-    }
+    // Data purchase and transfer flows are now handled in the main PIN_VERIFICATION_SCREEN case
 
     // For other terminal flows, return success response
     return {
@@ -715,14 +721,14 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           phoneNumber = session.phoneNumber || phoneNumber;
           // Store session data for use in screen handlers
           tokenData.sessionData = session;
-                  logger.info('Session found in Redis', { 
-          sessionKey, 
-          hasUserId: !!session.userId, 
-          hasPhoneNumber: !!session.phoneNumber,
-          hasTransferData: !!session.transferData,
-          sessionKeys: Object.keys(session),
-          sessionData: session
-        });
+          logger.info('Session found in Redis', { 
+            sessionKey, 
+            hasUserId: !!session.userId, 
+            hasPhoneNumber: !!session.phoneNumber,
+            hasTransferData: !!session.transferData,
+            sessionKeys: Object.keys(session),
+            sessionData: session
+          });
         } else {
           logger.warn('No session found in Redis', { sessionKey, flowToken });
         }
@@ -784,36 +790,55 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           hasPhoneNumber: !!data.phoneNumber,
           hasDataPlan: !!data.dataPlan,
           hasPin: !!data.pin,
-          sessionData: tokenData.sessionData
+          sessionData: tokenData.sessionData,
+          hasSessionData: !!tokenData.sessionData,
+          sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+          flowToken: flowToken,
+          tokenDataKeys: Object.keys(tokenData || {}),
+          userId: userId
         });
         
-        // Check if this is a data purchase flow (has network, phone, and data plan)
+        // Check if this is a data purchase flow (has network, phone, and data plan in data)
         if (data.network && data.phoneNumber && data.dataPlan) {
-          logger.info('Detected data purchase flow');
+          logger.info('Detected data purchase flow from data payload');
           // This is a data purchase flow
           const result = await handleDataPurchaseScreen(data, userId, tokenData, flowToken);
           
           // If data purchase was successful, return empty response to close terminal flow
-          if (result.data?.success || Object.keys(result).length === 0) {
+          if (Object.keys(result).length === 0) {
             logger.info('Data purchase successful, returning empty response to close flow');
             return result;
           }
           
           // If there was an error, return error response
           return result;
-        } else {
-          logger.info('Detected transfer flow');
+        } else if (tokenData.sessionData && tokenData.sessionData.transferData) {
+          logger.info('Detected transfer flow from session data');
           // This is a transfer flow
           const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
           
           // If transfer was successful, return empty response to close terminal flow
-          if (result.data?.success || Object.keys(result).length === 0) {
+          if (Object.keys(result).length === 0) {
             logger.info('Transfer successful in data_exchange, returning empty response to close flow');
             return result;
           }
           
           // If there was an error, return error response
           return result;
+        } else {
+          logger.error('Unable to determine flow type for PIN_VERIFICATION_SCREEN', {
+            dataKeys: Object.keys(data || {}),
+            sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+            hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData)
+          });
+          
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: 'Unable to determine transaction type. Please try again.',
+              error_message: 'Flow context not found'
+            }
+          };
         }
 
       default:
