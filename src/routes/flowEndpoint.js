@@ -1019,11 +1019,34 @@ async function handleLoginScreen(data, userId, tokenData = {}) {
 async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken = null) {
   try {
     const pin = data.pin;
+    
+    // Add request deduplication to prevent multiple processing
+    const requestId = `${userId}-${flowToken}-${Date.now()}`;
+    const redisClient = require('../utils/redis');
+    const processingKey = `processing:${requestId}`;
+    
+    // Check if this request is already being processed
+    const isProcessing = await redisClient.getSession(processingKey);
+    if (isProcessing) {
+      logger.warn('Duplicate transfer PIN request detected, skipping', {
+        userId,
+        flowToken,
+        requestId
+      });
+              return {
+          data: {
+            error: 'Request already being processed. Please wait.',
+            error_message: 'Duplicate request detected'
+          }
+        };
+    }
+    
+    // Mark this request as being processed (5 minute TTL)
+    await redisClient.setSession(processingKey, { processing: true, timestamp: Date.now() }, 300);
 
     // Validate PIN format
     if (!pin || !/^\d{4}$/.test(pin)) {
                              return {
-           screen: 'PIN_VERIFICATION_SCREEN',
            data: {
              error: 'Please enter exactly 4 digits for your PIN.',
              validation: {
@@ -1071,7 +1094,6 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       });
       
       return {
-        screen: 'PIN_VERIFICATION_SCREEN',
         data: {
           error: 'User not found. Please try again.',
           error_message: 'Unable to identify user for transfer'
@@ -1120,7 +1142,6 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           });
         } else {
                                      return {
-           screen: 'PIN_VERIFICATION_SCREEN',
            data: {
              error: 'Transfer session expired. Please try again.',
              error_message: 'Transfer context not found'
@@ -1139,7 +1160,6 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       });
       
                                  return {
-             screen: 'PIN_VERIFICATION_SCREEN',
              data: {
                error: 'Transfer details not found. Please try again.',
                error_message: 'Missing transfer information'
@@ -1161,28 +1181,28 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         // Clear conversation state and session
         await user.clearConversationState();
         
-        // Clean up flow session
+        // Clean up flow session and processing key
         if (flowToken) {
           try {
             const redisClient = require('../utils/redis');
             await redisClient.deleteSession(`flow:${flowToken}`);
+            await redisClient.deleteSession(processingKey);
           } catch (error) {
             logger.warn('Failed to cleanup flow session', { error: error.message });
           }
         }
         
-        // Return completion screen to close the flow
-        const completionResponse = {
-          screen: 'COMPLETION_SCREEN',
+        // Return success response to close the terminal flow
+        const successResponse = {
           data: {
             success: true,
             message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`
           }
         };
         
-        logger.info('Returning completion screen for flow', {
+        logger.info('Returning success response for terminal flow', {
           userId: user.id,
-          response: completionResponse,
+          response: successResponse,
           transferData: {
             amount: transferData.amount,
             recipientName: transferData.recipientName,
@@ -1190,7 +1210,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           }
         });
         
-        return completionResponse;
+        return successResponse;
       } else {
         logger.error('Transfer failed via flow', {
           userId: user.id,
@@ -1198,18 +1218,18 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           transferData
         });
         
-              // Clean up flow session on error
+              // Clean up flow session and processing key on error
         if (flowToken) {
           try {
             const redisClient = require('../utils/redis');
             await redisClient.deleteSession(`flow:${flowToken}`);
+            await redisClient.deleteSession(processingKey);
           } catch (error) {
             logger.warn('Failed to cleanup flow session on error', { error: error.message });
           }
         }
         
         return {
-          screen: 'PIN_VERIFICATION_SCREEN',
           data: {
             error: result.message || 'Transfer failed. Please try again.',
             error_message: result.message || 'Transfer processing failed'
@@ -1240,18 +1260,18 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         errorMessage = "❌ Wrong PIN. Check and try again";
       }
       
-      // Clean up flow session on error
+      // Clean up flow session and processing key on error
       if (flowToken) {
         try {
           const redisClient = require('../utils/redis');
           await redisClient.deleteSession(`flow:${flowToken}`);
+          await redisClient.deleteSession(processingKey);
         } catch (cleanupError) {
           logger.warn('Failed to cleanup flow session on error', { error: cleanupError.message });
         }
       }
       
       return {
-        screen: 'PIN_VERIFICATION_SCREEN',
         data: {
           error: errorMessage,
           error_message: error.message
@@ -1261,8 +1281,18 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
 
   } catch (error) {
     logger.error('Transfer PIN screen processing failed', { error: error.message });
+    
+    // Clean up processing key on error
+    if (flowToken) {
+      try {
+        const redisClient = require('../utils/redis');
+        await redisClient.deleteSession(processingKey);
+      } catch (cleanupError) {
+        logger.warn('Failed to cleanup processing key on error', { error: cleanupError.message });
+      }
+    }
+    
     return {
-      screen: 'PIN_VERIFICATION_SCREEN',
       data: {
         error: 'PIN verification failed. Please try again.',
         error_message: error.message,
