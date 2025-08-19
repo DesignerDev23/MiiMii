@@ -34,37 +34,27 @@ DATA_PURCHASE_FLOW_ID=your_flow_id_here
 
 ### Step 3: Update WhatsApp Service Configuration
 
-Update the WhatsApp service to use the Flow ID:
+The WhatsApp service has been updated to use the Flow ID and correct initial screen. The configuration is already in place:
 
 ```javascript
-// In src/services/whatsapp.js, update the sendDataPurchaseFlow method
-async sendDataPurchaseFlow(phoneNumber, userData = {}) {
-  try {
-    const flowService = require('./whatsappFlowService');
-    
-    const flowData = {
-      flowToken: await flowService.generateFlowToken({
-        userId: userData.id,
-        flowId: 'data_purchase',
-        source: 'whatsapp',
-        userPhone: phoneNumber
-      }),
-      flowId: process.env.DATA_PURCHASE_FLOW_ID, // Use Flow ID instead of flowJson
-      flowCta: 'Buy Data',
-      header: {
-        type: 'text',
-        text: '📶 Buy Data'
-      },
-      body: 'Purchase data bundles for yourself or gift to friends and family. Select network, phone number, and plan.',
-      footer: 'Secure payment via your MiiMii wallet'
-    };
-
-    return await this.sendFlowMessage(phoneNumber, flowData);
-  } catch (error) {
-    logger.error('Failed to send data purchase flow', { error: error.message, phoneNumber });
-    throw error;
-  }
-}
+// In src/services/whatsapp.js, the sendDataPurchaseFlow method is configured as:
+const flowData = {
+  flowToken: await flowService.generateFlowToken({
+    userId: userData.id,
+    flowId: 'data_purchase',
+    source: 'whatsapp',
+    userPhone: phoneNumber
+  }),
+  flowId: process.env.DATA_PURCHASE_FLOW_ID,
+  flowCta: 'Buy Data',
+  initialScreen: 'NETWORK_SELECTION_SCREEN', // ✅ Correct initial screen
+  header: {
+    type: 'text',
+    text: '📶 Buy Data'
+  },
+  body: 'Purchase data bundles for yourself or gift to friends and family. Select network, phone number, and plan.',
+  footer: 'Secure payment via your MiiMii wallet'
+};
 ```
 
 ### Step 4: Test the Flow
@@ -130,6 +120,18 @@ async sendDataPurchaseFlow(phoneNumber, userData = {}) {
 - Check Flow ID is correct
 - Verify Flow is published in WhatsApp Business Manager
 - Check WhatsApp API credentials
+
+### "Specified screen is not allowed as first screen" Error
+**Error**: `Specified screen PIN_VERIFICATION_SCREEN is not allowed as first screen of this flow. Allowed screen name is: NETWORK_SELECTION_SCREEN.`
+
+**Solution**: 
+- ✅ **FIXED**: The system now correctly starts with `NETWORK_SELECTION_SCREEN`
+- Make sure your flow JSON starts with the correct screen
+- Verify the `initialScreen` parameter is set correctly in the flow data
+
+**Prevention**:
+- Always ensure the `initialScreen` matches the first screen in your flow JSON
+- Test flows in WhatsApp Business Manager before deploying
 
 ### Purchase Fails
 - Check Bilal API credentials
