@@ -582,6 +582,9 @@ async function processFlowRequest(requestData) {
       case 'data_exchange':
         return handleDataExchange(screen, data, tokenData, flow_token);
 
+      case 'complete':
+        return handleCompleteAction(screen, data, tokenData, flow_token);
+
       default:
         logger.warn('Unknown Flow action', { action });
         return {
@@ -600,6 +603,45 @@ async function processFlowRequest(requestData) {
       data: {
         error: 'Processing failed',
         code: 'PROCESSING_ERROR'
+      }
+    };
+  }
+}
+
+/**
+ * Handle complete action requests
+ */
+async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
+  try {
+    logger.info('Handling complete action', {
+      screen,
+      dataKeys: Object.keys(data || {}),
+      flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
+    });
+
+    // Handle transfer PIN verification
+    if (screen === 'PIN_VERIFICATION_SCREEN') {
+      return await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+    }
+
+    // For other terminal flows, return success response
+    return {
+      screen: screen,
+      data: {
+        success: true,
+        message: 'Action completed successfully',
+        completed: true,
+        terminal: true
+      }
+    };
+
+  } catch (error) {
+    logger.error('Complete action processing failed', { error: error.message });
+    return {
+      screen: 'ERROR_SCREEN',
+      data: {
+        error: 'Completion failed',
+        code: 'COMPLETION_ERROR'
       }
     };
   }
