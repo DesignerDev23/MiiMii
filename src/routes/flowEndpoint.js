@@ -1235,17 +1235,14 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           }
         }
         
-        // Return success response for non-terminal flow
+        // Return minimal success response for terminal flow
         const successResponse = {
-          screen: 'PIN_VERIFICATION_SCREEN',
           data: {
-            success: true,
-            message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`,
-            completed: true
+            success: true
           }
         };
         
-        logger.info('Returning success response for terminal flow', {
+        logger.info('Returning minimal success response for terminal flow', {
           userId: user.id,
           response: successResponse,
           transferData: {
@@ -1260,16 +1257,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           hasScreen: !!successResponse.screen,
           hasData: !!successResponse.data,
           dataKeys: Object.keys(successResponse.data || {}),
-          isTerminal: successResponse.data?.terminal,
-          isCompleted: successResponse.data?.completed,
-          responseType: 'success_navigation'
-        });
-        
-        logger.info('Flow navigation response', {
-          fromScreen: 'PIN_VERIFICATION_SCREEN',
-          toScreen: successResponse.screen,
-          userId: user.id,
-          flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
+          responseType: 'minimal_success'
         });
         
         return successResponse;

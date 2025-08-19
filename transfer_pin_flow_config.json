@@ -8,7 +8,8 @@
     {
       "id": "PIN_VERIFICATION_SCREEN",
       "title": "Transfer PIN Verification",
-      "terminal": false,
+      "terminal": true,
+      "success": true,
       "data": {},
       "layout": {
         "type": "SingleColumnLayout",
