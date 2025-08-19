@@ -232,8 +232,6 @@ class MessageProcessor {
             });
             
             // Store transfer data in session for the flow
-            const redisClient = require('../utils/redis');
-            const sessionKey = `flow:${flowToken}`;
             await redisClient.setSession(sessionKey, {
               userId: user.id,
               phoneNumber: user.whatsappNumber,
