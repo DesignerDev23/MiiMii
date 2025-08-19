@@ -2,13 +2,14 @@
   "version": "7.2",
   "data_api_version": "3.0",
   "routing_model": {
-    "PIN_VERIFICATION_SCREEN": []
+    "PIN_VERIFICATION_SCREEN": ["COMPLETION_SCREEN"],
+    "COMPLETION_SCREEN": []
   },
   "screens": [
     {
       "id": "PIN_VERIFICATION_SCREEN",
       "title": "Transfer PIN Verification",
-      "terminal": true,
+      "terminal": false,
       "data": {},
       "layout": {
         "type": "SingleColumnLayout",
@@ -43,6 +44,26 @@
                 }
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "COMPLETION_SCREEN",
+      "title": "Transfer Completed",
+      "terminal": true,
+      "success": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "Transfer Completed"
+          },
+          {
+            "type": "TextBody",
+            "text": "Your transfer has been processed successfully!"
           }
         ]
       }

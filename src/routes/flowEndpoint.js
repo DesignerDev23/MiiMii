@@ -1022,15 +1022,15 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
 
     // Validate PIN format
     if (!pin || !/^\d{4}$/.test(pin)) {
-      return {
-        screen: 'PIN_VERIFICATION_SCREEN',
-        data: {
-          error: 'Please enter exactly 4 digits for your PIN.',
-          validation: {
-            pin: 'PIN must be exactly 4 digits'
-          }
-        }
-      };
+                             return {
+           screen: 'PIN_VERIFICATION_SCREEN',
+           data: {
+             error: 'Please enter exactly 4 digits for your PIN.',
+             validation: {
+               pin: 'PIN must be exactly 4 digits'
+             }
+           }
+         };
     }
 
     logger.info('Transfer PIN received from Flow', {
@@ -1119,13 +1119,13 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
             dataKeys: Object.keys(data || {})
           });
         } else {
-          return {
-            screen: 'PIN_VERIFICATION_SCREEN',
-            data: {
-              error: 'Transfer session expired. Please try again.',
-              error_message: 'Transfer context not found'
-            }
-          };
+                                     return {
+           screen: 'PIN_VERIFICATION_SCREEN',
+           data: {
+             error: 'Transfer session expired. Please try again.',
+             error_message: 'Transfer context not found'
+           }
+         };
         }
       } else {
         transferData = conversationState.data;
@@ -1138,13 +1138,13 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         dataKeys: transferData ? Object.keys(transferData) : []
       });
       
-      return {
-        screen: 'PIN_VERIFICATION_SCREEN',
-        data: {
-          error: 'Transfer details not found. Please try again.',
-          error_message: 'Missing transfer information'
-        }
-      };
+                                 return {
+             screen: 'PIN_VERIFICATION_SCREEN',
+             data: {
+               error: 'Transfer details not found. Please try again.',
+               error_message: 'Missing transfer information'
+             }
+           };
     }
     
     try {
@@ -1171,14 +1171,26 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           }
         }
         
-        // Return success response to close the flow
-        return {
-          screen: 'PIN_VERIFICATION_SCREEN',
+        // Return completion screen to close the flow
+        const completionResponse = {
+          screen: 'COMPLETION_SCREEN',
           data: {
             success: true,
             message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`
           }
         };
+        
+        logger.info('Returning completion screen for flow', {
+          userId: user.id,
+          response: completionResponse,
+          transferData: {
+            amount: transferData.amount,
+            recipientName: transferData.recipientName,
+            reference: result.transaction?.reference
+          }
+        });
+        
+        return completionResponse;
       } else {
         logger.error('Transfer failed via flow', {
           userId: user.id,
