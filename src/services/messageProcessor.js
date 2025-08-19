@@ -252,6 +252,7 @@ class MessageProcessor {
                     recipient_name: state.data.recipientName,
                     bank_name: state.data.bankName,
                     account_number: state.data.accountNumber,
+                    bank_code: state.data.bankCode,
                     user_id: user.id,
                     phone_number: user.whatsappNumber
                   }

@@ -94,7 +94,7 @@
               },
               {
                 "type": "TextBody",
-                "text": "Enter the phone number for ${data.network} data purchase:"
+                "text": "Enter the phone number for data purchase:"
               },
               {
                 "type": "TextInput",
@@ -152,7 +152,7 @@
               },
               {
                 "type": "TextBody",
-                "text": "Choose a data plan for ${data.phoneNumber} (${data.network}):"
+                "text": "Choose a data plan:"
               },
               {
                 "type": "RadioButtonsGroup",
@@ -248,7 +248,7 @@
               },
               {
                 "type": "TextBody",
-                "text": "Please review your data purchase details:\n\n📱 Network: ${data.network}\n📞 Phone: ${data.phoneNumber}\n📦 Plan: ${dataPlan}\n\nIs this correct?"
+                "text": "Please review your data purchase details:\n\n📱 Network: Selected network\n📞 Phone: Entered phone number\n📦 Plan: Selected plan\n\nIs this correct?"
               },
               {
                 "type": "RadioButtonsGroup",
@@ -328,7 +328,7 @@
               },
               {
                 "type": "TextBody",
-                "text": "Enter your 4-digit PIN to complete the data purchase for ${data.phoneNumber}."
+                "text": "Enter your 4-digit PIN to complete the data purchase."
               },
               {
                 "type": "TextInput",

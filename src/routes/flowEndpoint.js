@@ -626,7 +626,7 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
       // If transfer was successful, return empty response to close terminal flow
       if (result.data?.success || Object.keys(result).length === 0) {
         logger.info('Transfer successful, returning empty response to close flow');
-        return {}; // Empty response closes terminal flow
+        return result; // Empty response closes terminal flow
       }
       
       // If there was an error, return error response
@@ -778,26 +778,38 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
 
       case 'PIN_VERIFICATION_SCREEN':
         // Check if this is a data purchase flow or transfer flow
+        logger.info('PIN_VERIFICATION_SCREEN received', {
+          dataKeys: Object.keys(data || {}),
+          hasNetwork: !!data.network,
+          hasPhoneNumber: !!data.phoneNumber,
+          hasDataPlan: !!data.dataPlan,
+          hasPin: !!data.pin,
+          sessionData: tokenData.sessionData
+        });
+        
+        // Check if this is a data purchase flow (has network, phone, and data plan)
         if (data.network && data.phoneNumber && data.dataPlan) {
+          logger.info('Detected data purchase flow');
           // This is a data purchase flow
           const result = await handleDataPurchaseScreen(data, userId, tokenData, flowToken);
           
           // If data purchase was successful, return empty response to close terminal flow
           if (result.data?.success || Object.keys(result).length === 0) {
             logger.info('Data purchase successful, returning empty response to close flow');
-            return {}; // Empty response closes terminal flow
+            return result;
           }
           
           // If there was an error, return error response
           return result;
         } else {
+          logger.info('Detected transfer flow');
           // This is a transfer flow
           const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
           
           // If transfer was successful, return empty response to close terminal flow
           if (result.data?.success || Object.keys(result).length === 0) {
             logger.info('Transfer successful in data_exchange, returning empty response to close flow');
-            return {}; // Empty response closes terminal flow
+            return result;
           }
           
           // If there was an error, return error response
@@ -1158,12 +1170,8 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
         }
       }
 
-      return {
-        data: {
-          success: true,
-          message: 'Data purchase completed successfully!'
-        }
-      };
+      // Return empty response to close terminal flow
+      return {};
     } else {
       throw new Error(result.message || 'Data purchase failed');
     }
@@ -1560,7 +1568,8 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
     logger.info('Network selection received', {
       userId,
       network,
-      dataKeys: Object.keys(data || {})
+      dataKeys: Object.keys(data || {}),
+      flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
     });
 
     // Validate network selection
@@ -1590,7 +1599,7 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
       }
     }
 
-    // Return success to proceed to next screen
+    // Return success to proceed to next screen with data
     return {
       data: {
         network: network
@@ -1621,7 +1630,9 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
       userId,
       phoneNumber,
       network,
-      dataKeys: Object.keys(data || {})
+      dataKeys: Object.keys(data || {}),
+      flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none',
+      sessionData: tokenData.sessionData
     });
 
     // Validate phone number
@@ -1652,7 +1663,7 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
       }
     }
 
-    // Return success to proceed to next screen
+    // Return success to proceed to next screen with data
     return {
       data: {
         network: network,
@@ -1718,7 +1729,7 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       }
     }
 
-    // Return success to proceed to next screen
+    // Return success to proceed to next screen with data
     return {
       data: {
         network: network,
@@ -1788,7 +1799,7 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
       }
     }
 
-    // Return success to proceed to next screen
+    // Return success to proceed to next screen with data
     return {
       data: {
         network: network,
