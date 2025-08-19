@@ -678,15 +678,6 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
       case 'PIN_VERIFICATION_SCREEN':
         return handleTransferPinScreen(data, userId, tokenData, flowToken);
 
-      case 'COMPLETION_SCREEN':
-        return {
-          screen: 'COMPLETION_SCREEN',
-          data: { 
-            success: true,
-            message: 'Transfer completed successfully!'
-          }
-        };
-
       default:
         logger.warn('Unknown Flow screen', { screen });
         return {
@@ -1202,14 +1193,14 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           }
         }
         
-        // Return success response to navigate to completion screen
+        // Return success response to close the terminal flow
         const successResponse = {
-          screen: 'COMPLETION_SCREEN',
+          screen: 'PIN_VERIFICATION_SCREEN',
           data: {
             success: true,
             message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`,
             completed: true,
-            status: 'completed'
+            terminal: true
           }
         };
         
