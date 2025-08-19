@@ -764,17 +764,45 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
       case 'PIN_INPUT_SCREEN':
         return handleLoginScreen(data, userId, tokenData);
 
+      case 'NETWORK_SELECTION_SCREEN':
+        return handleNetworkSelectionScreen(data, userId, tokenData, flowToken);
+
+      case 'PHONE_INPUT_SCREEN':
+        return handlePhoneInputScreen(data, userId, tokenData, flowToken);
+
+      case 'DATA_PLAN_SELECTION_SCREEN':
+        return handleDataPlanSelectionScreen(data, userId, tokenData, flowToken);
+
+      case 'CONFIRMATION_SCREEN':
+        return handleConfirmationScreen(data, userId, tokenData, flowToken);
+
       case 'PIN_VERIFICATION_SCREEN':
-        const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
-        
-        // If transfer was successful, return empty response to close terminal flow
-        if (result.data?.success || Object.keys(result).length === 0) {
-          logger.info('Transfer successful in data_exchange, returning empty response to close flow');
-          return {}; // Empty response closes terminal flow
+        // Check if this is a data purchase flow or transfer flow
+        if (data.network && data.phoneNumber && data.dataPlan) {
+          // This is a data purchase flow
+          const result = await handleDataPurchaseScreen(data, userId, tokenData, flowToken);
+          
+          // If data purchase was successful, return empty response to close terminal flow
+          if (result.data?.success || Object.keys(result).length === 0) {
+            logger.info('Data purchase successful, returning empty response to close flow');
+            return {}; // Empty response closes terminal flow
+          }
+          
+          // If there was an error, return error response
+          return result;
+        } else {
+          // This is a transfer flow
+          const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
+          
+          // If transfer was successful, return empty response to close terminal flow
+          if (result.data?.success || Object.keys(result).length === 0) {
+            logger.info('Transfer successful in data_exchange, returning empty response to close flow');
+            return {}; // Empty response closes terminal flow
+          }
+          
+          // If there was an error, return error response
+          return result;
         }
-        
-        // If there was an error, return error response
-        return result;
 
       default:
         logger.warn('Unknown Flow screen', { screen });
@@ -1517,6 +1545,266 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         error: 'PIN verification failed. Please try again.',
         error_message: error.message,
         code: 'PROCESSING_ERROR'
+      }
+    };
+  }
+}
+
+/**
+ * Handle network selection screen for data purchase flow
+ */
+async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowToken = null) {
+  try {
+    const network = data.network;
+    
+    logger.info('Network selection received', {
+      userId,
+      network,
+      dataKeys: Object.keys(data || {})
+    });
+
+    // Validate network selection
+    if (!network || !['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(network)) {
+      return {
+        screen: 'NETWORK_SELECTION_SCREEN',
+        data: {
+          error: 'Please select a valid network.',
+          validation: {
+            network: 'Network selection is required'
+          }
+        }
+      };
+    }
+
+    // Store network selection in session
+    if (flowToken) {
+      try {
+        const redisClient = require('../utils/redis');
+        const sessionKey = `flow:${flowToken}`;
+        const session = await redisClient.getSession(sessionKey) || {};
+        session.network = network;
+        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
+        logger.info('Network selection stored in session', { network, flowToken });
+      } catch (error) {
+        logger.warn('Failed to store network selection in session', { error: error.message });
+      }
+    }
+
+    // Return success to proceed to next screen
+    return {
+      data: {
+        network: network
+      }
+    };
+
+  } catch (error) {
+    logger.error('Network selection processing failed', { error: error.message });
+    return {
+      screen: 'NETWORK_SELECTION_SCREEN',
+      data: {
+        error: 'Network selection failed. Please try again.',
+        error_message: error.message
+      }
+    };
+  }
+}
+
+/**
+ * Handle phone input screen for data purchase flow
+ */
+async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = null) {
+  try {
+    const phoneNumber = data.phoneNumber;
+    const network = data.network || tokenData.sessionData?.network;
+    
+    logger.info('Phone input received', {
+      userId,
+      phoneNumber,
+      network,
+      dataKeys: Object.keys(data || {})
+    });
+
+    // Validate phone number
+    if (!phoneNumber || !/^\d{11}$/.test(phoneNumber)) {
+      return {
+        screen: 'PHONE_INPUT_SCREEN',
+        data: {
+          error: 'Please enter a valid 11-digit phone number.',
+          validation: {
+            phoneNumber: 'Phone number must be 11 digits'
+          }
+        }
+      };
+    }
+
+    // Store phone number in session
+    if (flowToken) {
+      try {
+        const redisClient = require('../utils/redis');
+        const sessionKey = `flow:${flowToken}`;
+        const session = await redisClient.getSession(sessionKey) || {};
+        session.phoneNumber = phoneNumber;
+        if (network) session.network = network;
+        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
+        logger.info('Phone number stored in session', { phoneNumber, network, flowToken });
+      } catch (error) {
+        logger.warn('Failed to store phone number in session', { error: error.message });
+      }
+    }
+
+    // Return success to proceed to next screen
+    return {
+      data: {
+        network: network,
+        phoneNumber: phoneNumber
+      }
+    };
+
+  } catch (error) {
+    logger.error('Phone input processing failed', { error: error.message });
+    return {
+      screen: 'PHONE_INPUT_SCREEN',
+      data: {
+        error: 'Phone input failed. Please try again.',
+        error_message: error.message
+      }
+    };
+  }
+}
+
+/**
+ * Handle data plan selection screen for data purchase flow
+ */
+async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowToken = null) {
+  try {
+    const dataPlan = data.dataPlan;
+    const network = data.network || tokenData.sessionData?.network;
+    const phoneNumber = data.phoneNumber || tokenData.sessionData?.phoneNumber;
+    
+    logger.info('Data plan selection received', {
+      userId,
+      dataPlan,
+      network,
+      phoneNumber,
+      dataKeys: Object.keys(data || {})
+    });
+
+    // Validate data plan selection
+    if (!dataPlan) {
+      return {
+        screen: 'DATA_PLAN_SELECTION_SCREEN',
+        data: {
+          error: 'Please select a data plan.',
+          validation: {
+            dataPlan: 'Data plan selection is required'
+          }
+        }
+      };
+    }
+
+    // Store data plan in session
+    if (flowToken) {
+      try {
+        const redisClient = require('../utils/redis');
+        const sessionKey = `flow:${flowToken}`;
+        const session = await redisClient.getSession(sessionKey) || {};
+        session.dataPlan = dataPlan;
+        if (network) session.network = network;
+        if (phoneNumber) session.phoneNumber = phoneNumber;
+        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
+        logger.info('Data plan stored in session', { dataPlan, network, phoneNumber, flowToken });
+      } catch (error) {
+        logger.warn('Failed to store data plan in session', { error: error.message });
+      }
+    }
+
+    // Return success to proceed to next screen
+    return {
+      data: {
+        network: network,
+        phoneNumber: phoneNumber,
+        dataPlan: dataPlan
+      }
+    };
+
+  } catch (error) {
+    logger.error('Data plan selection processing failed', { error: error.message });
+    return {
+      screen: 'DATA_PLAN_SELECTION_SCREEN',
+      data: {
+        error: 'Data plan selection failed. Please try again.',
+        error_message: error.message
+      }
+    };
+  }
+}
+
+/**
+ * Handle confirmation screen for data purchase flow
+ */
+async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken = null) {
+  try {
+    const confirm = data.confirm;
+    const network = data.network || tokenData.sessionData?.network;
+    const phoneNumber = data.phoneNumber || tokenData.sessionData?.phoneNumber;
+    const dataPlan = data.dataPlan || tokenData.sessionData?.dataPlan;
+    
+    logger.info('Confirmation received', {
+      userId,
+      confirm,
+      network,
+      phoneNumber,
+      dataPlan,
+      dataKeys: Object.keys(data || {})
+    });
+
+    // Check if user confirmed
+    if (confirm !== 'yes') {
+      return {
+        screen: 'CONFIRMATION_SCREEN',
+        data: {
+          error: 'Please confirm to proceed with the purchase.',
+          validation: {
+            confirm: 'Confirmation is required'
+          }
+        }
+      };
+    }
+
+    // Store confirmation in session
+    if (flowToken) {
+      try {
+        const redisClient = require('../utils/redis');
+        const sessionKey = `flow:${flowToken}`;
+        const session = await redisClient.getSession(sessionKey) || {};
+        session.confirm = confirm;
+        if (network) session.network = network;
+        if (phoneNumber) session.phoneNumber = phoneNumber;
+        if (dataPlan) session.dataPlan = dataPlan;
+        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
+        logger.info('Confirmation stored in session', { confirm, network, phoneNumber, dataPlan, flowToken });
+      } catch (error) {
+        logger.warn('Failed to store confirmation in session', { error: error.message });
+      }
+    }
+
+    // Return success to proceed to next screen
+    return {
+      data: {
+        network: network,
+        phoneNumber: phoneNumber,
+        dataPlan: dataPlan,
+        confirm: confirm
+      }
+    };
+
+  } catch (error) {
+    logger.error('Confirmation processing failed', { error: error.message });
+    return {
+      screen: 'CONFIRMATION_SCREEN',
+      data: {
+        error: 'Confirmation failed. Please try again.',
+        error_message: error.message
       }
     };
   }
