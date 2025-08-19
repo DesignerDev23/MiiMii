@@ -621,7 +621,40 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
 
     // Handle transfer PIN verification
     if (screen === 'PIN_VERIFICATION_SCREEN') {
-      return await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+      const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+      
+      // If transfer was successful, return completion response
+      if (result.data?.success) {
+        return {
+          screen: 'COMPLETION_SCREEN',
+          data: {
+            success: true,
+            message: 'Transfer completed successfully!'
+          }
+        };
+      }
+      
+      // If there was an error, return error response
+      return result;
+    }
+
+    // Handle login PIN verification
+    if (screen === 'PIN_INPUT_SCREEN') {
+      const result = await handleLoginScreen(data, tokenData.userId, tokenData);
+      
+      // If login was successful, return completion response
+      if (result.data?.success) {
+        return {
+          screen: 'COMPLETION_SCREEN',
+          data: {
+            success: true,
+            message: 'Login successful! Welcome back to MiiMii!'
+          }
+        };
+      }
+      
+      // If there was an error, return error response
+      return result;
     }
 
     // For other terminal flows, return success response

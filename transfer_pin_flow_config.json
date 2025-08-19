@@ -37,7 +37,7 @@
                 "type": "Footer",
                 "label": "Verify PIN",
                 "on-click-action": {
-                  "name": "data_exchange",
+                  "name": "complete",
                   "payload": {
                     "pin": "${form.pin}"
                   }

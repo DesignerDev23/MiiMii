@@ -38,7 +38,7 @@
                                 "type": "Footer",
                                 "label": "Login",
                                 "on-click-action": {
-                                    "name": "data_exchange",
+                                    "name": "complete",
                                     "payload": {
                                         "pin": "${form.pin}"
                                     }
