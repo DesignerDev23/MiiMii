@@ -1235,14 +1235,13 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           }
         }
         
-        // Return success response to close the terminal flow
+        // Return success response for non-terminal flow
         const successResponse = {
           screen: 'PIN_VERIFICATION_SCREEN',
           data: {
             success: true,
             message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`,
-            completed: true,
-            terminal: true
+            completed: true
           }
         };
         

@@ -8,7 +8,7 @@
     {
       "id": "PIN_VERIFICATION_SCREEN",
       "title": "Transfer PIN Verification",
-      "terminal": true,
+      "terminal": false,
       "data": {},
       "layout": {
         "type": "SingleColumnLayout",
@@ -36,7 +36,7 @@
                 "type": "Footer",
                 "label": "Verify PIN",
                 "on-click-action": {
-                  "name": "complete",
+                  "name": "data_exchange",
                   "payload": {
                     "pin": "${form.pin}"
                   }
