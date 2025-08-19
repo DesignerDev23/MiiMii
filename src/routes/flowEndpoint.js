@@ -681,7 +681,10 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
       case 'COMPLETION_SCREEN':
         return {
           screen: 'COMPLETION_SCREEN',
-          data: { success: true }
+          data: { 
+            success: true,
+            message: 'Transfer completed successfully!'
+          }
         };
 
       default:
@@ -1034,6 +1037,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         requestId
       });
               return {
+          screen: 'PIN_VERIFICATION_SCREEN',
           data: {
             error: 'Request already being processed. Please wait.',
             error_message: 'Duplicate request detected'
@@ -1047,11 +1051,13 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     // Validate PIN format
     if (!pin || !/^\d{4}$/.test(pin)) {
                              return {
+           screen: 'PIN_VERIFICATION_SCREEN',
            data: {
              error: 'Please enter exactly 4 digits for your PIN.',
              validation: {
                pin: 'PIN must be exactly 4 digits'
-             }
+             },
+             retry: true
            }
          };
     }
@@ -1094,6 +1100,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       });
       
       return {
+        screen: 'PIN_VERIFICATION_SCREEN',
         data: {
           error: 'User not found. Please try again.',
           error_message: 'Unable to identify user for transfer'
@@ -1142,6 +1149,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           });
         } else {
                                      return {
+           screen: 'PIN_VERIFICATION_SCREEN',
            data: {
              error: 'Transfer session expired. Please try again.',
              error_message: 'Transfer context not found'
@@ -1160,11 +1168,12 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       });
       
                                  return {
-             data: {
-               error: 'Transfer details not found. Please try again.',
-               error_message: 'Missing transfer information'
-             }
-           };
+           screen: 'PIN_VERIFICATION_SCREEN',
+           data: {
+             error: 'Transfer details not found. Please try again.',
+             error_message: 'Missing transfer information'
+           }
+         };
     }
     
     try {
@@ -1187,16 +1196,20 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
             const redisClient = require('../utils/redis');
             await redisClient.deleteSession(`flow:${flowToken}`);
             await redisClient.deleteSession(processingKey);
+            logger.info('Flow session cleaned up successfully', { flowToken });
           } catch (error) {
             logger.warn('Failed to cleanup flow session', { error: error.message });
           }
         }
         
-        // Return success response to close the terminal flow
+        // Return success response to navigate to completion screen
         const successResponse = {
+          screen: 'COMPLETION_SCREEN',
           data: {
             success: true,
-            message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`
+            message: `✅ Transfer successful!\n\nAmount: ₦${transferData.amount.toLocaleString()}\nTo: ${transferData.recipientName || 'Recipient'}\nReference: ${result.transaction?.reference || 'N/A'}`,
+            completed: true,
+            status: 'completed'
           }
         };
         
@@ -1208,6 +1221,23 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
             recipientName: transferData.recipientName,
             reference: result.transaction?.reference
           }
+        });
+        
+        // Add additional logging for debugging
+        logger.info('Flow response structure for terminal flow', {
+          hasScreen: !!successResponse.screen,
+          hasData: !!successResponse.data,
+          dataKeys: Object.keys(successResponse.data || {}),
+          isTerminal: successResponse.data?.terminal,
+          isCompleted: successResponse.data?.completed,
+          responseType: 'success_navigation'
+        });
+        
+        logger.info('Flow navigation response', {
+          fromScreen: 'PIN_VERIFICATION_SCREEN',
+          toScreen: successResponse.screen,
+          userId: user.id,
+          flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
         });
         
         return successResponse;
@@ -1230,9 +1260,11 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         }
         
         return {
+          screen: 'PIN_VERIFICATION_SCREEN',
           data: {
             error: result.message || 'Transfer failed. Please try again.',
-            error_message: result.message || 'Transfer processing failed'
+            error_message: result.message || 'Transfer processing failed',
+            retry: true
           }
         };
       }
@@ -1272,6 +1304,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       }
       
       return {
+        screen: 'PIN_VERIFICATION_SCREEN',
         data: {
           error: errorMessage,
           error_message: error.message
@@ -1293,6 +1326,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     }
     
     return {
+      screen: 'PIN_VERIFICATION_SCREEN',
       data: {
         error: 'PIN verification failed. Please try again.',
         error_message: error.message,
