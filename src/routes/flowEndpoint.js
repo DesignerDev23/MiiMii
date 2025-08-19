@@ -623,15 +623,10 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
     if (screen === 'PIN_VERIFICATION_SCREEN') {
       const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
       
-      // If transfer was successful, return completion response
-      if (result.data?.success) {
-        return {
-          screen: 'COMPLETION_SCREEN',
-          data: {
-            success: true,
-            message: 'Transfer completed successfully!'
-          }
-        };
+      // If transfer was successful, return empty response to close terminal flow
+      if (result.data?.success || Object.keys(result).length === 0) {
+        logger.info('Transfer successful, returning empty response to close flow');
+        return {}; // Empty response closes terminal flow
       }
       
       // If there was an error, return error response
@@ -770,7 +765,16 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         return handleLoginScreen(data, userId, tokenData);
 
       case 'PIN_VERIFICATION_SCREEN':
-        return handleTransferPinScreen(data, userId, tokenData, flowToken);
+        const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
+        
+        // If transfer was successful, return empty response to close terminal flow
+        if (result.data?.success || Object.keys(result).length === 0) {
+          logger.info('Transfer successful in data_exchange, returning empty response to close flow');
+          return {}; // Empty response closes terminal flow
+        }
+        
+        // If there was an error, return error response
+        return result;
 
       default:
         logger.warn('Unknown Flow screen', { screen });
@@ -1403,16 +1407,11 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           }
         }
         
-        // Return minimal success response for terminal flow
-        const successResponse = {
-          data: {
-            success: true
-          }
-        };
+        // Return empty response to close terminal flow
+        const successResponse = {};
         
-        logger.info('Returning minimal success response for terminal flow', {
+        logger.info('Returning empty response to close terminal flow', {
           userId: user.id,
-          response: successResponse,
           transferData: {
             amount: transferData.amount,
             recipientName: transferData.recipientName,
@@ -1424,8 +1423,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         logger.info('Flow response structure for terminal flow', {
           hasScreen: !!successResponse.screen,
           hasData: !!successResponse.data,
-          dataKeys: Object.keys(successResponse.data || {}),
-          responseType: 'minimal_success'
+          responseType: 'empty_response_to_close'
         });
         
         return successResponse;
