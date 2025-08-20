@@ -816,6 +816,8 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
                 hasUserId: !!session.userId, 
                 hasPhoneNumber: !!session.phoneNumber,
                 hasTransferData: !!session.transferData,
+                hasNetwork: !!session.network,
+                hasDataPlan: !!session.dataPlan,
                 sessionKeys: Object.keys(session),
                 sessionData: session
               });
@@ -890,84 +892,6 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           flowToken: flowToken
         });
         
-        // When user reaches data plan selection screen, send WhatsApp message with ALL available plans
-        if (data.network && data.phoneNumber) {
-          logger.info('User reached DATA_PLAN_SELECTION_SCREEN - sending WhatsApp message with all plans for network:', data.network);
-          
-          // Get ALL data plans for the selected network
-          const availablePlans = getDataPlansForNetwork(data.network);
-          
-          // Send WhatsApp message with ALL available plans
-          try {
-            const whatsappService = require('../services/whatsapp');
-            const userService = require('../services/user');
-            const user = await userService.getUserById(userId);
-            
-            logger.info('Attempting to send WhatsApp message with all plans', {
-              userId,
-              hasUser: !!user,
-              whatsappNumber: user?.whatsappNumber,
-              network: data.network,
-              planCount: availablePlans.length
-            });
-            
-            if (user && user.whatsappNumber) {
-              const formattedPlans = availablePlans.map(plan => ({
-                id: plan.id.toString(),
-                title: `${plan.title} - ₦${plan.price} (${plan.validity})`
-              }));
-
-              const plansMessage = `📱 *${data.network} Data Plans*\n\n` +
-                                  formattedPlans.map(plan => `• ${plan.title}`).join('\n') +
-                                  `\n\nPlease select a plan from the flow above. You can also choose any plan from this list.`;
-              
-              logger.info('Sending WhatsApp message with all plans', {
-                messageLength: plansMessage.length,
-                planCount: availablePlans.length,
-                firstPlan: formattedPlans[0]?.title,
-                lastPlan: formattedPlans[formattedPlans.length - 1]?.title
-              });
-              
-              await whatsappService.sendTextMessage(user.whatsappNumber, plansMessage);
-              logger.info('All data plans sent via WhatsApp successfully', { userId, network: data.network, planCount: availablePlans.length });
-            } else {
-              logger.warn('Cannot send WhatsApp message - missing user or phone number', {
-                userId,
-                hasUser: !!user,
-                whatsappNumber: user?.whatsappNumber
-              });
-              
-              // Try to send message using phone number from data if user not found
-              if (data.phoneNumber) {
-                try {
-                  const formattedPlans = availablePlans.map(plan => ({
-                    id: plan.id.toString(),
-                    title: `${plan.title} - ₦${plan.price} (${plan.validity})`
-                  }));
-
-                  const plansMessage = `📱 *${data.network} Data Plans*\n\n` +
-                                      formattedPlans.map(plan => `• ${plan.title}`).join('\n') +
-                                      `\n\nPlease select a plan from the flow above. You can also choose any plan from this list.`;
-                  
-                  await whatsappService.sendTextMessage(data.phoneNumber, plansMessage);
-                  logger.info('Data plans sent via WhatsApp using phone number from data', { 
-                    phoneNumber: data.phoneNumber, 
-                    network: data.network, 
-                    planCount: availablePlans.length 
-                  });
-                } catch (error) {
-                  logger.warn('Failed to send WhatsApp message using phone number from data', { 
-                    error: error.message, 
-                    phoneNumber: data.phoneNumber 
-                  });
-                }
-              }
-            }
-          } catch (error) {
-            logger.warn('Failed to send data plans via WhatsApp', { error: error.message, stack: error.stack });
-          }
-        }
-        
         return handleDataPlanSelectionScreen(data, userId, tokenData, flowToken);
 
       case 'CONFIRMATION_SCREEN':
@@ -1003,7 +927,36 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           
           // If there was an error, return error response
           return result;
-        } else if (tokenData.sessionData && tokenData.sessionData.transferData) {
+        } 
+        // Check if this is a data purchase flow with PIN only (get data from session)
+        else if (data.pin && tokenData.sessionData && tokenData.sessionData.network && tokenData.sessionData.phoneNumber && tokenData.sessionData.dataPlan) {
+          logger.info('Detected data purchase flow from session data', {
+            sessionDataKeys: Object.keys(tokenData.sessionData),
+            hasNetwork: !!tokenData.sessionData.network,
+            hasPhoneNumber: !!tokenData.sessionData.phoneNumber,
+            hasDataPlan: !!tokenData.sessionData.dataPlan,
+            hasPin: !!data.pin
+          });
+          
+          // Combine session data with PIN from data payload
+          const completeData = {
+            ...tokenData.sessionData,
+            pin: data.pin
+          };
+          
+          // This is a data purchase flow
+          const result = await handleDataPurchaseScreen(completeData, userId, tokenData, flowToken);
+          
+          // If data purchase was successful, return empty response to close terminal flow
+          if (Object.keys(result).length === 0) {
+            logger.info('Data purchase successful, returning empty response to close flow');
+            return result;
+          }
+          
+          // If there was an error, return error response
+          return result;
+        }
+        else if (tokenData.sessionData && tokenData.sessionData.transferData) {
           logger.info('Detected transfer flow from session data', {
             sessionDataKeys: Object.keys(tokenData.sessionData),
             transferDataKeys: Object.keys(tokenData.sessionData.transferData),
@@ -2168,8 +2121,24 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        await redisClient.setSession(`flow:${flowToken}`, { network }, 300);
-        logger.info('Network selection stored in session', { flowToken, network });
+        const sessionKey = `flow:${flowToken}`;
+        
+        // Get existing session data to merge with
+        const existingSession = await redisClient.getSession(sessionKey) || {};
+        
+        // Merge with new network data
+        const sessionData = { 
+          ...existingSession,
+          network 
+        };
+        
+        await redisClient.setSession(sessionKey, sessionData, 300);
+        logger.info('Network selection stored in session', { 
+          flowToken, 
+          network,
+          sessionDataKeys: Object.keys(sessionData),
+          mergedWithExisting: Object.keys(existingSession).length > 0
+        });
       } catch (error) {
         logger.warn('Failed to store network selection in session', { error: error.message });
       }
@@ -2237,11 +2206,27 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionData = { network, phoneNumber };
-        await redisClient.setSession(`flow:${flowToken}`, sessionData, 300);
-        logger.info('Phone number stored in session', { flowToken, network });
+        const sessionKey = `flow:${flowToken}`;
+        
+        // Get existing session data to merge with
+        const existingSession = await redisClient.getSession(sessionKey) || {};
+        
+        // Merge with new phone data
+        const sessionData = { 
+          ...existingSession,
+          network, 
+          phoneNumber 
+        };
+        
+        await redisClient.setSession(sessionKey, sessionData, 300);
+        logger.info('Phone number stored in session', { 
+          flowToken, 
+          network,
+          sessionDataKeys: Object.keys(sessionData),
+          mergedWithExisting: Object.keys(existingSession).length > 0
+        });
       } catch (error) {
-        logger.warn('Failed to store phone number in session', { error: error.message });
+        logger.warn('Failed to store purchase confirmation in session', { error: error.message });
       }
     }
 
@@ -2249,14 +2234,14 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
       screen: 'DATA_PLAN_SELECTION_SCREEN',
       data: {
         success: true,
-        message: 'Phone number entered successfully',
+        message: 'Phone number saved successfully',
         network: network,
         phoneNumber: phoneNumber
       }
     };
 
   } catch (error) {
-    logger.error('Phone input processing failed', { error: error.message });
+    logger.error('Phone input screen processing failed', { error: error.message });
     return {
       screen: 'PHONE_INPUT_SCREEN',
       data: {
@@ -2337,9 +2322,27 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionData = { network, phoneNumber, dataPlan: selectedPlan.id };
-        await redisClient.setSession(`flow:${flowToken}`, sessionData, 300);
-        logger.info('Data plan selection stored in session', { flowToken, network, dataPlan: selectedPlan.id });
+        const sessionKey = `flow:${flowToken}`;
+        
+        // Get existing session data to merge with
+        const existingSession = await redisClient.getSession(sessionKey) || {};
+        
+        // Merge with new data plan data
+        const sessionData = { 
+          ...existingSession,
+          network, 
+          phoneNumber, 
+          dataPlan: selectedPlan.id 
+        };
+        
+        await redisClient.setSession(sessionKey, sessionData, 300);
+        logger.info('Data plan selection stored in session', { 
+          flowToken, 
+          network, 
+          dataPlan: selectedPlan.id,
+          sessionDataKeys: Object.keys(sessionData),
+          mergedWithExisting: Object.keys(existingSession).length > 0
+        });
       } catch (error) {
         logger.warn('Failed to store data plan selection in session', { error: error.message });
       }
@@ -2364,159 +2367,6 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       screen: 'DATA_PLAN_SELECTION_SCREEN',
       data: {
         error: 'Data plan selection failed. Please try again.',
-        code: 'PROCESSING_ERROR'
-      }
-    };
-  }
-}
-
-/**
- * Handle confirmation screen
- */
-async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken = null) {
-  try {
-    const { network, phoneNumber, dataPlan, confirm } = data;
-
-    // Validate all required fields
-    if (!network || !['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(network)) {
-      return {
-        screen: 'NETWORK_SELECTION_SCREEN',
-        data: {
-          error: 'Invalid network. Please select a network first.',
-          message: 'Please choose MTN, Airtel, Glo, or 9mobile'
-        }
-      };
-    }
-
-    if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
-      return {
-        screen: 'PHONE_INPUT_SCREEN',
-        data: {
-          error: 'Invalid phone number. Please enter a valid 11-digit Nigerian phone number.',
-          message: 'Phone number must start with 070, 071, 080, 081, 090, or 091'
-        }
-      };
-    }
-
-    if (!dataPlan) {
-      return {
-        screen: 'DATA_PLAN_SELECTION_SCREEN',
-        data: {
-          error: 'No data plan selected. Please choose a plan.',
-          message: 'Please select a data plan'
-        }
-      };
-    }
-
-    // If no confirmation yet, show the confirmation screen with actual data
-    if (!confirm) {
-      // Get the selected plan details
-      const availablePlans = getDataPlansForNetwork(network);
-      const selectedPlan = availablePlans.find(plan => plan.id.toString() === dataPlan.toString());
-      
-      if (!selectedPlan) {
-        return {
-          screen: 'DATA_PLAN_SELECTION_SCREEN',
-          data: {
-            error: 'Invalid data plan. Please select a plan again.',
-            message: 'Please choose a valid data plan'
-          }
-        };
-      }
-
-      logger.info('Showing confirmation screen with data', {
-        userId: userId || 'unknown',
-        network,
-        phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
-        dataPlan: selectedPlan.title,
-        price: selectedPlan.price
-      });
-
-      // Send WhatsApp message with purchase details
-      try {
-        const whatsappService = require('../services/whatsapp');
-        const userService = require('../services/user');
-        const user = await userService.getUserById(userId);
-        
-        if (user && user.whatsappNumber) {
-          const purchaseDetailsMessage = `📋 *Data Purchase Details*\n\n` +
-                                        `📱 Network: ${network}\n` +
-                                        `📞 Phone: ${phoneNumber}\n` +
-                                        `📦 Plan: ${selectedPlan.title}\n` +
-                                        `💰 Price: ₦${selectedPlan.price.toLocaleString()}\n\n` +
-                                        `Please confirm in the flow above.`;
-          
-          await whatsappService.sendTextMessage(user.whatsappNumber, purchaseDetailsMessage);
-          logger.info('Purchase details sent via WhatsApp', { userId, network, phoneNumber });
-        }
-      } catch (error) {
-        logger.warn('Failed to send purchase details via WhatsApp', { error: error.message });
-      }
-
-      return {
-        screen: 'CONFIRMATION_SCREEN',
-        data: {
-          network: network,
-          phoneNumber: phoneNumber,
-          dataPlan: selectedPlan.title,
-          price: selectedPlan.price,
-          planId: selectedPlan.id
-        }
-      };
-    }
-
-    // Check if user confirmed the purchase
-    if (confirm !== 'yes') {
-      logger.info('User cancelled data purchase', {
-        userId: userId || 'unknown',
-        network,
-        phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7)
-      });
-
-      return {
-        screen: 'NETWORK_SELECTION_SCREEN',
-        data: {
-          reset: true,
-          message: 'Purchase cancelled. Please start over.'
-        }
-      };
-    }
-
-    logger.info('Data purchase confirmed from Flow', {
-      userId: userId || 'unknown',
-      flowId: tokenData.flowId || 'unknown',
-      source: tokenData.source || 'unknown',
-      network,
-      phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
-      dataPlan
-    });
-
-    // Store confirmation in session
-    if (flowToken) {
-      try {
-        const redisClient = require('../utils/redis');
-        const sessionData = { network, phoneNumber, dataPlan, confirm: 'yes' };
-        await redisClient.setSession(`flow:${flowToken}`, sessionData, 300);
-        logger.info('Purchase confirmation stored in session', { flowToken, network, dataPlan });
-      } catch (error) {
-        logger.warn('Failed to store purchase confirmation in session', { error: error.message });
-      }
-    }
-
-    return {
-      screen: 'PIN_VERIFICATION_SCREEN',
-      data: {
-        success: true,
-        message: 'Purchase confirmed. Please enter your PIN to complete the transaction.'
-      }
-    };
-
-  } catch (error) {
-    logger.error('Confirmation screen processing failed', { error: error.message });
-    return {
-      screen: 'CONFIRMATION_SCREEN',
-      data: {
-        error: 'Confirmation failed. Please try again.',
         code: 'PROCESSING_ERROR'
       }
     };
