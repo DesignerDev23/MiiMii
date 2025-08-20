@@ -878,6 +878,24 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
 
           logger.info('Formatted plans for flow:', formattedPlans);
 
+          // Send WhatsApp message with available plans
+          try {
+            const whatsappService = require('../services/whatsapp');
+            const userService = require('../services/user');
+            const user = await userService.getUserById(userId);
+            
+            if (user && user.whatsappNumber) {
+              const plansMessage = `📱 *${data.network} Data Plans*\n\n` +
+                                  formattedPlans.map(plan => `• ${plan.title}`).join('\n') +
+                                  `\n\nPlease select a plan in the flow above.`;
+              
+              await whatsappService.sendTextMessage(user.whatsappNumber, plansMessage);
+              logger.info('Data plans sent via WhatsApp', { userId, network: data.network, planCount: formattedPlans.length });
+            }
+          } catch (error) {
+            logger.warn('Failed to send data plans via WhatsApp', { error: error.message });
+          }
+
           return {
             screen: 'DATA_PLAN_SELECTION_SCREEN',
             data: {
@@ -2357,6 +2375,63 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
         data: {
           error: 'No data plan selected. Please choose a plan.',
           message: 'Please select a data plan'
+        }
+      };
+    }
+
+    // If no confirmation yet, show the confirmation screen with actual data
+    if (!confirm) {
+      // Get the selected plan details
+      const availablePlans = getDataPlansForNetwork(network);
+      const selectedPlan = availablePlans.find(plan => plan.id.toString() === dataPlan.toString());
+      
+      if (!selectedPlan) {
+        return {
+          screen: 'DATA_PLAN_SELECTION_SCREEN',
+          data: {
+            error: 'Invalid data plan. Please select a plan again.',
+            message: 'Please choose a valid data plan'
+          }
+        };
+      }
+
+      logger.info('Showing confirmation screen with data', {
+        userId: userId || 'unknown',
+        network,
+        phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
+        dataPlan: selectedPlan.title,
+        price: selectedPlan.price
+      });
+
+      // Send WhatsApp message with purchase details
+      try {
+        const whatsappService = require('../services/whatsapp');
+        const userService = require('../services/user');
+        const user = await userService.getUserById(userId);
+        
+        if (user && user.whatsappNumber) {
+          const purchaseDetailsMessage = `📋 *Data Purchase Details*\n\n` +
+                                        `📱 Network: ${network}\n` +
+                                        `📞 Phone: ${phoneNumber}\n` +
+                                        `📦 Plan: ${selectedPlan.title}\n` +
+                                        `💰 Price: ₦${selectedPlan.price.toLocaleString()}\n\n` +
+                                        `Please confirm in the flow above.`;
+          
+          await whatsappService.sendTextMessage(user.whatsappNumber, purchaseDetailsMessage);
+          logger.info('Purchase details sent via WhatsApp', { userId, network, phoneNumber });
+        }
+      } catch (error) {
+        logger.warn('Failed to send purchase details via WhatsApp', { error: error.message });
+      }
+
+      return {
+        screen: 'CONFIRMATION_SCREEN',
+        data: {
+          network: network,
+          phoneNumber: phoneNumber,
+          dataPlan: selectedPlan.title,
+          price: selectedPlan.price,
+          planId: selectedPlan.id
         }
       };
     }

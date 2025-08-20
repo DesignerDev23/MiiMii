@@ -142,21 +142,21 @@
                 "type": "TextHeading",
                 "text": "Select Data Plan"
               },
-              {
-                "type": "TextBody",
-                "text": "Choose a data plan for ${data.network}:"
-              },
+                             {
+                 "type": "TextBody",
+                 "text": "Choose a data plan:"
+               },
               {
                 "type": "RadioButtonsGroup",
                 "required": true,
                 "label": "Data Plan",
                 "name": "dataPlan",
-                "data-source": [
-                  {
-                    "id": "loading",
-                    "title": "Loading plans for ${data.network}..."
-                  }
-                ]
+                                 "data-source": [
+                   {
+                     "id": "loading",
+                     "title": "Loading plans..."
+                   }
+                 ]
               },
               {
                 "type": "Footer",
@@ -206,10 +206,10 @@
                 "type": "TextHeading",
                 "text": "Confirm Data Purchase"
               },
-              {
-                "type": "TextBody",
-                "text": "Please review your data purchase details:\n\n📱 Network: ${data.network}\n📞 Phone: ${data.phoneNumber}\n📦 Plan: ${data.dataPlan}\n\nIs this correct?"
-              },
+                             {
+                 "type": "TextBody",
+                 "text": "Please confirm your data purchase details above."
+               },
               {
                 "type": "RadioButtonsGroup",
                 "required": true,
