@@ -1203,7 +1203,7 @@ class MessageProcessor {
         return;
       }
 
-      // Determine flow type based on screen
+      // Determine flow type based on screen and data
       if (screen === 'PIN_INPUT_SCREEN') {
         // Handle login flow
         const whatsappFlowService = require('./whatsappFlowService');
@@ -1222,6 +1222,46 @@ class MessageProcessor {
             screen,
             error: result.error
           });
+        }
+        
+        return result;
+      } else if (screen === 'PIN_VERIFICATION_SCREEN' && data?.network && data?.phoneNumber && data?.dataPlan) {
+        // Handle data purchase flow completion
+        logger.info('Data purchase flow completion detected', {
+          userId: user.id,
+          flowToken,
+          screen,
+          network: data.network,
+          phoneNumber: data.phoneNumber,
+          dataPlan: data.dataPlan,
+          hasPin: !!data.pin
+        });
+
+        // Forward to flow endpoint for processing
+        const flowEndpoint = require('../routes/flowEndpoint');
+        const result = await flowEndpoint.handleCompleteAction(screen, data, { userId: user.id }, flowToken);
+        
+        if (result && Object.keys(result).length === 0) {
+          logger.info('Data purchase flow completed successfully', {
+            userId: user.id,
+            flowToken,
+            screen
+          });
+          
+          // Send success message
+          const successMessage = `✅ Data purchase completed successfully!\n\n📱 Network: ${data.network}\n📞 Phone: ${data.phoneNumber}\n📦 Plan: ${data.dataPlan}\n\nYour data will be activated shortly.`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+        } else {
+          logger.error('Data purchase flow processing failed', {
+            userId: user.id,
+            flowToken,
+            screen,
+            error: result?.error || 'Unknown error'
+          });
+          
+          // Send error message
+          const errorMessage = `❌ Data purchase failed. Please try again or contact support.`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
         }
         
         return result;

@@ -778,6 +778,12 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
     let userId = tokenData.userId || null;
     let phoneNumber = data?.phoneNumber || null;
     
+    // Fix userId if it's an object (should be a string)
+    if (userId && typeof userId === 'object') {
+      logger.warn('userId is an object, attempting to extract string value', { userId });
+      userId = userId.toString ? userId.toString() : JSON.stringify(userId);
+    }
+    
             // Try redis lookup with flow token
         if (!userId && flowToken) {
           try {
@@ -920,6 +926,32 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
                 hasUser: !!user,
                 whatsappNumber: user?.whatsappNumber
               });
+              
+              // Try to send message using phone number from data if user not found
+              if (data.phoneNumber) {
+                try {
+                  const formattedPlans = availablePlans.map(plan => ({
+                    id: plan.id.toString(),
+                    title: `${plan.title} - ₦${plan.price} (${plan.validity})`
+                  }));
+
+                  const plansMessage = `📱 *${data.network} Data Plans*\n\n` +
+                                      formattedPlans.map(plan => `• ${plan.title}`).join('\n') +
+                                      `\n\nPlease select a plan from the flow above. You can also choose any plan from this list.`;
+                  
+                  await whatsappService.sendTextMessage(data.phoneNumber, plansMessage);
+                  logger.info('Data plans sent via WhatsApp using phone number from data', { 
+                    phoneNumber: data.phoneNumber, 
+                    network: data.network, 
+                    planCount: availablePlans.length 
+                  });
+                } catch (error) {
+                  logger.warn('Failed to send WhatsApp message using phone number from data', { 
+                    error: error.message, 
+                    phoneNumber: data.phoneNumber 
+                  });
+                }
+              }
             }
           } catch (error) {
             logger.warn('Failed to send data plans via WhatsApp', { error: error.message, stack: error.stack });
@@ -2481,4 +2513,8 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
   }
 }
 
-module.exports = router;
+// Export functions for use in other modules
+module.exports = {
+  router,
+  handleCompleteAction
+};
