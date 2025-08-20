@@ -874,51 +874,46 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           flowToken: flowToken
         });
         
-        // Check if this is a navigate action (user coming from phone input) or if dataPlan is "loading"
-        if (data.network && data.phoneNumber && (!data.dataPlan || data.dataPlan === "loading")) {
-          logger.info('Navigate to DATA_PLAN_SELECTION_SCREEN - populating plans for network:', data.network, {
-            dataPlan: data.dataPlan,
-            condition: !data.dataPlan || data.dataPlan === "loading"
-          });
+        // When user reaches data plan selection screen, send WhatsApp message with ALL available plans
+        if (data.network && data.phoneNumber) {
+          logger.info('User reached DATA_PLAN_SELECTION_SCREEN - sending WhatsApp message with all plans for network:', data.network);
           
-          // Get data plans for the selected network
+          // Get ALL data plans for the selected network
           const availablePlans = getDataPlansForNetwork(data.network);
           
-          // Format plans for the RadioButtonsGroup
-          const formattedPlans = availablePlans.map(plan => ({
-            id: plan.id.toString(),
-            title: `${plan.title} - ₦${plan.price} (${plan.validity})`
-          }));
-
-          logger.info('Formatted plans for flow:', formattedPlans);
-
-          // Send WhatsApp message with available plans
+          // Send WhatsApp message with ALL available plans
           try {
             const whatsappService = require('../services/whatsapp');
             const userService = require('../services/user');
             const user = await userService.getUserById(userId);
             
-            logger.info('Attempting to send WhatsApp message', {
+            logger.info('Attempting to send WhatsApp message with all plans', {
               userId,
               hasUser: !!user,
               whatsappNumber: user?.whatsappNumber,
-              planCount: formattedPlans.length
+              network: data.network,
+              planCount: availablePlans.length
             });
             
             if (user && user.whatsappNumber) {
+              const formattedPlans = availablePlans.map(plan => ({
+                id: plan.id.toString(),
+                title: `${plan.title} - ₦${plan.price} (${plan.validity})`
+              }));
+
               const plansMessage = `📱 *${data.network} Data Plans*\n\n` +
                                   formattedPlans.map(plan => `• ${plan.title}`).join('\n') +
-                                  `\n\nPlease select a plan in the flow above.`;
+                                  `\n\nPlease select a plan from the flow above. You can also choose any plan from this list.`;
               
-              logger.info('Sending WhatsApp message with plans', {
+              logger.info('Sending WhatsApp message with all plans', {
                 messageLength: plansMessage.length,
-                planCount: formattedPlans.length,
+                planCount: availablePlans.length,
                 firstPlan: formattedPlans[0]?.title,
                 lastPlan: formattedPlans[formattedPlans.length - 1]?.title
               });
               
               await whatsappService.sendTextMessage(user.whatsappNumber, plansMessage);
-              logger.info('Data plans sent via WhatsApp successfully', { userId, network: data.network, planCount: formattedPlans.length });
+              logger.info('All data plans sent via WhatsApp successfully', { userId, network: data.network, planCount: availablePlans.length });
             } else {
               logger.warn('Cannot send WhatsApp message - missing user or phone number', {
                 userId,
@@ -929,22 +924,6 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           } catch (error) {
             logger.warn('Failed to send data plans via WhatsApp', { error: error.message, stack: error.stack });
           }
-
-          logger.info('Returning data plans to flow', {
-            screen: 'DATA_PLAN_SELECTION_SCREEN',
-            planCount: formattedPlans.length,
-            firstPlan: formattedPlans[0],
-            lastPlan: formattedPlans[formattedPlans.length - 1]
-          });
-
-          return {
-            screen: 'DATA_PLAN_SELECTION_SCREEN',
-            data: {
-              network: data.network,
-              phoneNumber: data.phoneNumber,
-              dataPlans: formattedPlans
-            }
-          };
         }
         
         return handleDataPlanSelectionScreen(data, userId, tokenData, flowToken);
@@ -2274,47 +2253,16 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       };
     }
 
-    // If no data plan selected yet, return the available plans for the network
+    // If no data plan selected yet, just return to the same screen
     if (!dataPlan) {
-      const availablePlans = getDataPlansForNetwork(network);
-      
-      logger.info('Returning data plans for network', {
+      logger.info('No data plan selected yet, staying on DATA_PLAN_SELECTION_SCREEN', {
         userId: userId || 'unknown',
-        network,
-        planCount: availablePlans.length
+        network
       });
-
-      // Send WhatsApp message with available plans
-      try {
-        const whatsappService = require('../services/whatsapp');
-        const userService = require('../services/user');
-        const user = await userService.getUserById(userId);
-        
-        if (user && user.whatsappNumber) {
-          const formattedPlans = availablePlans.map(plan => ({
-            id: plan.id.toString(),
-            title: `${plan.title} - ₦${plan.price} (${plan.validity})`
-          }));
-
-          const plansMessage = `📱 *${network} Data Plans*\n\n` +
-                              formattedPlans.map(plan => `• ${plan.title}`).join('\n') +
-                              `\n\nPlease select a plan in the flow above.`;
-          
-          await whatsappService.sendTextMessage(user.whatsappNumber, plansMessage);
-          logger.info('Data plans sent via WhatsApp', { userId, network, planCount: availablePlans.length });
-        }
-      } catch (error) {
-        logger.warn('Failed to send data plans via WhatsApp', { error: error.message });
-      }
 
       return {
         screen: 'DATA_PLAN_SELECTION_SCREEN',
-        data: {
-          dataPlans: availablePlans.map(plan => ({
-            id: plan.id.toString(),
-            title: `${plan.title} - ₦${plan.price} (${plan.validity})`
-          }))
-        }
+        data: {}
       };
     }
 

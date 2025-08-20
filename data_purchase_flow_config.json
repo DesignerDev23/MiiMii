@@ -153,8 +153,388 @@
                 "name": "dataPlan",
                                  "data-source": [
                    {
-                     "id": "loading",
-                     "title": "Loading plans..."
+                     "id": "1",
+                     "title": "500MB - ₦380 (30days to 7days)"
+                   },
+                   {
+                     "id": "2", 
+                     "title": "1GB - ₦620 (30 days)"
+                   },
+                   {
+                     "id": "3",
+                     "title": "2GB - ₦1,240 (Monthly)"
+                   },
+                   {
+                     "id": "4",
+                     "title": "3GB - ₦2,200 (30days)"
+                   },
+                   {
+                     "id": "5",
+                     "title": "5GB - ₦4,500 (30days)"
+                   },
+                   {
+                     "id": "6",
+                     "title": "10GB - ₦9,000 (30days)"
+                   },
+                   {
+                     "id": "7",
+                     "title": "6GB - ₦2,450 (7days)"
+                   },
+                   {
+                     "id": "8",
+                     "title": "1GB - ₦490 (24hours and 5 mins call)"
+                   },
+                   {
+                     "id": "9",
+                     "title": "1.5GB - ₦588 (2 days)"
+                   },
+                   {
+                     "id": "10",
+                     "title": "15GB - ₦6,305 (30 days)"
+                   },
+                   {
+                     "id": "11",
+                     "title": "10GB - ₦4,365 (30days)"
+                   },
+                   {
+                     "id": "12",
+                     "title": "8GB - ₦4,365 (7days + 25 min call time)"
+                   },
+                   {
+                     "id": "13",
+                     "title": "1.5GB - ₦970 (7 days + 5 mind call time)"
+                   },
+                   {
+                     "id": "14",
+                     "title": "1GB - ₦781 (Weekly and call time)"
+                   },
+                   {
+                     "id": "15",
+                     "title": "250GB - ₦53,900 (30days)"
+                   },
+                   {
+                     "id": "16",
+                     "title": "150GB - ₦34,900 (30days)"
+                   },
+                   {
+                     "id": "17",
+                     "title": "75GB - ₦19,600 (30days)"
+                   },
+                   {
+                     "id": "18",
+                     "title": "32GB - ₦10,780 (10780)"
+                   },
+                   {
+                     "id": "19",
+                     "title": "35GB - ₦6,860 (Postpaid monthly plan)"
+                   },
+                   {
+                     "id": "20",
+                     "title": "15GB - ₦6,370 (30days and call time)"
+                   },
+                   {
+                     "id": "21",
+                     "title": "12.5GB - ₦5,390 (11gb + call time monthly)"
+                   },
+                   {
+                     "id": "22",
+                     "title": "3.2GB - ₦980 (2 days)"
+                   },
+                   {
+                     "id": "23",
+                     "title": "2.5GB - ₦735 (Daily plan)"
+                   },
+                   {
+                     "id": "24",
+                     "title": "1GB - ₦98 (Beta mix bundle max)"
+                   },
+                   {
+                     "id": "25",
+                     "title": "75MB - ₦74 (Daily)"
+                   },
+                   {
+                     "id": "26",
+                     "title": "0.5MB - ₦49 (Beta mix mini)"
+                   },
+                   {
+                     "id": "27",
+                     "title": "200GB - ₦49,000 (60 days plan)"
+                   },
+                   {
+                     "id": "28",
+                     "title": "150GB - ₦39,200 (60 days plan)"
+                   },
+                   {
+                     "id": "29",
+                     "title": "40GB - ₦8,820 (Postpaid 2 monthly plan)"
+                   },
+                   {
+                     "id": "30",
+                     "title": "90GB - ₦24,500 (60 days plan)"
+                   },
+                   {
+                     "id": "31",
+                     "title": "7GB - ₦3,430 (30days)"
+                   },
+                   {
+                     "id": "32",
+                     "title": "3.5GB - ₦2,450 (30days + 2gb night)"
+                   },
+                   {
+                     "id": "33",
+                     "title": "1.2GB - ₦735 (7days pulse)"
+                   },
+                   {
+                     "id": "34",
+                     "title": "11GB - ₦3,430 (7 days)"
+                   },
+                   {
+                     "id": "35",
+                     "title": "230MB - ₦196 (24hours)"
+                   },
+                   {
+                     "id": "36",
+                     "title": "2GB - ₦1,460 (30days + call 2m)"
+                   },
+                   {
+                     "id": "37",
+                     "title": "2.7GB - ₦1,960 (30days + 2 mins)"
+                   },
+                   {
+                     "id": "38",
+                     "title": "100MB - ₦98 (24hours)"
+                   },
+                   {
+                     "id": "39",
+                     "title": "500MB - ₦490 (7days)"
+                   },
+                   {
+                     "id": "40",
+                     "title": "1.8GB - ₦1,470 (30days plus 1500 Airtime)"
+                   },
+                   {
+                     "id": "41",
+                     "title": "300MB - ₦1,470 (30days + 1500 talk time)"
+                   },
+                   {
+                     "id": "42",
+                     "title": "1GB - ₦2,940 (30days + 15000 talk time)"
+                   },
+                   {
+                     "id": "43",
+                     "title": "500MB - ₦346 (daily)"
+                   },
+                   {
+                     "id": "44",
+                     "title": "12.5GB - ₦5,390 (30days)"
+                   },
+                   {
+                     "id": "45",
+                     "title": "14.5GB - ₦4,900 (30days)"
+                   },
+                   {
+                     "id": "46",
+                     "title": "65GB - ₦15,680 (30days)"
+                   },
+                   {
+                     "id": "47",
+                     "title": "40MB - ₦50 (1 day and 1 min)"
+                   },
+                   {
+                     "id": "48",
+                     "title": "750MB - ₦442 (2 days social)"
+                   },
+                   {
+                     "id": "49",
+                     "title": "2GB - ₦735 (2 days)"
+                   },
+                   {
+                     "id": "50",
+                     "title": "2.5GB - ₦880 (2 days)"
+                   },
+                   {
+                     "id": "51",
+                     "title": "3.5GB - ₦1,460 (7 days)"
+                   },
+                   {
+                     "id": "52",
+                     "title": "20GB - ₦5,335 (7 days)"
+                   },
+                   {
+                     "id": "53",
+                     "title": "6.75GB - ₦2,910 (30days)"
+                   },
+                   {
+                     "id": "54",
+                     "title": "500MB - ₦493 (7days)"
+                   },
+                   {
+                     "id": "55",
+                     "title": "1GB - ₦784 (7days)"
+                   },
+                   {
+                     "id": "56",
+                     "title": "2GB - ₦1,500 (30days)"
+                   },
+                   {
+                     "id": "57",
+                     "title": "4GB - ₦2,525 (30days)"
+                   },
+                   {
+                     "id": "58",
+                     "title": "10GB - ₦4,000 (30days)"
+                   },
+                   {
+                     "id": "59",
+                     "title": "300MB - ₦300 (30days)"
+                   },
+                   {
+                     "id": "60",
+                     "title": "100MB - ₦100 (30days)"
+                   },
+                   {
+                     "id": "61",
+                     "title": "500MB - ₦425 (30days)"
+                   },
+                   {
+                     "id": "62",
+                     "title": "1GB - ₦850 (30days)"
+                   },
+                   {
+                     "id": "63",
+                     "title": "2GB - ₦1,700 (30days)"
+                   },
+                   {
+                     "id": "64",
+                     "title": "5GB - ₦4,250 (30days)"
+                   },
+                   {
+                     "id": "65",
+                     "title": "10GB - ₦8,500 (30days)"
+                   },
+                   {
+                     "id": "66",
+                     "title": "11GB - ₦4,000 (30days)"
+                   },
+                   {
+                     "id": "67",
+                     "title": "1GB - ₦320 (2 days)"
+                   },
+                   {
+                     "id": "68",
+                     "title": "7GB - ₦2,065 (7days)"
+                   },
+                   {
+                     "id": "69",
+                     "title": "10GB - ₦3,070 (30days)"
+                   },
+                   {
+                     "id": "70",
+                     "title": "25GB - ₦8,000 (30days)"
+                   },
+                   {
+                     "id": "71",
+                     "title": "18GB - ₦6,000 (7 days)"
+                   },
+                   {
+                     "id": "72",
+                     "title": "600MB - ₦230 (2 days)"
+                   },
+                   {
+                     "id": "73",
+                     "title": "1GB - ₦320 (3 days)"
+                   },
+                   {
+                     "id": "74",
+                     "title": "1TB - ₦196,000 (1 year)"
+                   },
+                   {
+                     "id": "75",
+                     "title": "1.5GB - ₦460 (30days)"
+                   },
+                   {
+                     "id": "76",
+                     "title": "2GB - ₦920 (30days)"
+                   },
+                   {
+                     "id": "77",
+                     "title": "3GB - ₦1,380 (30days)"
+                   },
+                   {
+                     "id": "78",
+                     "title": "5GB - ₦2,300 (30days)"
+                   },
+                   {
+                     "id": "79",
+                     "title": "10GB - ₦4,600 (30days)"
+                   },
+                   {
+                     "id": "80",
+                     "title": "20GB - ₦9,200 (30days)"
+                   },
+                   {
+                     "id": "81",
+                     "title": "50GB - ₦23,000 (30days)"
+                   },
+                   {
+                     "id": "82",
+                     "title": "100GB - ₦46,000 (30days)"
+                   },
+                   {
+                     "id": "83",
+                     "title": "200GB - ₦92,000 (30days)"
+                   },
+                   {
+                     "id": "84",
+                     "title": "500GB - ₦230,000 (30days)"
+                   },
+                   {
+                     "id": "85",
+                     "title": "1TB - ₦460,000 (30days)"
+                   },
+                   {
+                     "id": "86",
+                     "title": "1.1GB - ₦400 (30days)"
+                   },
+                   {
+                     "id": "87",
+                     "title": "2GB - ₦800 (30days)"
+                   },
+                   {
+                     "id": "88",
+                     "title": "3GB - ₦1,200 (30days)"
+                   },
+                   {
+                     "id": "89",
+                     "title": "5GB - ₦2,000 (30days)"
+                   },
+                   {
+                     "id": "90",
+                     "title": "10GB - ₦4,000 (30days)"
+                   },
+                   {
+                     "id": "91",
+                     "title": "20GB - ₦8,000 (30days)"
+                   },
+                   {
+                     "id": "92",
+                     "title": "50GB - ₦20,000 (30days)"
+                   },
+                   {
+                     "id": "93",
+                     "title": "100GB - ₦40,000 (30days)"
+                   },
+                   {
+                     "id": "94",
+                     "title": "200GB - ₦80,000 (30days)"
+                   },
+                   {
+                     "id": "95",
+                     "title": "500GB - ₦200,000 (30days)"
+                   },
+                   {
+                     "id": "96",
+                     "title": "1TB - ₦400,000 (30days)"
                    }
                  ]
               },
