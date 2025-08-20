@@ -632,9 +632,54 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
         flowToken: flowToken
       });
       
-      // Check if this is a data purchase flow or transfer flow
+      // Validate data purchase flow data before processing
       if (data.network && data.phoneNumber && data.dataPlan) {
         logger.info('Detected data purchase flow in complete action');
+        
+        // Validate network
+        if (!['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(data.network)) {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: 'Invalid network selected. Please try again.',
+              message: 'Please select a valid network'
+            }
+          };
+        }
+        
+        // Validate phone number
+        if (!data.phoneNumber || !/^0[789][01][0-9]{8}$/.test(data.phoneNumber)) {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: 'Invalid phone number format. Please try again.',
+              message: 'Phone number must be 11 digits starting with 070, 071, 080, 081, 090, or 091'
+            }
+          };
+        }
+        
+        // Validate data plan
+        if (!data.dataPlan || !/^\d+$/.test(data.dataPlan)) {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: 'Invalid data plan selected. Please try again.',
+              message: 'Please select a valid data plan'
+            }
+          };
+        }
+        
+        // Validate PIN format
+        if (!data.pin || !/^\d{4}$/.test(data.pin)) {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: 'Please enter exactly 4 digits for your PIN.',
+              message: 'PIN must be exactly 4 digits'
+            }
+          };
+        }
+        
         const result = await handleDataPurchaseScreen(data, tokenData.userId, tokenData, flowToken);
         
         // If data purchase was successful, return empty response to close terminal flow
@@ -1223,17 +1268,6 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       };
     }
 
-    // Validate PIN format
-    if (!pin || !/^\d{4}$/.test(pin)) {
-      return {
-        screen: 'PIN_VERIFICATION_SCREEN',
-        data: {
-          error: 'Please enter exactly 4 digits for your PIN.',
-          message: 'PIN must be exactly 4 digits'
-        }
-      };
-    }
-
     // Get user
     const userService = require('../services/user');
     const user = await userService.getUserById(userId);
@@ -1243,16 +1277,6 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
 
     // Validate user PIN
     await userService.validateUserPin(userId, pin);
-
-    // Validate phone number format
-    if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
-      throw new Error('Invalid phone number format. Please enter a valid 11-digit Nigerian phone number.');
-    }
-
-    // Validate data plan
-    if (!dataPlan || !/^\d+$/.test(dataPlan)) {
-      throw new Error('Invalid data plan selected. Please try again.');
-    }
 
     // Store the PIN and data purchase data for background processing
     const processingData = {
