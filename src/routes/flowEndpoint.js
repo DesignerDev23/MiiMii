@@ -871,15 +871,25 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           
           // If there was an error, return error response
           return result;
-        } else if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
+        } else if (data && (data.transfer_amount || data.recipient_name || data.bank_name || data.pin)) {
           logger.info('Detected transfer flow from flow action payload data', {
             dataKeys: Object.keys(data || {}),
             transferAmount: data.transfer_amount,
             recipientName: data.recipient_name,
             bankName: data.bank_name,
             accountNumber: data.account_number,
-            bankCode: data.bank_code
+            bankCode: data.bank_code,
+            hasPin: !!data.pin
           });
+          
+          // If this is just a PIN submission without transfer data, try to get from session
+          if (data.pin && !data.transfer_amount && !data.recipient_name) {
+            logger.info('PIN submission detected, checking session for transfer data');
+            // This is a PIN submission, we need to get transfer data from session
+            const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
+            return result;
+          }
+          
           // This is a transfer flow with data in the payload
           const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
           
