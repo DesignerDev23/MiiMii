@@ -798,7 +798,7 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         if (!userId && flowToken) {
           try {
             const redisClient = require('../utils/redis');
-            const sessionKey = flowToken;
+            const sessionKey = `flow:${flowToken}`;
             logger.info('Looking up session in Redis', { 
               sessionKey, 
               flowToken,
@@ -2168,7 +2168,7 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        await redisClient.setSession(flowToken, { network }, 300);
+        await redisClient.setSession(`flow:${flowToken}`, { network }, 300);
         logger.info('Network selection stored in session', { flowToken, network });
       } catch (error) {
         logger.warn('Failed to store network selection in session', { error: error.message });
@@ -2238,7 +2238,7 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
       try {
         const redisClient = require('../utils/redis');
         const sessionData = { network, phoneNumber };
-        await redisClient.setSession(flowToken, sessionData, 300);
+        await redisClient.setSession(`flow:${flowToken}`, sessionData, 300);
         logger.info('Phone number stored in session', { flowToken, network });
       } catch (error) {
         logger.warn('Failed to store phone number in session', { error: error.message });
@@ -2338,7 +2338,7 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       try {
         const redisClient = require('../utils/redis');
         const sessionData = { network, phoneNumber, dataPlan: selectedPlan.id };
-        await redisClient.setSession(flowToken, sessionData, 300);
+        await redisClient.setSession(`flow:${flowToken}`, sessionData, 300);
         logger.info('Data plan selection stored in session', { flowToken, network, dataPlan: selectedPlan.id });
       } catch (error) {
         logger.warn('Failed to store data plan selection in session', { error: error.message });
@@ -2496,7 +2496,7 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
       try {
         const redisClient = require('../utils/redis');
         const sessionData = { network, phoneNumber, dataPlan, confirm: 'yes' };
-        await redisClient.setSession(flowToken, sessionData, 300);
+        await redisClient.setSession(`flow:${flowToken}`, sessionData, 300);
         logger.info('Purchase confirmation stored in session', { flowToken, network, dataPlan });
       } catch (error) {
         logger.warn('Failed to store purchase confirmation in session', { error: error.message });

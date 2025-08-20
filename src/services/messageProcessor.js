@@ -1234,7 +1234,14 @@ class MessageProcessor {
         // Check if this is a data purchase flow by looking at session data
         try {
           const redisClient = require('../utils/redis');
-          const session = await redisClient.getSession(flowToken);
+          const session = await redisClient.getSession(`flow:${flowToken}`);
+          
+          logger.info('Checking session for data purchase flow', {
+            flowToken,
+            hasSession: !!session,
+            sessionKeys: session ? Object.keys(session) : [],
+            sessionData: session
+          });
           
           if (session && session.network && session.phoneNumber && session.dataPlan) {
             // Handle data purchase flow completion
@@ -1290,6 +1297,25 @@ class MessageProcessor {
           }
         } catch (error) {
           logger.warn('Error checking session for data purchase flow', { error: error.message });
+        }
+        
+        // Fallback: Check if this might be a data purchase flow by looking at the flow token
+        // Data purchase flow tokens should contain certain patterns
+        if (flowToken && (flowToken.includes('data_purchase') || flowToken.includes('data'))) {
+          logger.info('Flow token suggests data purchase flow, attempting to process as data purchase');
+          // Try to process as data purchase even without session data
+          const flowEndpoint = require('../routes/flowEndpoint');
+          const result = await flowEndpoint.handleCompleteAction(screen, data, { userId: user.id }, flowToken);
+          return result;
+        }
+        
+        // Additional fallback: Check if this is a PIN_VERIFICATION_SCREEN with PIN data
+        // This is likely a data purchase flow completion
+        if (screen === 'PIN_VERIFICATION_SCREEN' && data?.pin) {
+          logger.info('PIN_VERIFICATION_SCREEN with PIN detected, treating as data purchase flow completion');
+          const flowEndpoint = require('../routes/flowEndpoint');
+          const result = await flowEndpoint.handleCompleteAction(screen, data, { userId: user.id }, flowToken);
+          return result;
         }
       } else {
         // Handle onboarding flow

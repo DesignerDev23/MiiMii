@@ -592,15 +592,19 @@
               },
               {
                 "type": "TextBody",
-                "text": "📱 Network: ${data.network || 'Selected network'}"
+                "text": "📱 Network: Selected network"
               },
               {
                 "type": "TextBody",
-                "text": "📞 Phone: ${data.phoneNumber || 'Entered phone number'}"
+                "text": "📞 Phone: Entered phone number"
               },
               {
                 "type": "TextBody",
-                "text": "📦 Plan: ${data.dataPlan || 'Selected plan'}"
+                "text": "📦 Plan: Selected plan"
+              },
+              {
+                "type": "TextBody",
+                "text": "Detailed information will be sent in a separate message."
               },
               {
                 "type": "TextBody",
