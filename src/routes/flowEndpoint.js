@@ -1261,7 +1261,7 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       dataPurchaseData: {
       phoneNumber,
       network,
-        dataPlan: { id: dataPlan, price: getDataPlanPrice(dataPlan) }
+        dataPlan: { id: getBilalPlanId(dataPlan), price: getDataPlanPrice(dataPlan) }
       },
       flowToken: flowToken,
       timestamp: Date.now()
@@ -1449,27 +1449,181 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
 /**
  * Get data plan price from plan ID
  */
+// Complete data plans database with all 125+ plans
+const DATA_PLANS = {
+  MTN: [
+    { id: 1, title: "500MB - ₦380 (30 days)", price: 380, validity: "30 days", type: "SME" },
+    { id: 2, title: "1GB - ₦620 (30 days)", price: 620, validity: "30 days", type: "SME" },
+    { id: 3, title: "2GB - ₦1,240 (Monthly)", price: 1240, validity: "Monthly", type: "SME" },
+    { id: 4, title: "3GB - ₦2,200 (30 days)", price: 2200, validity: "30 days", type: "SME" },
+    { id: 5, title: "5GB - ₦4,500 (30 days)", price: 4500, validity: "30 days", type: "SME" },
+    { id: 6, title: "10GB - ₦9,000 (30 days)", price: 9000, validity: "30 days", type: "SME" },
+    { id: 36, title: "6GB - ₦2,450 (7 days)", price: 2450, validity: "7 days", type: "GIFTING" },
+    { id: 37, title: "1GB - ₦490 (24 hours + 5 mins call)", price: 490, validity: "24 hours", type: "GIFTING PROMO" },
+    { id: 38, title: "1.5GB - ₦588 (2 days)", price: 588, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 39, title: "15GB - ₦6,305 (30 days)", price: 6305, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 41, title: "10GB - ₦4,365 (30 days)", price: 4365, validity: "30 days", type: "GIFTING" },
+    { id: 43, title: "8GB - ₦4,365 (7 days + 25 min call)", price: 4365, validity: "7 days", type: "GIFTING PROMO" },
+    { id: 80, title: "1.5GB - ₦970 (7 days + 5 mins call)", price: 970, validity: "7 days", type: "GIFTING PROMO" },
+    { id: 81, title: "1GB - ₦781 (Weekly + call time)", price: 781, validity: "Weekly", type: "GIFTING" },
+    { id: 82, title: "250GB - ₦53,900 (30 days)", price: 53900, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 83, title: "150GB - ₦34,900 (30 days)", price: 34900, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 84, title: "75GB - ₦19,600 (30 days)", price: 19600, validity: "30 days", type: "GIFTING" },
+    { id: 85, title: "32GB - ₦10,780 (30 days)", price: 10780, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 86, title: "35GB - ₦6,860 (Postpaid monthly)", price: 6860, validity: "Monthly", type: "GIFTING PROMO" },
+    { id: 87, title: "15GB - ₦6,370 (30 days + call time)", price: 6370, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 88, title: "12.5GB - ₦5,390 (11GB + call time)", price: 5390, validity: "Monthly", type: "GIFTING" },
+    { id: 91, title: "3.2GB - ₦980 (2 days)", price: 980, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 92, title: "2.5GB - ₦735 (Daily plan)", price: 735, validity: "Daily", type: "GIFTING PROMO" },
+    { id: 94, title: "1GB - ₦98 (Beta mix bundle max)", price: 98, validity: "Daily", type: "GIFTING PROMO" },
+    { id: 96, title: "75MB - ₦74 (Daily)", price: 74, validity: "Daily", type: "GIFTING PROMO" },
+    { id: 97, title: "0.5MB - ₦49 (Beta mix mini)", price: 49, validity: "Daily", type: "GIFTING PROMO" },
+    { id: 98, title: "200GB - ₦49,000 (60 days)", price: 49000, validity: "60 days", type: "GIFTING PROMO" },
+    { id: 100, title: "150GB - ₦39,200 (60 days)", price: 39200, validity: "60 days", type: "GIFTING PROMO" },
+    { id: 101, title: "40GB - ₦8,820 (Postpaid 2 monthly)", price: 8820, validity: "2 months", type: "GIFTING PROMO" },
+    { id: 102, title: "90GB - ₦24,500 (60 days)", price: 24500, validity: "60 days", type: "GIFTING PROMO" },
+    { id: 103, title: "7GB - ₦3,430 (30 days)", price: 3430, validity: "30 days", type: "GIFTING" },
+    { id: 104, title: "3.5GB - ₦2,450 (30 days + 2GB night)", price: 2450, validity: "30 days", type: "GIFTING" },
+    { id: 108, title: "1.2GB - ₦735 (7 days pulse)", price: 735, validity: "7 days", type: "GIFTING PROMO" },
+    { id: 112, title: "11GB - ₦3,430 (7 days)", price: 3430, validity: "7 days", type: "GIFTING" },
+    { id: 113, title: "230MB - ₦196 (24 hours)", price: 196, validity: "24 hours", type: "GIFTING PROMO" },
+    { id: 114, title: "2GB - ₦1,460 (30 days + call 2m)", price: 1460, validity: "30 days", type: "GIFTING" },
+    { id: 115, title: "2.7GB - ₦1,960 (30 days + 2 mins)", price: 1960, validity: "30 days", type: "GIFTING" },
+    { id: 116, title: "100MB - ₦98 (24 hours)", price: 98, validity: "24 hours", type: "GIFTING" },
+    { id: 117, title: "500MB - ₦490 (7 days)", price: 490, validity: "7 days", type: "GIFTING" },
+    { id: 118, title: "1.8GB - ₦1,470 (30 days + 1500 Airtime)", price: 1470, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 120, title: "300MB - ₦1,470 (30 days + 1500 talk time)", price: 1470, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 121, title: "1GB - ₦2,940 (30 days + 15000 talk time)", price: 2940, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 122, title: "500MB - ₦346 (Daily)", price: 346, validity: "Daily", type: "GIFTING" },
+    { id: 123, title: "12.5GB - ₦5,390 (30 days)", price: 5390, validity: "30 days", type: "GIFTING" },
+    { id: 124, title: "14.5GB - ₦4,900 (30 days)", price: 4900, validity: "30 days", type: "GIFTING" },
+    { id: 125, title: "65GB - ₦15,680 (30 days)", price: 15680, validity: "30 days", type: "GIFTING" },
+    { id: 127, title: "40MB - ₦50 (1 day + 1 min)", price: 50, validity: "1 day", type: "GIFTING" },
+    { id: 128, title: "750MB - ₦442 (2 days social)", price: 442, validity: "2 days", type: "GIFTING" },
+    { id: 129, title: "2GB - ₦735 (2 days)", price: 735, validity: "2 days", type: "GIFTING" },
+    { id: 130, title: "2.5GB - ₦880 (2 days)", price: 880, validity: "2 days", type: "GIFTING" },
+    { id: 131, title: "3.5GB - ₦1,460 (7 days)", price: 1460, validity: "7 days", type: "GIFTING" },
+    { id: 132, title: "20GB - ₦5,335 (7 days)", price: 5335, validity: "7 days", type: "GIFTING" },
+    { id: 133, title: "6.75GB - ₦2,910 (30 days)", price: 2910, validity: "30 days", type: "GIFTING" },
+    { id: 134, title: "16.5GB - ₦6,305 (30 days)", price: 6305, validity: "30 days", type: "GIFTING" },
+    { id: 135, title: "24GB - ₦7,275 (30 days)", price: 7275, validity: "30 days", type: "GIFTING" },
+    { id: 136, title: "29GB - ₦8,730 (30 days)", price: 8730, validity: "30 days", type: "GIFTING" },
+    { id: 137, title: "36GB - ₦10,670 (30 days)", price: 10670, validity: "30 days", type: "GIFTING" },
+    { id: 138, title: "165GB - ₦33,950 (30 days)", price: 33950, validity: "30 days", type: "GIFTING" },
+    { id: 139, title: "250GB - ₦53,350 (30 days)", price: 53350, validity: "30 days", type: "GIFTING" },
+    { id: 140, title: "480GB - ₦87,300 (90 days)", price: 87300, validity: "90 days", type: "GIFTING" },
+    { id: 141, title: "800GB - ₦121,250 (1 year)", price: 121250, validity: "1 year", type: "GIFTING" },
+    { id: 149, title: "470MB - ₦196 (Weekly all social)", price: 196, validity: "Weekly", type: "GIFTING PROMO" }
+  ],
+  
+  AIRTEL: [
+    { id: 7, title: "500MB - ₦493 (7 days)", price: 493, validity: "7 days", type: "SME" },
+    { id: 8, title: "1GB - ₦784 (7 days)", price: 784, validity: "7 days", type: "SME" },
+    { id: 9, title: "2GB - ₦1,500 (30 days)", price: 1500, validity: "30 days", type: "SME" },
+    { id: 10, title: "4GB - ₦2,525 (30 days)", price: 2525, validity: "30 days", type: "SME" },
+    { id: 26, title: "10GB - ₦4,000 (30 days)", price: 4000, validity: "30 days", type: "SME" },
+    { id: 44, title: "300MB - ₦300 (30 days)", price: 300, validity: "30 days", type: "SME" },
+    { id: 45, title: "100MB - ₦100 (30 days)", price: 100, validity: "30 days", type: "SME" },
+    { id: 53, title: "500MB - ₦425 (30 days)", price: 425, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 54, title: "1GB - ₦850 (30 days)", price: 850, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 55, title: "2GB - ₦1,700 (30 days)", price: 1700, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 56, title: "5GB - ₦4,250 (30 days)", price: 4250, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 57, title: "10GB - ₦8,500 (30 days)", price: 8500, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 58, title: "11GB - ₦4,000 (30 days)", price: 4000, validity: "30 days", type: "GIFTING" },
+    { id: 69, title: "1GB - ₦320 (2 days)", price: 320, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 72, title: "7GB - ₦2,065 (7 days)", price: 2065, validity: "7 days", type: "GIFTING PROMO" },
+    { id: 73, title: "10GB - ₦3,070 (30 days)", price: 3070, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 74, title: "25GB - ₦8,000 (30 days)", price: 8000, validity: "30 days", type: "SME" },
+    { id: 75, title: "18GB - ₦6,000 (7 days)", price: 6000, validity: "7 days", type: "SME" },
+    { id: 106, title: "600MB - ₦230 (2 days)", price: 230, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 107, title: "1GB - ₦320 (3 days)", price: 320, validity: "3 days", type: "GIFTING PROMO" },
+    { id: 126, title: "1TB - ₦196,000 (1 year)", price: 196000, validity: "1 year", type: "SME" },
+    { id: 142, title: "100MB - ₦100 (1 day)", price: 100, validity: "1 day", type: "GIFTING PROMO" },
+    { id: 143, title: "100GB - ₦20,000 (30 days mifi)", price: 20000, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 144, title: "250MB - ₦50 (1 day night Bundle)", price: 50, validity: "1 day", type: "GIFTING PROMO" },
+    { id: 145, title: "35GB - ₦10,000 (30 days)", price: 10000, validity: "30 days", type: "GIFTING" },
+    { id: 146, title: "60GB - ₦15,000 (30 days)", price: 15000, validity: "30 days", type: "GIFTING" },
+    { id: 147, title: "100GB - ₦20,000 (30 days)", price: 20000, validity: "30 days", type: "GIFTING" },
+    { id: 148, title: "160GB - ₦30,000 (30 days)", price: 30000, validity: "30 days", type: "GIFTING" }
+  ],
+  
+  GLO: [
+    { id: 11, title: "1.5GB - ₦460 (30 days)", price: 460, validity: "30 days", type: "GIFTING" },
+    { id: 12, title: "2.9GB - ₦940 (30 days)", price: 940, validity: "30 days", type: "GIFTING" },
+    { id: 13, title: "4.1GB - ₦1,290 (30 days)", price: 1290, validity: "30 days", type: "GIFTING" },
+    { id: 14, title: "5.8GB - ₦1,850 (30 days)", price: 1850, validity: "30 days", type: "GIFTING" },
+    { id: 15, title: "10GB - ₦3,030 (30 days)", price: 3030, validity: "30 days", type: "GIFTING" },
+    { id: 29, title: "200MB - ₦110 (30 days)", price: 110, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 30, title: "500MB - ₦200 (30 days)", price: 200, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 31, title: "1GB - ₦400 (30 days)", price: 400, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 32, title: "2GB - ₦800 (30 days)", price: 800, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 33, title: "3GB - ₦1,215 (30 days)", price: 1215, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 34, title: "5GB - ₦2,025 (30 days)", price: 2025, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 35, title: "10GB - ₦4,050 (30 days)", price: 4050, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 76, title: "1GB - ₦200 (24 hours)", price: 200, validity: "24 hours", type: "GIFTING PROMO" },
+    { id: 77, title: "2GB - ₦300 (24 hours)", price: 300, validity: "24 hours", type: "GIFTING PROMO" },
+    { id: 78, title: "3.5GB - ₦500 (2 days)", price: 500, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 79, title: "15GB - ₦1,950 (7 days)", price: 1950, validity: "7 days", type: "GIFTING PROMO" },
+    { id: 150, title: "500MB - ₦190 (14 days)", price: 190, validity: "14 days", type: "SME" },
+    { id: 151, title: "1GB - ₦300 (14 days)", price: 300, validity: "14 days", type: "SME" },
+    { id: 152, title: "1GB - ₦260 (3 days)", price: 260, validity: "3 days", type: "SME" },
+    { id: 153, title: "1GB - ₦280 (7 days)", price: 280, validity: "7 days", type: "SME" },
+    { id: 154, title: "3GB - ₦730 (3 days)", price: 730, validity: "3 days", type: "SME" },
+    { id: 155, title: "3GB - ₦850 (7 days)", price: 850, validity: "7 days", type: "SME" },
+    { id: 156, title: "3GB - ₦1,000 (14 days)", price: 1000, validity: "14 days", type: "SME" },
+    { id: 157, title: "5GB - ₦1,240 (3 days)", price: 1240, validity: "3 days", type: "SME" },
+    { id: 158, title: "5GB - ₦1,440 (7 days)", price: 1440, validity: "7 days", type: "SME" },
+    { id: 159, title: "5GB - ₦1,480 (14 days)", price: 1480, validity: "14 days", type: "SME" },
+    { id: 160, title: "10GB - ₦2,950 (14 days)", price: 2950, validity: "14 days", type: "SME" }
+  ],
+  
+  "9MOBILE": [
+    { id: 25, title: "1.1GB - ₦400 (30 days)", price: 400, validity: "30 days", type: "SME" },
+    { id: 27, title: "1.5GB - ₦880 (30 days)", price: 880, validity: "30 days", type: "GIFTING" },
+    { id: 28, title: "500MB - ₦450 (30 days)", price: 450, validity: "30 days", type: "GIFTING" },
+    { id: 46, title: "500MB - ₦180 (30 days)", price: 180, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 47, title: "1GB - ₦360 (30 days)", price: 360, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 48, title: "2GB - ₦720 (30 days)", price: 720, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 49, title: "3GB - ₦1,080 (30 days)", price: 1080, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 50, title: "4GB - ₦1,440 (30 days)", price: 1440, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 51, title: "5GB - ₦1,375 (30 days)", price: 1375, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 52, title: "10GB - ₦2,750 (30 days)", price: 2750, validity: "30 days", type: "COOPERATE GIFTING" }
+  ]
+};
+
 function getDataPlanPrice(planId) {
-  // Bilal API plan IDs and their corresponding prices
-  const planPrices = {
-    // MTN Plans
-    '1': 380,   // 500MB
-    '2': 620,   // 1GB
-    '3': 1240,  // 2GB
-    '4': 2200,  // 3GB
-    '5': 4500,  // 5GB
-    
-    // Legacy plan IDs (fallback)
-    '100MB-100': 100,
-    '500MB-200': 200,
-    '1GB-300': 300,
-    '2GB-500': 500,
-    '1GB-500': 500,
-    '2GB-1000': 1000,
-    '3GB-1500': 1500,
-    '5GB-2500': 2500
+  // Search through all networks to find the plan
+  for (const network of Object.values(DATA_PLANS)) {
+    const plan = network.find(p => p.id.toString() === planId.toString());
+    if (plan) {
+      return plan.price;
+    }
+  }
+  return 1000; // Default fallback
+}
+
+function getBilalPlanId(planId) {
+  // If planId is already numeric, return it directly
+  if (/^\d+$/.test(planId)) {
+    return parseInt(planId);
+  }
+  
+  // Map legacy plan IDs to Bilal API plan IDs
+  const planMapping = {
+    '100MB-100': 1,  // Map to 500MB plan
+    '500MB-200': 1,  // 500MB
+    '1GB-300': 2,    // 1GB
+    '2GB-500': 3,    // 2GB
+    '1GB-500': 2,    // 1GB
+    '2GB-1000': 3,   // 2GB
+    '3GB-1500': 4,   // 3GB
+    '5GB-2500': 5    // 5GB
   };
-  return planPrices[planId] || 1000; // Default fallback
+  return planMapping[planId] || 1; // Default to plan 1 (500MB)
+}
+
+function getDataPlansForNetwork(network) {
+  return DATA_PLANS[network] || [];
 }
 
 /**
@@ -1812,9 +1966,9 @@ async function processTransferInBackground(processingKey, processingData) {
       
       const successMessage = `🎉 *Transfer Completed Successfully!*\n\n` +
                             `Your transfer of ₦${transferData.amount.toLocaleString()} to ${transferData.recipientName} has been processed.\n\n` +
-                            `📋 *Reference:* ${result.transaction?.reference}\n` +
-                            `⏰ *Estimated Arrival:* 5-15 minutes\n\n` +
-                            `Thank you for using MiiMii! 💙`;
+                            `📋 Reference: ${result.transaction?.reference}\n` +
+                            `📅 Date: ${new Date().toLocaleString('en-GB')}\n\n` +
+                            `Thank you for using MiiMii! 🎉`;
       
       await whatsappService.sendTextMessage(user.whatsappNumber, receiptMessage);
       await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
@@ -1832,22 +1986,7 @@ async function processTransferInBackground(processingKey, processingData) {
       });
       
       // Send error message via WhatsApp
-      let errorMessage = "❌ Transfer failed. Try again or contact support";
-      
-      if (result.message.includes('Insufficient')) {
-        errorMessage = result.message;
-      } else if (result.message.includes('Failed To Fecth Account Info')) {
-        errorMessage = "❌ Account not found. Check the account number and bank name";
-      } else if (result.message.includes('could not be found in')) {
-        errorMessage = result.message;
-      } else if (result.message.includes('Invalid bank account')) {
-        errorMessage = "❌ Invalid account details. Check account number and bank name";
-      } else if (result.message.includes('Transfer limit')) {
-        errorMessage = "❌ Transfer limit exceeded. Try a smaller amount";
-      } else if (result.message.includes('PIN')) {
-        errorMessage = "❌ Wrong PIN. Check and try again";
-      }
-      
+      const errorMessage = `❌ Transfer failed: ${result.message || 'Unknown error'}\n\nPlease try again or contact support.`;
       await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
       
       logger.info('Transfer error message sent via WhatsApp', {
@@ -1857,15 +1996,15 @@ async function processTransferInBackground(processingKey, processingData) {
     }
     
     // Clean up processing data
-          const redisClient = require('../utils/redis');
-          await redisClient.deleteSession(processingKey);
+    const redisClient = require('../utils/redis');
+    await redisClient.deleteSession(processingKey);
     
     logger.info('Background transfer processing completed', {
       userId,
       processingKey,
       success: result.success
     });
-
+    
   } catch (error) {
     logger.error('Background transfer processing failed', {
       processingKey,
@@ -1887,28 +2026,21 @@ async function processTransferInBackground(processingKey, processingData) {
     }
     
     // Clean up processing data
-      try {
-        const redisClient = require('../utils/redis');
-        await redisClient.deleteSession(processingKey);
-      } catch (cleanupError) {
+    try {
+      const redisClient = require('../utils/redis');
+      await redisClient.deleteSession(processingKey);
+    } catch (cleanupError) {
       logger.warn('Failed to cleanup processing data on error', { error: cleanupError.message });
     }
   }
 }
 
 /**
- * Handle network selection screen for data purchase flow
+ * Handle network selection screen
  */
 async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowToken = null) {
   try {
-    const network = data.network;
-    
-    logger.info('Network selection received', {
-      userId,
-      network,
-      dataKeys: Object.keys(data || {}),
-      flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
-    });
+    const { network } = data;
 
     // Validate network selection
     if (!network || !['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(network)) {
@@ -1916,29 +2048,34 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
         screen: 'NETWORK_SELECTION_SCREEN',
         data: {
           error: 'Please select a valid network.',
-          message: 'Network selection is required'
+          message: 'Please choose MTN, Airtel, Glo, or 9mobile'
         }
       };
     }
+
+    logger.info('Network selection received from Flow', {
+      userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
+      network
+    });
 
     // Store network selection in session
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
-        const session = await redisClient.getSession(sessionKey) || {};
-        session.network = network;
-        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
-        logger.info('Network selection stored in session', { network, flowToken });
+        await redisClient.setSession(flowToken, { network }, 300);
+        logger.info('Network selection stored in session', { flowToken, network });
       } catch (error) {
         logger.warn('Failed to store network selection in session', { error: error.message });
       }
     }
 
-    // Return success to proceed to next screen with data
     return {
+      screen: 'PHONE_INPUT_SCREEN',
       data: {
-        network: network
+        success: true,
+        message: 'Network selected successfully'
       }
     };
 
@@ -1948,60 +2085,66 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
       screen: 'NETWORK_SELECTION_SCREEN',
       data: {
         error: 'Network selection failed. Please try again.',
-        error_message: error.message
+        code: 'PROCESSING_ERROR'
       }
     };
   }
 }
 
 /**
- * Handle phone input screen for data purchase flow
+ * Handle phone input screen
  */
 async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = null) {
   try {
-    const phoneNumber = data.phoneNumber;
-    const network = data.network || tokenData.sessionData?.network;
-    
-    logger.info('Phone input received', {
-      userId,
-      phoneNumber,
-      network,
-      dataKeys: Object.keys(data || {}),
-      flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none',
-      sessionData: tokenData.sessionData
-    });
+    const { network, phoneNumber } = data;
 
-    // Validate phone number format (Nigerian format)
+    // Validate network
+    if (!network || !['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(network)) {
+      return {
+        screen: 'NETWORK_SELECTION_SCREEN',
+        data: {
+          error: 'Invalid network. Please select a network first.',
+          message: 'Please choose MTN, Airtel, Glo, or 9mobile'
+        }
+      };
+    }
+
+    // Validate phone number format
     if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
       return {
         screen: 'PHONE_INPUT_SCREEN',
         data: {
-          error: 'Please enter a valid 11-digit Nigerian phone number starting with 07, 08, or 09.',
-          message: 'Phone number must be 11 digits and start with 07, 08, or 09'
+          error: 'Please enter a valid 11-digit Nigerian phone number.',
+          message: 'Phone number must start with 070, 071, 080, 081, 090, or 091'
         }
       };
     }
+
+    logger.info('Phone number received from Flow', {
+      userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
+      network,
+      phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7)
+    });
 
     // Store phone number in session
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
-        const session = await redisClient.getSession(sessionKey) || {};
-        session.phoneNumber = phoneNumber;
-        if (network) session.network = network;
-        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
-        logger.info('Phone number stored in session', { phoneNumber, network, flowToken });
+        const sessionData = { network, phoneNumber };
+        await redisClient.setSession(flowToken, sessionData, 300);
+        logger.info('Phone number stored in session', { flowToken, network });
       } catch (error) {
         logger.warn('Failed to store phone number in session', { error: error.message });
       }
     }
 
-    // Return success to proceed to next screen with data
     return {
+      screen: 'DATA_PLAN_SELECTION_SCREEN',
       data: {
-        network: network,
-        phoneNumber: phoneNumber
+        success: true,
+        message: 'Phone number entered successfully'
       }
     };
 
@@ -2010,91 +2153,108 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
     return {
       screen: 'PHONE_INPUT_SCREEN',
       data: {
-        error: 'Phone input failed. Please try again.',
-        error_message: error.message
+        error: 'Phone number processing failed. Please try again.',
+        code: 'PROCESSING_ERROR'
       }
     };
   }
 }
 
 /**
- * Handle data plan selection screen for data purchase flow
+ * Handle data plan selection screen
  */
 async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowToken = null) {
   try {
-    const dataPlan = data.dataPlan;
-    const network = data.network || tokenData.sessionData?.network;
-    const phoneNumber = data.phoneNumber || tokenData.sessionData?.phoneNumber;
-    
-    logger.info('Data plan selection received', {
-      userId,
-      dataPlan,
-      network,
-      phoneNumber,
-      dataKeys: Object.keys(data || {})
-    });
+    const { network, phoneNumber, dataPlan } = data;
 
-    // If this is the initial load (no dataPlan selected yet), fetch available plans
-    if (!dataPlan && network) {
-      try {
-        const bilalService = require('../services/bilal');
-        const dataPlans = await bilalService.getDataPlans(network);
-        
-        logger.info('Fetched data plans from Bilal API', {
-          network,
-          planCount: dataPlans.length,
-          plans: dataPlans.map(p => ({ id: p.id, title: p.title, price: p.price }))
-        });
-
-        // Return the data plans to update the flow
-        return {
-          screen: 'DATA_PLAN_SELECTION_SCREEN',
-          data: {
-            network: network,
-            phoneNumber: phoneNumber,
-            dataPlans: dataPlans,
-            message: `Available ${network} data plans:`
-          }
-        };
-      } catch (error) {
-        logger.error('Failed to fetch data plans', { error: error.message, network });
-        // Continue with default plans if API fails
-      }
-    }
-
-    // Validate data plan selection
-    if (!dataPlan) {
+    // Validate network and phone number
+    if (!network || !['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(network)) {
       return {
-        screen: 'DATA_PLAN_SELECTION_SCREEN',
+        screen: 'NETWORK_SELECTION_SCREEN',
         data: {
-          error: 'Please select a data plan.',
-          message: 'Data plan selection is required'
+          error: 'Invalid network. Please select a network first.',
+          message: 'Please choose MTN, Airtel, Glo, or 9mobile'
         }
       };
     }
 
-    // Store data plan in session
+    if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
+      return {
+        screen: 'PHONE_INPUT_SCREEN',
+        data: {
+          error: 'Invalid phone number. Please enter a valid 11-digit Nigerian phone number.',
+          message: 'Phone number must start with 070, 071, 080, 081, 090, or 091'
+        }
+      };
+    }
+
+    // If no data plan selected yet, return the available plans for the network
+    if (!dataPlan) {
+      const availablePlans = getDataPlansForNetwork(network);
+      
+      logger.info('Returning data plans for network', {
+        userId: userId || 'unknown',
+        network,
+        planCount: availablePlans.length
+      });
+
+      return {
+        screen: 'DATA_PLAN_SELECTION_SCREEN',
+        data: {
+          dataPlans: availablePlans.map(plan => ({
+            id: plan.id.toString(),
+            title: plan.title
+          }))
+        }
+      };
+    }
+
+    // Validate data plan
+    const availablePlans = getDataPlansForNetwork(network);
+    const selectedPlan = availablePlans.find(plan => plan.id.toString() === dataPlan.toString());
+    
+    if (!selectedPlan) {
+      return {
+        screen: 'DATA_PLAN_SELECTION_SCREEN',
+        data: {
+          error: 'Invalid data plan selected. Please choose a valid plan.',
+          message: 'Please select a plan from the list'
+        }
+      };
+    }
+
+    logger.info('Data plan selection received from Flow', {
+      userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
+      network,
+      phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
+      dataPlan: selectedPlan.id,
+      planTitle: selectedPlan.title,
+      planPrice: selectedPlan.price
+    });
+
+    // Store data plan selection in session
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
-        const session = await redisClient.getSession(sessionKey) || {};
-        session.dataPlan = dataPlan;
-        if (network) session.network = network;
-        if (phoneNumber) session.phoneNumber = phoneNumber;
-        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
-        logger.info('Data plan stored in session', { dataPlan, network, phoneNumber, flowToken });
+        const sessionData = { network, phoneNumber, dataPlan: selectedPlan.id };
+        await redisClient.setSession(flowToken, sessionData, 300);
+        logger.info('Data plan selection stored in session', { flowToken, network, dataPlan: selectedPlan.id });
       } catch (error) {
-        logger.warn('Failed to store data plan in session', { error: error.message });
+        logger.warn('Failed to store data plan selection in session', { error: error.message });
       }
     }
 
-    // Return success to proceed to next screen with data
     return {
+      screen: 'CONFIRMATION_SCREEN',
       data: {
-        network: network,
-        phoneNumber: phoneNumber,
-        dataPlan: dataPlan
+        success: true,
+        message: 'Data plan selected successfully',
+        network,
+        phoneNumber,
+        dataPlan: selectedPlan.title,
+        price: selectedPlan.price
       }
     };
 
@@ -2104,79 +2264,104 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       screen: 'DATA_PLAN_SELECTION_SCREEN',
       data: {
         error: 'Data plan selection failed. Please try again.',
-        error_message: error.message
+        code: 'PROCESSING_ERROR'
       }
     };
   }
 }
 
 /**
- * Handle confirmation screen for data purchase flow
+ * Handle confirmation screen
  */
 async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken = null) {
   try {
-    const confirm = data.confirm;
-    const network = data.network || tokenData.sessionData?.network;
-    const phoneNumber = data.phoneNumber || tokenData.sessionData?.phoneNumber;
-    const dataPlan = data.dataPlan || tokenData.sessionData?.dataPlan;
-    
-    logger.info('Confirmation received', {
-      userId,
-      confirm,
-      network,
-      phoneNumber,
-      dataPlan,
-      dataKeys: Object.keys(data || {})
-    });
+    const { network, phoneNumber, dataPlan, confirm } = data;
 
-    // Check if user confirmed
-    if (confirm !== 'yes') {
+    // Validate all required fields
+    if (!network || !['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(network)) {
       return {
         screen: 'NETWORK_SELECTION_SCREEN',
         data: {
-          message: 'Purchase cancelled. You can start over by selecting a network.',
-          reset: true
+          error: 'Invalid network. Please select a network first.',
+          message: 'Please choose MTN, Airtel, Glo, or 9mobile'
         }
       };
     }
+
+    if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
+      return {
+        screen: 'PHONE_INPUT_SCREEN',
+        data: {
+          error: 'Invalid phone number. Please enter a valid 11-digit Nigerian phone number.',
+          message: 'Phone number must start with 070, 071, 080, 081, 090, or 091'
+        }
+      };
+    }
+
+    if (!dataPlan) {
+      return {
+        screen: 'DATA_PLAN_SELECTION_SCREEN',
+        data: {
+          error: 'No data plan selected. Please choose a plan.',
+          message: 'Please select a data plan'
+        }
+      };
+    }
+
+    // Check if user confirmed the purchase
+    if (confirm !== 'yes') {
+      logger.info('User cancelled data purchase', {
+        userId: userId || 'unknown',
+        network,
+        phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7)
+      });
+
+      return {
+        screen: 'NETWORK_SELECTION_SCREEN',
+        data: {
+          reset: true,
+          message: 'Purchase cancelled. Please start over.'
+        }
+      };
+    }
+
+    logger.info('Data purchase confirmed from Flow', {
+      userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
+      network,
+      phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
+      dataPlan
+    });
 
     // Store confirmation in session
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
-        const session = await redisClient.getSession(sessionKey) || {};
-        session.confirm = confirm;
-        if (network) session.network = network;
-        if (phoneNumber) session.phoneNumber = phoneNumber;
-        if (dataPlan) session.dataPlan = dataPlan;
-        await redisClient.setSession(sessionKey, session, 1800); // 30 minutes
-        logger.info('Confirmation stored in session', { confirm, network, phoneNumber, dataPlan, flowToken });
+        const sessionData = { network, phoneNumber, dataPlan, confirm: 'yes' };
+        await redisClient.setSession(flowToken, sessionData, 300);
+        logger.info('Purchase confirmation stored in session', { flowToken, network, dataPlan });
       } catch (error) {
-        logger.warn('Failed to store confirmation in session', { error: error.message });
+        logger.warn('Failed to store purchase confirmation in session', { error: error.message });
       }
     }
 
-    // Return success to proceed to next screen with data
     return {
+      screen: 'PIN_VERIFICATION_SCREEN',
       data: {
-        network: network,
-        phoneNumber: phoneNumber,
-        dataPlan: dataPlan,
-        confirm: confirm
+        success: true,
+        message: 'Purchase confirmed. Please enter your PIN to complete the transaction.'
       }
     };
 
   } catch (error) {
-    logger.error('Confirmation processing failed', { error: error.message });
+    logger.error('Confirmation screen processing failed', { error: error.message });
     return {
       screen: 'CONFIRMATION_SCREEN',
       data: {
         error: 'Confirmation failed. Please try again.',
-        error_message: error.message
+        code: 'PROCESSING_ERROR'
       }
     };
   }
 }
-
-module.exports = router;
