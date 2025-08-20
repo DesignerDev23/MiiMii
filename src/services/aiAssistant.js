@@ -153,10 +153,10 @@ class AIAssistantService {
     this.systemPrompt = `You are MiiMii, a friendly financial assistant. Talk like a real person - warm, casual, and natural. Use proper English, not pidgin!
 
 🚨 CRITICAL OVERRIDE RULES (MUST FOLLOW):
-1. If message contains "opay" or "opay bank" → intent MUST be "bank_transfer" (NOT "transfer")
-2. 10-digit numbers with bank names = bank_transfer
-3. 11-digit numbers without bank names = P2P transfer
-4. Opay is ALWAYS a bank_transfer, never P2P
+1. ALL transfers are "bank_transfer" - NO P2P transfers
+2. If message contains "opay" or "opay bank" → intent MUST be "bank_transfer"
+3. All phone numbers and account numbers are treated as bank accounts
+4. Opay is ALWAYS a bank_transfer
 
 CRITICAL RULE: Any message containing "opay" or "opay bank" MUST be classified as "bank_transfer" intent, regardless of the account number format. Opay is a digital bank, not a P2P transfer.
 
@@ -191,21 +191,21 @@ IMPORTANT: Use these exact intent names:
 - "greeting" for greetings
 
 TRANSFER INTENT RULES:
-- Use "transfer" ONLY when sending to a phone number (P2P) - 11-digit Nigerian phone numbers
-- Use "bank_transfer" when a bank name is mentioned (GTBank, Access, Opay, etc.)
-- CRITICAL: If "opay" or "opay bank" appears anywhere in the message, it's ALWAYS "bank_transfer" (Opay is a digital bank)
-- PHONE NUMBER RULE: 10-digit numbers with bank names = bank_transfer, 11-digit numbers without bank names = P2P transfer
+- ALL transfers are "bank_transfer" - NO P2P transfers
+- Use "bank_transfer" for ALL money transfers (phone numbers, account numbers, any bank)
+- CRITICAL: If "opay" or "opay bank" appears anywhere in the message, it's ALWAYS "bank_transfer"
+- ALL NUMBERS RULE: All numbers (10-digit, 11-digit, any format) are treated as bank accounts
 - Examples:
-  * "Send 100 to 9072874728 opay bank" → "bank_transfer" (10-digit Opay account)
-  * "Send 100 naira to 9072874728 Opay bank" → "bank_transfer" (10-digit Opay account)
-  * "Transfer 5k to 9072874728 opay" → "bank_transfer" (10-digit Opay account)
-  * "Send 100 to 9072874728" → "transfer" (P2P to 11-digit phone number)
-  * "Transfer 5k to GTBank 1234567890" → "bank_transfer" (10-digit bank account)
-  * "Send 5k to John 08123456789" → "transfer" (P2P to 11-digit phone number)
-  * "Send 1000 to 9072874728 opay" → "bank_transfer" (10-digit Opay account)
-  * "Transfer 2k to 9072874728 opay bank" → "bank_transfer" (10-digit Opay account)
-  * "Send 500 to 9072874728 opay" → "bank_transfer" (10-digit Opay account)
-  * "Transfer 1k to 9072874728 opay bank" → "bank_transfer" (10-digit Opay account)
+  * "Send 100 to 9072874728 opay bank" → "bank_transfer" (Opay account)
+  * "Send 100 naira to 9072874728 Opay bank" → "bank_transfer" (Opay account)
+  * "Transfer 5k to 9072874728 opay" → "bank_transfer" (Opay account)
+  * "Send 100 to 9072874728" → "bank_transfer" (bank account)
+  * "Transfer 5k to GTBank 1234567890" → "bank_transfer" (bank account)
+  * "Send 5k to John 08123456789" → "bank_transfer" (bank account)
+  * "Send 1000 to 9072874728 opay" → "bank_transfer" (Opay account)
+  * "Transfer 2k to 9072874728 opay bank" → "bank_transfer" (Opay account)
+  * "Send 500 to 9072874728 opay" → "bank_transfer" (Opay account)
+  * "Transfer 1k to 9072874728 opay bank" → "bank_transfer" (Opay account)
 
 Response Style Examples:
 ❌ DON'T SAY: "I understand you want to transfer funds. Please provide your PIN to authorize this transaction."
@@ -220,38 +220,32 @@ Response Style Examples:
 ❌ DON'T SAY: "Make I send money give you" (pidgin)
 ✅ SAY: "Ready to send the money to you"
 
-For bank transfers, extract:
+For ALL transfers (bank transfers only), extract:
 - amount (convert "5k" to 5000, "10k" to 10000, etc.)
-- accountNumber (8-11 digit number)
+- accountNumber (any number format - 8-11 digits)
 - bankName (bank name like "keystone", "gtb", "access", "opay", etc.)
-- recipientName (if provided)
-
-For money transfers, extract:
-- amount
-- phoneNumber (11-digit Nigerian number)
 - recipientName (if provided)
 
 EXTRACTION RULES:
 1. Amount: Look for numbers followed by "k" (5k = 5000) or plain numbers
-2. Account Number: Look for 8-11 digit numbers (for bank transfers)
-3. Phone Number: Look for 11-digit Nigerian numbers (for P2P transfers)
-4. Bank Name: Look for bank names in the message (GTBank, Access, Opay, etc.)
-5. Recipient Name: Look for names before account numbers or bank names
+2. Account Number: Look for 8-11 digit numbers (for ALL transfers)
+3. Bank Name: Look for bank names in the message (GTBank, Access, Opay, etc.)
+4. Recipient Name: Look for names before account numbers or bank names
 
-BANK TRANSFER vs P2P TRANSFER:
-- If message contains bank name → "bank_transfer" intent
-- If message contains only phone number → "transfer" intent
-- Bank transfers need: amount + accountNumber + bankName
-- P2P transfers need: amount + phoneNumber
+ALL TRANSFERS ARE BANK TRANSFERS:
+- ALL transfers use "bank_transfer" intent
+- ALL transfers need: amount + accountNumber + bankName
+- ALL numbers are treated as bank account numbers
 - SPECIAL RULE: Opay account numbers often look like phone numbers (10-11 digits), but if "opay" or "opay bank" is mentioned, it's ALWAYS a bank_transfer
-- Examples of Opay bank transfers:
+- Examples of ALL transfers:
   * "Send 100 to 9072874728 opay bank" → bank_transfer (9072874728 is Opay account number)
   * "Transfer 5k to 9072874728 opay" → bank_transfer
   * "Send 1000 to 9072874728 opay bank" → bank_transfer
+  * "Send 5k to John 08123456789" → bank_transfer (bank account)
 
 Response Format (JSON):
 
-For Bank Transfer:
+For Bank Transfer (including Opay):
 {
   "intent": "bank_transfer",
   "confidence": 0.95,
@@ -265,18 +259,21 @@ For Bank Transfer:
   "suggestedAction": "Process bank transfer"
 }
 
-For P2P Transfer:
+For ALL Transfers (Bank Transfers Only):
 {
-  "intent": "transfer",
+  "intent": "bank_transfer",
   "confidence": 0.95,
   "extractedData": {
     "amount": 5000,
-    "phoneNumber": "08123456789",
+    "accountNumber": "08123456789",
+    "bankName": "unknown",
     "recipientName": "John"
   },
   "response": "Got it! Sending ₦5k to John. Just need your PIN 🔐",
-  "suggestedAction": "Process P2P transfer"
+  "suggestedAction": "Process bank transfer"
 }
+
+FINAL CHECK: ALL transfers are "bank_transfer" - NO P2P transfers. If the message contains "opay" or "opay bank", the intent MUST be "bank_transfer".
 
 Keep responses natural, friendly, and human-like. Use proper English, not pidgin!`;
 
@@ -1666,6 +1663,40 @@ Welcome to the future of banking! 🚀`;
    */
   async analyzeUserIntent(message, user) {
     try {
+      // HARD OVERRIDE: Force ALL transfers to be bank_transfer (NO P2P)
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes('send') || lowerMessage.includes('transfer') || lowerMessage.includes('give')) {
+        // Check if it's a transfer message
+        const amountMatch = message.match(/\b(\d+(?:k|000)?)\b/i);
+        const accountMatch = message.match(/\b(\d{8,11})\b/);
+        
+        if (amountMatch && accountMatch) {
+          logger.info('Hard override: Transfer detected, forcing bank_transfer intent', {
+            originalMessage: message,
+            userId: user.id
+          });
+          
+          // Extract basic data for bank transfer
+          const amount = amountMatch[1].toLowerCase().includes('k') ? 
+            parseInt(amountMatch[1].toLowerCase().replace('k', '')) * 1000 : 
+            parseInt(amountMatch[1]);
+          
+          return {
+            intent: 'bank_transfer',
+            confidence: 0.99,
+            extractedData: {
+              amount: amount,
+              accountNumber: accountMatch[1],
+              bankName: lowerMessage.includes('opay') ? 'opay' : 'unknown',
+              recipientName: null
+            },
+            response: `Perfect! I can see you want to send money. Let me verify the account details and get the recipient name for you. 🔍`,
+            suggestedAction: 'Process bank transfer',
+            reasoning: 'Hard override: Transfer detected - all transfers are bank transfers'
+          };
+        }
+      }
+      
       if (!this.isConfigured) {
         // Fallback to basic keyword matching
         return this.basicIntentAnalysis(message);
@@ -1680,8 +1711,7 @@ User Context:
 - Account Status: ${user.onboardingStep === 'completed' ? 'completed' : 'incomplete'}
 
 IMPORTANT: Use these exact intent names:
-1. "transfer" - User wants to send money to another person (P2P)
-2. "bank_transfer" - User wants to transfer money to a bank account
+1. "bank_transfer" - User wants to transfer money to a bank account (ALL transfers)
 3. "balance" - User wants to check account balance (NOT balance_inquiry)
 4. "airtime" - User wants to buy airtime
 5. "data" - User wants to buy data
@@ -1706,8 +1736,8 @@ NATURAL LANGUAGE UNDERSTANDING:
 - "send 5k to Abdulkadir Musa 6035745691 keystone bank" → bank_transfer
 - "transfer 2000 to GTB 0123456789" → bank_transfer
 - "send 4k to 9072874728 Opay Bank" → bank_transfer
-- "send money to John" → transfer
-- "send 100 to 9072874728 Musa Abdulkadir opay" → transfer (P2P transfer)
+- "send money to John" → bank_transfer
+- "send 100 to 9072874728 Musa Abdulkadir opay" → bank_transfer
 - "buy airtime" → airtime
 - "recharge my phone" → airtime
 - "buy data" → data
@@ -1725,11 +1755,11 @@ For bank transfers, look for:
 - Bank name (e.g., "keystone", "gtb", "access", "opay", "test bank")
 - Recipient name (optional)
 
-For money transfers (P2P), look for:
+For ALL transfers (bank transfers only), look for:
 - Amount
-- Phone number (11 digits or 10 digits)
-- Recipient name
-- No bank name mentioned
+- Account number (any format - 8-11 digits)
+- Bank name (if mentioned)
+- Recipient name (if mentioned)
 
 EXTRACTION RULES:
 1. Amount: Convert "5k" to 5000, "10k" to 10000, "2k" to 2000, "4k" to 4000, etc.

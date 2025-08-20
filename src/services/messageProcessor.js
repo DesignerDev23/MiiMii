@@ -379,6 +379,18 @@ class MessageProcessor {
       const aiAssistant = require('./aiAssistant');
       const intentAnalysis = await aiAssistant.analyzeUserIntent(messageContent, user);
 
+      // HARD OVERRIDE: Force ALL transfers to be bank_transfer (NO P2P)
+      const lowerMessage = messageContent.toLowerCase();
+      if (intentAnalysis.intent === 'transfer') {
+        logger.info('Hard override: AI classified as P2P transfer, forcing bank_transfer', {
+          originalMessage: messageContent,
+          aiIntent: intentAnalysis.intent,
+          userId: user.id
+        });
+        intentAnalysis.intent = 'bank_transfer';
+        intentAnalysis.suggestedAction = 'Process bank transfer';
+      }
+
       // If user is already onboarded, never route to onboarding
       if (user.onboardingStep === 'completed' && intentAnalysis.intent === 'onboarding') {
         intentAnalysis.intent = 'menu';
@@ -406,8 +418,6 @@ class MessageProcessor {
         case 'balance_inquiry':
           return await this.handleBalanceIntent(user, message, messageType, messageId);
           
-        case 'transfer':
-        case 'send_money':
         case 'bank_transfer':
           // Check if user is already in a transfer flow state
           if (user.conversationState?.awaitingInput === 'transfer_pin_flow') {

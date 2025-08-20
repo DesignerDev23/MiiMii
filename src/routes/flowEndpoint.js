@@ -1533,7 +1533,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       });
     } else {
         // Try to get transfer data from flow action payload if available
-        if (data && (data.transfer_amount || data.recipient_name)) {
+        if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
           transferData = {
             amount: parseFloat(data.transfer_amount) || 0,
             recipientName: data.recipient_name || 'Recipient',
@@ -1547,16 +1547,53 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
           logger.info('Using transfer data from flow action payload', {
             userId: user.id,
             transferData,
-            dataKeys: Object.keys(data || {})
+            dataKeys: Object.keys(data || {}),
+            transferAmount: data.transfer_amount,
+            recipientName: data.recipient_name,
+            bankName: data.bank_name,
+            accountNumber: data.account_number,
+            bankCode: data.bank_code
           });
         } else {
-                                     return {
-           screen: 'PIN_VERIFICATION_SCREEN',
-           data: {
-             error: 'Transfer session expired. Please try again.',
-             error_message: 'Transfer context not found'
-           }
-         };
+          // Try to get from user's conversation state as last resort
+          try {
+            const userService = require('../services/user');
+            const currentUser = await userService.getUserById(user.id);
+            if (currentUser && currentUser.conversationState && currentUser.conversationState.data) {
+              transferData = {
+                amount: currentUser.conversationState.data.amount || 0,
+                recipientName: currentUser.conversationState.data.recipientName || 'Recipient',
+                bankName: currentUser.conversationState.data.bankName || 'Unknown Bank',
+                accountNumber: currentUser.conversationState.data.accountNumber || '',
+                bankCode: currentUser.conversationState.data.bankCode || '',
+                narration: 'Wallet transfer',
+                reference: currentUser.conversationState.data.reference || `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+              };
+              
+              logger.info('Using transfer data from user conversation state', {
+                userId: user.id,
+                transferData,
+                conversationStateKeys: Object.keys(currentUser.conversationState || {})
+              });
+            } else {
+              return {
+                screen: 'PIN_VERIFICATION_SCREEN',
+                data: {
+                  error: 'Transfer session expired. Please try again.',
+                  error_message: 'Transfer context not found'
+                }
+              };
+            }
+          } catch (error) {
+            logger.error('Error getting transfer data from conversation state', { error: error.message, userId: user.id });
+            return {
+              screen: 'PIN_VERIFICATION_SCREEN',
+              data: {
+                error: 'Transfer session expired. Please try again.',
+                error_message: 'Transfer context not found'
+              }
+            };
+          }
         }
       }
     
