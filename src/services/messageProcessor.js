@@ -66,6 +66,20 @@ class MessageProcessor {
         // Enrich with phone number for downstream services
         flowData.phoneNumber = user.whatsappNumber;
 
+        // Check if this is a data purchase flow completion
+        // Data purchase flows are processed in the flow endpoint, so we should skip processing here
+        if (flowData.pin && flowData.flow_token && !flowData.network) {
+          logger.info('Detected data purchase flow completion - skipping message processor processing', {
+            phoneNumber: user.whatsappNumber,
+            hasPin: !!flowData.pin,
+            hasFlowToken: !!flowData.flow_token
+          });
+          
+          // Data purchase flows are handled in the flow endpoint, so we don't need to process them here
+          // The flow endpoint already processes the purchase and sends appropriate messages
+          return;
+        }
+
         const whatsappFlowService = require('./whatsappFlowService');
         const result = await whatsappFlowService.processFlowData(flowData, user.whatsappNumber);
 

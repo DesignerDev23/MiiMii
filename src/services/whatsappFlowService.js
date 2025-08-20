@@ -446,9 +446,53 @@ class WhatsAppFlowService {
       // Check if this is a login flow (only has PIN)
       if (flowData.pin && Object.keys(flowData).length === 1) {
         return await this.handleLoginFlow(flowData, phoneNumber);
-      } else {
-        return await this.handleOnboardingFlow(flowData, phoneNumber);
       }
+      
+      // Check if this is a data purchase flow completion (has pin and flow_token but missing other data)
+      if (flowData.pin && flowData.flow_token && !flowData.network) {
+        logger.info('Detected data purchase flow completion - retrieving session data', { 
+          phoneNumber, 
+          hasPin: !!flowData.pin,
+          hasFlowToken: !!flowData.flow_token
+        });
+        
+        // Retrieve session data to get the complete data purchase information
+        const redisClient = require('../utils/redis');
+        const sessionKey = `flow:${flowData.flow_token}`;
+        const sessionData = await redisClient.getSession(sessionKey);
+        
+        if (sessionData && sessionData.network && sessionData.phoneNumber && sessionData.dataPlan) {
+          logger.info('Retrieved data purchase session data', {
+            phoneNumber,
+            network: sessionData.network,
+            phoneNumber: sessionData.phoneNumber,
+            dataPlan: sessionData.dataPlan
+          });
+          
+          // Combine session data with PIN from flow response
+          const completeFlowData = {
+            ...sessionData,
+            pin: flowData.pin
+          };
+          
+          return await this.handleDataPurchaseFlow(completeFlowData, phoneNumber);
+        } else {
+          logger.warn('Data purchase session data not found or incomplete', {
+            phoneNumber,
+            sessionKey,
+            hasSessionData: !!sessionData,
+            sessionDataKeys: sessionData ? Object.keys(sessionData) : []
+          });
+          
+          // Send error message to user
+          const whatsappService = require('./whatsapp');
+          await whatsappService.sendTextMessage(phoneNumber, '❌ Data purchase session expired. Please start your data purchase again.');
+          return { success: false, error: 'Session expired' };
+        }
+      }
+      
+      // Default to onboarding flow
+      return await this.handleOnboardingFlow(flowData, phoneNumber);
 
     } catch (error) {
       logger.error('Flow data processing failed', { phoneNumber, error: error.message });

@@ -1671,12 +1671,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        const flowService = require('./whatsappFlowService');
        
        const flowData = {
-         flowToken: await flowService.generateFlowToken({
-           userId: userData.id,
-           flowId: 'data_purchase',
-           source: 'whatsapp',
-           userPhone: phoneNumber
-         }),
+         flowToken: flowService.generateFlowToken(userData.id),
          flowId: config.getWhatsappConfig().dataPurchaseFlowId,
          flowCta: 'Buy Data',
          initialScreen: 'NETWORK_SELECTION_SCREEN',
