@@ -855,6 +855,11 @@ class MessageProcessor {
       }
       
       // Generate a secure flow token
+      logger.info('Generating flow token for data purchase', {
+        userId: user.id,
+        userIdType: typeof user.id,
+        userObject: JSON.stringify(user.id)
+      });
       const flowToken = whatsappFlowService.generateFlowToken(user.id);
       
       // Get AI-generated personalized welcome message
@@ -1225,46 +1230,67 @@ class MessageProcessor {
         }
         
         return result;
-      } else if (screen === 'PIN_VERIFICATION_SCREEN' && data?.network && data?.phoneNumber && data?.dataPlan) {
-        // Handle data purchase flow completion
-        logger.info('Data purchase flow completion detected', {
-          userId: user.id,
-          flowToken,
-          screen,
-          network: data.network,
-          phoneNumber: data.phoneNumber,
-          dataPlan: data.dataPlan,
-          hasPin: !!data.pin
-        });
+      } else if (screen === 'PIN_VERIFICATION_SCREEN' && data?.pin) {
+        // Check if this is a data purchase flow by looking at session data
+        try {
+          const redisClient = require('../utils/redis');
+          const session = await redisClient.getSession(flowToken);
+          
+          if (session && session.network && session.phoneNumber && session.dataPlan) {
+            // Handle data purchase flow completion
+            logger.info('Data purchase flow completion detected from session', {
+              userId: user.id,
+              flowToken,
+              screen,
+              network: session.network,
+              phoneNumber: session.phoneNumber,
+              dataPlan: session.dataPlan,
+              hasPin: !!data.pin
+            });
 
-        // Forward to flow endpoint for processing
-        const flowEndpoint = require('../routes/flowEndpoint');
-        const result = await flowEndpoint.handleCompleteAction(screen, data, { userId: user.id }, flowToken);
-        
-        if (result && Object.keys(result).length === 0) {
-          logger.info('Data purchase flow completed successfully', {
-            userId: user.id,
-            flowToken,
-            screen
-          });
+            // Create complete data object for processing
+            const completeData = {
+              ...data,
+              network: session.network,
+              phoneNumber: session.phoneNumber,
+              dataPlan: session.dataPlan
+            };
+
+                        // Forward to flow endpoint for processing
+            const flowEndpoint = require('../routes/flowEndpoint');
+            const result = await flowEndpoint.handleCompleteAction(screen, completeData, { userId: user.id }, flowToken);
           
-          // Send success message
-          const successMessage = `✅ Data purchase completed successfully!\n\n📱 Network: ${data.network}\n📞 Phone: ${data.phoneNumber}\n📦 Plan: ${data.dataPlan}\n\nYour data will be activated shortly.`;
-          await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
-        } else {
-          logger.error('Data purchase flow processing failed', {
-            userId: user.id,
-            flowToken,
-            screen,
-            error: result?.error || 'Unknown error'
-          });
-          
-          // Send error message
-          const errorMessage = `❌ Data purchase failed. Please try again or contact support.`;
-          await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+            if (result && Object.keys(result).length === 0) {
+              logger.info('Data purchase flow completed successfully', {
+                userId: user.id,
+                flowToken,
+                screen
+              });
+              
+              // Send success message
+              const successMessage = `✅ Data purchase completed successfully!\n\n📱 Network: ${session.network}\n📞 Phone: ${session.phoneNumber}\n📦 Plan: ${session.dataPlan}\n\nYour data will be activated shortly.`;
+              await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+            } else {
+              logger.error('Data purchase flow processing failed', {
+                userId: user.id,
+                flowToken,
+                screen,
+                error: result?.error || 'Unknown error'
+              });
+              
+              // Send error message
+              const errorMessage = `❌ Data purchase failed. Please try again or contact support.`;
+              await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+            }
+            
+            return result;
+          } else {
+            // Not a data purchase flow, treat as onboarding
+            logger.info('PIN_VERIFICATION_SCREEN detected but no data purchase session found, treating as onboarding flow');
+          }
+        } catch (error) {
+          logger.warn('Error checking session for data purchase flow', { error: error.message });
         }
-        
-        return result;
       } else {
         // Handle onboarding flow
         const onboardingService = require('./onboarding');

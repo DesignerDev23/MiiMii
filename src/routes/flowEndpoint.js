@@ -780,9 +780,19 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
     
     // Fix userId if it's an object (should be a string)
     if (userId && typeof userId === 'object') {
-      logger.warn('userId is an object, attempting to extract string value', { userId });
+      logger.warn('userId is an object, attempting to extract string value', { 
+        userId, 
+        userIdType: typeof userId,
+        userIdString: JSON.stringify(userId)
+      });
       userId = userId.toString ? userId.toString() : JSON.stringify(userId);
     }
+    
+    logger.info('Processed userId for data exchange', {
+      userId,
+      userIdType: typeof userId,
+      originalUserId: tokenData.userId
+    });
     
             // Try redis lookup with flow token
         if (!userId && flowToken) {

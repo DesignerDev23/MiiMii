@@ -586,10 +586,26 @@
                 "type": "TextHeading",
                 "text": "Confirm Data Purchase"
               },
-                             {
-                 "type": "TextBody",
-                 "text": "Please confirm your data purchase details above."
-               },
+                                           {
+                "type": "TextBody",
+                "text": "Please review your data purchase details below:"
+              },
+              {
+                "type": "TextBody",
+                "text": "📱 Network: ${data.network || 'Selected network'}"
+              },
+              {
+                "type": "TextBody",
+                "text": "📞 Phone: ${data.phoneNumber || 'Entered phone number'}"
+              },
+              {
+                "type": "TextBody",
+                "text": "📦 Plan: ${data.dataPlan || 'Selected plan'}"
+              },
+              {
+                "type": "TextBody",
+                "text": "Please confirm your purchase above."
+              },
               {
                 "type": "RadioButtonsGroup",
                 "required": true,
