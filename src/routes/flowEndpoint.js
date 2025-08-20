@@ -2373,6 +2373,157 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
   }
 }
 
+/**
+ * Handle confirmation screen
+ */
+async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken = null) {
+  try {
+    const { network, phoneNumber, dataPlan, confirm } = data;
+
+    // Validate all required fields
+    if (!network || !['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(network)) {
+      return {
+        screen: 'NETWORK_SELECTION_SCREEN',
+        data: {
+          error: 'Invalid network. Please select a network first.',
+          message: 'Please choose MTN, Airtel, Glo, or 9mobile'
+        }
+      };
+    }
+
+    if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
+      return {
+        screen: 'PHONE_INPUT_SCREEN',
+        data: {
+          error: 'Invalid phone number. Please enter a valid 11-digit Nigerian phone number.',
+          message: 'Phone number must start with 070, 071, 080, 081, 090, or 091'
+        }
+      };
+    }
+
+    if (!dataPlan) {
+      return {
+        screen: 'DATA_PLAN_SELECTION_SCREEN',
+        data: {
+          error: 'No data plan selected. Please choose a plan.',
+          message: 'Please select a data plan'
+        }
+      };
+    }
+
+    // If no confirmation yet, show the confirmation screen with actual data
+    if (!confirm) {
+      // Get the selected plan details
+      const availablePlans = getDataPlansForNetwork(network);
+      const selectedPlan = availablePlans.find(plan => plan.id.toString() === dataPlan.toString());
+      
+      if (!selectedPlan) {
+        return {
+          screen: 'DATA_PLAN_SELECTION_SCREEN',
+          data: {
+            error: 'Invalid data plan. Please select a plan again.',
+            message: 'Please choose a valid data plan'
+          }
+        };
+      }
+
+      logger.info('Showing confirmation screen with data', {
+        userId: userId || 'unknown',
+        network,
+        phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
+        dataPlan: selectedPlan.title,
+        price: selectedPlan.price
+      });
+
+      return {
+        screen: 'CONFIRMATION_SCREEN',
+        data: {
+          network: network,
+          phoneNumber: phoneNumber,
+          dataPlan: selectedPlan.title,
+          price: selectedPlan.price,
+          planId: selectedPlan.id
+        }
+      };
+    }
+
+    // Check if user confirmed the purchase
+    if (confirm !== 'yes') {
+      logger.info('User cancelled data purchase', {
+        userId: userId || 'unknown',
+        network,
+        phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7)
+      });
+
+      return {
+        screen: 'NETWORK_SELECTION_SCREEN',
+        data: {
+          reset: true,
+          message: 'Purchase cancelled. Please start over.'
+        }
+      };
+    }
+
+    logger.info('Data purchase confirmed from Flow', {
+      userId: userId || 'unknown',
+      flowId: tokenData.flowId || 'unknown',
+      source: tokenData.source || 'unknown',
+      network,
+      phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
+      dataPlan
+    });
+
+    // Store confirmation in session
+    if (flowToken) {
+      try {
+        const redisClient = require('../utils/redis');
+        const sessionKey = `flow:${flowToken}`;
+        
+        // Get existing session data to merge with
+        const existingSession = await redisClient.getSession(sessionKey) || {};
+        
+        // Merge with new confirmation data
+        const sessionData = { 
+          ...existingSession,
+          network, 
+          phoneNumber, 
+          dataPlan, 
+          confirm: 'yes' 
+        };
+        
+        await redisClient.setSession(sessionKey, sessionData, 300);
+        logger.info('Purchase confirmation stored in session', { 
+          flowToken, 
+          network, 
+          dataPlan,
+          sessionDataKeys: Object.keys(sessionData),
+          mergedWithExisting: Object.keys(existingSession).length > 0
+        });
+      } catch (error) {
+        logger.warn('Failed to store purchase confirmation in session', { error: error.message });
+      }
+    }
+
+    return {
+      screen: 'PIN_VERIFICATION_SCREEN',
+      data: {
+        success: true,
+        message: 'Purchase confirmed. Please enter your PIN to complete the transaction.'
+      }
+    };
+
+  } catch (error) {
+    logger.error('Confirmation screen processing failed', { error: error.message });
+    return {
+      screen: 'CONFIRMATION_SCREEN',
+      data: {
+        error: 'Confirmation failed. Please try again.',
+        code: 'PROCESSING_ERROR'
+      }
+    };
+  }
+}
+
 // Export functions for use in other modules
 module.exports = {
   router,
