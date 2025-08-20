@@ -102,7 +102,12 @@
                 "label": "Phone Number",
                 "name": "phoneNumber",
                 "input-type": "text",
-                "helper-text": "Enter 11-digit phone number (e.g., 08012345678)"
+                "helper-text": "Enter 11-digit phone number (e.g., 08012345678)",
+                "validation": {
+                  "type": "regex",
+                  "pattern": "^0[789][01][0-9]{8}$",
+                  "error_message": "Please enter a valid 11-digit Nigerian phone number starting with 07, 08, or 09"
+                }
               },
               {
                 "type": "Footer",
@@ -248,7 +253,7 @@
               },
               {
                 "type": "TextBody",
-                "text": "Please review your data purchase details:\n\n📱 Network: Selected network\n📞 Phone: Entered phone number\n📦 Plan: Selected plan\n\nIs this correct?"
+                "text": "Please review your data purchase details:\n\n📱 Network: ${data.network}\n📞 Phone: ${data.phoneNumber}\n📦 Plan: ${data.dataPlan}\n\nIs this correct?"
               },
               {
                 "type": "RadioButtonsGroup",

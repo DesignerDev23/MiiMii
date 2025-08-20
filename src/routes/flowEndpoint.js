@@ -1248,6 +1248,16 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
     // Validate user PIN
     await userService.validateUserPin(userId, pin);
 
+    // Validate phone number format
+    if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
+      throw new Error('Invalid phone number format. Please enter a valid 11-digit Nigerian phone number.');
+    }
+
+    // Validate data plan
+    if (!dataPlan || !/^\d+$/.test(dataPlan)) {
+      throw new Error('Invalid data plan selected. Please try again.');
+    }
+
     // Store the PIN and data purchase data for background processing
     const processingData = {
       userId: user.id,
@@ -1332,9 +1342,19 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
     }
     
     // Process the data purchase
-    const result = await bilalService.purchaseData(user, dataPurchaseData, user.whatsappNumber);
+    let result;
+    try {
+      result = await bilalService.purchaseData(user, dataPurchaseData, user.whatsappNumber);
+    } catch (error) {
+      logger.error('Bilal API call failed', { error: error.message, userId: user.id });
+      result = {
+        success: false,
+        message: `Service temporarily unavailable: ${error.message}`,
+        error: error.message
+      };
+    }
     
-    if (result.success) {
+    if (result && result.success) {
       logger.info('Background data purchase processed successfully', {
         userId: user.id,
         network: dataPurchaseData.network,
@@ -1371,7 +1391,16 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
       });
       
       // Send error message via WhatsApp
-      const errorMessage = `❌ Data purchase failed: ${result.message || 'Unknown error'}\n\nPlease try again or contact support.`;
+      let errorMessage = `❌ Data purchase failed: ${result.message || 'Unknown error'}\n\nPlease try again or contact support.`;
+      
+      // Provide specific guidance for common errors
+      if (result.message && result.message.includes('Insufficient balance')) {
+        errorMessage = `❌ Insufficient balance!\n\n💰 Required: ₦${dataPurchaseData.dataPlan.price.toLocaleString()}\n💳 Please fund your wallet and try again.`;
+      } else if (result.message && result.message.includes('403')) {
+        errorMessage = `❌ Service temporarily unavailable!\n\n🔧 Our data service is currently experiencing issues. Please try again later or contact support.`;
+      } else if (result.message && result.message.includes('Invalid phone number')) {
+        errorMessage = `❌ Invalid phone number!\n\n📞 Please ensure you entered a valid 11-digit Nigerian phone number and try again.`;
+      }
       
       await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
       
@@ -1425,7 +1454,16 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
  * Get data plan price from plan ID
  */
 function getDataPlanPrice(planId) {
+  // Bilal API plan IDs and their corresponding prices
   const planPrices = {
+    // MTN Plans
+    '1': 380,   // 500MB
+    '2': 620,   // 1GB
+    '3': 1240,  // 2GB
+    '4': 2200,  // 3GB
+    '5': 4500,  // 5GB
+    
+    // Legacy plan IDs (fallback)
     '100MB-100': 100,
     '500MB-200': 200,
     '1GB-300': 300,
@@ -2004,6 +2042,34 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       dataKeys: Object.keys(data || {})
     });
 
+    // If this is the initial load (no dataPlan selected yet), fetch available plans
+    if (!dataPlan && network) {
+      try {
+        const bilalService = require('../services/bilal');
+        const dataPlans = await bilalService.getDataPlans(network);
+        
+        logger.info('Fetched data plans from Bilal API', {
+          network,
+          planCount: dataPlans.length,
+          plans: dataPlans.map(p => ({ id: p.id, title: p.title, price: p.price }))
+        });
+
+        // Return the data plans to update the flow
+        return {
+          screen: 'DATA_PLAN_SELECTION_SCREEN',
+          data: {
+            network: network,
+            phoneNumber: phoneNumber,
+            dataPlans: dataPlans,
+            message: `Available ${network} data plans:`
+          }
+        };
+      } catch (error) {
+        logger.error('Failed to fetch data plans', { error: error.message, network });
+        // Continue with default plans if API fails
+      }
+    }
+
     // Validate data plan selection
     if (!dataPlan) {
       return {
@@ -2076,12 +2142,10 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
     // Check if user confirmed
     if (confirm !== 'yes') {
       return {
-        screen: 'CONFIRMATION_SCREEN',
+        screen: 'NETWORK_SELECTION_SCREEN',
         data: {
-          error: 'Please confirm to proceed with the purchase.',
-          validation: {
-            confirm: 'Confirmation is required'
-          }
+          message: 'Purchase cancelled. You can start over by selecting a network.',
+          reset: true
         }
       };
     }

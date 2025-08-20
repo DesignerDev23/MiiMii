@@ -301,6 +301,62 @@ class BilalService {
   }
 
   // DATA SERVICE
+  async getDataPlans(network) {
+    try {
+      const tokenData = await this.generateToken();
+      
+      // Fetch data plans from Bilal API
+      const response = await this.makeRequest('GET', `/data/plans?network=${this.networkMapping[network.toUpperCase()]}`, null, tokenData.token);
+      
+      if (response.status === 'success' && response.data) {
+        return response.data.map(plan => ({
+          id: plan.id,
+          title: `${plan.data_size} - ₦${plan.price} (${plan.validity})`,
+          data_size: plan.data_size,
+          price: parseFloat(plan.price),
+          validity: plan.validity,
+          network: network
+        }));
+      } else {
+        // Return default plans if API fails
+        return this.getDefaultDataPlans(network);
+      }
+    } catch (error) {
+      logger.error('Failed to fetch data plans from Bilal', { error: error.message, network });
+      // Return default plans as fallback
+      return this.getDefaultDataPlans(network);
+    }
+  }
+
+  getDefaultDataPlans(network) {
+    const defaultPlans = {
+      'MTN': [
+        { id: 1, title: '500MB - ₦380 (30 days)', data_size: '500MB', price: 380, validity: '30 days' },
+        { id: 2, title: '1GB - ₦620 (30 days)', data_size: '1GB', price: 620, validity: '30 days' },
+        { id: 3, title: '2GB - ₦1,240 (30 days)', data_size: '2GB', price: 1240, validity: '30 days' },
+        { id: 4, title: '3GB - ₦2,200 (30 days)', data_size: '3GB', price: 2200, validity: '30 days' },
+        { id: 5, title: '5GB - ₦4,500 (30 days)', data_size: '5GB', price: 4500, validity: '30 days' }
+      ],
+      'AIRTEL': [
+        { id: 1, title: '500MB - ₦400 (30 days)', data_size: '500MB', price: 400, validity: '30 days' },
+        { id: 2, title: '1GB - ₦650 (30 days)', data_size: '1GB', price: 650, validity: '30 days' },
+        { id: 3, title: '2GB - ₦1,300 (30 days)', data_size: '2GB', price: 1300, validity: '30 days' }
+      ],
+      'GLO': [
+        { id: 1, title: '500MB - ₦350 (30 days)', data_size: '500MB', price: 350, validity: '30 days' },
+        { id: 2, title: '1GB - ₦600 (30 days)', data_size: '1GB', price: 600, validity: '30 days' },
+        { id: 3, title: '2GB - ₦1,200 (30 days)', data_size: '2GB', price: 1200, validity: '30 days' }
+      ],
+      '9MOBILE': [
+        { id: 1, title: '500MB - ₦400 (30 days)', data_size: '500MB', price: 400, validity: '30 days' },
+        { id: 2, title: '1GB - ₦650 (30 days)', data_size: '1GB', price: 650, validity: '30 days' },
+        { id: 3, title: '2GB - ₦1,300 (30 days)', data_size: '2GB', price: 1300, validity: '30 days' }
+      ]
+    };
+    
+    return defaultPlans[network.toUpperCase()] || defaultPlans['MTN'];
+  }
+
   async purchaseData(user, dataData, userPhoneNumber) {
     try {
       const { phoneNumber, network, dataPlan, pin } = dataData;
@@ -332,15 +388,34 @@ class BilalService {
       const tokenData = await this.generateToken();
 
       // Purchase data via BILALSADASUB API
+      // Remove country code from phone number (Bilal expects 11 digits without +234)
+      const cleanPhoneNumber = phoneNumber.replace(/^\+234/, '').replace(/^234/, '');
+      
       const payload = {
         network: networkId,
-        phone: phoneNumber,
+        phone: cleanPhoneNumber,
         data_plan: dataPlan.id,
         bypass: false,
         'request-id': requestId
       };
 
+      logger.info('Making data purchase request to Bilal API', {
+        payload,
+        tokenLength: tokenData.token ? tokenData.token.length : 0,
+        networkId,
+        phoneNumber: cleanPhoneNumber,
+        dataPlanId: dataPlan.id
+      });
+
       const response = await this.makeRequest('POST', '/data', payload, tokenData.token);
+
+      logger.info('Bilal API response received', {
+        status: response.status,
+        responseKeys: Object.keys(response),
+        hasAmount: !!response.amount,
+        hasMessage: !!response.message,
+        requestId: response['request-id']
+      });
 
       if (response.status === 'success') {
         // Debit user wallet with actual amount
