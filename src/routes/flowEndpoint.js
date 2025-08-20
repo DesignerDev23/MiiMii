@@ -2365,3 +2365,5 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
     };
   }
 }
+
+module.exports = router;
