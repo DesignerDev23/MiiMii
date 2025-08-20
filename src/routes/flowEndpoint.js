@@ -830,7 +830,12 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           // If there was an error, return error response
           return result;
         } else if (tokenData.sessionData && tokenData.sessionData.transferData) {
-          logger.info('Detected transfer flow from session data');
+          logger.info('Detected transfer flow from session data', {
+            sessionDataKeys: Object.keys(tokenData.sessionData),
+            transferDataKeys: Object.keys(tokenData.sessionData.transferData),
+            userId: tokenData.sessionData.userId,
+            context: tokenData.sessionData.context
+          });
           // This is a transfer flow
           const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
           
@@ -843,7 +848,14 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           // If there was an error, return error response
           return result;
         } else if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
-          logger.info('Detected transfer flow from flow action payload data');
+          logger.info('Detected transfer flow from flow action payload data', {
+            dataKeys: Object.keys(data || {}),
+            transferAmount: data.transfer_amount,
+            recipientName: data.recipient_name,
+            bankName: data.bank_name,
+            accountNumber: data.account_number,
+            bankCode: data.bank_code
+          });
           // This is a transfer flow with data in the payload
           const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
           
@@ -865,6 +877,13 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
             flowToken: flowToken,
             tokenDataKeys: Object.keys(tokenData || {})
           });
+          
+          // Try to extract transfer data from any available source as fallback
+          if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
+            logger.info('Attempting fallback transfer processing with available data');
+            const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
+            return result;
+          }
           
           return {
             screen: 'PIN_VERIFICATION_SCREEN',
