@@ -863,6 +863,17 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         return handlePhoneInputScreen(data, userId, tokenData, flowToken);
 
       case 'DATA_PLAN_SELECTION_SCREEN':
+        logger.info('DATA_PLAN_SELECTION_SCREEN action received', {
+          dataKeys: Object.keys(data || {}),
+          hasNetwork: !!data.network,
+          hasPhoneNumber: !!data.phoneNumber,
+          hasDataPlan: !!data.dataPlan,
+          network: data.network,
+          phoneNumber: data.phoneNumber ? data.phoneNumber.substring(0, 3) + '****' + data.phoneNumber.substring(7) : null,
+          dataPlan: data.dataPlan,
+          flowToken: flowToken
+        });
+        
         // Check if this is a navigate action (user coming from phone input)
         if (data.network && data.phoneNumber && !data.dataPlan) {
           logger.info('Navigate to DATA_PLAN_SELECTION_SCREEN - populating plans for network:', data.network);
@@ -1519,142 +1530,117 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
 // Complete data plans database with all 125+ plans
 const DATA_PLANS = {
   MTN: [
-    { id: 1, title: "500MB - ₦380 (30 days)", price: 380, validity: "30 days", type: "SME" },
-    { id: 2, title: "1GB - ₦620 (30 days)", price: 620, validity: "30 days", type: "SME" },
-    { id: 3, title: "2GB - ₦1,240 (Monthly)", price: 1240, validity: "Monthly", type: "SME" },
-    { id: 4, title: "3GB - ₦2,200 (30 days)", price: 2200, validity: "30 days", type: "SME" },
-    { id: 5, title: "5GB - ₦4,500 (30 days)", price: 4500, validity: "30 days", type: "SME" },
-    { id: 6, title: "10GB - ₦9,000 (30 days)", price: 9000, validity: "30 days", type: "SME" },
-    { id: 36, title: "6GB - ₦2,450 (7 days)", price: 2450, validity: "7 days", type: "GIFTING" },
-    { id: 37, title: "1GB - ₦490 (24 hours + 5 mins call)", price: 490, validity: "24 hours", type: "GIFTING PROMO" },
-    { id: 38, title: "1.5GB - ₦588 (2 days)", price: 588, validity: "2 days", type: "GIFTING PROMO" },
-    { id: 39, title: "15GB - ₦6,305 (30 days)", price: 6305, validity: "30 days", type: "GIFTING PROMO" },
-    { id: 41, title: "10GB - ₦4,365 (30 days)", price: 4365, validity: "30 days", type: "GIFTING" },
-    { id: 43, title: "8GB - ₦4,365 (7 days + 25 min call)", price: 4365, validity: "7 days", type: "GIFTING PROMO" },
-    { id: 80, title: "1.5GB - ₦970 (7 days + 5 mins call)", price: 970, validity: "7 days", type: "GIFTING PROMO" },
-    { id: 81, title: "1GB - ₦781 (Weekly + call time)", price: 781, validity: "Weekly", type: "GIFTING" },
-    { id: 82, title: "250GB - ₦53,900 (30 days)", price: 53900, validity: "30 days", type: "GIFTING PROMO" },
-    { id: 83, title: "150GB - ₦34,900 (30 days)", price: 34900, validity: "30 days", type: "GIFTING PROMO" },
-    { id: 84, title: "75GB - ₦19,600 (30 days)", price: 19600, validity: "30 days", type: "GIFTING" },
-    { id: 85, title: "32GB - ₦10,780 (30 days)", price: 10780, validity: "30 days", type: "GIFTING PROMO" },
-    { id: 86, title: "35GB - ₦6,860 (Postpaid monthly)", price: 6860, validity: "Monthly", type: "GIFTING PROMO" },
-    { id: 87, title: "15GB - ₦6,370 (30 days + call time)", price: 6370, validity: "30 days", type: "GIFTING PROMO" },
-    { id: 88, title: "12.5GB - ₦5,390 (11GB + call time)", price: 5390, validity: "Monthly", type: "GIFTING" },
-    { id: 91, title: "3.2GB - ₦980 (2 days)", price: 980, validity: "2 days", type: "GIFTING PROMO" },
-    { id: 92, title: "2.5GB - ₦735 (Daily plan)", price: 735, validity: "Daily", type: "GIFTING PROMO" },
-    { id: 94, title: "1GB - ₦98 (Beta mix bundle max)", price: 98, validity: "Daily", type: "GIFTING PROMO" },
-    { id: 96, title: "75MB - ₦74 (Daily)", price: 74, validity: "Daily", type: "GIFTING PROMO" },
-    { id: 97, title: "0.5MB - ₦49 (Beta mix mini)", price: 49, validity: "Daily", type: "GIFTING PROMO" },
-    { id: 98, title: "200GB - ₦49,000 (60 days)", price: 49000, validity: "60 days", type: "GIFTING PROMO" },
-    { id: 100, title: "150GB - ₦39,200 (60 days)", price: 39200, validity: "60 days", type: "GIFTING PROMO" },
-    { id: 101, title: "40GB - ₦8,820 (Postpaid 2 monthly)", price: 8820, validity: "2 months", type: "GIFTING PROMO" },
-    { id: 102, title: "90GB - ₦24,500 (60 days)", price: 24500, validity: "60 days", type: "GIFTING PROMO" },
-    { id: 103, title: "7GB - ₦3,430 (30 days)", price: 3430, validity: "30 days", type: "GIFTING" },
-    { id: 104, title: "3.5GB - ₦2,450 (30 days + 2GB night)", price: 2450, validity: "30 days", type: "GIFTING" },
-    { id: 108, title: "1.2GB - ₦735 (7 days pulse)", price: 735, validity: "7 days", type: "GIFTING PROMO" },
-    { id: 112, title: "11GB - ₦3,430 (7 days)", price: 3430, validity: "7 days", type: "GIFTING" },
-    { id: 113, title: "230MB - ₦196 (24 hours)", price: 196, validity: "24 hours", type: "GIFTING PROMO" },
-    { id: 114, title: "2GB - ₦1,460 (30 days + call 2m)", price: 1460, validity: "30 days", type: "GIFTING" },
-    { id: 115, title: "2.7GB - ₦1,960 (30 days + 2 mins)", price: 1960, validity: "30 days", type: "GIFTING" },
-    { id: 116, title: "100MB - ₦98 (24 hours)", price: 98, validity: "24 hours", type: "GIFTING" },
-    { id: 117, title: "500MB - ₦490 (7 days)", price: 490, validity: "7 days", type: "GIFTING" },
-    { id: 118, title: "1.8GB - ₦1,470 (30 days + 1500 Airtime)", price: 1470, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 120, title: "300MB - ₦1,470 (30 days + 1500 talk time)", price: 1470, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 121, title: "1GB - ₦2,940 (30 days + 15000 talk time)", price: 2940, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 122, title: "500MB - ₦346 (Daily)", price: 346, validity: "Daily", type: "GIFTING" },
-    { id: 123, title: "12.5GB - ₦5,390 (30 days)", price: 5390, validity: "30 days", type: "GIFTING" },
-    { id: 124, title: "14.5GB - ₦4,900 (30 days)", price: 4900, validity: "30 days", type: "GIFTING" },
-    { id: 125, title: "65GB - ₦15,680 (30 days)", price: 15680, validity: "30 days", type: "GIFTING" },
-    { id: 127, title: "40MB - ₦50 (1 day + 1 min)", price: 50, validity: "1 day", type: "GIFTING" },
-    { id: 128, title: "750MB - ₦442 (2 days social)", price: 442, validity: "2 days", type: "GIFTING" },
-    { id: 129, title: "2GB - ₦735 (2 days)", price: 735, validity: "2 days", type: "GIFTING" },
-    { id: 130, title: "2.5GB - ₦880 (2 days)", price: 880, validity: "2 days", type: "GIFTING" },
-    { id: 131, title: "3.5GB - ₦1,460 (7 days)", price: 1460, validity: "7 days", type: "GIFTING" },
-    { id: 132, title: "20GB - ₦5,335 (7 days)", price: 5335, validity: "7 days", type: "GIFTING" },
-    { id: 133, title: "6.75GB - ₦2,910 (30 days)", price: 2910, validity: "30 days", type: "GIFTING" },
-    { id: 134, title: "16.5GB - ₦6,305 (30 days)", price: 6305, validity: "30 days", type: "GIFTING" },
-    { id: 135, title: "24GB - ₦7,275 (30 days)", price: 7275, validity: "30 days", type: "GIFTING" },
-    { id: 136, title: "29GB - ₦8,730 (30 days)", price: 8730, validity: "30 days", type: "GIFTING" },
-    { id: 137, title: "36GB - ₦10,670 (30 days)", price: 10670, validity: "30 days", type: "GIFTING" },
-    { id: 138, title: "165GB - ₦33,950 (30 days)", price: 33950, validity: "30 days", type: "GIFTING" },
-    { id: 139, title: "250GB - ₦53,350 (30 days)", price: 53350, validity: "30 days", type: "GIFTING" },
-    { id: 140, title: "480GB - ₦87,300 (90 days)", price: 87300, validity: "90 days", type: "GIFTING" },
-    { id: 141, title: "800GB - ₦121,250 (1 year)", price: 121250, validity: "1 year", type: "GIFTING" },
-    { id: 149, title: "470MB - ₦196 (Weekly all social)", price: 196, validity: "Weekly", type: "GIFTING PROMO" }
+    { id: 1, title: "500MB", price: 380, validity: "30days to 7days", type: "SME" },
+    { id: 2, title: "1GB", price: 620, validity: "30 days", type: "SME" },
+    { id: 3, title: "2GB", price: 1240, validity: "Monthly", type: "SME" },
+    { id: 4, title: "3GB", price: 2200, validity: "30days", type: "SME" },
+    { id: 5, title: "5GB", price: 4500, validity: "30days", type: "SME" },
+    { id: 6, title: "10GB", price: 9000, validity: "30days", type: "SME" },
+    { id: 36, title: "6GB", price: 2450, validity: "7days", type: "GIFTING" },
+    { id: 37, title: "1GB", price: 490, validity: "24hours and 5 mins call", type: "GIFTING PROMO" },
+    { id: 38, title: "1.5GB", price: 588, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 39, title: "15GB", price: 6305, validity: "30 days", type: "GIFTING PROMO" },
+    { id: 41, title: "10GB", price: 4365, validity: "30days", type: "GIFTING" },
+    { id: 43, title: "8GB", price: 4365, validity: "7days + 25 min call time", type: "GIFTING PROMO" },
+    { id: 80, title: "1.5GB", price: 970, validity: "7 days + 5 mind call time", type: "GIFTING PROMO" },
+    { id: 81, title: "1GB", price: 781, validity: "Weekly and call time", type: "GIFTING" },
+    { id: 82, title: "250GB", price: 53900, validity: "30days", type: "GIFTING PROMO" },
+    { id: 83, title: "150GB", price: 34900, validity: "30days", type: "GIFTING PROMO" },
+    { id: 84, title: "75GB", price: 19600, validity: "30days", type: "GIFTING" },
+    { id: 85, title: "32GB", price: 10780, validity: "10780", type: "GIFTING PROMO" },
+    { id: 86, title: "35GB", price: 6860, validity: "Postpaid monthly plan", type: "GIFTING PROMO" },
+    { id: 87, title: "15GB", price: 6370, validity: "30days and call time", type: "GIFTING PROMO" },
+    { id: 88, title: "12.5GB", price: 5390, validity: "11gb + call time monthly", type: "GIFTING" },
+    { id: 91, title: "3.2GB", price: 980, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 92, title: "2.5GB", price: 735, validity: "Daily plan", type: "GIFTING PROMO" },
+    { id: 94, title: "1GB", price: 98, validity: "Beta mix bundle max", type: "GIFTING PROMO" },
+    { id: 96, title: "75MB", price: 74, validity: "Daily", type: "GIFTING PROMO" },
+    { id: 97, title: "0.5MB", price: 49, validity: "Beta mix mini", type: "GIFTING PROMO" },
+    { id: 98, title: "200GB", price: 49000, validity: "60 days plan", type: "GIFTING PROMO" },
+    { id: 100, title: "150GB", price: 39200, validity: "60 days plan", type: "GIFTING PROMO" },
+    { id: 101, title: "40GB", price: 8820, validity: "Postpaid 2 monthly plan", type: "GIFTING PROMO" },
+    { id: 102, title: "90GB", price: 24500, validity: "60 days plan", type: "GIFTING PROMO" },
+    { id: 103, title: "7GB", price: 3430, validity: "30days", type: "GIFTING" },
+    { id: 104, title: "3.5GB", price: 2450, validity: "30days + 2gb night", type: "GIFTING" },
+    { id: 108, title: "1.2GB", price: 735, validity: "7days pulse", type: "GIFTING PROMO" },
+    { id: 112, title: "11GB", price: 3430, validity: "7 days", type: "GIFTING" },
+    { id: 113, title: "230MB", price: 196, validity: "24hours", type: "GIFTING PROMO" },
+    { id: 114, title: "2GB", price: 1460, validity: "30days + call 2m", type: "GIFTING" },
+    { id: 115, title: "2.7GB", price: 1960, validity: "30days + 2 mins", type: "GIFTING" },
+    { id: 116, title: "100MB", price: 98, validity: "24hours", type: "GIFTING" },
+    { id: 117, title: "500MB", price: 490, validity: "7days", type: "GIFTING" },
+    { id: 118, title: "1.8GB", price: 1470, validity: "30days plus 1500 Airtime", type: "COOPERATE GIFTING" },
+    { id: 120, title: "300MB", price: 1470, validity: "30days + 1500 talk time", type: "COOPERATE GIFTING" },
+    { id: 121, title: "1GB", price: 2940, validity: "30days + 15000 talk time", type: "COOPERATE GIFTING" },
+    { id: 122, title: "500MB", price: 346, validity: "daily", type: "GIFTING" },
+    { id: 123, title: "12.5GB", price: 5390, validity: "30days", type: "GIFTING" },
+    { id: 124, title: "14.5GB", price: 4900, validity: "30days", type: "GIFTING" },
+    { id: 125, title: "65GB", price: 15680, validity: "30days", type: "GIFTING" },
+    { id: 127, title: "40MB", price: 50, validity: "1 day and 1 min", type: "GIFTING" },
+    { id: 128, title: "750MB", price: 442, validity: "2 days social", type: "GIFTING" },
+    { id: 129, title: "2GB", price: 735, validity: "2 days", type: "GIFTING" },
+    { id: 130, title: "2.5GB", price: 880, validity: "2 days", type: "GIFTING" },
+    { id: 131, title: "3.5GB", price: 1460, validity: "7 days", type: "GIFTING" },
+    { id: 132, title: "20GB", price: 5335, validity: "7 days", type: "GIFTING" },
+    { id: 133, title: "6.75GB", price: 2910, validity: "30days", type: "GIFTING" }
   ],
   
   AIRTEL: [
-    { id: 7, title: "500MB - ₦493 (7 days)", price: 493, validity: "7 days", type: "SME" },
-    { id: 8, title: "1GB - ₦784 (7 days)", price: 784, validity: "7 days", type: "SME" },
-    { id: 9, title: "2GB - ₦1,500 (30 days)", price: 1500, validity: "30 days", type: "SME" },
-    { id: 10, title: "4GB - ₦2,525 (30 days)", price: 2525, validity: "30 days", type: "SME" },
-    { id: 26, title: "10GB - ₦4,000 (30 days)", price: 4000, validity: "30 days", type: "SME" },
-    { id: 44, title: "300MB - ₦300 (30 days)", price: 300, validity: "30 days", type: "SME" },
-    { id: 45, title: "100MB - ₦100 (30 days)", price: 100, validity: "30 days", type: "SME" },
-    { id: 53, title: "500MB - ₦425 (30 days)", price: 425, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 54, title: "1GB - ₦850 (30 days)", price: 850, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 55, title: "2GB - ₦1,700 (30 days)", price: 1700, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 56, title: "5GB - ₦4,250 (30 days)", price: 4250, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 57, title: "10GB - ₦8,500 (30 days)", price: 8500, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 58, title: "11GB - ₦4,000 (30 days)", price: 4000, validity: "30 days", type: "GIFTING" },
-    { id: 69, title: "1GB - ₦320 (2 days)", price: 320, validity: "2 days", type: "GIFTING PROMO" },
-    { id: 72, title: "7GB - ₦2,065 (7 days)", price: 2065, validity: "7 days", type: "GIFTING PROMO" },
-    { id: 73, title: "10GB - ₦3,070 (30 days)", price: 3070, validity: "30 days", type: "GIFTING PROMO" },
-    { id: 74, title: "25GB - ₦8,000 (30 days)", price: 8000, validity: "30 days", type: "SME" },
-    { id: 75, title: "18GB - ₦6,000 (7 days)", price: 6000, validity: "7 days", type: "SME" },
-    { id: 106, title: "600MB - ₦230 (2 days)", price: 230, validity: "2 days", type: "GIFTING PROMO" },
-    { id: 107, title: "1GB - ₦320 (3 days)", price: 320, validity: "3 days", type: "GIFTING PROMO" },
-    { id: 126, title: "1TB - ₦196,000 (1 year)", price: 196000, validity: "1 year", type: "SME" },
-    { id: 142, title: "100MB - ₦100 (1 day)", price: 100, validity: "1 day", type: "GIFTING PROMO" },
-    { id: 143, title: "100GB - ₦20,000 (30 days mifi)", price: 20000, validity: "30 days", type: "GIFTING PROMO" },
-    { id: 144, title: "250MB - ₦50 (1 day night Bundle)", price: 50, validity: "1 day", type: "GIFTING PROMO" },
-    { id: 145, title: "35GB - ₦10,000 (30 days)", price: 10000, validity: "30 days", type: "GIFTING" },
-    { id: 146, title: "60GB - ₦15,000 (30 days)", price: 15000, validity: "30 days", type: "GIFTING" },
-    { id: 147, title: "100GB - ₦20,000 (30 days)", price: 20000, validity: "30 days", type: "GIFTING" },
-    { id: 148, title: "160GB - ₦30,000 (30 days)", price: 30000, validity: "30 days", type: "GIFTING" }
+    { id: 7, title: "500MB", price: 493, validity: "7days", type: "SME" },
+    { id: 8, title: "1GB", price: 784, validity: "7days", type: "SME" },
+    { id: 9, title: "2GB", price: 1500, validity: "30days", type: "SME" },
+    { id: 10, title: "4GB", price: 2525, validity: "30days", type: "SME" },
+    { id: 26, title: "10GB", price: 4000, validity: "30days", type: "SME" },
+    { id: 44, title: "300MB", price: 300, validity: "30days", type: "SME" },
+    { id: 45, title: "100MB", price: 100, validity: "30days", type: "SME" },
+    { id: 53, title: "500MB", price: 425, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 54, title: "1GB", price: 850, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 55, title: "2GB", price: 1700, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 56, title: "5GB", price: 4250, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 57, title: "10GB", price: 8500, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 58, title: "11GB", price: 4000, validity: "30days", type: "GIFTING" },
+    { id: 69, title: "1GB", price: 320, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 72, title: "7GB", price: 2065, validity: "7days", type: "GIFTING PROMO" },
+    { id: 73, title: "10GB", price: 3070, validity: "30days", type: "GIFTING PROMO" },
+    { id: 74, title: "25GB", price: 8000, validity: "30days", type: "SME" },
+    { id: 75, title: "18GB", price: 6000, validity: "7 days", type: "SME" },
+    { id: 106, title: "600MB", price: 230, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 107, title: "1GB", price: 320, validity: "3 days", type: "GIFTING PROMO" },
+    { id: 126, title: "1TB", price: 196000, validity: "1 year", type: "SME" }
   ],
   
   GLO: [
-    { id: 11, title: "1.5GB - ₦460 (30 days)", price: 460, validity: "30 days", type: "GIFTING" },
-    { id: 12, title: "2.9GB - ₦940 (30 days)", price: 940, validity: "30 days", type: "GIFTING" },
-    { id: 13, title: "4.1GB - ₦1,290 (30 days)", price: 1290, validity: "30 days", type: "GIFTING" },
-    { id: 14, title: "5.8GB - ₦1,850 (30 days)", price: 1850, validity: "30 days", type: "GIFTING" },
-    { id: 15, title: "10GB - ₦3,030 (30 days)", price: 3030, validity: "30 days", type: "GIFTING" },
-    { id: 29, title: "200MB - ₦110 (30 days)", price: 110, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 30, title: "500MB - ₦200 (30 days)", price: 200, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 31, title: "1GB - ₦400 (30 days)", price: 400, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 32, title: "2GB - ₦800 (30 days)", price: 800, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 33, title: "3GB - ₦1,215 (30 days)", price: 1215, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 34, title: "5GB - ₦2,025 (30 days)", price: 2025, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 35, title: "10GB - ₦4,050 (30 days)", price: 4050, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 76, title: "1GB - ₦200 (24 hours)", price: 200, validity: "24 hours", type: "GIFTING PROMO" },
-    { id: 77, title: "2GB - ₦300 (24 hours)", price: 300, validity: "24 hours", type: "GIFTING PROMO" },
-    { id: 78, title: "3.5GB - ₦500 (2 days)", price: 500, validity: "2 days", type: "GIFTING PROMO" },
-    { id: 79, title: "15GB - ₦1,950 (7 days)", price: 1950, validity: "7 days", type: "GIFTING PROMO" },
-    { id: 150, title: "500MB - ₦190 (14 days)", price: 190, validity: "14 days", type: "SME" },
-    { id: 151, title: "1GB - ₦300 (14 days)", price: 300, validity: "14 days", type: "SME" },
-    { id: 152, title: "1GB - ₦260 (3 days)", price: 260, validity: "3 days", type: "SME" },
-    { id: 153, title: "1GB - ₦280 (7 days)", price: 280, validity: "7 days", type: "SME" },
-    { id: 154, title: "3GB - ₦730 (3 days)", price: 730, validity: "3 days", type: "SME" },
-    { id: 155, title: "3GB - ₦850 (7 days)", price: 850, validity: "7 days", type: "SME" },
-    { id: 156, title: "3GB - ₦1,000 (14 days)", price: 1000, validity: "14 days", type: "SME" },
-    { id: 157, title: "5GB - ₦1,240 (3 days)", price: 1240, validity: "3 days", type: "SME" },
-    { id: 158, title: "5GB - ₦1,440 (7 days)", price: 1440, validity: "7 days", type: "SME" },
-    { id: 159, title: "5GB - ₦1,480 (14 days)", price: 1480, validity: "14 days", type: "SME" },
-    { id: 160, title: "10GB - ₦2,950 (14 days)", price: 2950, validity: "14 days", type: "SME" }
+    { id: 11, title: "1.5GB", price: 460, validity: "30days", type: "GIFTING" },
+    { id: 12, title: "2.9GB", price: 940, validity: "30days", type: "GIFTING" },
+    { id: 13, title: "4.1GB", price: 1290, validity: "30days", type: "GIFTING" },
+    { id: 14, title: "5.8GB", price: 1850, validity: "30days", type: "GIFTING" },
+    { id: 15, title: "10GB", price: 3030, validity: "30days", type: "GIFTING" },
+    { id: 29, title: "200MB", price: 110, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 30, title: "500MB", price: 200, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 31, title: "1GB", price: 400, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 32, title: "2GB", price: 800, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 33, title: "3GB", price: 1215, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 34, title: "5GB", price: 2025, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 35, title: "10GB", price: 4050, validity: "30days after redeeming", type: "COOPERATE GIFTING" },
+    { id: 76, title: "1GB", price: 200, validity: "24hours", type: "GIFTING PROMO" },
+    { id: 77, title: "2GB", price: 300, validity: "24hours", type: "GIFTING PROMO" },
+    { id: 78, title: "3.5GB", price: 500, validity: "2 days", type: "GIFTING PROMO" },
+    { id: 79, title: "15GB", price: 1950, validity: "7 days", type: "GIFTING PROMO" },
+    { id: 159, title: "5GB", price: 1480, validity: "14 days", type: "SME" },
+    { id: 160, title: "10GB", price: 2950, validity: "14 days", type: "SME" }
   ],
   
   "9MOBILE": [
-    { id: 25, title: "1.1GB - ₦400 (30 days)", price: 400, validity: "30 days", type: "SME" },
-    { id: 27, title: "1.5GB - ₦880 (30 days)", price: 880, validity: "30 days", type: "GIFTING" },
-    { id: 28, title: "500MB - ₦450 (30 days)", price: 450, validity: "30 days", type: "GIFTING" },
-    { id: 46, title: "500MB - ₦180 (30 days)", price: 180, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 47, title: "1GB - ₦360 (30 days)", price: 360, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 48, title: "2GB - ₦720 (30 days)", price: 720, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 49, title: "3GB - ₦1,080 (30 days)", price: 1080, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 50, title: "4GB - ₦1,440 (30 days)", price: 1440, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 51, title: "5GB - ₦1,375 (30 days)", price: 1375, validity: "30 days", type: "COOPERATE GIFTING" },
-    { id: 52, title: "10GB - ₦2,750 (30 days)", price: 2750, validity: "30 days", type: "COOPERATE GIFTING" }
+    { id: 25, title: "1.1GB", price: 400, validity: "30days", type: "SME" },
+    { id: 27, title: "1.5GB", price: 880, validity: "30days", type: "GIFTING" },
+    { id: 28, title: "500MB", price: 450, validity: "30 days", type: "GIFTING" },
+    { id: 46, title: "500MB", price: 180, validity: "30 days", type: "COOPERATE GIFTING" },
+    { id: 47, title: "1GB", price: 360, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 48, title: "2GB", price: 720, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 49, title: "3GB", price: 1080, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 50, title: "4GB", price: 1440, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 51, title: "5GB", price: 1375, validity: "30days", type: "COOPERATE GIFTING" },
+    { id: 52, title: "10GB", price: 2750, validity: "30days", type: "COOPERATE GIFTING" }
   ]
 };
 
@@ -2268,12 +2254,35 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
         planCount: availablePlans.length
       });
 
+      // Send WhatsApp message with available plans
+      try {
+        const whatsappService = require('../services/whatsapp');
+        const userService = require('../services/user');
+        const user = await userService.getUserById(userId);
+        
+        if (user && user.whatsappNumber) {
+          const formattedPlans = availablePlans.map(plan => ({
+            id: plan.id.toString(),
+            title: `${plan.title} - ₦${plan.price} (${plan.validity})`
+          }));
+
+          const plansMessage = `📱 *${network} Data Plans*\n\n` +
+                              formattedPlans.map(plan => `• ${plan.title}`).join('\n') +
+                              `\n\nPlease select a plan in the flow above.`;
+          
+          await whatsappService.sendTextMessage(user.whatsappNumber, plansMessage);
+          logger.info('Data plans sent via WhatsApp', { userId, network, planCount: availablePlans.length });
+        }
+      } catch (error) {
+        logger.warn('Failed to send data plans via WhatsApp', { error: error.message });
+      }
+
       return {
         screen: 'DATA_PLAN_SELECTION_SCREEN',
         data: {
           dataPlans: availablePlans.map(plan => ({
             id: plan.id.toString(),
-            title: plan.title
+            title: `${plan.title} - ₦${plan.price} (${plan.validity})`
           }))
         }
       };
