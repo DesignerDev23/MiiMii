@@ -635,15 +635,15 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
         return result;
       } else if (tokenData.sessionData && tokenData.sessionData.transferData) {
         logger.info('Detected transfer flow in complete action');
-        const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
-        
-        // If transfer was successful, return empty response to close terminal flow
+      const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+      
+      // If transfer was successful, return empty response to close terminal flow
         if (Object.keys(result).length === 0) {
-          logger.info('Transfer successful, returning empty response to close flow');
+        logger.info('Transfer successful, returning empty response to close flow');
           return result;
-        }
-        
-        return result;
+      }
+      
+      return result;
       } else {
         logger.error('Unable to determine flow type in complete action');
         return {
@@ -721,14 +721,14 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           phoneNumber = session.phoneNumber || phoneNumber;
           // Store session data for use in screen handlers
           tokenData.sessionData = session;
-          logger.info('Session found in Redis', { 
-            sessionKey, 
-            hasUserId: !!session.userId, 
-            hasPhoneNumber: !!session.phoneNumber,
-            hasTransferData: !!session.transferData,
-            sessionKeys: Object.keys(session),
-            sessionData: session
-          });
+                  logger.info('Session found in Redis', { 
+          sessionKey, 
+          hasUserId: !!session.userId, 
+          hasPhoneNumber: !!session.phoneNumber,
+          hasTransferData: !!session.transferData,
+          sessionKeys: Object.keys(session),
+          sessionData: session
+        });
         } else {
           logger.warn('No session found in Redis', { sessionKey, flowToken });
         }
@@ -1166,8 +1166,8 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       userId: user.id,
       pin: pin,
       dataPurchaseData: {
-        phoneNumber,
-        network,
+      phoneNumber,
+      network,
         dataPlan: { id: dataPlan, price: getDataPlanPrice(dataPlan) }
       },
       flowToken: flowToken,
@@ -1180,25 +1180,25 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
     await redisClient.setSession(processingKey, processingData, 300);
     
     logger.info('Data purchase data stored for background processing', {
-      userId: user.id,
+        userId: user.id,
       processingKey,
       dataPurchaseData: {
         network,
         phoneNumber,
         dataPlan
       }
-    });
-    
-    // Clean up flow session
-    if (flowToken) {
-      try {
-        await redisClient.deleteSession(`flow:${flowToken}`);
-        logger.info('Flow session cleaned up successfully', { flowToken });
-      } catch (error) {
-        logger.warn('Failed to cleanup flow session', { error: error.message });
+      });
+
+      // Clean up flow session
+      if (flowToken) {
+        try {
+          await redisClient.deleteSession(`flow:${flowToken}`);
+          logger.info('Flow session cleaned up successfully', { flowToken });
+        } catch (error) {
+          logger.warn('Failed to cleanup flow session', { error: error.message });
+        }
       }
-    }
-    
+
     // Process the data purchase in the background
     processDataPurchaseInBackground(processingKey, processingData);
     
@@ -1409,19 +1409,19 @@ async function handleLoginScreen(data, userId, tokenData = {}) {
 async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken = null) {
   try {
     const pin = data.pin;
-    
+
     // Validate PIN format
     if (!pin || !/^\d{4}$/.test(pin)) {
-      return {
-        screen: 'PIN_VERIFICATION_SCREEN',
-        data: {
-          error: 'Please enter exactly 4 digits for your PIN.',
-          validation: {
-            pin: 'PIN must be exactly 4 digits'
-          },
-          retry: true
-        }
-      };
+                             return {
+           screen: 'PIN_VERIFICATION_SCREEN',
+           data: {
+             error: 'Please enter exactly 4 digits for your PIN.',
+             validation: {
+               pin: 'PIN must be exactly 4 digits'
+             },
+             retry: true
+           }
+         };
     }
 
     logger.info('Transfer PIN received from Flow', {
@@ -1479,33 +1479,33 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         dataKeys: Object.keys(transferData || {})
       });
     } else {
-      // Try to get transfer data from flow action payload if available
-      if (data && (data.transfer_amount || data.recipient_name)) {
-        transferData = {
-          amount: parseFloat(data.transfer_amount) || 0,
-          recipientName: data.recipient_name || 'Recipient',
-          bankName: data.bank_name || 'Unknown Bank',
-          accountNumber: data.account_number || '',
-          bankCode: data.bank_code || '',
-          narration: 'Wallet transfer',
-          reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
-        };
-        
-        logger.info('Using transfer data from flow action payload', {
-          userId: user.id,
-          transferData,
-          dataKeys: Object.keys(data || {})
-        });
-      } else {
-        return {
-          screen: 'PIN_VERIFICATION_SCREEN',
-          data: {
-            error: 'Transfer session expired. Please try again.',
-            error_message: 'Transfer context not found'
-          }
-        };
+        // Try to get transfer data from flow action payload if available
+        if (data && (data.transfer_amount || data.recipient_name)) {
+          transferData = {
+            amount: parseFloat(data.transfer_amount) || 0,
+            recipientName: data.recipient_name || 'Recipient',
+            bankName: data.bank_name || 'Unknown Bank',
+            accountNumber: data.account_number || '',
+            bankCode: data.bank_code || '',
+            narration: 'Wallet transfer',
+            reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+          };
+          
+          logger.info('Using transfer data from flow action payload', {
+            userId: user.id,
+            transferData,
+            dataKeys: Object.keys(data || {})
+          });
+        } else {
+                                     return {
+           screen: 'PIN_VERIFICATION_SCREEN',
+           data: {
+             error: 'Transfer session expired. Please try again.',
+             error_message: 'Transfer context not found'
+           }
+         };
+        }
       }
-    }
     
     if (!transferData || !transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
       logger.error('Missing transfer data for PIN verification', {
@@ -1514,13 +1514,13 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
         dataKeys: transferData ? Object.keys(transferData) : []
       });
       
-      return {
-        screen: 'PIN_VERIFICATION_SCREEN',
-        data: {
-          error: 'Transfer details not found. Please try again.',
-          error_message: 'Missing transfer information'
-        }
-      };
+                                 return {
+           screen: 'PIN_VERIFICATION_SCREEN',
+           data: {
+             error: 'Transfer details not found. Please try again.',
+             error_message: 'Missing transfer information'
+           }
+         };
     }
     
     // Store the PIN and transfer data for background processing
@@ -1538,7 +1538,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     await redisClient.setSession(processingKey, processingData, 300);
     
     logger.info('Transfer data stored for background processing', {
-      userId: user.id,
+          userId: user.id,
       processingKey,
       transferData: {
         amount: transferData.amount,
@@ -1548,37 +1548,37 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     });
     
     // Clean up flow session
-    if (flowToken) {
-      try {
-        await redisClient.deleteSession(`flow:${flowToken}`);
-        logger.info('Flow session cleaned up successfully', { flowToken });
-      } catch (error) {
-        logger.warn('Failed to cleanup flow session', { error: error.message });
-      }
-    }
-    
+        if (flowToken) {
+          try {
+            await redisClient.deleteSession(`flow:${flowToken}`);
+            logger.info('Flow session cleaned up successfully', { flowToken });
+          } catch (error) {
+            logger.warn('Failed to cleanup flow session', { error: error.message });
+          }
+        }
+        
     // Return empty response to close terminal flow immediately
-    const successResponse = {};
-    
-    logger.info('Returning empty response to close terminal flow', {
-      userId: user.id,
-      transferData: {
-        amount: transferData.amount,
+        const successResponse = {};
+        
+        logger.info('Returning empty response to close terminal flow', {
+          userId: user.id,
+          transferData: {
+            amount: transferData.amount,
         recipientName: transferData.recipientName
       }
     });
     
     // Process the transfer in the background
     processTransferInBackground(processingKey, processingData);
-    
-    return successResponse;
+        
+        return successResponse;
 
-  } catch (error) {
+          } catch (error) {
     logger.error('Transfer PIN screen processing failed', { error: error.message });
-    
-    return {
-      screen: 'PIN_VERIFICATION_SCREEN',
-      data: {
+        
+        return {
+          screen: 'PIN_VERIFICATION_SCREEN',
+          data: {
         error: 'PIN verification failed. Please try again.',
         error_message: error.message,
         code: 'PROCESSING_ERROR'
@@ -1686,15 +1686,15 @@ async function processTransferInBackground(processingKey, processingData) {
     }
     
     // Clean up processing data
-    const redisClient = require('../utils/redis');
-    await redisClient.deleteSession(processingKey);
+          const redisClient = require('../utils/redis');
+          await redisClient.deleteSession(processingKey);
     
     logger.info('Background transfer processing completed', {
       userId,
       processingKey,
       success: result.success
     });
-    
+
   } catch (error) {
     logger.error('Background transfer processing failed', {
       processingKey,
@@ -1716,10 +1716,10 @@ async function processTransferInBackground(processingKey, processingData) {
     }
     
     // Clean up processing data
-    try {
-      const redisClient = require('../utils/redis');
-      await redisClient.deleteSession(processingKey);
-    } catch (cleanupError) {
+      try {
+        const redisClient = require('../utils/redis');
+        await redisClient.deleteSession(processingKey);
+      } catch (cleanupError) {
       logger.warn('Failed to cleanup processing data on error', { error: cleanupError.message });
     }
   }
