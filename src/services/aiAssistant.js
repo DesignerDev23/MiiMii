@@ -185,9 +185,13 @@ TRANSFER INTENT RULES:
 - Use "bank_transfer" when a bank name is mentioned (GTBank, Access, Opay, etc.)
 - Examples:
   * "Send 100 to 9072874728 opay bank" → "bank_transfer"
+  * "Send 100 naira to 9072874728 Opay bank" → "bank_transfer"
+  * "Transfer 5k to 9072874728 opay" → "bank_transfer"
   * "Send 100 to 9072874728" → "transfer" (P2P)
   * "Transfer 5k to GTBank 1234567890" → "bank_transfer"
   * "Send 5k to John 08123456789" → "transfer" (P2P)
+  * "Send 1000 to 9072874728 opay" → "bank_transfer"
+  * "Transfer 2k to 9072874728 opay bank" → "bank_transfer"
 
 Response Style Examples:
 ❌ DON'T SAY: "I understand you want to transfer funds. Please provide your PIN to authorize this transaction."
@@ -225,6 +229,11 @@ BANK TRANSFER vs P2P TRANSFER:
 - If message contains only phone number → "transfer" intent
 - Bank transfers need: amount + accountNumber + bankName
 - P2P transfers need: amount + phoneNumber
+- SPECIAL RULE: Opay account numbers often look like phone numbers (10-11 digits), but if "opay" or "opay bank" is mentioned, it's ALWAYS a bank_transfer
+- Examples of Opay bank transfers:
+  * "Send 100 to 9072874728 opay bank" → bank_transfer (9072874728 is Opay account number)
+  * "Transfer 5k to 9072874728 opay" → bank_transfer
+  * "Send 1000 to 9072874728 opay bank" → bank_transfer
 
 Response Format (JSON):
 

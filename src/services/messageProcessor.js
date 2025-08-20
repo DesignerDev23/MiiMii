@@ -229,8 +229,10 @@ class MessageProcessor {
               transferData: state.data
             };
             
+            // Define sessionKey outside try block so it's accessible throughout the function
+            const sessionKey = `flow:${flowToken}`;
+            
             try {
-              const sessionKey = `flow:${flowToken}`;
               const stored = await redisClient.setSession(sessionKey, sessionData, 1800);
               logger.info('Flow session stored in Redis', { 
                 sessionKey, 
