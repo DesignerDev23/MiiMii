@@ -102,12 +102,7 @@
                 "label": "Phone Number",
                 "name": "phoneNumber",
                 "input-type": "text",
-                "helper-text": "Enter 11-digit phone number (e.g., 08012345678)",
-                "validation": {
-                  "type": "regex",
-                  "pattern": "^0[789][01][0-9]{8}$",
-                  "error_message": "Please enter a valid 11-digit Nigerian phone number starting with 07, 08, or 09"
-                }
+                "helper-text": "Enter 11-digit phone number (e.g., 08012345678)"
               },
               {
                 "type": "Footer",

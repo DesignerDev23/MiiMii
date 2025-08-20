@@ -1218,9 +1218,7 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
         screen: 'CONFIRMATION_SCREEN',
         data: {
           error: 'Purchase was not confirmed. Please try again.',
-          validation: {
-            confirm: 'Please confirm the purchase to proceed'
-          }
+          message: 'Please confirm the purchase to proceed'
         }
       };
     }
@@ -1231,9 +1229,7 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
         screen: 'PIN_VERIFICATION_SCREEN',
         data: {
           error: 'Please enter exactly 4 digits for your PIN.',
-          validation: {
-            pin: 'PIN must be exactly 4 digits'
-          }
+          message: 'PIN must be exactly 4 digits'
         }
       };
     }
@@ -1920,9 +1916,7 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
         screen: 'NETWORK_SELECTION_SCREEN',
         data: {
           error: 'Please select a valid network.',
-          validation: {
-            network: 'Network selection is required'
-          }
+          message: 'Network selection is required'
         }
       };
     }
@@ -1977,15 +1971,13 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
       sessionData: tokenData.sessionData
     });
 
-    // Validate phone number
-    if (!phoneNumber || !/^\d{11}$/.test(phoneNumber)) {
+    // Validate phone number format (Nigerian format)
+    if (!phoneNumber || !/^0[789][01][0-9]{8}$/.test(phoneNumber)) {
       return {
         screen: 'PHONE_INPUT_SCREEN',
         data: {
-          error: 'Please enter a valid 11-digit phone number.',
-          validation: {
-            phoneNumber: 'Phone number must be 11 digits'
-          }
+          error: 'Please enter a valid 11-digit Nigerian phone number starting with 07, 08, or 09.',
+          message: 'Phone number must be 11 digits and start with 07, 08, or 09'
         }
       };
     }
@@ -2076,9 +2068,7 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
         screen: 'DATA_PLAN_SELECTION_SCREEN',
         data: {
           error: 'Please select a data plan.',
-          validation: {
-            dataPlan: 'Data plan selection is required'
-          }
+          message: 'Data plan selection is required'
         }
       };
     }
