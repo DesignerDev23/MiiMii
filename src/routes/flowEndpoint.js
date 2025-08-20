@@ -621,6 +621,17 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
 
     // Handle transfer PIN verification
     if (screen === 'PIN_VERIFICATION_SCREEN') {
+      logger.info('PIN_VERIFICATION_SCREEN complete action received', {
+        dataKeys: Object.keys(data || {}),
+        hasNetwork: !!data.network,
+        hasPhoneNumber: !!data.phoneNumber,
+        hasDataPlan: !!data.dataPlan,
+        hasPin: !!data.pin,
+        sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+        hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
+        flowToken: flowToken
+      });
+      
       // Check if this is a data purchase flow or transfer flow
       if (data.network && data.phoneNumber && data.dataPlan) {
         logger.info('Detected data purchase flow in complete action');
@@ -635,17 +646,30 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
         return result;
       } else if (tokenData.sessionData && tokenData.sessionData.transferData) {
         logger.info('Detected transfer flow in complete action');
-      const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
-      
-      // If transfer was successful, return empty response to close terminal flow
+        const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+        
+        // If transfer was successful, return empty response to close terminal flow
         if (Object.keys(result).length === 0) {
-        logger.info('Transfer successful, returning empty response to close flow');
+          logger.info('Transfer successful, returning empty response to close flow');
           return result;
-      }
-      
-      return result;
+        }
+        
+        return result;
       } else {
-        logger.error('Unable to determine flow type in complete action');
+        logger.error('Unable to determine flow type in complete action', {
+          dataKeys: Object.keys(data || {}),
+          sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+          hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
+          flowToken: flowToken
+        });
+        
+        // Try to extract transfer data from any available source as fallback
+        if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
+          logger.info('Attempting fallback transfer processing with available data in complete action');
+          const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+          return result;
+        }
+        
         return {
           screen: 'PIN_VERIFICATION_SCREEN',
           data: {
@@ -1658,10 +1682,23 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       }
     });
     
-    // Process the transfer in the background
-    processTransferInBackground(processingKey, processingData);
+    // Process the transfer in the background (fire and forget)
+    setImmediate(() => {
+      processTransferInBackground(processingKey, processingData).catch(error => {
+        logger.error('Background transfer processing failed', {
+          userId: user.id,
+          processingKey,
+          error: error.message
+        });
+      });
+    });
+    
+    logger.info('Background transfer processing initiated', {
+      userId: user.id,
+      processingKey
+    });
         
-        return successResponse;
+    return successResponse;
 
           } catch (error) {
     logger.error('Transfer PIN screen processing failed', { error: error.message });
