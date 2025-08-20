@@ -310,10 +310,140 @@ class WhatsAppFlowService {
     }
   }
 
+  /**
+   * Get data plan price from plan ID
+   * @param {string} planId - The data plan ID
+   * @returns {number} - The price in Naira
+   */
+  getDataPlanPrice(planId) {
+    const planPrices = {
+      '100MB-100': 100,
+      '500MB-200': 200,
+      '1GB-300': 300,
+      '2GB-500': 500,
+      '1GB-500': 500,
+      '2GB-1000': 1000,
+      '3GB-1500': 1500,
+      '5GB-2500': 2500
+    };
+    return planPrices[planId] || 1000; // Default fallback
+  }
+
+  /**
+   * Handle data purchase flow completion
+   * @param {Object} flowData - The flow data containing network, phoneNumber, dataPlan, and PIN
+   * @param {string} phoneNumber - The user's phone number
+   * @returns {Object} - Processing result
+   */
+  async handleDataPurchaseFlow(flowData, phoneNumber) {
+    try {
+      logger.info('Processing data purchase flow', { 
+        phoneNumber, 
+        network: flowData.network,
+        phoneNumber: flowData.phoneNumber,
+        dataPlan: flowData.dataPlan,
+        hasPin: !!flowData.pin
+      });
+
+      const user = await userService.getUserByWhatsappNumber(phoneNumber);
+      if (!user) {
+        logger.error('User not found for data purchase flow', { phoneNumber });
+        return { success: false, error: 'User not found. Please complete onboarding first.' };
+      }
+
+      // Validate PIN format
+      const pin = flowData.pin;
+      if (!pin || !/^\d{4}$/.test(pin)) {
+        logger.error('Invalid PIN format in data purchase flow', { phoneNumber, pinLength: pin?.length });
+        return { success: false, error: 'Invalid PIN format. Please enter exactly 4 digits.' };
+      }
+
+      // Validate user PIN
+      try {
+        await userService.validateUserPin(user.id, pin);
+      } catch (error) {
+        logger.error('PIN validation failed in data purchase flow', { userId: user.id, phoneNumber, error: error.message });
+        return { success: false, error: 'Invalid PIN. Please try again.' };
+      }
+
+      // Process the data purchase
+      const bilalService = require('./bilal');
+      const dataPurchaseData = {
+        phoneNumber: flowData.phoneNumber,
+        network: flowData.network,
+        dataPlan: { id: flowData.dataPlan, price: this.getDataPlanPrice(flowData.dataPlan) }
+      };
+
+      logger.info('Processing data purchase via flow', {
+        userId: user.id,
+        dataPurchaseData
+      });
+
+      const result = await bilalService.purchaseData(user, dataPurchaseData, phoneNumber);
+      
+      if (result.success) {
+        logger.info('Data purchase successful via flow', {
+          userId: user.id,
+          network: flowData.network,
+          phoneNumber: flowData.phoneNumber,
+          dataPlan: flowData.dataPlan,
+          reference: result.data?.['request-id']
+        });
+        
+        // Send success message
+        const successMessage = `✅ *Data Purchase Successful!*\n\n` +
+                              `📱 Network: ${flowData.network}\n` +
+                              `📞 Phone: ${flowData.phoneNumber}\n` +
+                              `📦 Plan: ${flowData.dataPlan}\n` +
+                              `💰 Amount: ₦${this.getDataPlanPrice(flowData.dataPlan).toLocaleString()}\n` +
+                              `📋 Reference: ${result.data?.['request-id']}\n` +
+                              `📅 Date: ${new Date().toLocaleString('en-GB')}\n\n` +
+                              `Your data has been purchased successfully! 🎉`;
+        
+        await whatsappService.sendTextMessage(phoneNumber, successMessage);
+        
+        return { success: true, userId: user.id };
+      } else {
+        logger.error('Data purchase failed via flow', {
+          userId: user.id,
+          error: result.message,
+          dataPurchaseData
+        });
+        
+        // Send error message
+        const errorMessage = `❌ Data purchase failed: ${result.message || 'Unknown error'}\n\nPlease try again or contact support.`;
+        await whatsappService.sendTextMessage(phoneNumber, errorMessage);
+        
+        return { success: false, error: result.message || 'Data purchase failed' };
+      }
+
+    } catch (error) {
+      logger.error('Data purchase flow processing failed', { phoneNumber, error: error.message });
+      
+      // Send error message
+      const errorMessage = `❌ Data purchase processing failed. Please try again or contact support.`;
+      await whatsappService.sendTextMessage(phoneNumber, errorMessage);
+      
+      return { success: false, error: 'Data purchase failed. Please try again.' };
+    }
+  }
+
   async processFlowData(flowData, phoneNumber) {
     try {
       logger.info('Processing flow data', { phoneNumber, dataKeys: Object.keys(flowData || {}), hasPin: !!flowData.pin });
 
+      // Check if this is a data purchase flow (has network, phoneNumber, dataPlan, and pin)
+      if (flowData.network && flowData.phoneNumber && flowData.dataPlan && flowData.pin) {
+        logger.info('Detected data purchase flow', { 
+          phoneNumber, 
+          network: flowData.network,
+          phoneNumber: flowData.phoneNumber,
+          dataPlan: flowData.dataPlan
+        });
+        return await this.handleDataPurchaseFlow(flowData, phoneNumber);
+      }
+      
+      // Check if this is a login flow (only has PIN)
       if (flowData.pin && Object.keys(flowData).length === 1) {
         return await this.handleLoginFlow(flowData, phoneNumber);
       } else {
