@@ -863,6 +863,31 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         return handlePhoneInputScreen(data, userId, tokenData, flowToken);
 
       case 'DATA_PLAN_SELECTION_SCREEN':
+        // Check if this is a navigate action (user coming from phone input)
+        if (data.network && data.phoneNumber && !data.dataPlan) {
+          logger.info('Navigate to DATA_PLAN_SELECTION_SCREEN - populating plans for network:', data.network);
+          
+          // Get data plans for the selected network
+          const availablePlans = getDataPlansForNetwork(data.network);
+          
+          // Format plans for the RadioButtonsGroup
+          const formattedPlans = availablePlans.map(plan => ({
+            id: plan.id.toString(),
+            title: `${plan.title} - ₦${plan.price} (${plan.validity})`
+          }));
+
+          logger.info('Formatted plans for flow:', formattedPlans);
+
+          return {
+            screen: 'DATA_PLAN_SELECTION_SCREEN',
+            data: {
+              network: data.network,
+              phoneNumber: data.phoneNumber,
+              dataPlans: formattedPlans
+            }
+          };
+        }
+        
         return handleDataPlanSelectionScreen(data, userId, tokenData, flowToken);
 
       case 'CONFIRMATION_SCREEN':
@@ -2099,7 +2124,8 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
       screen: 'PHONE_INPUT_SCREEN',
       data: {
         success: true,
-        message: 'Network selected successfully'
+        message: 'Network selected successfully',
+        network: network
       }
     };
 
@@ -2168,7 +2194,9 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
       screen: 'DATA_PLAN_SELECTION_SCREEN',
       data: {
         success: true,
-        message: 'Phone number entered successfully'
+        message: 'Phone number entered successfully',
+        network: network,
+        phoneNumber: phoneNumber
       }
     };
 
@@ -2278,7 +2306,8 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
         network,
         phoneNumber,
         dataPlan: selectedPlan.title,
-        price: selectedPlan.price
+        price: selectedPlan.price,
+        planId: selectedPlan.id
       }
     };
 

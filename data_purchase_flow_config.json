@@ -52,20 +52,16 @@
                   }
                 ]
               },
-                             {
-                 "type": "Footer",
-                 "label": "Continue",
-                 "on-click-action": {
-                   "name": "navigate",
-                   "next": {
-                     "type": "screen",
-                     "name": "PHONE_INPUT_SCREEN"
-                   },
-                   "payload": {
-                     "network": "${form.network}"
-                   }
-                 }
-               }
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "network": "${form.network}"
+                  }
+                }
+              }
             ]
           }
         ]
@@ -104,21 +100,17 @@
                 "input-type": "text",
                 "helper-text": "Enter 11-digit phone number (e.g., 08012345678)"
               },
-                             {
-                 "type": "Footer",
-                 "label": "Continue",
-                 "on-click-action": {
-                   "name": "navigate",
-                   "next": {
-                     "type": "screen",
-                     "name": "DATA_PLAN_SELECTION_SCREEN"
-                   },
-                   "payload": {
-                     "network": "${data.network}",
-                     "phoneNumber": "${form.phoneNumber}"
-                   }
-                 }
-               }
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "network": "${data.network}",
+                    "phoneNumber": "${form.phoneNumber}"
+                  }
+                }
+              }
             ]
           }
         ]
@@ -152,52 +144,32 @@
               },
               {
                 "type": "TextBody",
-                "text": "Choose a data plan:"
+                "text": "Choose a data plan for ${data.network}:"
               },
-                             {
-                 "type": "RadioButtonsGroup",
-                 "required": true,
-                 "label": "Data Plan",
-                 "name": "dataPlan",
-                 "data-source": [
-                   {
-                     "id": "1",
-                     "title": "500MB - ₦380 (30 days)"
-                   },
-                   {
-                     "id": "2",
-                     "title": "1GB - ₦620 (30 days)"
-                   },
-                   {
-                     "id": "3",
-                     "title": "2GB - ₦1,240 (30 days)"
-                   },
-                   {
-                     "id": "4",
-                     "title": "3GB - ₦2,200 (30 days)"
-                   },
-                   {
-                     "id": "5",
-                     "title": "5GB - ₦4,500 (30 days)"
-                   }
-                 ]
-               },
-                             {
-                 "type": "Footer",
-                 "label": "Continue",
-                 "on-click-action": {
-                   "name": "navigate",
-                   "next": {
-                     "type": "screen",
-                     "name": "CONFIRMATION_SCREEN"
-                   },
-                   "payload": {
-                     "network": "${data.network}",
-                     "phoneNumber": "${data.phoneNumber}",
-                     "dataPlan": "${form.dataPlan}"
-                   }
-                 }
-               }
+              {
+                "type": "RadioButtonsGroup",
+                "required": true,
+                "label": "Data Plan",
+                "name": "dataPlan",
+                "data-source": [
+                  {
+                    "id": "loading",
+                    "title": "Loading plans for ${data.network}..."
+                  }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "network": "${data.network}",
+                    "phoneNumber": "${data.phoneNumber}",
+                    "dataPlan": "${form.dataPlan}"
+                  }
+                }
+              }
             ]
           }
         ]
@@ -234,10 +206,10 @@
                 "type": "TextHeading",
                 "text": "Confirm Data Purchase"
               },
-                             {
-                 "type": "TextBody",
-                 "text": "Please review your data purchase details:\n\n📱 Network: ${data.network}\n📞 Phone: ${data.phoneNumber}\n📦 Plan: ${data.dataPlan}\n\nIs this correct?"
-               },
+              {
+                "type": "TextBody",
+                "text": "Please review your data purchase details:\n\n📱 Network: ${data.network}\n📞 Phone: ${data.phoneNumber}\n📦 Plan: ${data.dataPlan}\n\nIs this correct?"
+              },
               {
                 "type": "RadioButtonsGroup",
                 "required": true,
@@ -254,23 +226,19 @@
                   }
                 ]
               },
-                             {
-                 "type": "Footer",
-                 "label": "Continue",
-                 "on-click-action": {
-                   "name": "navigate",
-                   "next": {
-                     "type": "screen",
-                     "name": "PIN_VERIFICATION_SCREEN"
-                   },
-                   "payload": {
-                     "network": "${data.network}",
-                     "phoneNumber": "${data.phoneNumber}",
-                     "dataPlan": "${data.dataPlan}",
-                     "confirm": "${form.confirm}"
-                   }
-                 }
-               }
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "network": "${data.network}",
+                    "phoneNumber": "${data.phoneNumber}",
+                    "dataPlan": "${data.dataPlan}",
+                    "confirm": "${form.confirm}"
+                  }
+                }
+              }
             ]
           }
         ]
