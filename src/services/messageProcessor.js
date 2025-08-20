@@ -29,6 +29,34 @@ class MessageProcessor {
 
       // Daily login check will be moved to after transfer conversation handling
 
+      // Check if user is in transfer PIN flow state but sent a text message instead of completing the flow
+      if (messageType === 'text' && user.conversationState?.awaitingInput === 'transfer_pin_flow') {
+        // Check if user wants to cancel
+        if (messageContent?.toLowerCase().includes('cancel')) {
+          logger.info('User cancelled transfer PIN flow', {
+            userId: user.id,
+            messageContent
+          });
+          
+          await user.clearConversationState();
+          const whatsappService = require('./whatsapp');
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "✅ Transfer cancelled! You can start a new transfer anytime.");
+          return;
+        }
+        
+        logger.info('User in transfer PIN flow state sent text message instead of completing flow', {
+          userId: user.id,
+          messageContent,
+          conversationState: user.conversationState
+        });
+        
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "You have a transfer in progress. Please complete the transfer PIN verification in the flow above, or say 'cancel' to start over.");
+        return;
+      }
+
       // If this is a Flow completion (nfm_reply), process immediately (bypass AI)
       if (messageType === 'interactive' && message?.flowResponse?.responseJson) {
         const flowData = { ...message.flowResponse.responseJson };
@@ -367,6 +395,19 @@ class MessageProcessor {
         case 'transfer':
         case 'send_money':
         case 'bank_transfer':
+          // Check if user is already in a transfer flow state
+          if (user.conversationState?.awaitingInput === 'transfer_pin_flow') {
+            logger.info('User is already in transfer PIN flow state, ignoring new transfer request', {
+              userId: user.id,
+              currentState: user.conversationState
+            });
+            
+            const whatsappService = require('./whatsapp');
+            await whatsappService.sendTextMessage(user.whatsappNumber, 
+              "You already have a transfer in progress. Please complete the current transfer first or say 'cancel' to start over.");
+            return;
+          }
+          
           // Use the existing intent analysis result instead of making a new AI call
           const aiAssistant = require('./aiAssistant');
           
@@ -407,6 +448,17 @@ class MessageProcessor {
         case 'data':
         case 'buy_data':
         case 'internet':
+          // Check if user is already in a transfer flow state
+          if (user.conversationState?.awaitingInput === 'transfer_pin_flow') {
+            logger.info('User is in transfer PIN flow state, clearing state for data purchase', {
+              userId: user.id,
+              currentState: user.conversationState
+            });
+            
+            // Clear the transfer state and proceed with data purchase
+            await user.clearConversationState();
+          }
+          
           return await this.handleDataIntent(user, message, messageType, messageId);
           
         case 'bills':
