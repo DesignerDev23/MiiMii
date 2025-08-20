@@ -709,33 +709,38 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
     let userId = tokenData.userId || null;
     let phoneNumber = data?.phoneNumber || null;
     
-    // Try redis lookup with flow token
-    if (!userId && flowToken) {
-      try {
-        const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
-        logger.info('Looking up session in Redis', { sessionKey, flowToken });
-        const session = await redisClient.getSession(sessionKey);
-        if (session) {
-          userId = session.userId || userId;
-          phoneNumber = session.phoneNumber || phoneNumber;
-          // Store session data for use in screen handlers
-          tokenData.sessionData = session;
-                  logger.info('Session found in Redis', { 
-          sessionKey, 
-          hasUserId: !!session.userId, 
-          hasPhoneNumber: !!session.phoneNumber,
-          hasTransferData: !!session.transferData,
-          sessionKeys: Object.keys(session),
-          sessionData: session
-        });
-        } else {
-          logger.warn('No session found in Redis', { sessionKey, flowToken });
+            // Try redis lookup with flow token
+        if (!userId && flowToken) {
+          try {
+            const redisClient = require('../utils/redis');
+            const sessionKey = `flow:${flowToken}`;
+            logger.info('Looking up session in Redis', { sessionKey, flowToken });
+            const session = await redisClient.getSession(sessionKey);
+            if (session) {
+              userId = session.userId || userId;
+              phoneNumber = session.phoneNumber || phoneNumber;
+              // Store session data for use in screen handlers
+              tokenData.sessionData = session;
+              logger.info('Session found in Redis', { 
+                sessionKey, 
+                hasUserId: !!session.userId, 
+                hasPhoneNumber: !!session.phoneNumber,
+                hasTransferData: !!session.transferData,
+                sessionKeys: Object.keys(session),
+                sessionData: session
+              });
+            } else {
+              logger.warn('No session found in Redis', { sessionKey, flowToken });
+              // Try to get user from token data if available
+              if (tokenData.userId) {
+                userId = tokenData.userId;
+                logger.info('Using userId from token data', { userId });
+              }
+            }
+          } catch (error) {
+            logger.error('Error looking up session in Redis', { error: error.message, flowToken });
+          }
         }
-      } catch (error) {
-        logger.error('Error looking up session in Redis', { error: error.message, flowToken });
-      }
-    }
 
     if (!userId && phoneNumber) {
       const userService = require('../services/user');
@@ -825,11 +830,25 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           
           // If there was an error, return error response
           return result;
+        } else if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
+          logger.info('Detected transfer flow from flow action payload data');
+          // This is a transfer flow with data in the payload
+          const result = await handleTransferPinScreen(data, userId, tokenData, flowToken);
+          
+          // If transfer was successful, return empty response to close terminal flow
+          if (Object.keys(result).length === 0) {
+            logger.info('Transfer successful in data_exchange, returning empty response to close flow');
+            return result;
+          }
+          
+          // If there was an error, return error response
+          return result;
         } else {
           logger.error('Unable to determine flow type for PIN_VERIFICATION_SCREEN', {
             dataKeys: Object.keys(data || {}),
             sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
-            hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData)
+            hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
+            hasTransferPayload: !!(data && (data.transfer_amount || data.recipient_name || data.bank_name))
           });
           
           return {

@@ -264,11 +264,10 @@ class MessageProcessor {
               transferDataKeys: finalState.data ? Object.keys(finalState.data) : []
             });
             
-            // Store transfer data in session for the flow
-            await redisClient.setSession(sessionKey, {
-              userId: user.id,
-              phoneNumber: user.whatsappNumber,
-              transferData: {
+            // Update the session with transfer data (the session was already created above)
+            const existingSession = await redisClient.getSession(sessionKey);
+            if (existingSession) {
+              existingSession.transferData = {
                 amount: state.data.amount,
                 recipientName: state.data.recipientName,
                 bankName: state.data.bankName,
@@ -276,18 +275,24 @@ class MessageProcessor {
                 bankCode: state.data.bankCode,
                 narration: 'Wallet transfer',
                 reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
-              }
-            }, 1800); // 30 minutes TTL
-            
-            logger.info('Transfer data stored in session', {
-              sessionKey,
-              userId: user.id,
-              transferData: {
-                amount: state.data.amount,
-                recipientName: state.data.recipientName,
-                accountNumber: state.data.accountNumber
-              }
-            });
+              };
+              await redisClient.setSession(sessionKey, existingSession, 1800);
+              
+              logger.info('Transfer data updated in session', {
+                sessionKey,
+                userId: user.id,
+                transferData: {
+                  amount: state.data.amount,
+                  recipientName: state.data.recipientName,
+                  accountNumber: state.data.accountNumber
+                }
+              });
+            } else {
+              logger.error('Session not found when trying to update transfer data', {
+                sessionKey,
+                userId: user.id
+              });
+            }
             
             // Send the transfer PIN flow
             await whatsappService.sendFlowMessage(
