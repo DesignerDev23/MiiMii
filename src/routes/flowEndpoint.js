@@ -713,8 +713,13 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         if (!userId && flowToken) {
           try {
             const redisClient = require('../utils/redis');
-            const sessionKey = `flow:${flowToken}`;
-            logger.info('Looking up session in Redis', { sessionKey, flowToken });
+            const sessionKey = flowToken;
+            logger.info('Looking up session in Redis', { 
+              sessionKey, 
+              flowToken,
+              redisConnected: redisClient.isConnected,
+              redisUseDbFallback: redisClient.useDbFallback
+            });
             const session = await redisClient.getSession(sessionKey);
             if (session) {
               userId = session.userId || userId;
@@ -730,7 +735,14 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
                 sessionData: session
               });
             } else {
-              logger.warn('No session found in Redis', { sessionKey, flowToken });
+              logger.warn('No session found in Redis', { 
+                sessionKey, 
+                flowToken,
+                sessionKeyLength: sessionKey.length,
+                flowTokenLength: flowToken.length,
+                sessionKeyPrefix: sessionKey.substring(0, 10) + '...',
+                flowTokenPrefix: flowToken.substring(0, 10) + '...'
+              });
               // Try to get user from token data if available
               if (tokenData.userId) {
                 userId = tokenData.userId;
@@ -848,7 +860,10 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
             dataKeys: Object.keys(data || {}),
             sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
             hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
-            hasTransferPayload: !!(data && (data.transfer_amount || data.recipient_name || data.bank_name))
+            hasTransferPayload: !!(data && (data.transfer_amount || data.recipient_name || data.bank_name)),
+            sessionData: tokenData.sessionData,
+            flowToken: flowToken,
+            tokenDataKeys: Object.keys(tokenData || {})
           });
           
           return {
@@ -1569,7 +1584,7 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     // Clean up flow session
         if (flowToken) {
           try {
-            await redisClient.deleteSession(`flow:${flowToken}`);
+            await redisClient.deleteSession(flowToken);
             logger.info('Flow session cleaned up successfully', { flowToken });
           } catch (error) {
             logger.warn('Failed to cleanup flow session', { error: error.message });

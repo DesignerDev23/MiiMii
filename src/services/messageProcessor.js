@@ -224,16 +224,32 @@ class MessageProcessor {
             // Generate a flow token for this session
             const flowToken = whatsappFlowService.generateFlowToken(user.id);
             
-            // Store session mapping in Redis for 30 minutes
+            // Store session mapping in Redis for 30 minutes with complete transfer data
             const sessionData = {
               userId: user.id,
               phoneNumber: user.whatsappNumber,
               context: 'transfer_pin_verification',
-              transferData: state.data
+              transferData: {
+                amount: state.data.amount,
+                recipientName: state.data.recipientName,
+                bankName: state.data.bankName,
+                accountNumber: state.data.accountNumber,
+                bankCode: state.data.bankCode,
+                narration: 'Wallet transfer',
+                reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+              }
             };
             
+            logger.info('Preparing session data for storage', {
+              sessionDataKeys: Object.keys(sessionData),
+              transferDataKeys: Object.keys(sessionData.transferData),
+              userId: sessionData.userId,
+              phoneNumber: sessionData.phoneNumber,
+              context: sessionData.context
+            });
+            
             // Define sessionKey outside try block so it's accessible throughout the function
-            const sessionKey = `flow:${flowToken}`;
+            const sessionKey = flowToken;
             
             try {
               const stored = await redisClient.setSession(sessionKey, sessionData, 1800);
@@ -241,8 +257,24 @@ class MessageProcessor {
                 sessionKey, 
                 stored, 
                 userId: user.id,
-                hasTransferData: !!state.data,
-                transferDataKeys: Object.keys(state.data || {})
+                hasTransferData: !!sessionData.transferData,
+                transferDataKeys: Object.keys(sessionData.transferData || {}),
+                sessionKeyLength: sessionKey.length,
+                sessionKeyPrefix: sessionKey.substring(0, 10) + '...',
+                flowTokenLength: flowToken.length,
+                flowTokenPrefix: flowToken.substring(0, 10) + '...',
+                redisConnected: redisClient.isConnected,
+                redisUseDbFallback: redisClient.useDbFallback,
+                sessionDataSize: JSON.stringify(sessionData).length
+              });
+              
+              // Immediately verify the session was stored correctly
+              const verifySession = await redisClient.getSession(sessionKey);
+              logger.info('Session verification after storage', {
+                sessionKey,
+                sessionFound: !!verifySession,
+                hasTransferData: !!(verifySession && verifySession.transferData),
+                verificationDataKeys: verifySession ? Object.keys(verifySession) : []
               });
             } catch (error) {
               logger.error('Failed to store flow session', { error: error.message, userId: user.id });
@@ -264,35 +296,7 @@ class MessageProcessor {
               transferDataKeys: finalState.data ? Object.keys(finalState.data) : []
             });
             
-            // Update the session with transfer data (the session was already created above)
-            const existingSession = await redisClient.getSession(sessionKey);
-            if (existingSession) {
-              existingSession.transferData = {
-                amount: state.data.amount,
-                recipientName: state.data.recipientName,
-                bankName: state.data.bankName,
-                accountNumber: state.data.accountNumber,
-                bankCode: state.data.bankCode,
-                narration: 'Wallet transfer',
-                reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
-              };
-              await redisClient.setSession(sessionKey, existingSession, 1800);
-              
-              logger.info('Transfer data updated in session', {
-                sessionKey,
-                userId: user.id,
-                transferData: {
-                  amount: state.data.amount,
-                  recipientName: state.data.recipientName,
-                  accountNumber: state.data.accountNumber
-                }
-              });
-            } else {
-              logger.error('Session not found when trying to update transfer data', {
-                sessionKey,
-                userId: user.id
-              });
-            }
+            // Session is already stored with complete transfer data above
             
             // Send the transfer PIN flow
             await whatsappService.sendFlowMessage(
