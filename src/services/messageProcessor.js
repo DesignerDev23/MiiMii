@@ -13,6 +13,9 @@ class MessageProcessor {
     try {
       const { from, message, messageType, contact, messageId } = parsedMessage;
       
+      // Extract message content for text messages and button replies
+      let messageContent = message?.text || message?.buttonReply?.title || '';
+      
       // Get user's WhatsApp profile name
       const userName = contact?.profile?.name || 'there';
       
@@ -183,8 +186,8 @@ class MessageProcessor {
         return;
       }
 
-      // Extract the actual message content for AI routing
-      const messageContent = message?.text || message?.buttonReply?.title || '';
+      // Extract the actual message content for AI routing (handles both text and button replies)
+      messageContent = message?.text || message?.buttonReply?.title || '';
 
       // Handle ongoing bank transfer conversation (confirmation and PIN)
       if (user.conversationState?.intent === 'bank_transfer') {
