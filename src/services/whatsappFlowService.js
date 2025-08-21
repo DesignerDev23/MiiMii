@@ -389,7 +389,8 @@ class WhatsAppFlowService {
       const dataPurchaseData = {
         phoneNumber: flowData.phoneNumber,
         network: flowData.network,
-        dataPlan: { id: bilalPlanId, price: this.getDataPlanPrice(flowData.dataPlan) }
+        dataPlan: { id: bilalPlanId, price: this.getDataPlanPrice(flowData.dataPlan) },
+        pin: pin
       };
 
       logger.info('Processing data purchase via flow', {
