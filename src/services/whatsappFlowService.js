@@ -316,17 +316,30 @@ class WhatsAppFlowService {
    * @returns {number} - The price in Naira
    */
   getDataPlanPrice(planId) {
-    const planPrices = {
-      '100MB-100': 100,
-      '500MB-200': 200,
-      '1GB-300': 300,
-      '2GB-500': 500,
-      '1GB-500': 500,
-      '2GB-1000': 1000,
-      '3GB-1500': 1500,
-      '5GB-2500': 2500
-    };
-    return planPrices[planId] || 1000; // Default fallback
+    // Import the DATA_PLANS from the flow endpoint to get accurate pricing
+    const { DATA_PLANS } = require('../routes/flowEndpoint');
+    
+    // If planId is numeric, find the plan in DATA_PLANS
+    if (/^\d+$/.test(planId)) {
+      const numericId = parseInt(planId);
+      for (const network of Object.values(DATA_PLANS)) {
+        const plan = network.find(p => p.id === numericId);
+        if (plan) {
+          return plan.price;
+        }
+      }
+    } else {
+      // If planId is a title, find it in DATA_PLANS
+      for (const network of Object.values(DATA_PLANS)) {
+        const plan = network.find(p => p.title === planId);
+        if (plan) {
+          return plan.price;
+        }
+      }
+    }
+    
+    logger.warn('Plan not found in DATA_PLANS, using default price', { planId });
+    return 1000; // Default fallback
   }
 
   /**
@@ -368,15 +381,23 @@ class WhatsAppFlowService {
 
       // Process the data purchase
       const bilalService = require('./bilal');
+      
+      // Get the correct Bilal plan ID according to official documentation
+      const { getBilalOfficialPlanId } = require('../routes/flowEndpoint');
+      const bilalPlanId = getBilalOfficialPlanId(flowData.dataPlan, flowData.network);
+      
       const dataPurchaseData = {
         phoneNumber: flowData.phoneNumber,
         network: flowData.network,
-        dataPlan: { id: flowData.dataPlan, price: this.getDataPlanPrice(flowData.dataPlan) }
+        dataPlan: { id: bilalPlanId, price: this.getDataPlanPrice(flowData.dataPlan) }
       };
 
       logger.info('Processing data purchase via flow', {
         userId: user.id,
-        dataPurchaseData
+        dataPurchaseData,
+        originalPlanId: flowData.dataPlan,
+        bilalPlanId: bilalPlanId,
+        planPrice: this.getDataPlanPrice(flowData.dataPlan)
       });
 
       const result = await bilalService.purchaseData(user, dataPurchaseData, phoneNumber);

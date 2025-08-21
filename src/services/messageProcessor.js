@@ -203,7 +203,7 @@ class MessageProcessor {
           if (refreshedUser.onboardingStep === 'completed' && wallet?.virtualAccountNumber) {
             const accountMessage = `📋 *Your Bank Details*\n\n` +
                                    `💳 Account Number: ${wallet.virtualAccountNumber}\n` +
-                                   `🏦 Bank: ${wallet.virtualAccountBank}\n` +
+                                   `🏦 Bank: ${wallet.virtualAccountBank || 'Bell Bank MFB'}\n` +
                                    `👤 Account Name: ${wallet.virtualAccountName}`;
             const whatsappService = require('./whatsapp');
             await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);

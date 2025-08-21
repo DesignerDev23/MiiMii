@@ -1343,7 +1343,7 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       dataPurchaseData: {
       phoneNumber,
       network,
-        dataPlan: { id: getBilalPlanId(dataPlan), price: getDataPlanPrice(dataPlan) }
+        dataPlan: { id: getBilalOfficialPlanId(dataPlan, network), price: getDataPlanPrice(dataPlan) }
       },
       flowToken: flowToken,
       timestamp: Date.now()
@@ -1649,20 +1649,54 @@ const DATA_PLANS = {
 };
 
 function getDataPlanPrice(planId) {
-  // Search through all networks to find the plan
-  for (const network of Object.values(DATA_PLANS)) {
-    const plan = network.find(p => p.id.toString() === planId.toString());
-    if (plan) {
-      return plan.price;
+  // If planId is numeric, find the plan in DATA_PLANS
+  if (/^\d+$/.test(planId)) {
+    const numericId = parseInt(planId);
+    for (const network of Object.values(DATA_PLANS)) {
+      const plan = network.find(p => p.id === numericId);
+      if (plan) {
+        return plan.price;
+      }
+    }
+  } else {
+    // If planId is a title, find it in DATA_PLANS
+    for (const network of Object.values(DATA_PLANS)) {
+      const plan = network.find(p => p.title === planId);
+      if (plan) {
+        return plan.price;
+      }
     }
   }
+  
+  logger.warn('Plan not found in DATA_PLANS, using default price', { planId });
   return 1000; // Default fallback
 }
 
 function getBilalPlanId(planId) {
+  logger.info('Converting plan ID to Bilal plan ID', { 
+    originalPlanId: planId, 
+    planIdType: typeof planId,
+    isNumeric: /^\d+$/.test(planId)
+  });
+  
   // If planId is already numeric, return it directly
   if (/^\d+$/.test(planId)) {
-    return parseInt(planId);
+    const numericId = parseInt(planId);
+    logger.info('Plan ID is numeric, returning directly', { planId, numericId });
+    return numericId;
+  }
+  
+  // If planId is a title (like "1GB"), try to find it in DATA_PLANS
+  for (const network of Object.values(DATA_PLANS)) {
+    const plan = network.find(p => p.title === planId);
+    if (plan) {
+      logger.info('Found plan by title in DATA_PLANS', { 
+        planId, 
+        foundPlanId: plan.id, 
+        foundPlanTitle: plan.title 
+      });
+      return plan.id;
+    }
   }
   
   // Map legacy plan IDs to Bilal API plan IDs
@@ -1676,7 +1710,57 @@ function getBilalPlanId(planId) {
     '3GB-1500': 4,   // 3GB
     '5GB-2500': 5    // 5GB
   };
-  return planMapping[planId] || 1; // Default to plan 1 (500MB)
+  
+  const mappedId = planMapping[planId] || 1;
+  logger.info('Using legacy plan mapping', { planId, mappedId });
+  return mappedId; // Default to plan 1 (500MB)
+}
+
+/**
+ * Get the actual plan ID from DATA_PLANS for Bilal API
+ * We use the exact plan ID from our DATA_PLANS table, not a mapped ID
+ */
+function getBilalOfficialPlanId(planId, network) {
+  logger.info('Getting plan ID for Bilal API', { 
+    originalPlanId: planId, 
+    network,
+    planIdType: typeof planId
+  });
+  
+  // First, get the plan details from our DATA_PLANS
+  let planDetails = null;
+  
+  // If planId is numeric, find the plan in DATA_PLANS
+  if (/^\d+$/.test(planId)) {
+    const numericId = parseInt(planId);
+    const networkPlans = DATA_PLANS[network] || [];
+    planDetails = networkPlans.find(p => p.id === numericId);
+  } else {
+    // If planId is a title, find it in DATA_PLANS
+    for (const networkPlans of Object.values(DATA_PLANS)) {
+      planDetails = networkPlans.find(p => p.title === planId);
+      if (planDetails) break;
+    }
+  }
+  
+  if (!planDetails) {
+    logger.warn('Plan not found in DATA_PLANS, using default', { planId, network });
+    return 1; // Default to plan 1
+  }
+  
+  // Return the actual plan ID from our DATA_PLANS table
+  // This is the ID that should be sent to Bilal API
+  const actualPlanId = planDetails.id;
+  
+  logger.info('Using actual plan ID from DATA_PLANS', { 
+    originalPlanId: planId,
+    planTitle: planDetails.title,
+    network,
+    actualPlanId,
+    planPrice: planDetails.price
+  });
+  
+  return actualPlanId;
 }
 
 function getDataPlansForNetwork(network) {
@@ -2315,7 +2399,9 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
       dataPlan: selectedPlan.id,
       planTitle: selectedPlan.title,
-      planPrice: selectedPlan.price
+      planPrice: selectedPlan.price,
+      dataPlanType: typeof selectedPlan.id,
+      isNumeric: /^\d+$/.test(selectedPlan.id.toString())
     });
 
     // Store data plan selection in session
@@ -2524,8 +2610,43 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
   }
 }
 
+/**
+ * Generate data plan options for flow configuration
+ * This ensures the flow uses the correct plan IDs from DATA_PLANS
+ */
+function generateDataPlanOptions(network) {
+  const networkPlans = DATA_PLANS[network] || [];
+  
+  // Return the first 10 plans for the flow (to avoid overwhelming the user)
+  // You can adjust this number based on your needs
+  return networkPlans.slice(0, 10).map(plan => ({
+    id: plan.id.toString(),
+    title: plan.title
+  }));
+}
+
+/**
+ * Get all available data plans for a network
+ * This returns all 125 plans for the specified network
+ */
+function getAllDataPlansForNetwork(network) {
+  return DATA_PLANS[network] || [];
+}
+
+/**
+ * Get popular data plans for a network (first 10 plans)
+ * This is used for the flow configuration to avoid overwhelming users
+ */
+function getPopularDataPlansForNetwork(network) {
+  const networkPlans = DATA_PLANS[network] || [];
+  return networkPlans.slice(0, 10);
+}
+
 // Export functions for use in other modules
 module.exports = {
   router,
-  handleCompleteAction
+  handleCompleteAction,
+  generateDataPlanOptions,
+  getAllDataPlansForNetwork,
+  getPopularDataPlansForNetwork
 };

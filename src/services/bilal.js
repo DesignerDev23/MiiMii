@@ -404,7 +404,12 @@ class BilalService {
         tokenLength: tokenData.token ? tokenData.token.length : 0,
         networkId,
         phoneNumber: cleanPhoneNumber,
-        dataPlanId: dataPlan.id
+        dataPlanId: dataPlan.id,
+        dataPlanIdType: typeof dataPlan.id,
+        dataPlanPrice: dataPlan.price,
+        endpoint: '/data',
+        method: 'POST',
+        fullPayload: JSON.stringify(payload)
       });
 
       const response = await this.makeRequest('POST', '/data', payload, tokenData.token);
@@ -515,11 +520,26 @@ class BilalService {
       logger.error('Data purchase failed', { 
         error: error.message, 
         userId: user.id,
-        dataData 
+        dataData,
+        errorType: error.name,
+        errorCode: error.response?.status,
+        errorResponse: error.response?.data
       });
 
-      const errorMessage = `❌ Data purchase failed!\n\nReason: ${error.message}\n\nPlease try again or contact support.`;
-      await whatsappService.sendTextMessage(userPhoneNumber, errorMessage);
+      // Handle specific error types
+      let userFriendlyMessage = 'Data purchase failed. Please try again or contact support.';
+      
+      if (error.response?.status === 403) {
+        userFriendlyMessage = '❌ Data purchase failed!\n\nReason: Access denied (403). This could be due to:\n• Insufficient balance in provider account\n• Invalid plan ID or network combination\n• Service temporarily unavailable\n\nPlease try again later or contact support.';
+      } else if (error.response?.status === 401) {
+        userFriendlyMessage = '❌ Data purchase failed!\n\nReason: Authentication failed. Please contact support.';
+      } else if (error.message.includes('Insufficient balance')) {
+        userFriendlyMessage = `❌ Data purchase failed!\n\nReason: ${error.message}`;
+      } else {
+        userFriendlyMessage = `❌ Data purchase failed!\n\nReason: ${error.message}\n\nPlease try again or contact support.`;
+      }
+
+      await whatsappService.sendTextMessage(userPhoneNumber, userFriendlyMessage);
       
       throw error;
     }
