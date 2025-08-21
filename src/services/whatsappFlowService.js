@@ -401,6 +401,14 @@ class WhatsAppFlowService {
         planPrice: this.getDataPlanPrice(flowData.dataPlan)
       });
 
+      logger.info('About to call bilalService.purchaseData with:', {
+        hasUser: !!user,
+        hasDataPurchaseData: !!dataPurchaseData,
+        dataPurchaseDataType: typeof dataPurchaseData,
+        dataPurchaseDataKeys: Object.keys(dataPurchaseData),
+        phoneNumber
+      });
+
       const result = await bilalService.purchaseData(user, dataPurchaseData, phoneNumber);
       
       if (result.success) {

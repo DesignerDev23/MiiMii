@@ -359,6 +359,18 @@ class BilalService {
 
   async purchaseData(user, dataData, userPhoneNumber) {
     try {
+      logger.info('Bilal purchaseData called with:', {
+        hasUser: !!user,
+        hasDataData: !!dataData,
+        dataDataType: typeof dataData,
+        dataDataKeys: dataData ? Object.keys(dataData) : 'null/undefined',
+        userPhoneNumber
+      });
+      
+      if (!dataData) {
+        throw new Error('dataData is null or undefined');
+      }
+      
       const { phoneNumber, network, dataPlan, pin } = dataData;
       
       // Validate network

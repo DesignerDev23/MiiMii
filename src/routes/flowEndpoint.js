@@ -2650,5 +2650,6 @@ module.exports = {
   getAllDataPlansForNetwork,
   getPopularDataPlansForNetwork,
   getBilalOfficialPlanId,
-  getDataPlanPrice
+  getDataPlanPrice,
+  DATA_PLANS
 };
