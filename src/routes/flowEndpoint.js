@@ -2648,5 +2648,7 @@ module.exports = {
   handleCompleteAction,
   generateDataPlanOptions,
   getAllDataPlansForNetwork,
-  getPopularDataPlansForNetwork
+  getPopularDataPlansForNetwork,
+  getBilalOfficialPlanId,
+  getDataPlanPrice
 };
