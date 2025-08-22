@@ -66,41 +66,33 @@ class MessageProcessor {
         // Enrich with phone number for downstream services
         flowData.phoneNumber = user.whatsappNumber;
 
-        // Check if this is a data purchase flow completion
-        // Data purchase flows are processed in the flow endpoint, so we should skip processing here
-        if (flowData.pin && flowData.flow_token && !flowData.network) {
-          logger.info('Detected data purchase flow completion - processing via whatsappFlowService', {
-            phoneNumber: user.whatsappNumber,
-            hasPin: !!flowData.pin,
-            hasFlowToken: !!flowData.flow_token
-          });
-          
-          // Process data purchase flow completion via whatsappFlowService
-          const whatsappFlowService = require('./whatsappFlowService');
-          const result = await whatsappFlowService.processFlowData(flowData, user.whatsappNumber);
-          
-          if (result.success) {
-            logger.info('Data purchase flow completed successfully', {
-              userId: user.id,
-              phoneNumber: user.whatsappNumber
-            });
-          } else {
-            logger.error('Data purchase flow completion failed', {
-              userId: user.id,
-              phoneNumber: user.whatsappNumber,
-              error: result.error
-            });
-          }
-          
-          return;
-        }
+        logger.info('Processing flow completion', {
+          phoneNumber: user.whatsappNumber,
+          dataKeys: Object.keys(flowData || {}),
+          hasPin: !!flowData.pin,
+          hasFlowToken: !!flowData.flow_token
+        });
 
+        // Process all flow types via whatsappFlowService
         const whatsappFlowService = require('./whatsappFlowService');
         const result = await whatsappFlowService.processFlowData(flowData, user.whatsappNumber);
 
         if (result.success) {
-          // Handle login flow completion
-          if (user.conversationState?.context === 'daily_login') {
+          logger.info('Flow completed successfully', {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            flowType: result.flowType
+          });
+
+          // Handle different flow types
+          if (result.flowType === 'transfer_pin') {
+            // Transfer PIN flows are handled in the conversation state logic below
+            logger.info('Transfer PIN flow completed, processing via conversation state', {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber
+            });
+          } else if (result.flowType === 'login' || result.message === 'Login successful') {
+            // Handle login flow completion
             const redisClient = require('../utils/redis');
             await redisClient.set(`auth:${user.id}`, { ok: true }, 86400);
             await user.clearConversationState();
@@ -112,9 +104,37 @@ class MessageProcessor {
               phoneNumber: user.whatsappNumber
             });
             return;
+          } else if (result.flowType === 'onboarding' || result.userId) {
+            // Handle onboarding flow completion
+            logger.info('Onboarding flow completed', {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              newUserId: result.userId
+            });
+
+            // If onboarding just completed, send bank details to user
+            const refreshedUser = await userService.getUserById(user.id);
+            const walletService = require('./wallet');
+            const wallet = await walletService.getUserWallet(user.id);
+            if (refreshedUser.onboardingStep === 'completed' && wallet?.virtualAccountNumber) {
+              const accountMessage = `📋 *Your Bank Details*\n\n` +
+                                     `💳 Account Number: ${wallet.virtualAccountNumber}\n` +
+                                     `🏦 Bank: ${wallet.virtualAccountBank || 'Bell Bank MFB'}\n` +
+                                     `👤 Account Name: ${wallet.virtualAccountName}`;
+              const whatsappService = require('./whatsapp');
+              await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
+            }
+            return;
+          } else if (result.flowType === 'data_purchase') {
+            // Data purchase flows are handled in whatsappFlowService
+            logger.info('Data purchase flow completed', {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber
+            });
+            return;
           }
-          
-          // Handle transfer PIN flow completion
+
+          // Handle transfer PIN flow completion via conversation state
           if (user.conversationState?.context === 'transfer_pin_verification') {
             const state = user.conversationState;
             const whatsappService = require('./whatsapp');
@@ -194,19 +214,6 @@ class MessageProcessor {
               await user.clearConversationState();
             }
             return;
-          }
-          
-          // If onboarding just completed, send bank details to user
-          const refreshedUser = await userService.getUserById(user.id);
-          const walletService = require('./wallet');
-          const wallet = await walletService.getUserWallet(user.id);
-          if (refreshedUser.onboardingStep === 'completed' && wallet?.virtualAccountNumber) {
-            const accountMessage = `📋 *Your Bank Details*\n\n` +
-                                   `💳 Account Number: ${wallet.virtualAccountNumber}\n` +
-                                   `🏦 Bank: ${wallet.virtualAccountBank || 'Bell Bank MFB'}\n` +
-                                   `👤 Account Name: ${wallet.virtualAccountName}`;
-            const whatsappService = require('./whatsapp');
-            await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
           }
         } else if (result.error) {
           const whatsappService = require('./whatsapp');

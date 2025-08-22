@@ -462,22 +462,6 @@ class WhatsAppFlowService {
     try {
       logger.info('Processing flow data', { phoneNumber, dataKeys: Object.keys(flowData || {}), hasPin: !!flowData.pin });
 
-      // Check if this is a data purchase flow (has network, phoneNumber, dataPlan, and pin)
-      if (flowData.network && flowData.phoneNumber && flowData.dataPlan && flowData.pin) {
-        logger.info('Detected data purchase flow', { 
-          phoneNumber, 
-          network: flowData.network,
-          phoneNumber: flowData.phoneNumber,
-          dataPlan: flowData.dataPlan
-        });
-        return await this.handleDataPurchaseFlow(flowData, phoneNumber);
-      }
-      
-      // Check if this is a login flow (only has PIN)
-      if (flowData.pin && Object.keys(flowData).length === 1) {
-        return await this.handleLoginFlow(flowData, phoneNumber);
-      }
-      
       // Check if this is a data purchase flow completion (has pin and flow_token but missing other data)
       if (flowData.pin && flowData.flow_token && !flowData.network) {
         logger.info('Detected data purchase flow completion - retrieving session data', { 
@@ -505,7 +489,8 @@ class WhatsAppFlowService {
             pin: flowData.pin
           };
           
-          return await this.handleDataPurchaseFlow(completeFlowData, phoneNumber);
+          const result = await this.handleDataPurchaseFlow(completeFlowData, phoneNumber);
+          return { ...result, flowType: 'data_purchase' };
         } else {
           logger.warn('Data purchase session data not found or incomplete', {
             phoneNumber,
@@ -520,9 +505,60 @@ class WhatsAppFlowService {
           return { success: false, error: 'Session expired' };
         }
       }
+
+      // Check if this is a data purchase flow (has network, phoneNumber, dataPlan, and pin)
+      if (flowData.network && flowData.phoneNumber && flowData.dataPlan && flowData.pin) {
+        logger.info('Detected data purchase flow', { 
+          phoneNumber, 
+          network: flowData.network,
+          phoneNumber: flowData.phoneNumber,
+          dataPlan: flowData.dataPlan
+        });
+        const result = await this.handleDataPurchaseFlow(flowData, phoneNumber);
+        return { ...result, flowType: 'data_purchase' };
+      }
       
-      // Default to onboarding flow
-      return await this.handleOnboardingFlow(flowData, phoneNumber);
+      // Check if this is a login flow (has PIN and possibly other fields)
+      if (flowData.pin) {
+        logger.info('Detected login flow', { 
+          phoneNumber, 
+          hasPin: !!flowData.pin,
+          dataKeys: Object.keys(flowData)
+        });
+        const result = await this.handleLoginFlow(flowData, phoneNumber);
+        return { ...result, flowType: 'login' };
+      }
+      
+      // Check if this is an onboarding flow (has user registration data)
+      if (flowData.firstName || flowData.lastName || flowData.email || flowData.dateOfBirth || flowData.gender) {
+        logger.info('Detected onboarding flow', { 
+          phoneNumber, 
+          dataKeys: Object.keys(flowData)
+        });
+        const result = await this.handleOnboardingFlow(flowData, phoneNumber);
+        return { ...result, flowType: 'onboarding' };
+      }
+      
+      // Check if this is a transfer PIN flow (has PIN and transfer context)
+      if (flowData.pin && (flowData.transfer || flowData.accountNumber || flowData.amount)) {
+        logger.info('Detected transfer PIN flow', { 
+          phoneNumber, 
+          hasPin: !!flowData.pin,
+          dataKeys: Object.keys(flowData)
+        });
+        // Transfer PIN flows are handled in messageProcessor.js, so we return success
+        return { success: true, flowType: 'transfer_pin' };
+      }
+      
+      // If we can't determine the flow type, log it and default to onboarding
+      logger.warn('Unable to determine flow type, defaulting to onboarding', { 
+        phoneNumber, 
+        dataKeys: Object.keys(flowData || {}),
+        flowData
+      });
+      
+      const result = await this.handleOnboardingFlow(flowData, phoneNumber);
+      return { ...result, flowType: 'onboarding' };
 
     } catch (error) {
       logger.error('Flow data processing failed', { phoneNumber, error: error.message });
