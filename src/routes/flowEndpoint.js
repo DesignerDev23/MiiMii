@@ -634,7 +634,7 @@ async function handleNavigateAction(screen, data, tokenData, flowToken = null) {
 
       // Store the navigation data in session
       if (data.data) {
-        const sessionKey = `flow:${flowToken}`;
+        const sessionKey = flowToken; // Use the same format as other screens
         const redisClient = require('../utils/redis');
         
         // Get existing session data
@@ -874,7 +874,7 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
         if (!userId && flowToken) {
           try {
             const redisClient = require('../utils/redis');
-            const sessionKey = `flow:${flowToken}`;
+            const sessionKey = flowToken; // Use the same format as storage
             logger.info('Looking up session in Redis', { 
               sessionKey, 
               flowToken,
@@ -1443,7 +1443,7 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       // Clean up flow session
       if (flowToken) {
         try {
-          await redisClient.deleteSession(`flow:${flowToken}`);
+          await redisClient.deleteSession(flowToken); // Use the same format as storage
           logger.info('Flow session cleaned up successfully', { flowToken });
         } catch (error) {
           logger.warn('Failed to cleanup flow session', { error: error.message });
@@ -2281,7 +2281,7 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
+        const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with
         const existingSession = await redisClient.getSession(sessionKey) || {};
@@ -2366,7 +2366,7 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
+        const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with
         const existingSession = await redisClient.getSession(sessionKey) || {};
@@ -2484,7 +2484,7 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
+        const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with
         const existingSession = await redisClient.getSession(sessionKey) || {};
@@ -2639,7 +2639,7 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
     if (flowToken) {
       try {
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowToken}`;
+        const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with
         const existingSession = await redisClient.getSession(sessionKey) || {};
