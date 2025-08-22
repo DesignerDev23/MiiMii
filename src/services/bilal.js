@@ -187,6 +187,16 @@ class BilalService {
       // Remove country code from phone number (Bilal expects 11 digits without +234)
       const cleanPhoneNumber = phoneNumber.replace(/^\+234/, '').replace(/^234/, '');
       
+      // Validate phone number format
+      if (!/^0[789][01][0-9]{8}$/.test(cleanPhoneNumber)) {
+        throw new Error(`Invalid phone number format: ${cleanPhoneNumber}. Phone number must be 11 digits starting with 070, 071, 080, 081, 090, or 091`);
+      }
+      
+      // Validate amount
+      if (amount < 50 || amount > 50000) {
+        throw new Error(`Invalid amount: ₦${amount}. Amount must be between ₦50 and ₦50,000`);
+      }
+      
       const payload = {
         network: networkId,
         phone: cleanPhoneNumber,

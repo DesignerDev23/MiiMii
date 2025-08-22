@@ -582,6 +582,9 @@ async function processFlowRequest(requestData) {
       case 'data_exchange':
         return handleDataExchange(screen, data, tokenData, flow_token);
 
+      case 'navigate':
+        return handleNavigateAction(screen, data, tokenData, flow_token);
+
       case 'complete':
         return handleCompleteAction(screen, data, tokenData, flow_token);
 
@@ -603,6 +606,79 @@ async function processFlowRequest(requestData) {
       data: {
         error: 'Processing failed',
         code: 'PROCESSING_ERROR'
+      }
+    };
+  }
+}
+
+/**
+ * Handle navigate action requests
+ */
+async function handleNavigateAction(screen, data, tokenData, flowToken = null) {
+  try {
+    logger.info('Handling navigate action', {
+      screen,
+      dataKeys: Object.keys(data || {}),
+      flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
+    });
+
+    // Handle navigation to PIN verification screen
+    if (data.screen === 'PIN_VERIFICATION_SCREEN') {
+      logger.info('Navigating to PIN_VERIFICATION_SCREEN', {
+        dataKeys: Object.keys(data.data || {}),
+        hasNetwork: !!data.data?.network,
+        hasPhoneNumber: !!data.data?.phoneNumber,
+        hasDataPlan: !!data.data?.dataPlan,
+        hasConfirm: !!data.data?.confirm
+      });
+
+      // Store the navigation data in session
+      if (data.data) {
+        const sessionKey = `flow:${flowToken}`;
+        const redisClient = require('../utils/redis');
+        
+        // Get existing session data
+        let sessionData = await redisClient.getSession(sessionKey) || {};
+        
+        // Merge new data with existing session data
+        sessionData = { ...sessionData, ...data.data };
+        
+        // Store updated session data
+        await redisClient.setSession(sessionKey, sessionData, 1800);
+        
+        logger.info('Navigation data stored in session', {
+          sessionKey,
+          sessionDataKeys: Object.keys(sessionData),
+          mergedWithExisting: true
+        });
+      }
+
+      // Return the PIN verification screen
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: {
+          message: 'Please enter your 4-digit PIN to complete the purchase.'
+        }
+      };
+    }
+
+    // Handle other navigation cases
+    logger.warn('Unknown navigation target', { screen: data.screen });
+    return {
+      screen: 'ERROR_SCREEN',
+      data: {
+        error: 'Navigation not supported',
+        code: 'UNSUPPORTED_NAVIGATION'
+      }
+    };
+
+  } catch (error) {
+    logger.error('Navigate action handling failed', { error: error.message });
+    return {
+      screen: 'ERROR_SCREEN',
+      data: {
+        error: 'Navigation failed',
+        code: 'NAVIGATION_ERROR'
       }
     };
   }
