@@ -472,7 +472,7 @@ class WhatsAppFlowService {
         
         // Retrieve session data to determine the flow type
         const redisClient = require('../utils/redis');
-        const sessionKey = `flow:${flowData.flow_token}`;
+        const sessionKey = flowData.flow_token; // Use the same format as storage
         const sessionData = await redisClient.getSession(sessionKey);
         
         if (sessionData) {
