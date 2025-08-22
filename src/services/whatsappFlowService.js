@@ -462,48 +462,69 @@ class WhatsAppFlowService {
     try {
       logger.info('Processing flow data', { phoneNumber, dataKeys: Object.keys(flowData || {}), hasPin: !!flowData.pin });
 
-      // Check if this is a data purchase flow completion (has pin and flow_token but missing other data)
-      if (flowData.pin && flowData.flow_token && !flowData.network) {
-        logger.info('Detected data purchase flow completion - retrieving session data', { 
+      // Check if this is a transfer PIN flow completion (has pin and flow_token)
+      if (flowData.pin && flowData.flow_token) {
+        logger.info('Detected flow completion with PIN - checking session data', { 
           phoneNumber, 
           hasPin: !!flowData.pin,
           hasFlowToken: !!flowData.flow_token
         });
         
-        // Retrieve session data to get the complete data purchase information
+        // Retrieve session data to determine the flow type
         const redisClient = require('../utils/redis');
         const sessionKey = `flow:${flowData.flow_token}`;
         const sessionData = await redisClient.getSession(sessionKey);
         
-        if (sessionData && sessionData.network && sessionData.phoneNumber && sessionData.dataPlan) {
-          logger.info('Retrieved data purchase session data', {
+        if (sessionData) {
+          logger.info('Retrieved session data', {
             phoneNumber,
-            network: sessionData.network,
-            phoneNumber: sessionData.phoneNumber,
-            dataPlan: sessionData.dataPlan
+            sessionDataKeys: Object.keys(sessionData),
+            context: sessionData.context
           });
           
-          // Combine session data with PIN from flow response
-          const completeFlowData = {
-            ...sessionData,
-            pin: flowData.pin
-          };
+          // Check if this is a transfer PIN flow
+          if (sessionData.context === 'transfer_pin_verification' || sessionData.transferData) {
+            logger.info('Detected transfer PIN flow completion', {
+              phoneNumber,
+              context: sessionData.context,
+              hasTransferData: !!sessionData.transferData
+            });
+            
+            // Transfer PIN flows are handled in messageProcessor.js
+            return { success: true, flowType: 'transfer_pin' };
+          }
           
-          const result = await this.handleDataPurchaseFlow(completeFlowData, phoneNumber);
-          return { ...result, flowType: 'data_purchase' };
-        } else {
-          logger.warn('Data purchase session data not found or incomplete', {
-            phoneNumber,
-            sessionKey,
-            hasSessionData: !!sessionData,
-            sessionDataKeys: sessionData ? Object.keys(sessionData) : []
-          });
-          
-          // Send error message to user
-          const whatsappService = require('./whatsapp');
-          await whatsappService.sendTextMessage(phoneNumber, '❌ Data purchase session expired. Please start your data purchase again.');
-          return { success: false, error: 'Session expired' };
+          // Check if this is a data purchase flow
+          if (sessionData.network && sessionData.phoneNumber && sessionData.dataPlan) {
+            logger.info('Retrieved data purchase session data', {
+              phoneNumber,
+              network: sessionData.network,
+              phoneNumber: sessionData.phoneNumber,
+              dataPlan: sessionData.dataPlan
+            });
+            
+            // Combine session data with PIN from flow response
+            const completeFlowData = {
+              ...sessionData,
+              pin: flowData.pin
+            };
+            
+            const result = await this.handleDataPurchaseFlow(completeFlowData, phoneNumber);
+            return { ...result, flowType: 'data_purchase' };
+          }
         }
+        
+        logger.warn('Session data not found or incomplete', {
+          phoneNumber,
+          sessionKey,
+          hasSessionData: !!sessionData,
+          sessionDataKeys: sessionData ? Object.keys(sessionData) : []
+        });
+        
+        // Send error message to user
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(phoneNumber, '❌ Session expired. Please try again.');
+        return { success: false, error: 'Session expired' };
       }
 
       // Check if this is a data purchase flow (has network, phoneNumber, dataPlan, and pin)
