@@ -184,16 +184,40 @@ class BilalService {
       const tokenData = await this.generateToken();
 
       // Purchase airtime via BILALSADASUB API
+      // Remove country code from phone number (Bilal expects 11 digits without +234)
+      const cleanPhoneNumber = phoneNumber.replace(/^\+234/, '').replace(/^234/, '');
+      
       const payload = {
         network: networkId,
-        phone: phoneNumber,
+        phone: cleanPhoneNumber,
         plan_type: 'VTU',
         bypass: false,
         amount: amount,
         'request-id': requestId
       };
 
+      logger.info('Making airtime purchase request to Bilal API', {
+        payload,
+        tokenLength: tokenData.token ? tokenData.token.length : 0,
+        networkId,
+        phoneNumber: cleanPhoneNumber,
+        originalPhoneNumber: phoneNumber,
+        amount,
+        endpoint: '/topup/',
+        method: 'POST',
+        fullPayload: JSON.stringify(payload)
+      });
+
       const response = await this.makeRequest('POST', '/topup/', payload, tokenData.token);
+
+      logger.info('Bilal API airtime response received', {
+        status: response.status,
+        responseKeys: Object.keys(response),
+        hasAmount: !!response.amount,
+        hasMessage: !!response.message,
+        requestId: response['request-id'],
+        fullResponse: JSON.stringify(response)
+      });
 
       if (response.status === 'success') {
         // Debit user wallet with actual amount

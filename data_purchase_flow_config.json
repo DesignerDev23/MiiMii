@@ -630,12 +630,15 @@
                 "type": "Footer",
                 "label": "Continue",
                 "on-click-action": {
-                  "name": "data_exchange",
+                  "name": "navigate",
                   "payload": {
-                    "network": "${data.network}",
-                    "phoneNumber": "${data.phoneNumber}",
-                    "dataPlan": "${data.dataPlan}",
-                    "confirm": "${form.confirm}"
+                    "screen": "PIN_VERIFICATION_SCREEN",
+                    "data": {
+                      "network": "${data.network}",
+                      "phoneNumber": "${data.phoneNumber}",
+                      "dataPlan": "${data.dataPlan}",
+                      "confirm": "${form.confirm}"
+                    }
                   }
                 }
               }
