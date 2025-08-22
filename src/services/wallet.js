@@ -29,33 +29,45 @@ class WalletService {
       // Get user for virtual account creation
       const user = await User.findByPk(userId);
       
-      // Create virtual account with BellBank immediately (provider validates BVN)
-      try {
-        const virtualAccount = await bellBankService.createVirtualAccount({
-          firstName: user.firstName,
-          lastName: user.lastName,
-          middleName: user.middleName,
-          phoneNumber: user.whatsappNumber,
-          address: user.address,
-          bvn: user.bvn,
-          gender: user.gender,
-          dateOfBirth: user.dateOfBirth,
-          userId: user.id
+      // Only create virtual account if user has completed onboarding
+      if (user.onboardingStep === 'completed' && user.firstName && user.lastName && user.bvn && user.gender && user.dateOfBirth) {
+        try {
+          const virtualAccount = await bellBankService.createVirtualAccount({
+            firstName: user.firstName,
+            lastName: user.lastName,
+            middleName: user.middleName,
+            phoneNumber: user.whatsappNumber,
+            address: user.address,
+            bvn: user.bvn,
+            gender: user.gender,
+            dateOfBirth: user.dateOfBirth,
+            userId: user.id
+          });
+          
+          await wallet.update({
+            virtualAccountNumber: virtualAccount.accountNumber,
+            virtualAccountBank: virtualAccount.bankName,
+            virtualAccountName: virtualAccount.accountName,
+            bankCode: virtualAccount.bankCode,
+            accountReference: virtualAccount.reference
+          }, { transaction });
+        } catch (error) {
+          logger.warn('Failed to create virtual account during wallet creation', {
+            error: error.message,
+            userId
+          });
+          // Continue without virtual account - can be created later
+        }
+      } else {
+        logger.info('Skipping virtual account creation - user not fully onboarded', {
+          userId,
+          onboardingStep: user.onboardingStep,
+          hasFirstName: !!user.firstName,
+          hasLastName: !!user.lastName,
+          hasBvn: !!user.bvn,
+          hasGender: !!user.gender,
+          hasDateOfBirth: !!user.dateOfBirth
         });
-        
-        await wallet.update({
-          virtualAccountNumber: virtualAccount.accountNumber,
-          virtualAccountBank: virtualAccount.bankName,
-          virtualAccountName: virtualAccount.accountName,
-          bankCode: virtualAccount.bankCode,
-          accountReference: virtualAccount.reference
-        }, { transaction });
-      } catch (error) {
-        logger.warn('Failed to create virtual account during wallet creation', {
-          error: error.message,
-          userId
-        });
-        // Continue without virtual account - can be created later
       }
 
       await transaction.commit();

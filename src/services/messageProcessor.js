@@ -433,6 +433,12 @@ class MessageProcessor {
         intentAnalysis.suggestedAction = 'Show available services';
       }
       
+      // For new users, route greeting intents to onboarding
+      if (user.onboardingStep !== 'completed' && intentAnalysis.intent === 'greeting') {
+        intentAnalysis.intent = 'onboarding';
+        intentAnalysis.suggestedAction = 'Start onboarding process';
+      }
+      
       logger.info('AI intent analysis result', {
             userId: user.id,
         originalMessage: messageContent,
@@ -446,6 +452,7 @@ class MessageProcessor {
         case 'onboarding':
         case 'start_onboarding':
         case 'setup_account':
+        case 'greeting':
           return await this.handleOnboardingIntent(user, userName, message, messageType, messageId);
           
         case 'balance':
@@ -548,10 +555,10 @@ class MessageProcessor {
           
         default:
           // Handle unknown intent with helpful response
-          if (aiResponse.intent === 'unknown') {
+          if (intentAnalysis.intent === 'unknown') {
             const whatsappService = require('./whatsapp');
             await whatsappService.sendTextMessage(user.whatsappNumber, 
-              aiResponse.response || "I'm not sure what you'd like to do. Here are some things I can help you with:\n\n💰 Check balance\n💸 Send money\n📱 Buy airtime\n📶 Buy data\n⚡ Pay bills\n📊 View transactions\n\nJust tell me what you need!");
+              intentAnalysis.response || "I'm not sure what you'd like to do. Here are some things I can help you with:\n\n💰 Check balance\n💸 Send money\n📱 Buy airtime\n📶 Buy data\n⚡ Pay bills\n📊 View transactions\n\nJust tell me what you need!");
             return;
           }
           
@@ -589,7 +596,7 @@ class MessageProcessor {
 
       // Daily login: if user onboarded, require login via WhatsApp Flow once every 24h
       // Only check if no other conversation was handled and user is not in a transfer conversation
-      if (user.onboardingStep === 'completed' && messageType === 'text' && !messageContent?.toLowerCase().includes('start') && user.conversationState?.intent !== 'bank_transfer') {
+      if (user.onboardingStep === 'completed' && messageType === 'text' && !messageContent?.toLowerCase().includes('start') && user.conversationState?.context !== 'bank_transfer') {
         try {
           const redisClient = require('../utils/redis');
           const sessionKey = `auth:${user.id}`;
