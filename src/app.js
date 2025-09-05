@@ -24,6 +24,8 @@ require('./models');
 // Route imports
 const whatsappRoutes = require('./routes/whatsapp');
 const adminRoutes = require('./routes/admin');
+const adminAuthRoutes = require('./routes/adminAuth');
+const adminAuth = require('./middleware/adminAuth');
 const walletRoutes = require('./routes/wallet');
 const transactionRoutes = require('./routes/transaction');
 const kycRoutes = require('./routes/kyc');
@@ -243,7 +245,8 @@ app.get('/health', async (req, res) => {
 app.use('/webhook', webhookRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/flow', require('./routes/flowEndpoint').router); // Add Flow endpoint
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin/auth', adminAuthRoutes);
+app.use('/api/admin', adminAuth, adminRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/kyc', kycRoutes);

@@ -18,9 +18,7 @@ const Wallet = sequelize.define('Wallet', {
   balance: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0.00,
-    validate: {
-      min: 0
-    }
+    comment: 'Total balance; can go negative for maintenance fee accrual'
   },
   previousBalance: {
     type: DataTypes.DECIMAL(15, 2),
@@ -34,7 +32,7 @@ const Wallet = sequelize.define('Wallet', {
   availableBalance: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0.00,
-    comment: 'Spendable balance excluding holds'
+    comment: 'Spendable balance excluding holds; never negative'
   },
   totalCredits: {
     type: DataTypes.DECIMAL(15, 2),

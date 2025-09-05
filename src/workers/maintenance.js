@@ -62,8 +62,8 @@ class MaintenanceWorker {
       await this.cleanOldLogs();
     }, { scheduled: false }));
 
-    // Apply maintenance fee monthly (1st day of month at 3 AM)
-    this.jobs.set('maintenanceFee', cron.schedule('0 3 1 * *', async () => {
+    // Apply maintenance fee daily at 3 AM (will charge if due since onboarding)
+    this.jobs.set('maintenanceFee', cron.schedule('0 3 * * *', async () => {
       await this.applyMaintenanceFees();
     }, { scheduled: false }));
 
@@ -199,58 +199,19 @@ class MaintenanceWorker {
     try {
       logger.info('Applying monthly maintenance fees...');
       
-      const maintenanceFee = parseFloat(process.env.MAINTENANCE_FEE) || 100;
-      
-      // Get all active wallets
-      const [activeWallets] = await databaseManager.getSequelize().query(`
-        SELECT w.id, w.user_id, w.balance 
-        FROM wallets w
-        JOIN users u ON w.user_id = u.id
-        WHERE u.status = 'active' 
-        AND w.balance >= ?
-        AND w.account_type != 'savings'
-      `, {
-        replacements: [maintenanceFee]
-      });
-
-      logger.info(`Applying maintenance fee of ${maintenanceFee} to ${activeWallets.length} wallets`);
-
-      for (const wallet of activeWallets) {
+      // Iterate users and delegate to walletService for due logic and notifications
+      const users = await User.findAll({ where: { isActive: true, isBanned: false } });
+      let charged = 0;
+      for (const user of users) {
         try {
-          await databaseManager.getSequelize().transaction(async (t) => {
-            // Deduct maintenance fee
-            await databaseManager.getSequelize().query(`
-              UPDATE wallets 
-              SET balance = balance - ?,
-                  updated_at = NOW()
-              WHERE id = ?
-            `, {
-              replacements: [maintenanceFee, wallet.id],
-              transaction: t
-            });
-
-            // Record transaction
-            await databaseManager.getSequelize().query(`
-              INSERT INTO transactions (
-                user_id, type, amount, status, description, created_at
-              ) VALUES (?, 'fee', ?, 'completed', 'Monthly maintenance fee', NOW())
-            `, {
-              replacements: [wallet.user_id, maintenanceFee],
-              transaction: t
-            });
-          });
-
-          // Invalidate user cache
-          if (redisClient.isConnected) {
-            await redisClient.invalidateUserCache(wallet.user_id);
-          }
-
-        } catch (error) {
-          logger.error(`Error applying maintenance fee to wallet ${wallet.id}:`, error);
+          const result = await walletService.chargeMaintenanceFee(user.id);
+          if (result) charged++;
+        } catch (e) {
+          logger.error('Failed to charge maintenance fee for user', { userId: user.id, error: e.message });
         }
       }
 
-      logger.info('Maintenance fee application completed');
+      logger.info('Maintenance fee application completed', { charged });
     } catch (error) {
       logger.error('Error applying maintenance fees:', error);
     }

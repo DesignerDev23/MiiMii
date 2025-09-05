@@ -181,7 +181,9 @@ class WalletService {
       const balanceBefore = parseFloat(wallet.balance);
       const debitAmount = parseFloat(amount);
       
-      if (balanceBefore < debitAmount) {
+      // For general debits we require sufficient funds, but allow negative for maintenance fee
+      const isMaintenanceFee = metadata && (metadata.feeType === 'maintenance' || metadata.category === 'maintenance_fee' || description?.toLowerCase().includes('maintenance'));
+      if (!isMaintenanceFee && balanceBefore < debitAmount) {
         throw new Error('Insufficient balance');
       }
 
@@ -205,10 +207,11 @@ class WalletService {
       }, { transaction });
 
       // Update wallet balance
+      const newAvailable = Math.max(0, parseFloat(wallet.availableBalance || 0) - debitAmount);
       await wallet.update({
         previousBalance: balanceBefore,
         balance: balanceAfter,
-        availableBalance: parseFloat(wallet.availableBalance || 0) - debitAmount,
+        availableBalance: newAvailable,
         ledgerBalance: balanceAfter,
         totalDebits: parseFloat(wallet.totalDebits || 0) + debitAmount
       }, { transaction });
@@ -590,40 +593,23 @@ class WalletService {
         return null; // Skip maintenance fee for inactive/banned users
       }
 
-      const maintenanceFee = parseFloat(process.env.MAINTENANCE_FEE) || 100;
-      const lastCharge = wallet.lastMaintenanceFee;
+      const maintenanceFee = 50; // Fixed ₦50 per requirements
+      const lastCharge = wallet.lastMaintenanceFee || user.createdAt; // start counting from onboarding
       const now = new Date();
 
-      // Check if maintenance fee is due (monthly)
-      if (lastCharge) {
-        const nextDue = new Date(lastCharge);
-        nextDue.setMonth(nextDue.getMonth() + 1);
-        
-        if (now < nextDue) {
-          return null; // Not due yet
-        }
+      // Determine months due since last charge
+      const monthsDue = (now.getFullYear() - lastCharge.getFullYear()) * 12 + (now.getMonth() - lastCharge.getMonth());
+      if (monthsDue < 1) {
+        return null; // Not due yet
       }
 
-      // Check if wallet has sufficient balance
-      if (parseFloat(wallet.balance) < maintenanceFee) {
-        logger.warn('Insufficient balance for maintenance fee', {
-          userId,
-          balance: wallet.balance,
-          fee: maintenanceFee
-        });
-        return null; // Skip if insufficient balance
-      }
-
-      // Charge maintenance fee
-      const result = await this.debitWallet(
-        userId,
-        maintenanceFee,
-        'Monthly maintenance fee',
-        {
-          category: 'fee_charge',
-          feeType: 'maintenance'
-        }
-      );
+      // Total fee for all missed months
+      const totalFee = maintenanceFee * monthsDue;
+      const result = await this.debitWallet(userId, totalFee, `Monthly maintenance fee (${monthsDue} month${monthsDue>1?'s':''})`, {
+        category: 'maintenance_fee',
+        feeType: 'maintenance',
+        monthsDue
+      });
 
       // Update last maintenance fee date
       await wallet.update({ lastMaintenanceFee: now });
@@ -633,9 +619,9 @@ class WalletService {
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
         `📋 *Maintenance Fee Charged*\n\n` +
-        `Amount: ₦${maintenanceFee.toLocaleString()}\n` +
+        `Amount: ₦${totalFee.toLocaleString()} (${monthsDue} month${monthsDue>1?'s':''})\n` +
         `New Balance: ₦${result.newBalance.toLocaleString()}\n\n` +
-        `This is your monthly account maintenance fee.`
+        `Your monthly maintenance fee of ₦50 has been applied. If your balance is negative, the fee will be deducted when you fund your wallet.`
       );
 
       logger.info('Maintenance fee charged', {

@@ -1,0 +1,120 @@
+{
+  "info": {
+    "name": "MiiMii Admin API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "miimii-admin-api"
+  },
+  "item": [
+    {
+      "name": "Auth / Login",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/auth/login", "host": ["{{baseUrl}}"], "path": ["api","admin","auth","login"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{ADMIN_EMAIL}}\",\n  \"password\": \"{{ADMIN_PASSWORD}}\"\n}" }
+      }
+    },
+    {
+      "name": "Dashboard Overview",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/dashboard", "host": ["{{baseUrl}}"], "path": ["api","admin","dashboard"] }
+      }
+    },
+    {
+      "name": "Users - List",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/users?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","admin","users"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"20"}] }
+      }
+    },
+    {
+      "name": "Users - Details",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}"] }
+      }
+    },
+    {
+      "name": "Wallet - Freeze",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}/wallet/freeze", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}","wallet","freeze"] },
+        "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Fraud investigation\"\n}" }
+      }
+    },
+    {
+      "name": "Wallet - Unfreeze",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}/wallet/unfreeze", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}","wallet","unfreeze"] }
+      }
+    },
+    {
+      "name": "Wallet - Credit",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}/wallet/credit", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}","wallet","credit"] },
+        "body": { "mode": "raw", "raw": "{\n  \"amount\": 1000,\n  \"description\": \"Admin credit\"\n}" }
+      }
+    },
+    {
+      "name": "Transactions - List",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/transactions?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","admin","transactions"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"20"}] }
+      }
+    },
+    {
+      "name": "Data Pricing - Get Overrides",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/data-pricing", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing"] }
+      }
+    },
+    {
+      "name": "Data Pricing - Set Overrides",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/data-pricing", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing"] },
+        "body": { "mode": "raw", "raw": "{\n  \"overrides\": {\n    \"mtn\": { \"mtn-1gb-300\": 350 },\n    \"airtel\": { \"airtel-1gb-350\": 400 }\n  }\n}" }
+      }
+    },
+    {
+      "name": "Data Pricing - Clear Overrides",
+      "request": {
+        "method": "DELETE",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/data-pricing", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing"] }
+      }
+    },
+    {
+      "name": "Revenue - Stats",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/revenue/stats?startDate={{startDate}}&endDate={{endDate}}", "host": ["{{baseUrl}}"], "path": ["api","admin","revenue","stats"], "query": [{"key":"startDate","value":"{{startDate}}"},{"key":"endDate","value":"{{endDate}}"}] }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "ADMIN_EMAIL", "value": "admin@example.com" },
+    { "key": "ADMIN_PASSWORD", "value": "changeme" },
+    { "key": "ADMIN_TOKEN", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "startDate", "value": "" },
+    { "key": "endDate", "value": "" }
+  ]
+}
+
+

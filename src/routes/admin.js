@@ -3,10 +3,12 @@ const { User, Wallet, Transaction, SupportTicket, WebhookLog } = require('../mod
 const userService = require('../services/user');
 const walletService = require('../services/wallet');
 const { Op } = require('sequelize');
-const { body, query, validationResult } = require('express-validator');
+const { body, query, param, validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 
 const router = express.Router();
+const KVStore = require('../models/KVStore');
+const { sequelize } = require('../database/connection');
 
 // Middleware to validate request
 const validateRequest = (req, res, next) => {
@@ -159,6 +161,100 @@ router.get('/users',
     }
   }
 );
+
+// Freeze wallet
+router.post('/users/:userId/wallet/freeze',
+  param('userId').isUUID(),
+  body('reason').optional().isString(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { reason } = req.body;
+
+      const wallet = await walletService.freezeWallet(userId, reason);
+      res.json({ success: true, message: 'Wallet frozen', wallet: { isFrozen: wallet.isFrozen, freezeReason: wallet.freezeReason } });
+    } catch (error) {
+      logger.error('Failed to freeze wallet', { error: error.message });
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Unfreeze wallet
+router.post('/users/:userId/wallet/unfreeze',
+  param('userId').isUUID(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const wallet = await walletService.unfreezeWallet(userId);
+      res.json({ success: true, message: 'Wallet unfrozen', wallet: { isFrozen: wallet.isFrozen } });
+    } catch (error) {
+      logger.error('Failed to unfreeze wallet', { error: error.message });
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Credit wallet (admin)
+router.post('/users/:userId/wallet/credit',
+  param('userId').isUUID(),
+  body('amount').isFloat({ min: 1 }),
+  body('description').notEmpty(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { amount, description } = req.body;
+      const result = await walletService.creditWallet(userId, parseFloat(amount), description, { category: 'admin_adjustment' });
+      res.json({ success: true, message: 'Wallet credited', result });
+    } catch (error) {
+      logger.error('Failed to credit wallet', { error: error.message });
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Data pricing overrides
+// Get current overrides
+router.get('/data-pricing', async (req, res) => {
+  try {
+    const record = await KVStore.findByPk('data_pricing_overrides');
+    res.json({ success: true, overrides: record?.value || {} });
+  } catch (error) {
+    logger.error('Failed to get data pricing overrides', { error: error.message });
+    res.status(500).json({ error: 'Failed to get overrides' });
+  }
+});
+
+// Set overrides
+router.post('/data-pricing',
+  body('overrides').isObject(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { overrides } = req.body;
+      // Structure: { [network]: { [planId]: price } }
+      const record = await KVStore.upsert({ key: 'data_pricing_overrides', value: overrides });
+      res.json({ success: true, message: 'Overrides updated', overrides });
+    } catch (error) {
+      logger.error('Failed to update data pricing overrides', { error: error.message });
+      res.status(500).json({ error: 'Failed to update overrides' });
+    }
+  }
+);
+
+// Delete overrides
+router.delete('/data-pricing', async (req, res) => {
+  try {
+    await KVStore.destroy({ where: { key: 'data_pricing_overrides' } });
+    res.json({ success: true, message: 'Overrides cleared' });
+  } catch (error) {
+    logger.error('Failed to clear data pricing overrides', { error: error.message });
+    res.status(500).json({ error: 'Failed to clear overrides' });
+  }
+});
 
 // Get user details
 router.get('/users/:userId', async (req, res) => {
@@ -650,5 +746,76 @@ router.get('/users-without-va', async (req, res) => {
     });
   }
 });
+
+// Revenue statistics
+// Streams: transfer out charges (bank_transfer fees), monthly maintenance fees, data margin, airtime margin (+₦2 per purchase)
+router.get('/revenue/stats',
+  query('startDate').optional().isISO8601(),
+  query('endDate').optional().isISO8601(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const dateFilter = {};
+      if (startDate) dateFilter[require('sequelize').Op.gte] = new Date(startDate);
+      if (endDate) dateFilter[require('sequelize').Op.lte] = new Date(endDate);
+
+      const whereBase = {};
+      if (startDate || endDate) whereBase.createdAt = dateFilter;
+      whereBase.status = 'completed';
+
+      // Transfer out charges: sum of fee for bank_transfer category
+      const transferOut = await sequelize.models.Transaction.findAll({
+        where: { ...whereBase, category: 'bank_transfer' },
+        attributes: [[require('sequelize').fn('SUM', require('sequelize').col('fee')), 'sumFee']]
+      });
+      const transferOutFee = parseFloat(transferOut[0]?.dataValues?.sumFee || 0);
+
+      // Maintenance fees: sum of amount for maintenance_fee (we recorded as amount debited)
+      const maintenance = await sequelize.models.Transaction.findAll({
+        where: { ...whereBase, category: 'maintenance_fee', type: 'debit' },
+        attributes: [[require('sequelize').fn('SUM', require('sequelize').col('amount')), 'sumAmount']]
+      });
+      const maintenanceRevenue = parseFloat(maintenance[0]?.dataValues?.sumAmount || 0);
+
+      // Data margin: sum(selling - retail) from metadata
+      const dataTx = await sequelize.models.Transaction.findAll({
+        where: { ...whereBase, category: 'data', type: 'debit' },
+        attributes: ['metadata']
+      });
+      let dataMargin = 0;
+      for (const tx of dataTx) {
+        const retail = parseFloat(tx.metadata?.planRetailPrice || 0);
+        const selling = parseFloat(tx.metadata?.planSellingPrice || 0);
+        if (!isNaN(retail) && !isNaN(selling) && selling >= retail) {
+          dataMargin += (selling - retail);
+        }
+      }
+
+      // Airtime margin: fixed ₦2 per completed airtime purchase
+      const airtimeCount = await sequelize.models.Transaction.count({
+        where: { ...whereBase, category: 'airtime', type: 'debit' }
+      });
+      const airtimeMargin = airtimeCount * 2;
+
+      const totalRevenue = transferOutFee + maintenanceRevenue + dataMargin + airtimeMargin;
+
+      res.json({
+        success: true,
+        period: { startDate: startDate || null, endDate: endDate || null },
+        streams: {
+          transferOutFees: transferOutFee,
+          monthlyMaintenanceFees: maintenanceRevenue,
+          dataMargin: parseFloat(dataMargin.toFixed(2)),
+          airtimeMargin: airtimeMargin
+        },
+        totalRevenue: parseFloat(totalRevenue.toFixed(2))
+      });
+    } catch (error) {
+      logger.error('Failed to compute revenue stats', { error: error.message });
+      res.status(500).json({ error: 'Failed to compute revenue stats' });
+    }
+  }
+);
 
 module.exports = router;

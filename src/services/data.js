@@ -96,12 +96,24 @@ class DataService {
         throw new Error('Unsupported network');
       }
 
+      // Fetch overrides from KVStore if present
+      let overrides = {};
+      try {
+        const KVStore = require('../models/KVStore');
+        const record = await KVStore.findByPk('data_pricing_overrides');
+        overrides = record?.value || {};
+      } catch (_) {}
+
       const plans = this.dataPlans[networkCode] || [];
-      return plans.map(plan => ({
-        ...plan,
-        network: networkCode,
-        networkName: network.toUpperCase()
-      }));
+      return plans.map(plan => {
+        const overridePrice = overrides?.[networkCode]?.[plan.id];
+        return {
+          ...plan,
+          price: typeof overridePrice === 'number' ? overridePrice : plan.price,
+          network: networkCode,
+          networkName: network.toUpperCase()
+        };
+      });
     } catch (error) {
       logger.error('Failed to get data plans', { error: error.message, network });
       throw error;
@@ -112,13 +124,24 @@ class DataService {
   async getAllDataPlans() {
     try {
       const allPlans = {};
+      // Fetch overrides once
+      let overrides = {};
+      try {
+        const KVStore = require('../models/KVStore');
+        const record = await KVStore.findByPk('data_pricing_overrides');
+        overrides = record?.value || {};
+      } catch (_) {}
       
       for (const [networkName, networkCode] of Object.entries(this.networks)) {
-        allPlans[networkCode] = this.dataPlans[networkCode].map(plan => ({
-          ...plan,
-          network: networkCode,
-          networkName
-        }));
+        allPlans[networkCode] = this.dataPlans[networkCode].map(plan => {
+          const overridePrice = overrides?.[networkCode]?.[plan.id];
+          return {
+            ...plan,
+            price: typeof overridePrice === 'number' ? overridePrice : plan.price,
+            network: networkCode,
+            networkName
+          };
+        });
       }
 
       return allPlans;
@@ -175,7 +198,7 @@ class DataService {
       // Validate phone number and network
       const validation = await this.validatePhoneNumber(phoneNumber, network);
       
-      // Get plan details
+      // Get plan details and apply selling price override if set
       const networkCode = this.networks[network.toUpperCase()];
       const plan = this.dataPlans[networkCode].find(p => p.id === planId);
       
@@ -183,9 +206,21 @@ class DataService {
         throw new Error('Invalid data plan selected');
       }
 
-      // Check wallet balance
+      // Determine selling price (override > retail)
+      let sellingPrice = plan.price;
+      try {
+        const KVStore = require('../models/KVStore');
+        const record = await KVStore.findByPk('data_pricing_overrides');
+        const overrides = record?.value || {};
+        const overridePrice = overrides?.[networkCode]?.[plan.id];
+        if (typeof overridePrice === 'number' && overridePrice > 0) {
+          sellingPrice = overridePrice;
+        }
+      } catch (_) {}
+
+      // Check wallet balance against selling price
       const walletBalance = await walletService.getWalletBalance(userId);
-      if (walletBalance < plan.price) {
+      if (walletBalance < sellingPrice) {
         throw new Error('Insufficient wallet balance');
       }
 
@@ -193,9 +228,9 @@ class DataService {
       const transaction = await transactionService.createTransaction(userId, {
         type: 'debit',
         category: 'data',
-        amount: plan.price,
+        amount: sellingPrice,
         fee: 0,
-        totalAmount: plan.price,
+        totalAmount: sellingPrice,
         description: `Data purchase: ${plan.size} for ${validation.cleanNumber} (${network})`,
         recipientDetails: {
           phoneNumber: validation.cleanNumber,
@@ -208,7 +243,9 @@ class DataService {
           service: 'data',
           network: networkCode,
           planId: planId,
-          planDetails: plan,
+          planDetails: plan, // contains retail price
+          planRetailPrice: plan.price,
+          planSellingPrice: sellingPrice,
           phoneNumber: validation.cleanNumber
         }
       });
@@ -218,8 +255,8 @@ class DataService {
         const purchaseResult = await this.processBilalDataPurchase(validation.cleanNumber, networkCode, plan);
         
         if (purchaseResult.success) {
-          // Debit wallet
-          await walletService.debitWallet(userId, plan.price, `Data purchase: ${plan.size}`, {
+          // Debit wallet with selling price (our charge to user)
+          await walletService.debitWallet(userId, sellingPrice, `Data purchase: ${plan.size}`, {
             category: 'data',
             transactionId: transaction.id
           });
