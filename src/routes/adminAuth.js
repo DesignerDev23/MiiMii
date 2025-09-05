@@ -18,15 +18,16 @@ router.post('/login',
     try {
       const { email, password } = req.body;
 
-      const adminEmail = (process.env.ADMIN_EMAIL || '').toString().trim().toLowerCase();
-      const adminPassword = (process.env.ADMIN_PASSWORD || '').toString().trim();
+      const normalize = (v) => (v || '').toString().replace(/[\r\n]/g, '').replace(/^['"]|['"]$/g, '').trim();
+      const adminEmail = normalize(process.env.ADMIN_EMAIL).toLowerCase();
+      const adminPassword = normalize(process.env.ADMIN_PASSWORD);
       if (!adminEmail || !adminPassword) {
         logger.error('Admin credentials not configured');
         return res.status(500).json({ error: 'Admin auth not configured' });
       }
 
-      const inputEmail = (email || '').toString().trim().toLowerCase();
-      const inputPassword = (password || '').toString().trim();
+      const inputEmail = normalize(email).toLowerCase();
+      const inputPassword = normalize(password);
 
       if (!process.env.ADMIN_JWT_SECRET) {
         logger.error('ADMIN_JWT_SECRET is not configured');
@@ -43,8 +44,14 @@ router.post('/login',
       logger.info('Admin login attempt', {
         inputEmailPreview: mask(inputEmail),
         adminEmailPreview: mask(adminEmail),
+        inputEmailLength: inputEmail.length,
+        adminEmailLength: adminEmail.length,
         inputPasswordLength: inputPassword.length,
         adminPasswordLength: adminPassword.length,
+        adminEmailHasQuotes: /["']/.test(process.env.ADMIN_EMAIL || ''),
+        adminPasswordHasQuotes: /["']/.test(process.env.ADMIN_PASSWORD || ''),
+        adminEmailHasZeroWidth: /[\u200B-\u200D\uFEFF]/.test(process.env.ADMIN_EMAIL || ''),
+        adminPasswordHasZeroWidth: /[\u200B-\u200D\uFEFF]/.test(process.env.ADMIN_PASSWORD || ''),
         emailMatch: inputEmail === adminEmail,
         passwordMatch: inputPassword === adminPassword
       });
