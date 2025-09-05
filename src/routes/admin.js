@@ -202,12 +202,19 @@ router.post('/users/:userId/wallet/credit',
   param('userId').isUUID(),
   body('amount').isFloat({ min: 1 }),
   body('description').notEmpty(),
+  body('notify').optional().isBoolean(),
   validateRequest,
   async (req, res) => {
     try {
       const { userId } = req.params;
-      const { amount, description } = req.body;
-      const result = await walletService.creditWallet(userId, parseFloat(amount), description, { category: 'admin_adjustment' });
+      const { amount, description, notify = true } = req.body;
+      const adminEmail = req.admin?.email;
+      const result = await walletService.creditWallet(
+        userId,
+        parseFloat(amount),
+        description,
+        { category: 'admin_adjustment', adminCredit: true, notify, creditedBy: adminEmail }
+      );
       res.json({ success: true, message: 'Wallet credited', result });
     } catch (error) {
       logger.error('Failed to credit wallet', { error: error.message });

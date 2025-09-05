@@ -151,6 +151,28 @@ class WalletService {
         newBalance: balanceAfter
       });
 
+      // Optional notification (for admin credits or when explicitly requested)
+      try {
+        if (metadata && (metadata.notify === true || metadata.adminCredit === true)) {
+          const whatsappService = require('./whatsapp');
+          const amountStr = `₦${creditAmount.toLocaleString()}`;
+          const balanceStr = `₦${balanceAfter.toLocaleString()}`;
+          const note = description ? `\n• Note: ${description}` : '';
+          const by = metadata.creditedBy ? `\n• Credited By: ${metadata.creditedBy}` : '';
+          const message = `💳 *Wallet Credited*\n\n` +
+            `You just received ${amountStr} in your MiiMii wallet.\n\n` +
+            `• Reference: ${txnRecord.reference}${note}${by}\n` +
+            `• New Balance: ${balanceStr}\n\n` +
+            `Thanks for using MiiMii!`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, message);
+        }
+      } catch (notifyError) {
+        logger.warn('Failed to send credit notification', {
+          userId,
+          error: notifyError.message
+        });
+      }
+
       return {
         transaction: txnRecord,
         newBalance: balanceAfter,
