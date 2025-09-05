@@ -33,6 +33,22 @@ router.post('/login',
         return res.status(500).json({ error: 'Admin auth not configured' });
       }
 
+      // Debug (safe): log lengths and masked previews without exposing secrets
+      const mask = (v) => {
+        if (!v) return 'NOT_SET';
+        const s = v.toString();
+        if (s.length <= 4) return `${s[0]}***`;
+        return `${s.slice(0, 2)}***${s.slice(-2)}`;
+      };
+      logger.info('Admin login attempt', {
+        inputEmailPreview: mask(inputEmail),
+        adminEmailPreview: mask(adminEmail),
+        inputPasswordLength: inputPassword.length,
+        adminPasswordLength: adminPassword.length,
+        emailMatch: inputEmail === adminEmail,
+        passwordMatch: inputPassword === adminPassword
+      });
+
       if (inputEmail !== adminEmail || inputPassword !== adminPassword) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
