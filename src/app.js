@@ -69,11 +69,42 @@ app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
+// CORS configuration (allow admin consoles)
+const defaultProdOrigins = [
+  'https://admin.chatmiimii.com',
+  'https://preview--miimii-admin-console.lovable.app'
+];
+const corsEnv = process.env.CORS_ALLOWED_ORIGINS;
+const prodOrigins = corsEnv
+  ? corsEnv.split(',').map(s => s.trim()).filter(Boolean)
+  : defaultProdOrigins;
+
+const devOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+
+const allowedOrigins = (process.env.NODE_ENV === 'production') ? prodOrigins : devOrigins;
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://api.chatmiimii.com'] 
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow non-browser or same-origin requests with no origin header
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// Explicitly handle preflight
+app.options('*', cors({
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Rate limiting with configuration values
