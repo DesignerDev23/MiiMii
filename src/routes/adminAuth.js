@@ -18,18 +18,26 @@ router.post('/login',
     try {
       const { email, password } = req.body;
 
-      const adminEmail = process.env.ADMIN_EMAIL;
-      const adminPassword = process.env.ADMIN_PASSWORD;
+      const adminEmail = (process.env.ADMIN_EMAIL || '').toString().trim().toLowerCase();
+      const adminPassword = (process.env.ADMIN_PASSWORD || '').toString().trim();
       if (!adminEmail || !adminPassword) {
         logger.error('Admin credentials not configured');
         return res.status(500).json({ error: 'Admin auth not configured' });
       }
 
-      if (email !== adminEmail || password !== adminPassword) {
+      const inputEmail = (email || '').toString().trim().toLowerCase();
+      const inputPassword = (password || '').toString().trim();
+
+      if (!process.env.ADMIN_JWT_SECRET) {
+        logger.error('ADMIN_JWT_SECRET is not configured');
+        return res.status(500).json({ error: 'Admin auth not configured' });
+      }
+
+      if (inputEmail !== adminEmail || inputPassword !== adminPassword) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({ id: 'admin', email, role: 'admin' }, process.env.ADMIN_JWT_SECRET, {
+      const token = jwt.sign({ id: 'admin', email: adminEmail, role: 'admin' }, process.env.ADMIN_JWT_SECRET, {
         expiresIn: '12h'
       });
 
