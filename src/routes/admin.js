@@ -763,44 +763,54 @@ router.get('/revenue/stats',
   async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
-      const dateFilter = {};
-      if (startDate) dateFilter[require('sequelize').Op.gte] = new Date(startDate);
-      if (endDate) dateFilter[require('sequelize').Op.lte] = new Date(endDate);
+      const { Op, fn, col } = require('sequelize');
+      const whereBase = { status: 'completed' };
+      if (startDate || endDate) {
+        whereBase.createdAt = {};
+        if (startDate) whereBase.createdAt[Op.gte] = new Date(startDate);
+        if (endDate) whereBase.createdAt[Op.lte] = new Date(endDate);
+      }
 
-      const whereBase = {};
-      if (startDate || endDate) whereBase.createdAt = dateFilter;
-      whereBase.status = 'completed';
+      // Transfer out charges: sum of fee for completed bank transfers
+      const transferOutFee = parseFloat(
+        (await require('../models').Transaction.findOne({
+          where: { ...whereBase, category: 'bank_transfer' },
+          attributes: [[fn('SUM', col('fee')), 'sumFee']],
+          raw: true
+        }))?.sumFee || 0
+      );
 
-      // Transfer out charges: sum of fee for bank_transfer category
-      const transferOut = await sequelize.models.Transaction.findAll({
-        where: { ...whereBase, category: 'bank_transfer' },
-        attributes: [[require('sequelize').fn('SUM', require('sequelize').col('fee')), 'sumFee']]
-      });
-      const transferOutFee = parseFloat(transferOut[0]?.dataValues?.sumFee || 0);
+      // Maintenance fees: sum of debited amount for maintenance_fee
+      const maintenanceRevenue = parseFloat(
+        (await require('../models').Transaction.findOne({
+          where: { ...whereBase, category: 'maintenance_fee', type: 'debit' },
+          attributes: [[fn('SUM', col('amount')), 'sumAmount']],
+          raw: true
+        }))?.sumAmount || 0
+      );
 
-      // Maintenance fees: sum of amount for maintenance_fee (we recorded as amount debited)
-      const maintenance = await sequelize.models.Transaction.findAll({
-        where: { ...whereBase, category: 'maintenance_fee', type: 'debit' },
-        attributes: [[require('sequelize').fn('SUM', require('sequelize').col('amount')), 'sumAmount']]
-      });
-      const maintenanceRevenue = parseFloat(maintenance[0]?.dataValues?.sumAmount || 0);
-
-      // Data margin: sum(selling - retail) from metadata
-      const dataTx = await sequelize.models.Transaction.findAll({
+      // Data margin: sum(selling - retail)
+      const dataRows = await require('../models').Transaction.findAll({
         where: { ...whereBase, category: 'data', type: 'debit' },
-        attributes: ['metadata']
+        attributes: ['amount', 'metadata'],
+        raw: true
       });
       let dataMargin = 0;
-      for (const tx of dataTx) {
-        const retail = parseFloat(tx.metadata?.planRetailPrice || 0);
-        const selling = parseFloat(tx.metadata?.planSellingPrice || 0);
+      for (const row of dataRows) {
+        let meta = row.metadata;
+        if (typeof meta === 'string') {
+          try { meta = JSON.parse(meta); } catch (_) { meta = null; }
+        }
+        const retail = parseFloat(meta?.planRetailPrice ?? 0);
+        // selling price defaults to transaction.amount if not present in metadata
+        const selling = parseFloat(meta?.planSellingPrice ?? row.amount ?? 0);
         if (!isNaN(retail) && !isNaN(selling) && selling >= retail) {
           dataMargin += (selling - retail);
         }
       }
 
-      // Airtime margin: fixed ₦2 per completed airtime purchase
-      const airtimeCount = await sequelize.models.Transaction.count({
+      // Airtime margin: ₦2 per completed airtime debit
+      const airtimeCount = await require('../models').Transaction.count({
         where: { ...whereBase, category: 'airtime', type: 'debit' }
       });
       const airtimeMargin = airtimeCount * 2;
@@ -811,8 +821,8 @@ router.get('/revenue/stats',
         success: true,
         period: { startDate: startDate || null, endDate: endDate || null },
         streams: {
-          transferOutFees: transferOutFee,
-          monthlyMaintenanceFees: maintenanceRevenue,
+          transferOutFees: parseFloat(transferOutFee.toFixed(2)),
+          monthlyMaintenanceFees: parseFloat(maintenanceRevenue.toFixed(2)),
           dataMargin: parseFloat(dataMargin.toFixed(2)),
           airtimeMargin: airtimeMargin
         },
