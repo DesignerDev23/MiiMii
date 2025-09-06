@@ -5,6 +5,9 @@ const userService = require('./user');
 const walletService = require('./wallet');
 const transactionService = require('./transaction');
 const bellbankService = require('./bellbank');
+const fs = require('fs');
+const path = require('path');
+const config = require('../config');
 
 class BankTransferService {
   constructor() {
@@ -589,8 +592,31 @@ class BankTransferService {
             };
             
             const receiptBuffer = await receiptService.generateTransferReceipt(receiptData);
-            await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer-receipt.jpg');
-            logger.info('Transfer receipt image sent successfully', { userId: user.id, reference: transaction.reference });
+
+            // Try link-based sending first (avoids media upload permissions)
+            const uploadsDir = path.join(__dirname, '../../uploads/receipts');
+            try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (_) {}
+            const fileName = `transfer-receipt-${transaction.reference}.jpg`;
+            const filePath = path.join(uploadsDir, fileName);
+            try {
+              fs.writeFileSync(filePath, receiptBuffer);
+              const baseUrl = config.getBaseUrl() || process.env.BASE_URL;
+              if (baseUrl) {
+                const publicUrl = `${String(baseUrl).replace(/\/+$/, '')}/uploads/receipts/${fileName}`;
+                await whatsappService.sendMediaMessage(user.whatsappNumber, 'image', publicUrl, 'Transfer Receipt');
+                logger.info('Transfer receipt image link sent successfully', { userId: user.id, reference: transaction.reference, url: publicUrl });
+              } else {
+                // Fallback to direct media upload if BASE_URL not configured
+                await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer-receipt.jpg');
+                logger.info('Transfer receipt image sent via upload successfully', { userId: user.id, reference: transaction.reference });
+              }
+            } catch (sendErr) {
+              logger.warn('Failed to send receipt image via link/upload, falling back to text', { error: sendErr.message });
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
+              );
+            }
           } catch (receiptError) {
             logger.warn('Failed to generate/send transfer receipt image, falling back to text', { error: receiptError.message });
             try {
