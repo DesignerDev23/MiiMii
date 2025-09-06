@@ -1687,7 +1687,7 @@ Welcome to the future of banking! 🚀`;
           let detectedBankCode = null;
           try {
             const bellbankService = require('./bellbank');
-            const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
+            const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
             for (const token of tokens) {
               const code = await bellbankService.resolveInstitutionCode(token);
               if (code) {

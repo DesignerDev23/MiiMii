@@ -525,6 +525,22 @@ class BellBankService {
 
     const raw = String(input).trim().toLowerCase();
 
+    // Ignore pure numeric tokens (prevents mapping amounts like "100" -> 000100)
+    if (/^\d+$/.test(raw)) {
+      return null;
+    }
+
+    // Skip generic words that commonly appear in messages
+    const genericWords = new Set([
+      'bank','account','acct','acc','number','no','acctno','accno','send','transfer','to','for','the','my','your',
+      'amount','money','naira','fee','charges','pin','yes','no','confirm','confirmation','receipt','reference','ref',
+      'successful','success','completed','complete','please','help','buy','pay','data','airtime','bill','bills',
+      'recipient','name','mr','mrs','ms','sir','ma','and','on','in','of','with','at','from','via'
+    ]);
+    if (genericWords.has(raw)) {
+      return null;
+    }
+
     // If already a 6-digit institution code
     if (/^\d{6}$/.test(raw)) {
       return raw;
@@ -564,16 +580,22 @@ class BellBankService {
       // First-3-letters prefix matching (e.g., "mon" → Moniepoint)
       if (/^[a-z]{3,}$/.test(normalized)) {
         const prefix = normalized.slice(0, 3);
-        const matchedKey = Object.keys(mapping.bankMapping)
-          .find(name => name.startsWith(prefix));
-        if (matchedKey) return mapping.bankMapping[matchedKey];
+        // Only accept if it uniquely matches a bank name prefix
+        const candidates = Object.keys(mapping.bankMapping)
+          .filter(name => name.startsWith(prefix));
+        if (candidates.length === 1) {
+          const matchedKey = candidates[0];
+          return mapping.bankMapping[matchedKey];
+        }
       }
 
       // Flexible partial contains matching in either direction
-      const fuzzyKey = Object.keys(mapping.bankMapping).find(key =>
+      const fuzzyCandidates = Object.keys(mapping.bankMapping).filter(key =>
         key.includes(normalized) || normalized.includes(key)
       );
-      if (fuzzyKey) return mapping.bankMapping[fuzzyKey];
+      if (fuzzyCandidates.length === 1) {
+        return mapping.bankMapping[fuzzyCandidates[0]];
+      }
     } catch (e) {
       logger.warn('resolveInstitutionCode: dynamic mapping failed, falling back', { error: e.message });
     }
@@ -600,7 +622,7 @@ class BellBankService {
       // Fintech/digital
       'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
       'alat': '000094', 'v bank': '000095', 'vbank': '000095', 'rubies': '000096',
-      'fairmoney': '000099', 'branch': '000100', 'eyowo': '000101', 'flutterwave': '000102', 'paystack': '000103',
+      'fairmoney': '000099', 'eyowo': '000101', 'flutterwave': '000102', 'paystack': '000103',
       'moniepoint': '000104', 'monipoint': '000104',
       '9psb': '000105', 'providus': '000106', 'polaris': '000107', 'titan': '000108', 'titan trust': '000108'
     };
@@ -608,13 +630,13 @@ class BellBankService {
     if (staticMapping[normalized]) return staticMapping[normalized];
 
     // Prefix search on static mapping
-    const staticKey = Object.keys(staticMapping).find(k => k.startsWith(normalized.slice(0, 3)));
-    if (staticKey) return staticMapping[staticKey];
+    const staticCandidates = Object.keys(staticMapping).filter(k => k.startsWith(normalized.slice(0, 3)));
+    if (staticCandidates.length === 1) return staticMapping[staticCandidates[0]];
 
     // Last resort: if user supplied at least 3 letters, try any contains
     if (normalized.length >= 3) {
-      const containsKey = Object.keys(staticMapping).find(k => k.includes(normalized) || normalized.includes(k));
-      if (containsKey) return staticMapping[containsKey];
+      const containsCandidates = Object.keys(staticMapping).filter(k => k.includes(normalized) || normalized.includes(k));
+      if (containsCandidates.length === 1) return staticMapping[containsCandidates[0]];
     }
 
     return null;

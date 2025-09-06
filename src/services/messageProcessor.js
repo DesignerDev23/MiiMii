@@ -2183,7 +2183,7 @@ class MessageProcessor {
     // If not found, try resolving via BellBank resolver using tokens (supports 3-letter prefixes)
     if (!bankCode) {
       try {
-        const tokens = textLower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
+        const tokens = textLower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
         for (const token of tokens) {
           const resolved = await bellbankService.resolveInstitutionCode(token);
           if (resolved) {
