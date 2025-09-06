@@ -541,7 +541,7 @@ Extract intent and data from this message. Consider the user context and any ext
           return await this.handleMoneyTransfer(user, extractedData, aiResponse);
           
         case 'bank_transfer':
-          return await this.handleBankTransfer(user, extractedData, aiResponse);
+          return await this.handleBankTransfer(user, extractedData, aiResponse, originalMessage);
           
         case 'airtime':
           return await this.handleAirtimePurchase(user, extractedData, aiResponse);
@@ -662,7 +662,7 @@ Extract intent and data from this message. Consider the user context and any ext
     };
   }
 
-  async handleBankTransfer(user, extractedData, aiResponse) {
+  async handleBankTransfer(user, extractedData, aiResponse, originalMessage = '') {
     const { amount, accountNumber, bankName, bankCode } = extractedData;
     
     // Debug: Log the extracted data
@@ -763,6 +763,9 @@ Extract intent and data from this message. Consider the user context and any ext
       // Resolve bank code with flexible prefix/synonym detection (BellBank API mapping first)
       let resolvedBankCode = bankCode;
       let resolvedBankName = bankName;
+      const bellbankService = require('./bellbank');
+
+      // 1) If we already have a bankName, try resolve directly
       if (!resolvedBankCode && bankName) {
         const bellbankService = require('./bellbank');
         // Try new resolver which supports 3-letter prefixes and synonyms
@@ -787,6 +790,24 @@ Extract intent and data from this message. Consider the user context and any ext
           } catch (e) {
             logger.warn('Fallback bank list scan failed', { error: e.message });
           }
+        }
+      }
+
+      // 2) If bankName missing or 'unknown', try inferring from message tokens
+      if (!resolvedBankCode && originalMessage) {
+        try {
+          const lower = originalMessage.toLowerCase();
+          const tokens = lower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
+          for (const token of tokens) {
+            const code = await bellbankService.resolveInstitutionCode(token);
+            if (code) {
+              resolvedBankCode = code;
+              resolvedBankName = token;
+              break;
+            }
+          }
+        } catch (err) {
+          logger.warn('Bank inference from original message failed', { error: err.message });
         }
       }
       
