@@ -1660,14 +1660,33 @@ Welcome to the future of banking! 🚀`;
           const amount = amountMatch[1].toLowerCase().includes('k') ? 
             parseInt(amountMatch[1].toLowerCase().replace('k', '')) * 1000 : 
             parseInt(amountMatch[1]);
-          
+
+          // Try to resolve bank from tokens (supports 3-letter prefixes like "mon" for Moniepoint)
+          let detectedBankName = null;
+          let detectedBankCode = null;
+          try {
+            const bellbankService = require('./bellbank');
+            const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
+            for (const token of tokens) {
+              const code = await bellbankService.resolveInstitutionCode(token);
+              if (code) {
+                detectedBankName = token; // keep original token; proper name will be set after validation
+                detectedBankCode = code;  // 6-digit institution code
+                break;
+              }
+            }
+          } catch (e) {
+            logger.warn('Bank detection during hard override failed', { error: e.message });
+          }
+
           return {
             intent: 'bank_transfer',
             confidence: 0.99,
             extractedData: {
               amount: amount,
               accountNumber: accountMatch[1],
-              bankName: lowerMessage.includes('opay') ? 'opay' : 'unknown',
+              bankName: detectedBankName || (lowerMessage.includes('opay') ? 'opay' : 'unknown'),
+              bankCode: detectedBankCode || undefined,
               recipientName: null
             },
             response: `Perfect! I can see you want to send money. Let me verify the account details and get the recipient name for you. 🔍`,
