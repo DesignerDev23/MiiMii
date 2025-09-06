@@ -570,53 +570,36 @@ class BankTransferService {
             reference: transaction.reference
           });
 
-          // Generate and send receipt for immediate completion
+          // Generate and send receipt image
           try {
             const receiptService = require('./receipt');
             const whatsappService = require('./whatsapp');
             
             const receiptData = {
-              transactionType: 'Bank Transfer',
+              type: 'Bank Transfer',
               amount: parseFloat(feeCalculation.amount),
-              sender: `${user.firstName} ${user.lastName}`.trim() || 'MiiMii User',
-              beneficiary: accountValidation.accountName,
+              fee: parseFloat(feeCalculation.totalFee),
+              totalAmount: parseFloat(feeCalculation.totalAmount),
+              recipientName: accountValidation.accountName,
+              recipientBank: accountValidation.bank,
+              recipientAccount: accountValidation.accountNumber,
               reference: transaction.reference,
-              date: new Date().toLocaleString('en-US', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-              }),
-              status: 'Successful',
-              remark: narration || 'Bank transfer',
-              charges: feeCalculation.totalFee,
-              discount: 0
+              date: new Date().toLocaleString('en-GB'),
+              senderName: `${user.firstName} ${user.lastName}`.trim() || 'MiiMii User'
             };
             
-            const receiptBuffer = await receiptService.generateReceipt(receiptData);
-            
-            // Send receipt as text message (simplified for test numbers)
-            await whatsappService.sendTextMessage(
-              user.whatsappNumber,
-              `✅ *Transfer Receipt*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n📱 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
-            );
-            logger.info('Transfer receipt sent as text successfully', { userId: user.id, reference: transaction.reference });
-            
-            // Send additional success message
-            await whatsappService.sendTextMessage(
-              user.whatsappNumber,
-              `🎉 *Transfer Completed Successfully!*\n\nYour transfer of ₦${feeCalculation.amount.toLocaleString()} to ${accountValidation.accountName} has been processed.\n\n📋 *Reference:* ${transaction.reference}\n⏰ *Estimated Arrival:* 5-15 minutes\n\nThank you for using MiiMii! 💙`
-            );
-            
-            logger.info('Transfer receipt and success message sent successfully', {
-              userId,
-              reference: transaction.reference
-            });
+            const receiptBuffer = await receiptService.generateTransferReceipt(receiptData);
+            await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer-receipt.jpg');
+            logger.info('Transfer receipt image sent successfully', { userId: user.id, reference: transaction.reference });
           } catch (receiptError) {
-            logger.warn('Failed to generate transfer receipt', { error: receiptError.message });
-            // Don't fail the transfer if receipt generation fails
+            logger.warn('Failed to generate/send transfer receipt image, falling back to text', { error: receiptError.message });
+            try {
+              const whatsappService = require('./whatsapp');
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bank}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
+              );
+            } catch (_) {}
           }
 
           return {
