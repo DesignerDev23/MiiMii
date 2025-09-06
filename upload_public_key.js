@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const ACCESS_TOKEN = 'EAAXQZBHvBuxgBPN2hO6wDaC2TnX2W2Tq2QnjHEYW9r9qmoCzJBa0fEZBJp8XXpiZBeCx6xqalX5PJ1WrAqENxMAyq3LsuqkPEZBJ4fsPGKTKoHSoOC26hDBhzY68hwLDM0RzE5wNAlJS3bPUZAkRsj2khewZB7l1a7OGZAIrhzhaIlQ6WqZBr95RrQhKGiKwdTaVhX2mLbZCrHnlnk4Mv';
-const PHONE_NUMBER_ID = '755450640975332';
+const ACCESS_TOKEN = 'EAASwZAYXOdmwBPQswOrHRktjGvxnhayygaKjSNYLMBFxEBcpYlUic7VeZCIcAevyrKNHEcy95Wney1afNpu5lRFYfdMqUBjrAxtsiZBmHHcgY7Ugbc5Aqw6IPZAsqZCWAUZBVUvIDzpSLNIxUZAt5zm7mwqK9ZA5WIqOVnHlndZA9cDZBZBPNlfBWl4nDCqP0VNNtv2ro8lgjsQniRchg7wtR4oGMrOzmVXWnFUIFp4p8rtfBXiIJXINKSiumv7Fg1LkwZDZD';
+const PHONE_NUMBER_ID = '823014844219641';
 
 /**
  * Upload public key to WhatsApp Business API
@@ -15,7 +15,7 @@ async function uploadPublicKey() {
     console.log(`📱 Phone Number ID: ${PHONE_NUMBER_ID}`);
     
     // Check if public key file exists
-    const publicKeyPath = path.join(__dirname, 'flow-keys', 'public_key.pem');
+    const publicKeyPath = path.join(__dirname, 'keys', 'flow_public_key.pem');
     
     if (!fs.existsSync(publicKeyPath)) {
       console.error('❌ Public key file not found at:', publicKeyPath);

@@ -1907,45 +1907,9 @@ class MessageProcessor {
           
           if (!resolvedBankCode) {
             try {
-              logger.info('Attempting to fetch dynamic bank mapping for message processing');
-              const bankMapping = await bellbankService.getBankMapping();
-              
-              // More flexible bank name matching
-              const bankNameLower = bankName?.toLowerCase().trim();
-              
-              // Look for exact match or partial match in dynamic mapping
-              const foundCode = bankMapping.bankMapping[bankNameLower] || 
-                               Object.keys(bankMapping.bankMapping).find(key => 
-                                 bankNameLower?.includes(key) || key.includes(bankNameLower)
-                               );
-              
-              if (foundCode) {
-                // If foundCode is already an institution code (6 digits), use it directly
-                // Otherwise, it's a bank name key, so get the institution code from the mapping
-                const dynamicValue = bankMapping.bankMapping[foundCode];
-                resolvedBankCode = foundCode.length === 6 ? foundCode : dynamicValue;
-                
-                logger.info('Found dynamic bank code mapping for message processing', {
-                  bankName,
-                  foundCode,
-                  foundCodeLength: foundCode.length,
-                  foundCodeIs6Digits: foundCode.length === 6,
-                  bankMappingValue: dynamicValue,
-                  resolvedBankCode,
-                  resolvedBankCodeType: typeof resolvedBankCode,
-                  source: 'BellBank API'
-                });
-                
-                // If dynamic mapping didn't work (resolvedBankCode is undefined), fall back to static
-                if (!resolvedBankCode) {
-                  logger.warn('Dynamic mapping found but value is undefined, falling back to static mapping', {
-                    foundCode,
-                    bankName
-                  });
-                  // Continue to static fallback below
-                }
-              }
-              
+              logger.info('Resolving bank code via BellBank resolver');
+              const resolved = await bellbankService.resolveInstitutionCode(bankName);
+              resolvedBankCode = resolved || null;
               // If dynamic mapping failed or returned undefined, use static fallback
               if (!resolvedBankCode) {
                 // Fallback to static mapping if dynamic lookup fails
@@ -2213,6 +2177,22 @@ class MessageProcessor {
       if (textLower.includes(key)) { 
         bankCode = code; 
         break; 
+      }
+    }
+
+    // If not found, try resolving via BellBank resolver using tokens (supports 3-letter prefixes)
+    if (!bankCode) {
+      try {
+        const tokens = textLower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
+        for (const token of tokens) {
+          const resolved = await bellbankService.resolveInstitutionCode(token);
+          if (resolved) {
+            bankCode = resolved; // 6-digit institution code
+            break;
+          }
+        }
+      } catch (fallbackErr) {
+        logger.warn('Fallback bank resolution failed', { error: fallbackErr.message });
       }
     }
 

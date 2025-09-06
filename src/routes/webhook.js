@@ -147,7 +147,10 @@ router.get('/whatsapp', (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  const result = whatsappService.verifyWebhook(mode, token, challenge);
+  // Allow verify token via env BOT_WEBHOOK_VERIFY_TOKEN too
+  const expectedToken = process.env.BOT_WEBHOOK_VERIFY_TOKEN || process.env.WHATSAPP_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
+  const isValid = mode === 'subscribe' && token === expectedToken && challenge;
+  const result = isValid ? challenge : null;
   
   if (result) {
     res.status(200).send(challenge);

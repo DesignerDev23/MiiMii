@@ -760,53 +760,33 @@ Extract intent and data from this message. Consider the user context and any ext
         };
       }
 
-      // Get bank code from BellBank API bank list
+      // Resolve bank code with flexible prefix/synonym detection (BellBank API mapping first)
       let resolvedBankCode = bankCode;
       let resolvedBankName = bankName;
-      
       if (!resolvedBankCode && bankName) {
-        try {
-          logger.info('Getting bank code from BellBank API bank list', { bankName });
-          const bellbankService = require('./bellbank');
-          const bankListResponse = await bellbankService.getBankList();
-          
-          if (bankListResponse.success && bankListResponse.banks) {
-            const bankNameLower = bankName.toLowerCase().trim();
-            
-            // Look for matching bank in the list
-            const matchingBank = bankListResponse.banks.find(bank => {
-              const institutionName = bank.institutionName.toLowerCase();
-              return institutionName.includes(bankNameLower) || bankNameLower.includes(institutionName);
-            });
-            
-            if (matchingBank) {
-              resolvedBankCode = matchingBank.institutionCode;
-              resolvedBankName = matchingBank.institutionName;
-              logger.info('Found bank in BellBank API list', {
-                originalBankName: bankName,
-              resolvedBankCode,
-                resolvedBankName
+        const bellbankService = require('./bellbank');
+        // Try new resolver which supports 3-letter prefixes and synonyms
+        resolvedBankCode = await bellbankService.resolveInstitutionCode(bankName);
+        
+        if (!resolvedBankCode) {
+          // Fallback: try explicit bank list scanning
+          try {
+            logger.info('Fallback: scanning BellBank bank list for bank name', { bankName });
+            const bankListResponse = await bellbankService.getBankList();
+            if (bankListResponse.success && bankListResponse.banks) {
+              const bankNameLower = bankName.toLowerCase().trim();
+              const matchingBank = bankListResponse.banks.find(bank => {
+                const institutionName = bank.institutionName.toLowerCase();
+                return institutionName.includes(bankNameLower) || bankNameLower.includes(institutionName);
               });
-            } else {
-              // Fallback to static mapping if not found in API list
-              logger.warn('Bank not found in BellBank API list, using static mapping', { bankName });
-              const staticMapping = this.getStaticBankCodeMapping();
-              resolvedBankCode = staticMapping[bankNameLower];
+              if (matchingBank) {
+                resolvedBankCode = matchingBank.institutionCode;
+                resolvedBankName = matchingBank.institutionName;
+              }
             }
-          } else {
-            // Fallback to static mapping if API call fails
-            logger.warn('BellBank API bank list call failed, using static mapping', { bankName });
-            const staticMapping = this.getStaticBankCodeMapping();
-            resolvedBankCode = staticMapping[bankName.toLowerCase()];
+          } catch (e) {
+            logger.warn('Fallback bank list scan failed', { error: e.message });
           }
-        } catch (error) {
-          logger.warn('Error getting bank code from BellBank API, using static mapping', {
-            error: error.message,
-            bankName
-          });
-          // Fallback to static mapping
-          const staticMapping = this.getStaticBankCodeMapping();
-          resolvedBankCode = staticMapping[bankName.toLowerCase()];
         }
       }
       

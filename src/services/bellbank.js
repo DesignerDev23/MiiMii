@@ -513,6 +513,113 @@ class BellBankService {
     }
   }
 
+  /**
+   * Resolve institution code by flexible input:
+   * - Full or partial bank name (case-insensitive)
+   * - First 3 letters prefix (e.g., "mon" → Moniepoint)
+   * - Common misspellings/synonyms (moniepoint/monipoint)
+   * - 3-digit CBN code → mapped to 6-digit when possible
+   */
+  async resolveInstitutionCode(input) {
+    if (!input) return null;
+
+    const raw = String(input).trim().toLowerCase();
+
+    // If already a 6-digit institution code
+    if (/^\d{6}$/.test(raw)) {
+      return raw;
+    }
+
+    // If 3-digit bank code (CBN style), try convert using mappings used by nameEnquiry/initiateTransfer
+    if (/^\d{3}$/.test(raw)) {
+      const codeMapping = {
+        '082': '000082', '044': '000044', '014': '000014', '011': '000016', '058': '000058', '057': '000057',
+        '070': '000070', '032': '000032', '035': '000035', '232': '000232', '050': '000050', '214': '000214',
+        '221': '000221', '068': '000068', '023': '000023', '030': '000030', '215': '000215', '084': '000084',
+        '033': '000033', '090': '000090', '091': '000091', '092': '000092', '093': '000093', '094': '000094',
+        '095': '000095', '096': '000096', '097': '000097', '098': '000098', '099': '000099', '100': '000100',
+        '101': '000101', '102': '000102', '103': '000103', '104': '000104', '105': '000105', '106': '000106'
+      };
+      return codeMapping[raw] || null;
+    }
+
+    // Normalize common synonyms/misspellings
+    let normalized = raw
+      .replace(/moni[e]?point|monipoint/gi, 'moniepoint')
+      .replace(/gtb|gt bank|guaranty\s*trust/gi, 'gtbank')
+      .replace(/first\s*bank(?:\s*of\s*nigeria)?|firstbank|fbn/gi, 'first bank')
+      .replace(/stanbic\s*ibtc|ibtc/gi, 'stanbic ibtc')
+      .replace(/eco\s*bank/gi, 'ecobank')
+      .trim();
+
+    // Try dynamic mapping first
+    try {
+      const mapping = await this.getBankMapping();
+
+      // Exact name match
+      if (mapping.bankMapping[normalized]) {
+        return mapping.bankMapping[normalized];
+      }
+
+      // First-3-letters prefix matching (e.g., "mon" → Moniepoint)
+      if (/^[a-z]{3,}$/.test(normalized)) {
+        const prefix = normalized.slice(0, 3);
+        const matchedKey = Object.keys(mapping.bankMapping)
+          .find(name => name.startsWith(prefix));
+        if (matchedKey) return mapping.bankMapping[matchedKey];
+      }
+
+      // Flexible partial contains matching in either direction
+      const fuzzyKey = Object.keys(mapping.bankMapping).find(key =>
+        key.includes(normalized) || normalized.includes(key)
+      );
+      if (fuzzyKey) return mapping.bankMapping[fuzzyKey];
+    } catch (e) {
+      logger.warn('resolveInstitutionCode: dynamic mapping failed, falling back', { error: e.message });
+    }
+
+    // Static fallback dictionary including Moniepoint/Monipoint and other fintechs
+    const staticMapping = {
+      'access': '000014', 'access bank': '000014',
+      'first bank': '000016', 'first': '000016',
+      'gtbank': '000058', 'gt bank': '000058',
+      'zenith': '000057', 'zenith bank': '000057',
+      'keystone': '000082', 'keystone bank': '000082',
+      'fidelity': '000070', 'fidelity bank': '000070',
+      'union': '000032', 'union bank': '000032',
+      'wema': '000035', 'wema bank': '000035',
+      'sterling': '000232', 'sterling bank': '000232',
+      'ecobank': '000050',
+      'fcmb': '000214', 'first city monument bank': '000214',
+      'stanbic': '000221', 'stanbic ibtc': '000221', 'ibtc': '000221',
+      'standard chartered': '000068', 'standard chartered bank': '000068',
+      'citibank': '000023', 'citi bank': '000023',
+      'heritage': '000030', 'heritage bank': '000030',
+      'unity': '000215', 'unity bank': '000215',
+      'enterprise': '000084', 'enterprise bank': '000084',
+      // Fintech/digital
+      'opay': '000090', 'palmpay': '000091', 'kuda': '000092', 'carbon': '000093',
+      'alat': '000094', 'v bank': '000095', 'vbank': '000095', 'rubies': '000096',
+      'fairmoney': '000099', 'branch': '000100', 'eyowo': '000101', 'flutterwave': '000102', 'paystack': '000103',
+      'moniepoint': '000104', 'monipoint': '000104',
+      '9psb': '000105', 'providus': '000106', 'polaris': '000107', 'titan': '000108', 'titan trust': '000108'
+    };
+
+    if (staticMapping[normalized]) return staticMapping[normalized];
+
+    // Prefix search on static mapping
+    const staticKey = Object.keys(staticMapping).find(k => k.startsWith(normalized.slice(0, 3)));
+    if (staticKey) return staticMapping[staticKey];
+
+    // Last resort: if user supplied at least 3 letters, try any contains
+    if (normalized.length >= 3) {
+      const containsKey = Object.keys(staticMapping).find(k => k.includes(normalized) || normalized.includes(k));
+      if (containsKey) return staticMapping[containsKey];
+    }
+
+    return null;
+  }
+
   // Get common name variations for a bank
   getBankNameVariations(bankName) {
     const variations = [bankName];

@@ -11,7 +11,8 @@ class WhatsAppService {
     this.phoneNumberId = whatsappConfig.phoneNumberId;
     this.businessAccountId = whatsappConfig.businessAccountId;
     this.baseURL = `https://graph.facebook.com/v23.0/${this.phoneNumberId}`;
-    this.verifyToken = whatsappConfig.webhookSecret; // Changed from webhookVerifyToken to webhookSecret
+    // Accept multiple envs for verify token: BOT_WEBHOOK_VERIFY_TOKEN preferred
+    this.verifyToken = process.env.BOT_WEBHOOK_VERIFY_TOKEN || whatsappConfig.webhookSecret;
     this.axiosConfig = axiosConfig;
   }
 
