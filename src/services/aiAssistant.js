@@ -883,13 +883,19 @@ Extract intent and data from this message. Consider the user context and any ext
     } catch (error) {
       logger.error('Bank transfer handling failed', { 
         error: error.message, 
+        stack: error.stack,
         userId: user.id,
         extractedData 
       });
       
+      // Surface provider or validation error to user for clarity
+      const safeMessage = error.message && typeof error.message === 'string'
+        ? error.message
+        : 'I encountered an unexpected error. Please try again.';
+      
       return {
         intent: 'bank_transfer',
-        message: `❌ I encountered an error processing your bank transfer. Please try again or contact support if the issue persists.`,
+        message: `❌ ${safeMessage}`,
         awaitingInput: 'bank_transfer_details',
         context: 'bank_transfer'
       };
