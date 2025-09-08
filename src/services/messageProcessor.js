@@ -1096,6 +1096,14 @@ class MessageProcessor {
                 await this.storeConversationState(user, newState);
                 // Keep in-memory state in sync for immediate flow handling
                 user.conversationState = newState;
+                // Immediately advance the data conversation using the list selection
+                try {
+                  const aiAssistant = require('./aiAssistant');
+                  await aiAssistant.handleConversationFlow(user, interactiveResult.originalText || interactiveResult.listReply.title, user.conversationState);
+                  return { handled: true };
+                } catch (flowErr) {
+                  logger.error('Failed to advance data flow from list reply', { error: flowErr.message, userId: user.id });
+                }
               } else {
                 const newState = {
                   intent: 'list_reply',
