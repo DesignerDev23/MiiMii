@@ -466,6 +466,13 @@ class MessageProcessor {
                 accountNumber: state.data.accountNumber
               }
             );
+            // Fallback instruction if Flow submission fails (encryption issues)
+            try {
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                "If the PIN form doesn't submit, reply with your 4-digit PIN here to authorize the transfer."
+              );
+            } catch (_) {}
             
             logger.info('Transfer PIN flow sent to user', {
               userId: user.id,
