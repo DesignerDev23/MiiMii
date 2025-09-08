@@ -1137,6 +1137,15 @@ class MessageProcessor {
 
       // Process with AI Assistant for intent recognition and response
       const aiAssistant = require('./aiAssistant');
+      // If user is mid-conversation (e.g., data purchase), route to conversation handler first
+      if (user.conversationState && user.conversationState.awaitingInput) {
+        try {
+          await aiAssistant.handleConversationFlow(user, processedText, user.conversationState);
+          return;
+        } catch (flowErr) {
+          logger.error('Conversation flow handling failed', { error: flowErr.message, userId: user.id, awaitingInput: user.conversationState.awaitingInput });
+        }
+      }
       const aiAnalysis = await aiAssistant.analyzeUserIntent(processedText, user);
       
       logger.info('AI intent analysis result', {
