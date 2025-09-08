@@ -31,8 +31,12 @@ class MessageProcessor {
       }
 
       // If interactive (buttons/lists/flows), handle via the interactive-aware pipeline
+      // BUT do not short-circuit Flow completions (nfm_reply with flowResponse)
       if (messageType === 'interactive') {
-        return await this.handleCompletedUserMessage(user, message, 'interactive');
+        if (!message?.flowResponse?.responseJson) {
+          return await this.handleCompletedUserMessage(user, message, 'interactive');
+        }
+        // Fall through to Flow completion handling below
       }
 
       // Daily login check will be moved to after transfer conversation handling
