@@ -1460,7 +1460,9 @@ Extract intent and data from this message. Consider the user context and any ext
 
       case 'data_confirm': {
         const whatsappService = require('./whatsapp');
+        const whatsappFlowService = require('./whatsappFlowService');
         const redisClient = require('../utils/redis');
+        const appConfig = require('../config');
         const decision = (message || '').trim().toLowerCase();
         if (!['yes', 'y', 'no', 'n'].includes(decision)) {
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply YES to proceed or NO to cancel.');
@@ -1473,19 +1475,58 @@ Extract intent and data from this message. Consider the user context and any ext
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Cancelled ✅');
           return;
         }
-
+        // Send PIN verification Flow (navigate to PIN_VERIFICATION_SCREEN)
         const sessionId = conversationState?.data?.sessionId || null;
-        const nextState = { intent: 'data', awaitingInput: 'data_pin', context: 'data_purchase', step: 5, data: conversationState.data };
-        await user.updateConversationState(nextState);
-        if (sessionId) {
-          const session = await redisClient.getSession(sessionId);
-          if (session) {
-            session.state = 'enter_pin';
-            await redisClient.setSession(sessionId, session, 900);
-          }
+        const { network, planId, phone } = conversationState.data || {};
+        try {
+          const flowToken = whatsappFlowService.generateFlowToken(user.id);
+          // Store data in Redis under flow token for the Flow endpoint to read
+          const flowSession = {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            network,
+            phoneNumberInput: phone,
+            dataPlan: planId,
+            confirm: 'yes'
+          };
+          await redisClient.setSession(flowToken, flowSession, 900);
+
+          const flowData = {
+            flowId: appConfig.getWhatsappConfig().dataPurchaseFlowId,
+            flowToken,
+            flowCta: 'Authorize with PIN',
+            header: { type: 'text', text: '🔐 Authorize Purchase' },
+            body: `Enter your 4-digit PIN to authorize data purchase.\n\nNetwork: ${network}\nPlan ID: ${planId}\nPhone: ${phone}`,
+            flowAction: 'navigate',
+            flowActionPayload: {
+              screen: 'PIN_VERIFICATION_SCREEN',
+              data: {
+                network,
+                phoneNumber: phone,
+                dataPlan: planId,
+                confirm: 'yes'
+              }
+            }
+          };
+
+          await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+
+          // Mark conversation as awaiting the flow completion
+          await user.updateConversationState({
+            intent: 'data',
+            awaitingInput: 'data_pin_flow',
+            context: 'data_purchase',
+            step: 5,
+            data: { ...conversationState.data, flowToken }
+          });
+
+          return;
+        } catch (err) {
+          // Fallback to asking PIN in chat if Flow fails
+          await user.updateConversationState({ intent: 'data', awaitingInput: 'data_pin', context: 'data_purchase', step: 5, data: conversationState.data });
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter your 4-digit PIN to authorize this purchase.');
+          return;
         }
-        await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter your 4-digit PIN to authorize this purchase.');
-        return;
       }
 
       case 'data_pin': {

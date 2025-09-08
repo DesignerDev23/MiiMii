@@ -12,7 +12,39 @@
         "header": [ { "key": "Content-Type", "value": "application/json" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/auth/login", "host": ["{{baseUrl}}"], "path": ["api","admin","auth","login"] },
         "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{ADMIN_EMAIL}}\",\n  \"password\": \"{{ADMIN_PASSWORD}}\"\n}" }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Login success",
+          "originalRequest": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "url": { "raw": "{{baseUrl}}/api/admin/auth/login", "host": ["{{baseUrl}}"], "path": ["api","admin","auth","login"] }, "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"changeme\"\n}" } },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [ { "key": "Content-Type", "value": "application/json" } ],
+          "body": "{\n  \"success\": true,\n  \"token\": \"<jwt-token>\"\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"field\",\n      \"msg\": \"Invalid value\",\n      \"path\": \"email\",\n      \"location\": \"body\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "401 Unauthorized - Invalid credentials",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Invalid credentials\"\n}"
+        },
+        {
+          "name": "500 Server Error - Not configured",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Admin auth not configured\"\n}"
+        }
+      ]
     },
     {
       "name": "Dashboard Overview",
@@ -20,7 +52,30 @@
         "method": "GET",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/dashboard", "host": ["{{baseUrl}}"], "path": ["api","admin","dashboard"] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Summary",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"overview\": {\n    \"totalUsers\": 120,\n    \"activeUsers\": 95,\n    \"totalTransactions\": 1540,\n    \"totalVolume\": 1250000.5,\n    \"pendingTransactions\": 7,\n    \"openTickets\": 3\n  },\n  \"kycStats\": {\n    \"incomplete\": 5,\n    \"pending\": 2,\n    \"verified\": 110,\n    \"rejected\": 3\n  },\n  \"transactionTypes\": [\n    { \"type\": \"data\", \"count\": 300, \"volume\": 150000 },\n    { \"type\": \"airtime\", \"count\": 500, \"volume\": 200000 }\n  ],\n  \"recentTransactions\": [\n    { \"reference\": \"TRX-123\", \"type\": \"data\", \"amount\": 1000, \"user\": \"John Doe\", \"status\": \"completed\", \"createdAt\": \"2024-01-01T12:00:00.000Z\" }\n  ]\n}"
+        },
+        {
+          "name": "401 Unauthorized - Missing/invalid token",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Unauthorized\"\n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Failed to load dashboard\"\n}"
+        }
+      ]
     },
     {
       "name": "Users - List",
@@ -28,7 +83,37 @@
         "method": "GET",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/users?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","admin","users"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"20"}] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Paginated users",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"pagination\": { \"page\": 1, \"limit\": 20, \"total\": 120, \"pages\": 6 },\n  \"users\": [\n    {\n      \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n      \"name\": \"John Doe\",\n      \"whatsappNumber\": \"0803XXXXXXX\",\n      \"email\": \"john@example.com\",\n      \"kycStatus\": \"verified\",\n      \"isActive\": true,\n      \"isBanned\": false,\n      \"balance\": 1200.5,\n      \"lastSeen\": \"2024-01-01T10:00:00.000Z\",\n      \"createdAt\": \"2023-11-01T10:00:00.000Z\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"limit\", \"location\": \"query\" }\n  ]\n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get users\" \n}"
+        }
+      ]
     },
     {
       "name": "Users - Details",
@@ -36,7 +121,30 @@
         "method": "GET",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}"] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - User details",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"user\": {\n    \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"whatsappNumber\": \"0803XXXXXXX\",\n    \"email\": \"john@example.com\",\n    \"kycStatus\": \"verified\",\n    \"isActive\": true,\n    \"isBanned\": false\n  },\n  \"wallet\": {\n    \"balance\": 1200.5,\n    \"virtualAccountNumber\": \"1234567890\",\n    \"virtualAccountBank\": \"BellBank\",\n    \"isActive\": true,\n    \"isFrozen\": false\n  },\n  \"stats\": {\n    \"totalTransactions\": 50,\n    \"totalVolume\": 500000\n  },\n  \"recentTransactions\": [],\n  \"supportTickets\": []\n}"
+        },
+        {
+          "name": "404 Not Found - User missing",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"User not found\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get user details\" \n}"
+        }
+      ]
     },
     {
       "name": "Wallet - Freeze",
@@ -45,7 +153,37 @@
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}/wallet/freeze", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}","wallet","freeze"] },
         "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Fraud investigation\"\n}" }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Wallet frozen",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"success\": true,\n  \"message\": \"Wallet frozen\",\n  \"wallet\": { \n    \"isFrozen\": true,\n    \"freezeReason\": \"Fraud investigation\"\n  } \n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"errors\": [ { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"userId\", \"location\": \"params\" } ] \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to freeze wallet\" \n}"
+        }
+      ]
     },
     {
       "name": "Wallet - Unfreeze",
@@ -53,7 +191,37 @@
         "method": "POST",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}/wallet/unfreeze", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}","wallet","unfreeze"] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Wallet unfrozen",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"success\": true,\n  \"message\": \"Wallet unfrozen\",\n  \"wallet\": { \n    \"isFrozen\": false\n  } \n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"errors\": [ { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"userId\", \"location\": \"params\" } ] \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to unfreeze wallet\" \n}"
+        }
+      ]
     },
     {
       "name": "Wallet - Credit",
@@ -62,7 +230,37 @@
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}/wallet/credit", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}","wallet","credit"] },
         "body": { "mode": "raw", "raw": "{\n  \"amount\": 1000,\n  \"description\": \"Admin credit\"\n}" }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Wallet credited",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"success\": true,\n  \"message\": \"Wallet credited\",\n  \"result\": { \n    \"transactionId\": \"4a2b...\",\n    \"reference\": \"ADM-CR-001\",\n    \"amount\": 1000,\n    \"description\": \"Admin credit\"\n  } \n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"errors\": [ { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"amount\", \"location\": \"body\" } ] \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to credit wallet\" \n}"
+        }
+      ]
     },
     {
       "name": "Transactions - List",
@@ -70,7 +268,37 @@
         "method": "GET",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/transactions?page=1&limit=20", "host": ["{{baseUrl}}"], "path": ["api","admin","transactions"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"20"}] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Paginated transactions",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"pagination\": { \"page\": 1, \"limit\": 20, \"total\": 200, \"pages\": 10 },\n  \"transactions\": [\n    {\n      \"id\": \"...\",\n      \"reference\": \"TRX-001\",\n      \"type\": \"debit\",\n      \"category\": \"data\",\n      \"amount\": 1000,\n      \"fee\": 0,\n      \"status\": \"completed\",\n      \"description\": \"1GB MTN\",\n      \"user\": \"John Doe\",\n      \"userPhone\": \"0803XXXXXXX\",\n      \"createdAt\": \"2024-01-01T12:00:00.000Z\",\n      \"processedAt\": \"2024-01-01T12:00:10.000Z\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"errors\": [ { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"status\", \"location\": \"query\" } ] \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get transactions\" \n}"
+        }
+      ]
     },
     {
       "name": "Data Pricing - Get Overrides",
@@ -78,7 +306,30 @@
         "method": "GET",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/data-pricing", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing"] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Current overrides",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"success\": true,\n  \"overrides\": { \n    \"mtn\": { \"mtn-1gb-300\": 350 },\n    \"airtel\": { \"airtel-1gb-350\": 400 }\n  } \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get overrides\" \n}"
+        }
+      ]
     },
     {
       "name": "Data Pricing - Set Overrides",
@@ -87,7 +338,37 @@
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/data-pricing", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing"] },
         "body": { "mode": "raw", "raw": "{\n  \"overrides\": {\n    \"mtn\": { \"mtn-1gb-300\": 350 },\n    \"airtel\": { \"airtel-1gb-350\": 400 }\n  }\n}" }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Overrides updated",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"success\": true,\n  \"message\": \"Overrides updated\",\n  \"overrides\": { \n    \"mtn\": { \"mtn-1gb-300\": 350 },\n    \"airtel\": { \"airtel-1gb-350\": 400 }\n  } \n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"errors\": [ { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"overrides\", \"location\": \"body\" } ] \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to update overrides\" \n}"
+        }
+      ]
     },
     {
       "name": "Data Pricing - Clear Overrides",
@@ -95,7 +376,30 @@
         "method": "DELETE",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/data-pricing", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing"] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Overrides cleared",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"success\": true,\n  \"message\": \"Overrides cleared\" \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to clear overrides\" \n}"
+        }
+      ]
     },
     {
       "name": "Revenue - Stats",
@@ -103,7 +407,37 @@
         "method": "GET",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/revenue/stats?startDate={{startDate}}&endDate={{endDate}}", "host": ["{{baseUrl}}"], "path": ["api","admin","revenue","stats"], "query": [{"key":"startDate","value":"{{startDate}}"},{"key":"endDate","value":"{{endDate}}"}] }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK - Revenue stats",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"period\": { \"startDate\": \"2024-01-01\", \"endDate\": \"2024-01-31\" },\n  \"streams\": {\n    \"transferOutFees\": 2500,\n    \"monthlyMaintenanceFees\": 12000,\n    \"dataMargin\": 15000.5,\n    \"airtimeMargin\": 400\n  },\n  \"totalRevenue\": 29900.5\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"errors\": [ { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"startDate\", \"location\": \"query\" } ] \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to compute revenue stats\" \n}"
+        }
+      ]
     }
   ],
   "variable": [
