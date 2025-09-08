@@ -416,6 +416,17 @@ class MessageProcessor {
         conversationState: user.conversationState
       });
 
+      // If user is in a data purchase conversation, route directly to the conversation handler
+      if (user.conversationState && user.conversationState.awaitingInput && user.conversationState.intent === 'data') {
+        try {
+          const aiAssistantConv = require('./aiAssistant');
+          await aiAssistantConv.handleConversationFlow(user, messageContent, user.conversationState);
+          return;
+        } catch (convErr) {
+          logger.error('Data conversation handling failed in main pipeline', { error: convErr.message, userId: user.id, awaitingInput: user.conversationState.awaitingInput });
+        }
+      }
+
       // Analyze user message with AI to determine intent
       const aiAssistant = require('./aiAssistant');
       const intentAnalysis = await aiAssistant.analyzeUserIntent(messageContent, user);
@@ -1143,9 +1154,9 @@ class MessageProcessor {
                 }
               } else {
                 const newState = {
-                  intent: 'list_reply',
-                  context: 'list_reply',
-                  step: 1,
+                intent: 'list_reply',
+                context: 'list_reply',
+                step: 1,
                   data: { listReply: interactiveResult.listReply },
                   awaitingInput: 'list_reply'
                 };
@@ -2591,7 +2602,7 @@ class MessageProcessor {
     try {
       const whatsappService = require('./whatsapp');
       const redisClient = require('../utils/redis');
-
+      
       // Create a tracked session for the data purchase
       const sessionId = `data:${user.id}:${Date.now()}`;
       const session = {
@@ -2636,7 +2647,7 @@ class MessageProcessor {
       });
     } catch (error) {
       logger.error('Failed to start normal data purchase conversation', { error: error.message, userId: user.id });
-
+      
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
