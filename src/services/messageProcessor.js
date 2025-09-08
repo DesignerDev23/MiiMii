@@ -37,31 +37,58 @@ class MessageProcessor {
 
       // Daily login check will be moved to after transfer conversation handling
 
-      // Check if user is in transfer PIN flow state but sent a text message instead of completing the flow
+      // Check if user is in transfer PIN flow state
       if (messageType === 'text' && user.conversationState?.awaitingInput === 'transfer_pin_flow') {
-        // Check if user wants to cancel
-        if (messageContent?.toLowerCase().includes('cancel')) {
-          logger.info('User cancelled transfer PIN flow', {
-            userId: user.id,
-            messageContent
-          });
-          
+        const lowerMsg = (messageContent || '').toLowerCase().trim();
+        const whatsappService = require('./whatsapp');
+        const bankTransferService = require('./bankTransfer');
+
+        // Handle cancel
+        if (/(^|\b)(cancel|stop|quit|exit|abort|end)(\b|$)/.test(lowerMsg)) {
+          logger.info('User cancelled transfer PIN flow', { userId: user.id });
           await user.clearConversationState();
-          const whatsappService = require('./whatsapp');
-          await whatsappService.sendTextMessage(user.whatsappNumber, 
-            "✅ Transfer cancelled! You can start a new transfer anytime.");
+          await whatsappService.sendTextMessage(user.whatsappNumber, "✅ Transfer cancelled. You can start again anytime.");
           return;
         }
-        
-        logger.info('User in transfer PIN flow state sent text message instead of completing flow', {
-          userId: user.id,
-          messageContent,
-          conversationState: user.conversationState
-        });
-        
-        const whatsappService = require('./whatsapp');
-        await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "You have a transfer in progress. Please complete the transfer PIN verification in the flow above, or say 'cancel' to start over.");
+
+        // Fallback: accept 4-digit PIN via chat if Flow completion isn\'t received
+        const pinText = (messageContent || '').trim();
+        if (/^\d{4}$/.test(pinText)) {
+          try {
+            const state = user.conversationState;
+            const transferData = {
+              accountNumber: state.data?.accountNumber,
+              bankCode: state.data?.bankCode,
+              amount: state.data?.amount,
+              narration: state.data?.narration || 'Wallet transfer',
+              reference: state.data?.reference
+            };
+
+            // Validate we have required details
+            if (!transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
+              logger.error('Missing transfer data for manual PIN fallback', { userId: user.id, stateDataKeys: Object.keys(state.data || {}) });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Please start the transfer again.');
+              await user.clearConversationState();
+              return;
+            }
+
+            logger.info('Processing transfer via manual PIN fallback', { userId: user.id, hasReference: !!transferData.reference });
+            const result = await bankTransferService.processBankTransfer(user.id, transferData, pinText);
+            if (result.success) {
+              await user.clearConversationState();
+              logger.info('Transfer completed via manual PIN fallback', { userId: user.id, reference: result.transaction?.reference });
+              // Success messages handled by bankTransferService if any
+            } else {
+              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
+            }
+          } catch (err) {
+            logger.error('Manual PIN fallback transfer failed', { userId: user.id, error: err.message });
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer failed. Please try again.');
+          }
+          return;
+        }
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, "Please enter your 4-digit PIN here or in the Flow above, or type 'cancel'.");
         return;
       }
 
