@@ -1216,9 +1216,11 @@ Extract intent and data from this message. Consider the user context and any ext
         try {
           const whatsappService = require('./whatsapp');
           const { DATA_PLANS } = require('../routes/flowEndpoint');
+          const redisClient = require('../utils/redis');
 
           // Expect a stored list reply from interactive message
           const listReply = conversationState?.data?.listReply || {};
+          const sessionId = conversationState?.data?.sessionId || null;
           const selectionId = (listReply.id || '').trim();
           const selectionTitle = (listReply.title || '').trim();
 
@@ -1228,13 +1230,22 @@ Extract intent and data from this message. Consider the user context and any ext
             const network = (rawNetwork || '').toUpperCase();
 
             // Persist next step
-            await user.updateConversationState({
+            const nextState = {
               intent: 'data',
               awaitingInput: 'data_plan',
               context: 'data_purchase',
               step: 2,
-              data: { network }
-            });
+              data: { network, sessionId }
+            };
+            await user.updateConversationState(nextState);
+            if (sessionId) {
+              const session = await redisClient.getSession(sessionId);
+              if (session) {
+                session.state = 'select_plan';
+                session.data.network = network;
+                await redisClient.setSession(sessionId, session, 900);
+              }
+            }
 
             // Allowed plans (provider IDs) per network as requested
             const ALLOWED_PLAN_IDS = {
@@ -1278,13 +1289,23 @@ Extract intent and data from this message. Consider the user context and any ext
             const planId = parseInt(parts[2], 10);
 
             // Persist next step
-            await user.updateConversationState({
+            const nextState2 = {
               intent: 'data',
               awaitingInput: 'data_phone',
               context: 'data_purchase',
               step: 3,
-              data: { network, planId }
-            });
+              data: { network, planId, sessionId }
+            };
+            await user.updateConversationState(nextState2);
+            if (sessionId) {
+              const session = await redisClient.getSession(sessionId);
+              if (session) {
+                session.state = 'enter_phone';
+                session.data.network = network;
+                session.data.planId = planId;
+                await redisClient.setSession(sessionId, session, 900);
+              }
+            }
 
             await whatsappService.sendTextMessage(
               user.whatsappNumber,
@@ -1305,6 +1326,7 @@ Extract intent and data from this message. Consider the user context and any ext
 
       case 'data_network': {
         const whatsappService = require('./whatsapp');
+        const redisClient = require('../utils/redis');
         const input = (message || '').trim().toUpperCase();
         const map = { 'MTN': 'MTN', 'AIRTEL': 'AIRTEL', 'GLO': 'GLO', '9MOBILE': '9MOBILE', '9M': '9MOBILE', '9-MOBILE': '9MOBILE' };
         const network = map[input] || null;
@@ -1323,7 +1345,17 @@ Extract intent and data from this message. Consider the user context and any ext
         };
         const plans = (DATA_PLANS[network] || []).filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
 
-        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_plan', context: 'data_purchase', step: 2, data: { network } });
+        const sessionId = conversationState?.data?.sessionId || null;
+        const nextState = { intent: 'data', awaitingInput: 'data_plan', context: 'data_purchase', step: 2, data: { network, sessionId } };
+        await user.updateConversationState(nextState);
+        if (sessionId) {
+          const session = await redisClient.getSession(sessionId);
+          if (session) {
+            session.state = 'select_plan';
+            session.data.network = network;
+            await redisClient.setSession(sessionId, session, 900);
+          }
+        }
 
         const sections = [
           { title: `${network} Plans`, rows: plans.slice(0, 20).map(p => ({ id: `plan_${network}_${p.id}`, title: `${p.title} - ₦${p.price}`, description: p.validity || '' })) }
@@ -1335,6 +1367,7 @@ Extract intent and data from this message. Consider the user context and any ext
       case 'data_plan': {
         const whatsappService = require('./whatsapp');
         const { DATA_PLANS } = require('../routes/flowEndpoint');
+        const redisClient = require('../utils/redis');
         const state = conversationState?.data || {};
         const network = (state.network || '').toUpperCase();
         if (!network) {
@@ -1360,7 +1393,18 @@ Extract intent and data from this message. Consider the user context and any ext
           return;
         }
 
-        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_phone', context: 'data_purchase', step: 3, data: { network, planId } });
+        const sessionId = conversationState?.data?.sessionId || null;
+        const nextState = { intent: 'data', awaitingInput: 'data_phone', context: 'data_purchase', step: 3, data: { network, planId, sessionId } };
+        await user.updateConversationState(nextState);
+        if (sessionId) {
+          const session = await redisClient.getSession(sessionId);
+          if (session) {
+            session.state = 'enter_phone';
+            session.data.network = network;
+            session.data.planId = planId;
+            await redisClient.setSession(sessionId, session, 900);
+          }
+        }
         await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter the recipient phone number (11 digits). Reply "self" to use your WhatsApp number.');
         return;
       }
@@ -1368,6 +1412,7 @@ Extract intent and data from this message. Consider the user context and any ext
       case 'data_phone': {
         const whatsappService = require('./whatsapp');
         const { DATA_PLANS } = require('../routes/flowEndpoint');
+        const redisClient = require('../utils/redis');
         const state = conversationState?.data || {};
         const network = (state.network || '').toUpperCase();
         const planId = state.planId;
@@ -1394,7 +1439,17 @@ Extract intent and data from this message. Consider the user context and any ext
         const price = plan?.price || 0;
         const title = plan?.title || '';
 
-        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_confirm', context: 'data_purchase', step: 4, data: { network, planId, phone } });
+        const sessionId = conversationState?.data?.sessionId || null;
+        const nextState = { intent: 'data', awaitingInput: 'data_confirm', context: 'data_purchase', step: 4, data: { network, planId, phone, sessionId } };
+        await user.updateConversationState(nextState);
+        if (sessionId) {
+          const session = await redisClient.getSession(sessionId);
+          if (session) {
+            session.state = 'confirm';
+            session.data.phone = phone;
+            await redisClient.setSession(sessionId, session, 900);
+          }
+        }
 
         await whatsappService.sendTextMessage(
           user.whatsappNumber,
@@ -1405,18 +1460,30 @@ Extract intent and data from this message. Consider the user context and any ext
 
       case 'data_confirm': {
         const whatsappService = require('./whatsapp');
+        const redisClient = require('../utils/redis');
         const decision = (message || '').trim().toLowerCase();
         if (!['yes', 'y', 'no', 'n'].includes(decision)) {
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply YES to proceed or NO to cancel.');
           return;
         }
         if (decision.startsWith('n')) {
+          const sessionId = conversationState?.data?.sessionId || null;
+          if (sessionId) await redisClient.deleteSession(sessionId);
           await user.clearConversationState();
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Cancelled ✅');
           return;
         }
 
-        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_pin', context: 'data_purchase', step: 5, data: conversationState.data });
+        const sessionId = conversationState?.data?.sessionId || null;
+        const nextState = { intent: 'data', awaitingInput: 'data_pin', context: 'data_purchase', step: 5, data: conversationState.data };
+        await user.updateConversationState(nextState);
+        if (sessionId) {
+          const session = await redisClient.getSession(sessionId);
+          if (session) {
+            session.state = 'enter_pin';
+            await redisClient.setSession(sessionId, session, 900);
+          }
+        }
         await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter your 4-digit PIN to authorize this purchase.');
         return;
       }
@@ -1425,6 +1492,7 @@ Extract intent and data from this message. Consider the user context and any ext
         const whatsappService = require('./whatsapp');
         const { DATA_PLANS } = require('../routes/flowEndpoint');
         const bilalService = require('./bilal');
+        const redisClient = require('../utils/redis');
         const pin = (message || '').trim();
         if (!/^\d{4}$/.test(pin)) {
           await whatsappService.sendTextMessage(user.whatsappNumber, 'PIN must be exactly 4 digits.');
@@ -1453,6 +1521,8 @@ Extract intent and data from this message. Consider the user context and any ext
             user.whatsappNumber
           );
           await user.clearConversationState();
+          const sessionId = conversationState?.data?.sessionId || null;
+          if (sessionId) await redisClient.deleteSession(sessionId);
         } catch (err) {
           await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Data purchase failed: ${err.message}`);
         }

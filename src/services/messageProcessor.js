@@ -1085,22 +1085,27 @@ class MessageProcessor {
               const currentState = user.conversationState || {};
               const awaiting = currentState.awaitingInput;
               if (awaiting && awaiting.startsWith('data_')) {
-                // Pass through to AI conversation flow handler
-                await this.storeConversationState(user, {
+                // Build and persist new state with the list reply captured
+                const newState = {
                   intent: 'data',
                   context: 'data_purchase',
                   step: currentState.step || 1,
                   data: { ...(currentState.data || {}), listReply: interactiveResult.listReply },
                   awaitingInput: 'list_reply'
-                });
+                };
+                await this.storeConversationState(user, newState);
+                // Keep in-memory state in sync for immediate flow handling
+                user.conversationState = newState;
               } else {
-                await this.storeConversationState(user, {
+                const newState = {
                   intent: 'list_reply',
                   context: 'list_reply',
                   step: 1,
                   data: { listReply: interactiveResult.listReply },
                   awaitingInput: 'list_reply'
-                });
+                };
+                await this.storeConversationState(user, newState);
+                user.conversationState = newState;
               }
             }
           }
@@ -2537,17 +2542,30 @@ class MessageProcessor {
       });
     }
 
-    // Start normal-message interactive data purchase flow
+    // Start normal-message interactive data purchase flow with session
     try {
       const whatsappService = require('./whatsapp');
+      const redisClient = require('../utils/redis');
 
-      // Store conversation state to expect network selection next
+      // Create a tracked session for the data purchase
+      const sessionId = `data:${user.id}:${Date.now()}`;
+      const session = {
+        id: sessionId,
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        state: 'select_network',
+        data: {},
+        createdAt: Date.now()
+      };
+      await redisClient.setSession(sessionId, session, 900); // 15 mins TTL
+
+      // Store conversation state to expect network selection next and tie to session
       await this.storeConversationState(user, {
         intent: 'data',
         awaitingInput: 'data_network',
         context: 'data_purchase',
         step: 1,
-        data: {}
+        data: { sessionId }
       });
 
       // Send interactive list of networks (buttons support max 3, so use list)
@@ -2568,7 +2586,8 @@ class MessageProcessor {
 
       logger.info('Started normal data purchase conversation', {
         userId: user.id,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        sessionId
       });
     } catch (error) {
       logger.error('Failed to start normal data purchase conversation', { error: error.message, userId: user.id });
