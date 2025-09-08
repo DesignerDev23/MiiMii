@@ -1610,12 +1610,12 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
 // Complete data plans database with all 125+ plans
 const DATA_PLANS = {
   MTN: [
-    { id: 1, title: "500MB", price: 380, validity: "30days to 7days", type: "SME" },
-    { id: 2, title: "1GB", price: 620, validity: "30 days", type: "SME" },
-    { id: 3, title: "2GB", price: 1240, validity: "Monthly", type: "SME" },
-    { id: 4, title: "3GB", price: 2200, validity: "30days", type: "SME" },
-    { id: 5, title: "5GB", price: 4500, validity: "30days", type: "SME" },
-    { id: 6, title: "10GB", price: 9000, validity: "30days", type: "SME" },
+    { id: 1, title: "500MB", price: 400, validity: "30days to 7days", type: "SME" },
+    { id: 2, title: "1GB", price: 600, validity: "30 days", type: "SME" },
+    { id: 3, title: "2GB", price: 1200, validity: "Monthly", type: "SME" },
+    { id: 4, title: "3GB", price: 1800, validity: "30days", type: "SME" },
+    { id: 5, title: "5GB", price: 3000, validity: "30days", type: "SME" },
+    { id: 6, title: "10GB", price: 6000, validity: "30days", type: "SME" },
     { id: 36, title: "6GB", price: 2450, validity: "7days", type: "GIFTING" },
     { id: 37, title: "1GB", price: 490, validity: "24hours and 5 mins call", type: "GIFTING PROMO" },
     { id: 38, title: "1.5GB", price: 588, validity: "2 days", type: "GIFTING PROMO" },

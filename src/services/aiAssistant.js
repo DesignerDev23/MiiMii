@@ -1212,6 +1212,252 @@ Extract intent and data from this message. Consider the user context and any ext
     const { intent, awaitingInput, transactionData } = conversationState;
     
     switch (awaitingInput) {
+      case 'list_reply': {
+        try {
+          const whatsappService = require('./whatsapp');
+          const { DATA_PLANS } = require('../routes/flowEndpoint');
+
+          // Expect a stored list reply from interactive message
+          const listReply = conversationState?.data?.listReply || {};
+          const selectionId = (listReply.id || '').trim();
+          const selectionTitle = (listReply.title || '').trim();
+
+          // Detect network selection
+          if (selectionId.startsWith('network_')) {
+            const rawNetwork = selectionId.split('_')[1] || selectionTitle;
+            const network = (rawNetwork || '').toUpperCase();
+
+            // Persist next step
+            await user.updateConversationState({
+              intent: 'data',
+              awaitingInput: 'data_plan',
+              context: 'data_purchase',
+              step: 2,
+              data: { network }
+            });
+
+            // Allowed plans (provider IDs) per network as requested
+            const ALLOWED_PLAN_IDS = {
+              MTN: [1, 2, 3, 4, 5, 6],
+              AIRTEL: [7, 8, 9, 10],
+              GLO: [11, 12, 13, 14, 15],
+              '9MOBILE': [25, 27, 28, 46, 47, 48, 49, 50, 51, 52]
+            };
+
+            const plans = (DATA_PLANS[network] || []).filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
+
+            if (!plans.length) {
+              await whatsappService.sendTextMessage(user.whatsappNumber, 'No plans available for the selected network. Please try another network.');
+              return;
+            }
+
+            const sections = [
+              {
+                title: `${network} Plans`,
+                rows: plans.slice(0, 20).map(p => ({
+                  id: `plan_${network}_${p.id}`,
+                  title: `${p.title} - ₦${p.price}`,
+                  description: p.validity || ''
+                }))
+              }
+            ];
+
+            await whatsappService.sendListMessage(
+              user.whatsappNumber,
+              `Select a data plan for ${network}:`,
+              'Select Plan',
+              sections
+            );
+            return;
+          }
+
+          // Detect plan selection
+          if (selectionId.startsWith('plan_')) {
+            const parts = selectionId.split('_');
+            const network = (parts[1] || '').toUpperCase();
+            const planId = parseInt(parts[2], 10);
+
+            // Persist next step
+            await user.updateConversationState({
+              intent: 'data',
+              awaitingInput: 'data_phone',
+              context: 'data_purchase',
+              step: 3,
+              data: { network, planId }
+            });
+
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              'Please enter the recipient phone number (11 digits). Reply "self" to use your WhatsApp number.'
+            );
+            return;
+          }
+
+          // If unrelated list reply, ignore
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please use the options provided to continue.');
+          return;
+        } catch (error) {
+          const whatsappService = require('./whatsapp');
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Something went wrong handling your selection. Please try again.');
+          return;
+        }
+      }
+
+      case 'data_network': {
+        const whatsappService = require('./whatsapp');
+        const input = (message || '').trim().toUpperCase();
+        const map = { 'MTN': 'MTN', 'AIRTEL': 'AIRTEL', 'GLO': 'GLO', '9MOBILE': '9MOBILE', '9M': '9MOBILE', '9-MOBILE': '9MOBILE' };
+        const network = map[input] || null;
+        if (!network) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply with one of: MTN, AIRTEL, GLO, 9MOBILE');
+          return;
+        }
+
+        // Reuse list-based plan selection for consistency
+        const { DATA_PLANS } = require('../routes/flowEndpoint');
+        const ALLOWED_PLAN_IDS = {
+          MTN: [1, 2, 3, 4, 5, 6],
+          AIRTEL: [7, 8, 9, 10],
+          GLO: [11, 12, 13, 14, 15],
+          '9MOBILE': [25, 27, 28, 46, 47, 48, 49, 50, 51, 52]
+        };
+        const plans = (DATA_PLANS[network] || []).filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
+
+        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_plan', context: 'data_purchase', step: 2, data: { network } });
+
+        const sections = [
+          { title: `${network} Plans`, rows: plans.slice(0, 20).map(p => ({ id: `plan_${network}_${p.id}`, title: `${p.title} - ₦${p.price}`, description: p.validity || '' })) }
+        ];
+        await whatsappService.sendListMessage(user.whatsappNumber, `Select a data plan for ${network}:`, 'Select Plan', sections);
+        return;
+      }
+
+      case 'data_plan': {
+        const whatsappService = require('./whatsapp');
+        const { DATA_PLANS } = require('../routes/flowEndpoint');
+        const state = conversationState?.data || {};
+        const network = (state.network || '').toUpperCase();
+        if (!network) {
+          await user.updateConversationState({ intent: 'data', awaitingInput: 'data_network', context: 'data_purchase', step: 1, data: {} });
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please choose a network: MTN, AIRTEL, GLO, 9MOBILE');
+          return;
+        }
+
+        // Try to parse plan selection from free text (fallback)
+        const input = (message || '').trim();
+        const plans = DATA_PLANS[network] || [];
+        let planId = null;
+        if (/^\d+$/.test(input)) {
+          const numeric = parseInt(input, 10);
+          if (plans.some(p => p.id === numeric)) planId = numeric;
+        } else {
+          const match = plans.find(p => p.title.toLowerCase().includes(input.toLowerCase()));
+          if (match) planId = match.id;
+        }
+
+        if (!planId) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please select a valid plan from the list.');
+          return;
+        }
+
+        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_phone', context: 'data_purchase', step: 3, data: { network, planId } });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter the recipient phone number (11 digits). Reply "self" to use your WhatsApp number.');
+        return;
+      }
+
+      case 'data_phone': {
+        const whatsappService = require('./whatsapp');
+        const { DATA_PLANS } = require('../routes/flowEndpoint');
+        const state = conversationState?.data || {};
+        const network = (state.network || '').toUpperCase();
+        const planId = state.planId;
+        if (!network || !planId) {
+          await user.updateConversationState({ intent: 'data', awaitingInput: 'data_network', context: 'data_purchase', step: 1, data: {} });
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Let’s start over. Which network? MTN, AIRTEL, GLO, 9MOBILE');
+          return;
+        }
+
+        let phone = (message || '').trim();
+        if (phone.toLowerCase() === 'self') {
+          phone = user.whatsappNumber;
+        }
+        // Normalize to 11-digit local format starting with 0
+        phone = phone.replace(/\D/g, '');
+        if (phone.startsWith('234') && phone.length === 13) phone = `0${phone.slice(3)}`;
+        if (phone.length === 10) phone = `0${phone}`;
+        if (!/^0[789][01]\d{8}$/.test(phone)) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please enter a valid 11-digit Nigerian phone number (e.g., 08012345678).');
+          return;
+        }
+
+        const plan = (DATA_PLANS[network] || []).find(p => p.id === planId);
+        const price = plan?.price || 0;
+        const title = plan?.title || '';
+
+        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_confirm', context: 'data_purchase', step: 4, data: { network, planId, phone } });
+
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `Confirm purchase:\n\nNetwork: ${network}\nPlan: ${title}\nAmount: ₦${price}\nPhone: ${phone}\n\nReply YES to confirm or NO to cancel.`
+        );
+        return;
+      }
+
+      case 'data_confirm': {
+        const whatsappService = require('./whatsapp');
+        const decision = (message || '').trim().toLowerCase();
+        if (!['yes', 'y', 'no', 'n'].includes(decision)) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply YES to proceed or NO to cancel.');
+          return;
+        }
+        if (decision.startsWith('n')) {
+          await user.clearConversationState();
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Cancelled ✅');
+          return;
+        }
+
+        await user.updateConversationState({ intent: 'data', awaitingInput: 'data_pin', context: 'data_purchase', step: 5, data: conversationState.data });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter your 4-digit PIN to authorize this purchase.');
+        return;
+      }
+
+      case 'data_pin': {
+        const whatsappService = require('./whatsapp');
+        const { DATA_PLANS } = require('../routes/flowEndpoint');
+        const bilalService = require('./bilal');
+        const pin = (message || '').trim();
+        if (!/^\d{4}$/.test(pin)) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'PIN must be exactly 4 digits.');
+          return;
+        }
+
+        // Validate PIN against user
+        const isValid = await user.validatePin(pin);
+        if (!isValid) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Incorrect PIN. Please try again.');
+          return;
+        }
+
+        const { network, planId, phone } = conversationState.data || {};
+        const plan = (DATA_PLANS[(network || '').toUpperCase()] || []).find(p => p.id === planId);
+        if (!plan) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Unable to find the selected plan. Please start again.');
+          await user.clearConversationState();
+          return;
+        }
+
+        try {
+          await bilalService.purchaseData(
+            user,
+            { phoneNumber: phone, network: (network || '').toUpperCase(), dataPlan: { id: plan.id, price: plan.price }, pin },
+            user.whatsappNumber
+          );
+          await user.clearConversationState();
+        } catch (err) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Data purchase failed: ${err.message}`);
+        }
+        return;
+      }
       case 'pin':
         return await this.handlePinVerification(user, message, transactionData);
         

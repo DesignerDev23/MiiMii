@@ -1081,14 +1081,27 @@ class MessageProcessor {
                 data: { buttonReply: interactiveResult.buttonReply }
               });
             } else if (interactiveResult.listReply) {
-              // For list replies, we might want to store state or pass data
-              // For now, we'll just pass the text and the list reply
-              await this.storeConversationState(user, {
-                intent: 'list_reply',
-                context: 'list_reply',
-                step: 1,
-                data: { listReply: interactiveResult.listReply }
-              });
+              // Route list replies to current conversation handler if awaiting input
+              const currentState = user.conversationState || {};
+              const awaiting = currentState.awaitingInput;
+              if (awaiting && awaiting.startsWith('data_')) {
+                // Pass through to AI conversation flow handler
+                await this.storeConversationState(user, {
+                  intent: 'data',
+                  context: 'data_purchase',
+                  step: currentState.step || 1,
+                  data: { ...(currentState.data || {}), listReply: interactiveResult.listReply },
+                  awaitingInput: 'list_reply'
+                });
+              } else {
+                await this.storeConversationState(user, {
+                  intent: 'list_reply',
+                  context: 'list_reply',
+                  step: 1,
+                  data: { listReply: interactiveResult.listReply },
+                  awaitingInput: 'list_reply'
+                });
+              }
             }
           }
           break;
@@ -2515,21 +2528,47 @@ class MessageProcessor {
       });
     }
 
-    // Send data purchase flow
+    // Start normal-message interactive data purchase flow
     try {
       const whatsappService = require('./whatsapp');
-      await whatsappService.sendDataPurchaseFlow(user.whatsappNumber, user);
-      
-      logger.info('Data purchase flow sent to user', {
+
+      // Store conversation state to expect network selection next
+      await this.storeConversationState(user, {
+        intent: 'data',
+        awaitingInput: 'data_network',
+        context: 'data_purchase',
+        step: 1,
+        data: {}
+      });
+
+      // Send interactive list of networks (buttons support max 3, so use list)
+      const sections = [
+        {
+          title: 'Select Network',
+          rows: [
+            { id: 'network_MTN', title: 'MTN', description: 'MTN Nigeria' },
+            { id: 'network_AIRTEL', title: 'AIRTEL', description: 'Airtel Nigeria' },
+            { id: 'network_GLO', title: 'GLO', description: 'Globacom' },
+            { id: 'network_9MOBILE', title: '9MOBILE', description: '9mobile Nigeria' }
+          ]
+        }
+      ];
+
+      const prompt = 'Which network would you like to buy data for?';
+      await whatsappService.sendListMessage(user.whatsappNumber, prompt, 'Select Network', sections);
+
+      logger.info('Started normal data purchase conversation', {
         userId: user.id,
         phoneNumber: user.whatsappNumber
       });
     } catch (error) {
-      logger.error('Failed to send data purchase flow', { error: error.message, userId: user.id });
-      
+      logger.error('Failed to start normal data purchase conversation', { error: error.message, userId: user.id });
+
       const whatsappService = require('./whatsapp');
-      await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "❌ Failed to start data purchase flow!\n\nPlease try again or contact support.");
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        '❌ Unable to start data purchase right now. Please try again later.'
+      );
     }
   }
 
