@@ -13,8 +13,8 @@ class MessageProcessor {
     try {
       const { from, message, messageType, contact, messageId } = parsedMessage;
       
-      // Extract message content for text messages and button replies
-      let messageContent = message?.text || message?.buttonReply?.title || '';
+      // Extract message content for text, button replies, and list selections
+      let messageContent = message?.text || message?.buttonReply?.title || message?.listReply?.title || '';
       
       // Get user's WhatsApp profile name
       const userName = contact?.profile?.name || 'there';
@@ -28,6 +28,11 @@ class MessageProcessor {
         await whatsappService.sendTypingIndicator(from, messageId, 3000);
       } catch (e) {
         // Non-fatal
+      }
+
+      // If interactive (buttons/lists/flows), handle via the interactive-aware pipeline
+      if (messageType === 'interactive') {
+        return await this.handleCompletedUserMessage(user, message, 'interactive');
       }
 
       // Daily login check will be moved to after transfer conversation handling

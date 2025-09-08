@@ -441,9 +441,9 @@
     }
   ],
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000" },
-    { "key": "ADMIN_EMAIL", "value": "admin@example.com" },
-    { "key": "ADMIN_PASSWORD", "value": "changeme" },
+    { "key": "baseUrl", "value": "https://api.chatmiimii.com" },
+    { "key": "ADMIN_EMAIL", "value": "admin@chatmiimii.com" },
+    { "key": "ADMIN_PASSWORD", "value": "Musa$2025" },
     { "key": "ADMIN_TOKEN", "value": "" },
     { "key": "userId", "value": "" },
     { "key": "startDate", "value": "" },
