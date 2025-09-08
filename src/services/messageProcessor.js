@@ -181,6 +181,71 @@ class MessageProcessor {
               phoneNumber: user.whatsappNumber
             });
             return;
+          } else if (
+            // Fallback: Treat as transfer PIN if user is in transfer context but flowType wasn't detected
+            flowData.pin &&
+            user.conversationState &&
+            (
+              user.conversationState.intent === 'bank_transfer' ||
+              user.conversationState.context === 'bank_transfer_pin' ||
+              user.conversationState.awaitingInput === 'transfer_pin_flow' ||
+              user.conversationState.awaitingInput === 'pin_for_transfer'
+            )
+          ) {
+            try {
+              const whatsappService = require('./whatsapp');
+              const bankTransferService = require('./bankTransfer');
+
+              const pin = flowData.pin;
+              if (!/^\d{4}$/.test(String(pin || ''))) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+                return;
+              }
+
+              // Build transfer data from conversation state as fallback
+              const state = user.conversationState;
+              const transferData = {
+                accountNumber: state?.data?.accountNumber || flowData.account_number,
+                bankCode: state?.data?.bankCode || flowData.bank_code,
+                amount: parseFloat(state?.data?.amount || flowData.transfer_amount || flowData.amount),
+                narration: state?.data?.narration || 'Wallet transfer',
+                reference: state?.data?.reference || `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+              };
+
+              // Normalize bank code if needed using institution mapping
+              if (!transferData.bankCode || !/^\d{6}$/.test(String(transferData.bankCode))) {
+                try {
+                  const bankTransferSvc = require('./bankTransfer');
+                  const deducedName = state?.data?.bankName || flowData.bank_name || '';
+                  if (deducedName) {
+                    const instCode = await bankTransferSvc.getInstitutionCode(String(deducedName));
+                    if (instCode && /^\d{6}$/.test(String(instCode))) {
+                      transferData.bankCode = instCode;
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              if (!transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Missing transfer details. Please start again.');
+                return;
+              }
+
+              logger.info('Fallback: triggering transfer from flow completion using conversation state', {
+                userId: user.id,
+                hasRef: !!transferData.reference
+              });
+
+              const txResult = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+              if (!txResult.success) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${txResult.message || 'Unknown error'}`);
+              }
+
+              await user.clearConversationState();
+              return;
+            } catch (err) {
+              logger.error('Fallback transfer processing from flow completion failed', { error: err.message, userId: user.id });
+            }
           } else if (result.flowType === 'onboarding' || result.userId) {
             // Handle onboarding flow completion
             logger.info('Onboarding flow completed', {
