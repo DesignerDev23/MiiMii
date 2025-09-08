@@ -24,10 +24,11 @@ class Config {
       businessAccountId: process.env.BOT_BUSINESS_ACCOUNT_ID,
       webhookSecret: process.env.WEBHOOK_SECRET, // Changed from WHATSAPP_WEBHOOK_SECRET
       // Flow Configuration
+      onboardingFlowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID,
       welcomeFlowId: process.env.WELCOME_FLOW_ID || '1223628202852216',
-      loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID || '3207800556061779',
-      transferPinFlowId: process.env.WHATSAPP_TRANSFER_PIN_FLOW_ID || '3207800556061780',
-      dataPurchaseFlowId: process.env.DATA_PURCHASE_FLOW_ID || '1115202507372002',
+      loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID || '1104486355198946',
+      transferPinFlowId: process.env.WHATSAPP_TRANSFER_PIN_FLOW_ID || '2116470049180989',
+      dataPurchaseFlowId: process.env.DATA_PURCHASE_FLOW_ID || '805698978546902',
       flowSecretKey: process.env.FLOW_SECRET_KEY || 'default-flow-secret-key'
     };
 
