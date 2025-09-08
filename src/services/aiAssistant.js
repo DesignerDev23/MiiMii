@@ -1327,7 +1327,16 @@ Extract intent and data from this message. Consider the user context and any ext
       case 'data_network': {
         const whatsappService = require('./whatsapp');
         const redisClient = require('../utils/redis');
-        const input = (message || '').trim().toUpperCase();
+        const raw = (message || '').trim();
+        // Global CANCEL handling in data flow
+        if (/^(cancel|stop|quit|exit|abort|end)$/i.test(raw)) {
+          const sessionId = conversationState?.data?.sessionId || null;
+          if (sessionId) await redisClient.deleteSession(sessionId);
+          await user.clearConversationState();
+          await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
+          return;
+        }
+        const input = raw.toUpperCase();
         const map = { 'MTN': 'MTN', 'AIRTEL': 'AIRTEL', 'GLO': 'GLO', '9MOBILE': '9MOBILE', '9M': '9MOBILE', '9-MOBILE': '9MOBILE' };
         const network = map[input] || null;
         if (!network) {
@@ -1369,6 +1378,14 @@ Extract intent and data from this message. Consider the user context and any ext
         const { DATA_PLANS } = require('../routes/flowEndpoint');
         const redisClient = require('../utils/redis');
         const state = conversationState?.data || {};
+        // Global CANCEL handling in data flow
+        if (/^(cancel|stop|quit|exit|abort|end)$/i.test((message || '').trim())) {
+          const sessionId = state.sessionId || null;
+          if (sessionId) await redisClient.deleteSession(sessionId);
+          await user.clearConversationState();
+          await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
+          return;
+        }
         const network = (state.network || '').toUpperCase();
         if (!network) {
           await user.updateConversationState({ intent: 'data', awaitingInput: 'data_network', context: 'data_purchase', step: 1, data: {} });
@@ -1414,6 +1431,14 @@ Extract intent and data from this message. Consider the user context and any ext
         const { DATA_PLANS } = require('../routes/flowEndpoint');
         const redisClient = require('../utils/redis');
         const state = conversationState?.data || {};
+        // Global CANCEL handling in data flow
+        if (/^(cancel|stop|quit|exit|abort|end)$/i.test((message || '').trim())) {
+          const sessionId = state.sessionId || null;
+          if (sessionId) await redisClient.deleteSession(sessionId);
+          await user.clearConversationState();
+          await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
+          return;
+        }
         const network = (state.network || '').toUpperCase();
         const planId = state.planId;
         if (!network || !planId) {
@@ -1463,7 +1488,15 @@ Extract intent and data from this message. Consider the user context and any ext
         const whatsappFlowService = require('./whatsappFlowService');
         const redisClient = require('../utils/redis');
         const appConfig = require('../config');
-        const decision = (message || '').trim().toLowerCase();
+        const decisionRaw = (message || '').trim();
+        if (/^(cancel|stop|quit|exit|abort|end)$/i.test(decisionRaw)) {
+          const sessionId = conversationState?.data?.sessionId || null;
+          if (sessionId) await redisClient.deleteSession(sessionId);
+          await user.clearConversationState();
+          await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
+          return;
+        }
+        const decision = decisionRaw.toLowerCase();
         if (!['yes', 'y', 'no', 'n'].includes(decision)) {
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply YES to proceed or NO to cancel.');
           return;

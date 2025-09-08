@@ -227,6 +227,29 @@ class MessageProcessor {
         return;
       }
 
+      // Global cancel handler for data purchase sessions
+      if (messageType === 'text' && user.conversationState?.intent === 'data' && user.conversationState?.awaitingInput) {
+        const lower = (messageContent || '').toLowerCase().trim();
+        const isCancel = /\b(cancel|stop|quit|exit|abort|end)\b/.test(lower);
+        if (isCancel) {
+          try {
+            const redisClient = require('../utils/redis');
+            const sessionId = user.conversationState?.data?.sessionId;
+            const flowToken = user.conversationState?.data?.flowToken;
+            if (sessionId) {
+              await redisClient.deleteSession(sessionId);
+            }
+            if (flowToken) {
+              await redisClient.deleteSession(flowToken);
+            }
+          } catch (_) {}
+          await user.clearConversationState();
+          const whatsappService = require('./whatsapp');
+          await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled. You can start again anytime by typing "buy data".');
+          return;
+        }
+      }
+
       // Extract the actual message content for AI routing (handles both text and button replies)
       messageContent = message?.text || message?.buttonReply?.title || '';
 
