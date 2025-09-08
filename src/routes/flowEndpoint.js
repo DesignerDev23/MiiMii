@@ -720,7 +720,7 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
       flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
     });
 
-    // Non-transfer/login screens: return success
+    // Non-transfer/login screens: return success (but preserve session if present)
     if (screen !== 'PIN_VERIFICATION_SCREEN' && screen !== 'PIN_INPUT_SCREEN') {
       return {
         screen: screen,

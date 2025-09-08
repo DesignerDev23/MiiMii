@@ -157,6 +157,17 @@ class BilalService {
   async purchaseAirtime(user, airtimeData, userPhoneNumber) {
     try {
       const { phoneNumber, network, amount, pin } = airtimeData;
+
+      // Require and validate 4-digit transaction PIN for ANY wallet debit
+      if (!pin || !/^\d{4}$/.test(String(pin))) {
+        throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
+      }
+      try {
+        const userService = require('./user');
+        await userService.validateUserPin(user.id, pin);
+      } catch (pinErr) {
+        throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+      }
       
       // Validate network
       const networkId = this.networkMapping[network.toUpperCase()];
@@ -406,6 +417,17 @@ class BilalService {
       }
       
       const { phoneNumber, network, dataPlan, pin } = dataData;
+
+      // Require and validate 4-digit transaction PIN for ANY wallet debit
+      if (!pin || !/^\d{4}$/.test(String(pin))) {
+        throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
+      }
+      try {
+        const userService = require('./user');
+        await userService.validateUserPin(user.id, pin);
+      } catch (pinErr) {
+        throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+      }
       
       // Validate network
       const networkId = this.networkMapping[network.toUpperCase()];
@@ -595,6 +617,17 @@ class BilalService {
   async payElectricityBill(user, billData, userPhoneNumber) {
     try {
       const { disco, meterType, meterNumber, amount, pin } = billData;
+
+      // Require and validate 4-digit transaction PIN for ANY wallet debit
+      if (!pin || !/^\d{4}$/.test(String(pin))) {
+        throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
+      }
+      try {
+        const userService = require('./user');
+        await userService.validateUserPin(user.id, pin);
+      } catch (pinErr) {
+        throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+      }
       
       // Validate disco
       const discoId = this.discoMapping[disco.toUpperCase()];
