@@ -1102,7 +1102,7 @@ class MessageProcessor {
                 try {
                   const aiAssistant = require('./aiAssistant');
                   await aiAssistant.handleConversationFlow(user, interactiveResult.originalText || interactiveResult.listReply.title, user.conversationState);
-                  return { handled: true };
+                  return; // stop further processing to avoid fallback messages
                 } catch (flowErr) {
                   logger.error('Failed to advance data flow from list reply', { error: flowErr.message, userId: user.id });
                 }
@@ -1132,7 +1132,7 @@ class MessageProcessor {
 
                   const aiAssistant = require('./aiAssistant');
                   await aiAssistant.handleConversationFlow(user, interactiveResult.originalText || interactiveResult.listReply.title, user.conversationState);
-                  return { handled: true };
+                  return; // stop further processing to avoid fallback messages
                 } catch (bootErr) {
                   logger.error('Failed to bootstrap data flow from list reply', { error: bootErr.message, userId: user.id });
                 }
