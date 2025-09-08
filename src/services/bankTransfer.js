@@ -372,7 +372,29 @@ class BankTransferService {
         'unity': '000215',
         'enterprise': '000084',
         'uba': '000033',
-        'united bank for africa': '000033'
+        'united bank for africa': '000033',
+        // Digital banks / fintech names
+        'opay': '000090',
+        'o pay': '000090',
+        'palmpay': '000091',
+        'palm pay': '000091',
+        'kuda': '000092',
+        'carbon': '000093',
+        'alat': '000094',
+        'v bank': '000095',
+        'vbank': '000095',
+        'rubies': '000096',
+        'mintyn': '000098',
+        'fairmoney': '000099',
+        'branch': '000100',
+        'eyowo': '000101',
+        'flutterwave': '000102',
+        'paystack': '000103',
+        'moniepoint': '000104',
+        'monie point': '000104',
+        'providus': '000106',
+        'polaris': '000107',
+        'titan trust': '000108'
       };
 
       const lowerBankName = bankName.toLowerCase();

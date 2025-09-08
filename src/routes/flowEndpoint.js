@@ -368,6 +368,17 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
       }
     }
 
+    // Helper to decode both standard and URL-safe Base64
+    const parseBase64 = (value) => {
+      const s = String(value || '')
+        .replace(/\s+/g, '')
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      // Pad base64 string to multiple of 4
+      const padLen = (4 - (s.length % 4)) % 4;
+      return Buffer.from(s + '='.repeat(padLen), 'base64');
+    };
+
     // Decrypt the AES key using RSA-OAEP with SHA-256
     const aesKeyBytes = crypto.privateDecrypt(
       {
@@ -375,7 +386,7 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256'
       },
-      Buffer.from(encryptedAesKey, 'base64')
+      parseBase64(encryptedAesKey)
     );
 
     // Select AES-GCM algorithm based on key length (16/24/32 => 128/192/256)
@@ -394,8 +405,8 @@ async function decryptFlowRequest(encryptedFlowData, encryptedAesKey, initialVec
     }
 
     // Decrypt the Flow data using AES-GCM
-    const initialVectorBytes = Buffer.from(initialVector, 'base64');
-    const flowDataBytes = Buffer.from(encryptedFlowData, 'base64');
+    const initialVectorBytes = parseBase64(initialVector);
+    const flowDataBytes = parseBase64(encryptedFlowData);
 
     const ciphertext = flowDataBytes.slice(0, -16);
     const authTag = flowDataBytes.slice(-16);
@@ -642,6 +653,20 @@ async function handleNavigateAction(screen, data, tokenData, flowToken = null) {
         
         // Merge new data with existing session data
         sessionData = { ...sessionData, ...data.data };
+
+        // If this looks like a transfer navigation payload, normalize under transferData
+        if (data.data.transfer_amount || data.data.account_number || data.data.bank_code || data.data.bank_name) {
+          sessionData.transferData = {
+            ...(sessionData.transferData || {}),
+            amount: parseFloat(data.data.transfer_amount) || sessionData.transferData?.amount,
+            recipientName: data.data.recipient_name || sessionData.transferData?.recipientName,
+            bankName: data.data.bank_name || sessionData.transferData?.bankName,
+            accountNumber: data.data.account_number || sessionData.transferData?.accountNumber,
+            bankCode: data.data.bank_code || sessionData.transferData?.bankCode,
+            narration: sessionData.transferData?.narration || 'Wallet transfer',
+            reference: sessionData.transferData?.reference || `TXN${Date.now()}`
+          };
+        }
         
         // Store updated session data
         await redisClient.setSession(sessionKey, sessionData, 1800);
@@ -695,141 +720,88 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
       flowToken: flowToken ? flowToken.substring(0, 20) + '...' : 'none'
     });
 
-    // Handle transfer PIN verification
-    if (screen === 'PIN_VERIFICATION_SCREEN') {
-      logger.info('PIN_VERIFICATION_SCREEN complete action received', {
-        dataKeys: Object.keys(data || {}),
-        hasNetwork: !!data.network,
-        hasPhoneNumber: !!data.phoneNumber,
-        hasDataPlan: !!data.dataPlan,
-        hasPin: !!data.pin,
-        sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
-        hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
-        flowToken: flowToken
-      });
-      
-      // Validate data purchase flow data before processing
-      if (data.network && data.phoneNumber && data.dataPlan) {
-        logger.info('Detected data purchase flow in complete action');
-        
-        // Validate network
-        if (!['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(data.network)) {
-          return {
-            screen: 'PIN_VERIFICATION_SCREEN',
-            data: {
-              error: 'Invalid network selected. Please try again.',
-              message: 'Please select a valid network'
-            }
-          };
+    // Non-transfer/login screens: return success
+    if (screen !== 'PIN_VERIFICATION_SCREEN' && screen !== 'PIN_INPUT_SCREEN') {
+      return {
+        screen: screen,
+        data: {
+          success: true,
+          message: 'Action completed successfully',
+          completed: true,
+          terminal: true
         }
-        
-        // Validate phone number
-        if (!data.phoneNumber || !/^0[789][01][0-9]{8}$/.test(data.phoneNumber)) {
-          return {
-            screen: 'PIN_VERIFICATION_SCREEN',
-            data: {
-              error: 'Invalid phone number format. Please try again.',
-              message: 'Phone number must be 11 digits starting with 070, 071, 080, 081, 090, or 091'
-            }
-          };
-        }
-        
-        // Validate data plan
-        if (!data.dataPlan || !/^\d+$/.test(data.dataPlan)) {
-          return {
-            screen: 'PIN_VERIFICATION_SCREEN',
-            data: {
-              error: 'Invalid data plan selected. Please try again.',
-              message: 'Please select a valid data plan'
-            }
-          };
-        }
-        
-        // Validate PIN format
-        if (!data.pin || !/^\d{4}$/.test(data.pin)) {
-          return {
-            screen: 'PIN_VERIFICATION_SCREEN',
-            data: {
-              error: 'Please enter exactly 4 digits for your PIN.',
-              message: 'PIN must be exactly 4 digits'
-            }
-          };
-        }
-        
-        const result = await handleDataPurchaseScreen(data, tokenData.userId, tokenData, flowToken);
-        
-        // If data purchase was successful, return empty response to close terminal flow
-        if (Object.keys(result).length === 0) {
-          logger.info('Data purchase successful, returning empty response to close flow');
-          return result;
-        }
-        
-        return result;
-      } else if (tokenData.sessionData && tokenData.sessionData.transferData) {
-        logger.info('Detected transfer flow in complete action');
-        const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
-        
-        // If transfer was successful, return empty response to close terminal flow
-        if (Object.keys(result).length === 0) {
-          logger.info('Transfer successful, returning empty response to close flow');
-          return result;
-        }
-        
-        return result;
-      } else {
-        logger.error('Unable to determine flow type in complete action', {
-          dataKeys: Object.keys(data || {}),
-          sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
-          hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
-          flowToken: flowToken
-        });
-        
-        // Try to extract transfer data from any available source as fallback
-        if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
-          logger.info('Attempting fallback transfer processing with available data in complete action');
-          const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
-          return result;
-        }
-        
-        return {
-          screen: 'PIN_VERIFICATION_SCREEN',
-          data: {
-            error: 'Unable to determine transaction type. Please try again.',
-            error_message: 'Flow context not found'
-          }
-        };
-      }
+      };
     }
 
-    // Handle login PIN verification
+    // Login flow
     if (screen === 'PIN_INPUT_SCREEN') {
       const result = await handleLoginScreen(data, tokenData.userId, tokenData);
-      
-      // If login was successful, return completion response
       if (result.data?.success) {
         return {
           screen: 'COMPLETION_SCREEN',
-          data: {
-            success: true,
-            message: 'Login successful! Welcome back to MiiMii!'
-          }
+          data: { success: true, message: 'Login successful! Welcome back to MiiMii!' }
         };
       }
-      
-      // If there was an error, return error response
       return result;
     }
 
-    // Data purchase and transfer flows are now handled in the main PIN_VERIFICATION_SCREEN case
+    // Transfer/Data PIN screen
+    logger.info('PIN_VERIFICATION_SCREEN complete action received', {
+      dataKeys: Object.keys(data || {}),
+      hasNetwork: !!data.network,
+      hasPhoneNumber: !!data.phoneNumber,
+      hasDataPlan: !!data.dataPlan,
+      hasPin: !!data.pin,
+      sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+      hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
+      flowToken: flowToken
+    });
 
-    // For other terminal flows, return success response
+    // Data purchase path
+    if (data.network && data.phoneNumber && data.dataPlan) {
+      if (!['MTN', 'AIRTEL', 'GLO', '9MOBILE'].includes(data.network)) {
+        return { screen: 'PIN_VERIFICATION_SCREEN', data: { error: 'Invalid network selected. Please try again.', message: 'Please select a valid network' } };
+      }
+      if (!data.phoneNumber || !/^0[789][01][0-9]{8}$/.test(data.phoneNumber)) {
+        return { screen: 'PIN_VERIFICATION_SCREEN', data: { error: 'Invalid phone number format. Please try again.', message: 'Phone number must be 11 digits starting with 070, 071, 080, 081, 090, or 091' } };
+      }
+      if (!data.dataPlan || !/^\d+$/.test(data.dataPlan)) {
+        return { screen: 'PIN_VERIFICATION_SCREEN', data: { error: 'Invalid data plan selected. Please try again.', message: 'Please select a valid data plan' } };
+      }
+      if (!data.pin || !/^\d{4}$/.test(data.pin)) {
+        return { screen: 'PIN_VERIFICATION_SCREEN', data: { error: 'Please enter exactly 4 digits for your PIN.', message: 'PIN must be exactly 4 digits' } };
+      }
+      const result = await handleDataPurchaseScreen(data, tokenData.userId, tokenData, flowToken);
+      if (Object.keys(result).length === 0) return result;
+      return result;
+    }
+
+    // Ensure latest session (for transfer path)
+    try {
+      const redisClient = require('../utils/redis');
+      const latestSession = flowToken ? (await redisClient.getSession(flowToken)) || tokenData.sessionData : tokenData.sessionData;
+      if (latestSession) tokenData.sessionData = latestSession;
+    } catch (_) {}
+
+    // Transfer path
+    if (tokenData.sessionData && tokenData.sessionData.transferData) {
+      const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+      if (Object.keys(result).length === 0) return result;
+      return result;
+    }
+
+    // Fallback: try with payload-only transfer details
+    if (data && (data.transfer_amount || data.recipient_name || data.bank_name)) {
+      const result = await handleTransferPinScreen(data, tokenData.userId, tokenData, flowToken);
+      return result;
+    }
+
+    // Unable to determine type
     return {
-      screen: screen,
+      screen: 'PIN_VERIFICATION_SCREEN',
       data: {
-        success: true,
-        message: 'Action completed successfully',
-        completed: true,
-        terminal: true
+        error: 'Unable to determine transaction type. Please try again.',
+        error_message: 'Flow context not found'
       }
     };
 
@@ -837,10 +809,7 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
     logger.error('Complete action processing failed', { error: error.message });
     return {
       screen: 'ERROR_SCREEN',
-      data: {
-        error: 'Completion failed',
-        code: 'COMPLETION_ERROR'
-      }
+      data: { error: 'Completion failed', code: 'COMPLETION_ERROR' }
     };
   }
 }
@@ -1993,6 +1962,20 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
             accountNumber: data.account_number,
             bankCode: data.bank_code
           });
+          // Normalize bank code from bank name if needed (common aggregator codes like 100004 for OPay)
+          try {
+            if (
+              transferData.bankName &&
+              (!transferData.bankCode || !/^\d{6}$/.test(String(transferData.bankCode)) || String(transferData.bankCode).startsWith('100'))
+            ) {
+              const bankTransferService = require('../services/bankTransfer');
+              const instCode = await bankTransferService.getInstitutionCode(transferData.bankName);
+              if (instCode && /^\d{6}$/.test(String(instCode))) {
+                transferData.bankCode = instCode;
+              }
+            }
+          } catch (_) {}
+
         } else {
           // Try to get from user's conversation state as last resort
           try {
