@@ -118,11 +118,56 @@ class MessageProcessor {
 
           // Handle different flow types
           if (result.flowType === 'transfer_pin') {
-            // Transfer PIN flows are handled in the conversation state logic below
-            logger.info('Transfer PIN flow completed, processing via conversation state', {
-              userId: user.id,
-              phoneNumber: user.whatsappNumber
-            });
+            // Process transfer PIN flow immediately using stored session
+            try {
+              const redisClient = require('../utils/redis');
+              const bankTransferService = require('./bankTransfer');
+              const whatsappService = require('./whatsapp');
+
+              const flowToken = flowData.flow_token || flowData.flowToken;
+              const pin = flowData.pin || flowData.pin_number || flowData.pin_code;
+
+              if (!pin || !/^\d{4}$/.test(pin)) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+                return;
+              }
+
+              let session = flowToken ? await redisClient.getSession(flowToken) : null;
+              if (!session && flowToken) {
+                session = await redisClient.getSession(`flow:${flowToken}`);
+              }
+
+              if (!session || (!session.transferData && (!flowData.account_number || !flowData.bank_code || !flowData.transfer_amount))) {
+                logger.error('No transfer session found for Flow PIN processing', { userId: user.id, hasSession: !!session });
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Please start again.');
+                return;
+              }
+
+              const sessTx = session.transferData || {};
+              const transferData = {
+                accountNumber: sessTx.accountNumber || flowData.account_number,
+                bankCode: sessTx.bankCode || flowData.bank_code,
+                amount: parseFloat(sessTx.amount || flowData.transfer_amount || flowData.amount),
+                narration: sessTx.narration || 'Wallet transfer',
+                reference: session.reference || sessTx.reference || `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+              };
+
+              if (!transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Missing transfer details. Please try again.');
+                return;
+              }
+
+              const txResult = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+              if (!txResult.success) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${txResult.message || 'Unknown error'}`);
+              }
+
+              try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
+              await user.clearConversationState();
+              return;
+            } catch (err) {
+              logger.error('Transfer PIN flow immediate processing failed', { error: err.message, userId: user.id });
+            }
           } else if (result.flowType === 'login' || result.message === 'Login successful') {
             // Handle login flow completion
             const redisClient = require('../utils/redis');
