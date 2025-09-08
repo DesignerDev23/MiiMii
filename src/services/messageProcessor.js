@@ -1430,6 +1430,57 @@ class MessageProcessor {
         
         return result;
       } else if (screen === 'PIN_VERIFICATION_SCREEN' && data?.pin) {
+        // First try transfer PIN flow using stored session
+        try {
+          const redisClient = require('../utils/redis');
+          let transferSession = await redisClient.getSession(flowToken);
+          if (!transferSession) {
+            transferSession = await redisClient.getSession(`flow:${flowToken}`);
+          }
+          if (transferSession && (transferSession.context === 'transfer_pin_verification' || transferSession.transferData)) {
+            const whatsappService = require('./whatsapp');
+            const bankTransferService = require('./bankTransfer');
+
+            const sessionTransfer = transferSession.transferData || {};
+            const transferData = {
+              accountNumber: sessionTransfer.accountNumber || data.account_number || data.accountNumber,
+              bankCode: sessionTransfer.bankCode || data.bank_code || data.bankCode,
+              amount: parseFloat(sessionTransfer.amount || data.transfer_amount || data.amount),
+              narration: sessionTransfer.narration || 'Wallet transfer',
+              reference: transferSession.reference || sessionTransfer.reference || `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+            };
+
+            if (!transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
+              logger.error('Transfer session missing required fields for PIN processing', {
+                flowToken,
+                hasSession: !!transferSession,
+                hasTransferData: !!transferSession.transferData
+              });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Please start the transfer again.');
+              await redisClient.deleteSession(flowToken);
+              return;
+            }
+
+            try {
+              const result = await bankTransferService.processBankTransfer(user.id, transferData, data.pin);
+              if (result.success) {
+                logger.info('Transfer completed from Flow PIN', { userId: user.id, reference: result.transaction?.reference });
+              } else {
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
+              }
+            } catch (err) {
+              logger.error('Transfer processing failed from Flow PIN', { error: err.message, userId: user.id });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer failed. Please try again.');
+            } finally {
+              try { await redisClient.deleteSession(flowToken); } catch (_) {}
+              try { await user.clearConversationState(); } catch (_) {}
+            }
+            return;
+          }
+        } catch (e) {
+          logger.warn('Transfer Flow PIN session lookup failed', { error: e.message });
+        }
+
         // Check if this is a data purchase flow by looking at session data
         try {
           const redisClient = require('../utils/redis');
