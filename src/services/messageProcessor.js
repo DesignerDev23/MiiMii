@@ -768,18 +768,41 @@ class MessageProcessor {
 
   async sendOnboardingFlow(user, userName, messageId = null) {
     try {
-      // Send welcome flow message with the verified Flow ID
-      await whatsappService.sendWelcomeFlowMessage(user.whatsappNumber, userName, messageId);
+      const config = require('../config');
+      const whatsappFlowService = require('./whatsappFlowService');
+
+      // Prefer explicit onboardingFlowId if configured; otherwise fallback to welcome flow helper
+      const onboardingFlowId = config.getWhatsappConfig().onboardingFlowId;
+      if (onboardingFlowId) {
+        const flowToken = whatsappFlowService.generateFlowToken(user.id);
+        const flowData = {
+          flowId: onboardingFlowId,
+          flowToken,
+          flowCta: 'Complete Onboarding',
+          flowAction: 'navigate',
+          header: { type: 'text', text: 'MiiMii Account Setup' },
+          body: `Hi ${userName || 'there'}! 👋\n\nLet's complete your MiiMii account setup. This will only take a few minutes.`,
+          footer: 'Secure • Fast • Easy',
+          flowActionPayload: {
+            screen: 'QUESTION_ONE',
+            data: { userId: user.id, phoneNumber: user.whatsappNumber, step: 'personal_details' }
+          }
+        };
+        await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      } else {
+        // Fallback to welcome flow helper (uses WELCOME_FLOW_ID)
+        await whatsappService.sendWelcomeFlowMessage(user.whatsappNumber, userName, messageId);
+      }
       
       // Update user onboarding step
       await user.update({ onboardingStep: 'flow_onboarding' });
       
-      logger.info('Sent welcome flow to new user', {
+      logger.info('Sent onboarding flow to new user', {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
         userName: userName,
         messageId: messageId,
-        flowId: '1223628202852216'
+        usedOnboardingFlowId: !!onboardingFlowId
       });
       
     } catch (error) {
