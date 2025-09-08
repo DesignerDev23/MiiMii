@@ -1084,6 +1084,8 @@ class MessageProcessor {
               // Route list replies to current conversation handler if awaiting input
               const currentState = user.conversationState || {};
               const awaiting = currentState.awaitingInput;
+              const listId = interactiveResult.listReply.id || '';
+              const isDataSelection = listId.startsWith('network_') || listId.startsWith('plan_');
               if (awaiting && awaiting.startsWith('data_')) {
                 // Build and persist new state with the list reply captured
                 const newState = {
@@ -1103,6 +1105,36 @@ class MessageProcessor {
                   return { handled: true };
                 } catch (flowErr) {
                   logger.error('Failed to advance data flow from list reply', { error: flowErr.message, userId: user.id });
+                }
+              } else if (isDataSelection) {
+                // No existing data flow state but user tapped a data item; bootstrap a new data session
+                try {
+                  const redisClient = require('../utils/redis');
+                  const sessionId = `data:${user.id}:${Date.now()}`;
+                  await redisClient.setSession(sessionId, {
+                    id: sessionId,
+                    userId: user.id,
+                    phoneNumber: user.whatsappNumber,
+                    state: 'select_plan',
+                    data: {},
+                    createdAt: Date.now()
+                  }, 900);
+
+                  const bootstrapState = {
+                    intent: 'data',
+                    context: 'data_purchase',
+                    step: 2,
+                    data: { sessionId, listReply: interactiveResult.listReply },
+                    awaitingInput: 'list_reply'
+                  };
+                  await this.storeConversationState(user, bootstrapState);
+                  user.conversationState = bootstrapState;
+
+                  const aiAssistant = require('./aiAssistant');
+                  await aiAssistant.handleConversationFlow(user, interactiveResult.originalText || interactiveResult.listReply.title, user.conversationState);
+                  return { handled: true };
+                } catch (bootErr) {
+                  logger.error('Failed to bootstrap data flow from list reply', { error: bootErr.message, userId: user.id });
                 }
               } else {
                 const newState = {
