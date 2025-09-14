@@ -958,14 +958,27 @@ Extract intent and data from this message. Consider the user context and any ext
 
     const targetPhone = phoneNumber || user.whatsappNumber;
     const airtimeAmount = this.parseAmount(amount);
+    const detectedNetwork = network || this.detectNetwork(targetPhone);
     
-    // Use bilal service for airtime purchase
-    const bilalService = require('./bilal');
-    return await bilalService.purchaseAirtime(user, {
+    // Store airtime purchase data and request PIN verification
+    await user.updateConversationState({
+      intent: 'airtime',
+      awaitingInput: 'airtime_pin_verification',
+      context: 'airtime_purchase',
+      data: {
+        amount: airtimeAmount,
+        phoneNumber: targetPhone,
+        network: detectedNetwork
+      }
+    });
+
+    // Send PIN verification flow
+    return await this.sendPinVerificationFlow(user, {
+      service: 'airtime',
       amount: airtimeAmount,
       phoneNumber: targetPhone,
-      network: network || this.detectNetwork(targetPhone)
-    }, user.whatsappNumber);
+      network: detectedNetwork
+    });
   }
 
   async handleDataPurchase(user, extractedData, aiResponse) {
@@ -1044,39 +1057,27 @@ Extract intent and data from this message. Consider the user context and any ext
       };
     }
 
-    if (!meterNumber) {
-      return {
-        intent: 'bills',
-        message: "I need the meter/account number to process your payment.\n\n📝 Examples:\n• 'Pay 5000 electricity Ikeja 12345678901'\n• 'Pay 3000 DSTV 123456789'",
-        awaitingInput: 'bill_meter_number',
-        context: 'bill_payment'
-      };
-    }
-
-    // Use bills service for bill payment
-    const billsService = require('./bills');
-    
-    if (actualBillType === 'electricity' || actualProvider.toLowerCase().includes('electric')) {
-      return await billsService.payElectricityBill(user, {
-        disco: actualProvider,
-        meterType: 'prepaid', // Default to prepaid, could be made configurable
-        meterNumber: meterNumber,
-        amount: billAmount
-      }, user.whatsappNumber);
-    } else if (actualBillType === 'cable' || ['dstv', 'gotv', 'startime'].includes(actualProvider.toLowerCase())) {
-      return await billsService.payCableBill(user, {
+    // Store bill payment data and request PIN verification
+    await user.updateConversationState({
+      intent: 'bills',
+      awaitingInput: 'bills_pin_verification',
+      context: 'bill_payment',
+      data: {
+        amount: billAmount,
         provider: actualProvider,
-        iucNumber: meterNumber,
-        amount: billAmount
-      }, user.whatsappNumber);
-    } else {
-      return {
-        intent: 'bills',
-        message: `I don't recognize the provider "${actualProvider}". Supported providers:\n\nElectricity: Ikeja, Eko, Kano, Port Harcourt, Jos, Ibadan, Enugu, Kaduna, Abuja, Benin, PHED\nCable: DSTV, GOtv, Startimes`,
-        awaitingInput: 'bill_provider',
-        context: 'bill_payment'
-      };
-    }
+        meterNumber: meterNumber,
+        billType: actualBillType
+      }
+    });
+
+    // Send PIN verification flow
+    return await this.sendPinVerificationFlow(user, {
+      service: 'bills',
+      amount: billAmount,
+      provider: actualProvider,
+      meterNumber: meterNumber,
+      billType: actualBillType
+    });
   }
 
   async handleBalanceInquiry(user) {
@@ -1085,6 +1086,94 @@ Extract intent and data from this message. Consider the user context and any ext
       message: '',
       requiresAction: 'SHOW_BALANCE'
     };
+  }
+
+  async sendPinVerificationFlow(user, transactionData) {
+    try {
+      const whatsappFlowService = require('./whatsappFlowService');
+      const whatsappService = require('./whatsapp');
+      const redisClient = require('../utils/redis');
+      const appConfig = require('../config');
+
+      const flowToken = whatsappFlowService.generateFlowToken(user.id);
+      
+      // Store transaction data in Redis for the Flow endpoint to read
+      const flowSession = {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        ...transactionData
+      };
+      await redisClient.setSession(flowToken, flowSession, 900);
+
+      // Create service-specific messages
+      let serviceMessage = '';
+      let serviceTitle = '';
+      
+      switch (transactionData.service) {
+        case 'airtime':
+          serviceMessage = `Enter your 4-digit PIN to authorize airtime purchase.\n\nAmount: ₦${transactionData.amount}\nPhone: ${transactionData.phoneNumber}\nNetwork: ${transactionData.network}`;
+          serviceTitle = '🔐 Authorize Airtime Purchase';
+          break;
+        case 'bills':
+          serviceMessage = `Enter your 4-digit PIN to authorize bill payment.\n\nAmount: ₦${transactionData.amount}\nProvider: ${transactionData.provider}\nAccount: ${transactionData.meterNumber}`;
+          serviceTitle = '🔐 Authorize Bill Payment';
+          break;
+        default:
+          serviceMessage = `Enter your 4-digit PIN to authorize this transaction.`;
+          serviceTitle = '🔐 Authorize Transaction';
+      }
+
+      const flowData = {
+        flowId: appConfig.getWhatsappConfig().transferPinFlowId,
+        flowToken,
+        flowCta: 'Authorize with PIN',
+        header: { type: 'text', text: serviceTitle },
+        body: serviceMessage,
+        flowAction: 'navigate',
+        flowActionPayload: {
+          screen: 'PIN_VERIFICATION_SCREEN',
+          data: transactionData
+        }
+      };
+
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+
+      // Mark conversation as awaiting the flow completion
+      await user.updateConversationState({
+        intent: transactionData.service,
+        awaitingInput: `${transactionData.service}_pin_flow`,
+        context: `${transactionData.service}_purchase`,
+        data: { ...transactionData, flowToken }
+      });
+
+      return {
+        intent: transactionData.service,
+        message: 'PIN verification flow sent. Please complete the authorization.',
+        awaitingInput: `${transactionData.service}_pin_flow`,
+        context: `${transactionData.service}_purchase`
+      };
+    } catch (error) {
+      logger.error('Failed to send PIN verification flow', {
+        error: error.message,
+        userId: user.id,
+        service: transactionData.service
+      });
+      
+      // Fallback to asking PIN in chat if Flow fails
+      await user.updateConversationState({
+        intent: transactionData.service,
+        awaitingInput: `${transactionData.service}_pin`,
+        context: `${transactionData.service}_purchase`,
+        data: transactionData
+      });
+      
+      return {
+        intent: transactionData.service,
+        message: 'Enter your 4-digit PIN to authorize this transaction.',
+        awaitingInput: `${transactionData.service}_pin`,
+        context: `${transactionData.service}_purchase`
+      };
+    }
   }
 
   async handleTransactionHistory(user, extractedData) {

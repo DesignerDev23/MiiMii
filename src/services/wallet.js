@@ -486,7 +486,7 @@ class WalletService {
 
       const bellBankService = require('./bellbank');
       
-      const virtualAccount = await bellBankService.createVirtualAccount({
+      const virtualAccountResult = await bellBankService.createVirtualAccount({
         firstName: user.firstName,
         lastName: user.lastName,
         middleName: user.middleName,
@@ -498,39 +498,36 @@ class WalletService {
         userId: user.id
       });
       
+      if (!virtualAccountResult.success) {
+        logger.error('Virtual account creation failed', {
+          userId,
+          error: virtualAccountResult.error,
+          message: virtualAccountResult.message
+        });
+        throw new Error(virtualAccountResult.message || 'Failed to create virtual account');
+      }
+      
       await wallet.update({
-        virtualAccountNumber: virtualAccount.accountNumber,
-        virtualAccountBank: virtualAccount.bankName,
-        virtualAccountName: virtualAccount.accountName
+        virtualAccountNumber: virtualAccountResult.accountNumber,
+        virtualAccountBank: virtualAccountResult.bankName,
+        virtualAccountName: virtualAccountResult.accountName
       });
 
-      // Send AI-generated welcome message with bank details
-      try {
-        const aiAssistant = require('./aiAssistant');
-        const whatsappService = require('./whatsapp');
-        
-        const accountDetails = {
-          accountNumber: virtualAccount.accountNumber,
-          accountName: virtualAccount.accountName,
-          bankName: virtualAccount.bankName || 'BellBank'
-        };
-        
-        const welcomeMessage = await aiAssistant.generateWelcomeMessage(user, accountDetails);
-        await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
-        
-        logger.info('AI welcome message sent for wallet virtual account', { userId });
-      } catch (welcomeError) {
-        logger.error('Failed to send AI welcome message for wallet', { userId, error: welcomeError.message });
-      }
+      // Note: Welcome message is sent by onboarding service to prevent duplicates
 
       logger.info('Virtual account created successfully for wallet', {
         userId,
-        accountNumber: virtualAccount.accountNumber,
-        bankName: virtualAccount.bankName,
-        accountName: virtualAccount.accountName
+        accountNumber: virtualAccountResult.accountNumber,
+        bankName: virtualAccountResult.bankName,
+        accountName: virtualAccountResult.accountName
       });
 
-      return virtualAccount;
+      return {
+        success: true,
+        accountNumber: virtualAccountResult.accountNumber,
+        bankName: virtualAccountResult.bankName,
+        accountName: virtualAccountResult.accountName
+      };
     } catch (error) {
       // Handle specific BellBank API errors
       const isBellBankError = error.message && (

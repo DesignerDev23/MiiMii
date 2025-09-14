@@ -1049,6 +1049,25 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           
           // If there was an error, return error response
           return result;
+        } else if (data && data.pin && tokenData.sessionData && (tokenData.sessionData.service === 'airtime' || tokenData.sessionData.service === 'bills')) {
+          logger.info('Detected airtime/bills PIN verification flow', {
+            service: tokenData.sessionData.service,
+            dataKeys: Object.keys(data || {}),
+            sessionDataKeys: Object.keys(tokenData.sessionData || {}),
+            hasPin: !!data.pin
+          });
+          
+          // Handle airtime or bills PIN verification
+          const result = await handleServicePinScreen(data, userId, tokenData, flowToken);
+          
+          // If transaction was successful, return empty response to close terminal flow
+          if (Object.keys(result).length === 0) {
+            logger.info(`${tokenData.sessionData.service} transaction successful, returning empty response to close flow`);
+            return result;
+          }
+          
+          // If there was an error, return error response
+          return result;
         } else {
           logger.error('Unable to determine flow type for PIN_VERIFICATION_SCREEN', {
             dataKeys: Object.keys(data || {}),
@@ -2701,6 +2720,135 @@ function getPopularDataPlansForNetwork(network) {
   return networkPlans.slice(0, 10);
 }
 
+/**
+ * Handle PIN verification for airtime and bills services
+ */
+async function handleServicePinScreen(data, userId, tokenData, flowToken) {
+  try {
+    const logger = require('../utils/logger');
+    const whatsappService = require('../services/whatsapp');
+    const redisClient = require('../utils/redis');
+    const { User } = require('../models');
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      logger.error('User not found for service PIN verification', { userId });
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: { error: 'User not found. Please try again.', message: 'User not found' }
+      };
+    }
+
+    const pin = data.pin;
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: { error: 'Please enter exactly 4 digits for your PIN.', message: 'PIN must be exactly 4 digits' }
+      };
+    }
+
+    // Validate PIN
+    const isValid = await user.validatePin(pin);
+    if (!isValid) {
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: { error: 'Incorrect PIN. Please try again.', message: 'Invalid PIN' }
+      };
+    }
+
+    const sessionData = tokenData.sessionData;
+    const service = sessionData.service;
+
+    try {
+      if (service === 'airtime') {
+        // Handle airtime purchase
+        const bilalService = require('../services/bilal');
+        const result = await bilalService.purchaseAirtime(user, {
+          phoneNumber: sessionData.phoneNumber,
+          network: sessionData.network,
+          amount: sessionData.amount,
+          pin: pin
+        }, user.whatsappNumber);
+
+        if (result.success) {
+          logger.info('Airtime purchase successful via PIN flow', { userId, amount: sessionData.amount });
+          // Clear session and conversation state
+          await redisClient.deleteSession(flowToken);
+          await user.clearConversationState();
+          return {}; // Empty response to close flow
+        } else {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: { error: result.message || 'Airtime purchase failed. Please try again.', message: 'Purchase failed' }
+          };
+        }
+      } else if (service === 'bills') {
+        // Handle bill payment
+        const billsService = require('../services/bills');
+        let result;
+        
+        if (sessionData.billType === 'electricity' || sessionData.provider.toLowerCase().includes('electric')) {
+          result = await billsService.payElectricityBill(user, {
+            disco: sessionData.provider,
+            meterType: 'prepaid',
+            meterNumber: sessionData.meterNumber,
+            amount: sessionData.amount,
+            pin: pin
+          }, user.whatsappNumber);
+        } else {
+          result = await billsService.payCableBill(user, {
+            provider: sessionData.provider,
+            iucNumber: sessionData.meterNumber,
+            amount: sessionData.amount,
+            pin: pin
+          }, user.whatsappNumber);
+        }
+
+        if (result.success) {
+          logger.info('Bill payment successful via PIN flow', { userId, amount: sessionData.amount, provider: sessionData.provider });
+          // Clear session and conversation state
+          await redisClient.deleteSession(flowToken);
+          await user.clearConversationState();
+          return {}; // Empty response to close flow
+        } else {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: { error: result.message || 'Bill payment failed. Please try again.', message: 'Payment failed' }
+          };
+        }
+      } else {
+        return {
+          screen: 'PIN_VERIFICATION_SCREEN',
+          data: { error: 'Unknown service type. Please try again.', message: 'Invalid service' }
+        };
+      }
+    } catch (serviceError) {
+      logger.error('Service execution failed in PIN flow', {
+        error: serviceError.message,
+        userId,
+        service,
+        stack: serviceError.stack
+      });
+      
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: { error: serviceError.message || 'Transaction failed. Please try again.', message: 'Service error' }
+      };
+    }
+  } catch (error) {
+    logger.error('Error in handleServicePinScreen', {
+      error: error.message,
+      userId,
+      stack: error.stack
+    });
+    
+    return {
+      screen: 'PIN_VERIFICATION_SCREEN',
+      data: { error: 'An error occurred. Please try again.', message: 'System error' }
+    };
+  }
+}
+
 // Export functions for use in other modules
 module.exports = {
   router,
@@ -2710,5 +2858,6 @@ module.exports = {
   getPopularDataPlansForNetwork,
   getBilalOfficialPlanId,
   getDataPlanPrice,
+  handleServicePinScreen,
   DATA_PLANS
 };

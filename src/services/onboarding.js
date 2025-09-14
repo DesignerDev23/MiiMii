@@ -1167,45 +1167,24 @@ class OnboardingService {
       // Create wallet for user if not exists
       const wallet = await walletService.getOrCreateWallet(user.id);
 
-      // Create virtual account with BellBank
+      // Create virtual account with BellBank using wallet service to prevent duplicates
       let virtualAccountDetails = null;
       try {
-        const bellbankService = require('./bellbank');
-        const virtualAccountData = await bellbankService.createVirtualAccount({
-          firstName: user.firstName,
-          lastName: user.lastName,
-          middleName: user.middleName,
-          phoneNumber: user.whatsappNumber,
-          address: user.address,
-          bvn: user.bvn,
-          gender: user.gender,
-          dateOfBirth: user.dateOfBirth,
-          userId: user.id
-        });
-
-        if (virtualAccountData.success) {
-          // Update wallet with virtual account details
-          await wallet.update({
-            virtualAccountNumber: virtualAccountData.accountNumber,
-            virtualAccountBank: virtualAccountData.bankName,
-            virtualAccountName: virtualAccountData.accountName,
-            bankCode: virtualAccountData.bankCode,
-            accountReference: virtualAccountData.externalReference
-          });
-
+        // Use wallet service to create virtual account (prevents duplicates)
+        const virtualAccountResult = await walletService.createVirtualAccountForWallet(user.id);
+        
+        if (virtualAccountResult.success) {
           virtualAccountDetails = {
-            accountNumber: virtualAccountData.accountNumber,
-            bankName: virtualAccountData.bankName,
-            accountName: virtualAccountData.accountName,
-            bankCode: virtualAccountData.bankCode,
-            externalReference: virtualAccountData.externalReference
+            accountNumber: virtualAccountResult.accountNumber,
+            bankName: virtualAccountResult.bankName,
+            accountName: virtualAccountResult.accountName
           };
 
           logger.info('Virtual account created successfully during onboarding', {
             userId: user.id,
-            accountNumber: virtualAccountData.accountNumber,
-            bankName: virtualAccountData.bankName,
-            accountName: virtualAccountData.accountName
+            accountNumber: virtualAccountResult.accountNumber,
+            bankName: virtualAccountResult.bankName,
+            accountName: virtualAccountResult.accountName
           });
         }
       } catch (virtualAccountError) {
@@ -1330,21 +1309,12 @@ class OnboardingService {
           await userService.setUserPin(user.id, flowData.screen_3_4Digit_PIN_0);
           await user.update({ onboardingStep: 'completed' });
           
-          // Create virtual account
+          // Create virtual account using wallet service to prevent duplicates
           try {
-            const virtualAccountData = await bellbankService.createVirtualAccount({
-              firstName: user.firstName,
-              lastName: user.lastName,
-              middleName: user.middleName,
-              phoneNumber: user.whatsappNumber,
-              address: user.address,
-              bvn: user.bvn,
-              gender: user.gender,
-              dateOfBirth: user.dateOfBirth,
-              userId: user.id
-            });
+            const walletService = require('./wallet');
+            const virtualAccountResult = await walletService.createVirtualAccountForWallet(user.id);
 
-            if (virtualAccountData.success) {
+            if (virtualAccountResult.success) {
               logger.info('Virtual account created successfully', { userId: user.id });
               
               // Send AI-generated welcome message with bank details
@@ -1353,9 +1323,9 @@ class OnboardingService {
                 const whatsappService = require('./whatsapp');
                 
                 const accountDetails = {
-                  accountNumber: virtualAccountData.accountNumber,
-                  accountName: virtualAccountData.accountName,
-                  bankName: virtualAccountData.bankName || 'BellBank'
+                  accountNumber: virtualAccountResult.accountNumber,
+                  accountName: virtualAccountResult.accountName,
+                  bankName: virtualAccountResult.bankName || 'BellBank'
                 };
                 const welcomeMessage = await aiAssistant.generateWelcomeMessage(user, accountDetails);
                 await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
@@ -1369,9 +1339,9 @@ class OnboardingService {
                 success: true, 
                 userId: user.id,
                 accountDetails: {
-                  accountNumber: virtualAccountData.accountNumber,
-                  accountName: virtualAccountData.accountName,
-                  bankName: virtualAccountData.bankName || 'BellBank'
+                  accountNumber: virtualAccountResult.accountNumber,
+                  accountName: virtualAccountResult.accountName,
+                  bankName: virtualAccountResult.bankName || 'BellBank'
                 }
               };
             }

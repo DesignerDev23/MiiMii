@@ -237,7 +237,12 @@ class BellBankService {
           }
         );
 
-        throw new Error(response.message || 'Failed to create virtual account');
+        // Return failure instead of throwing to allow graceful handling
+        return {
+          success: false,
+          error: response.message || 'Failed to create virtual account',
+          message: 'Virtual account creation failed. Please try again later or contact support.'
+        };
       }
     } catch (error) {
       logger.error('Virtual account creation error', {
@@ -260,7 +265,12 @@ class BellBankService {
         }
       );
 
-      throw error;
+      // Return failure instead of throwing to allow graceful handling
+      return {
+        success: false,
+        error: error.message,
+        message: 'Virtual account creation failed due to technical issues. Please try again later or contact support.'
+      };
     }
   }
 
