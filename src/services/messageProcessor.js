@@ -4,6 +4,7 @@ const whatsappService = require('./whatsapp');
 const aiAssistantService = require('./aiAssistant');
 const whatsappFlowService = require('./whatsappFlowService');
 const bellbankService = require('./bellbank');
+const imageProcessingService = require('./imageProcessing');
 const { ActivityLog } = require('../models');
 const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
@@ -1841,46 +1842,147 @@ class MessageProcessor {
       let processedText = caption || '';
       let extractedData = null;
 
-      // Try to extract text/data from the image
-      try {
-        const ocrResult = await ocrService.extractTextFromImage(mediaId);
-        
-        if (ocrResult.text) {
-          processedText += (processedText ? '\n' : '') + ocrResult.text;
-          extractedData = ocrResult.data;
-          
-          // Log successful OCR
-          await ActivityLog.logUserActivity(
-            user.id,
-            'whatsapp_message_received',
-            'image_ocr_processed',
-            {
-              source: 'whatsapp',
-              description: 'Image OCR processed successfully',
-              extractedTextLength: ocrResult.text.length,
-              hasStructuredData: !!ocrResult.data
-            }
+      // Check if user is in transfer context or if caption suggests bank details
+      const isTransferContext = user.conversationState?.intent === 'TRANSFER_MONEY' || 
+                                user.conversationState?.context === 'transfer_verification' ||
+                                (caption && caption.toLowerCase().includes('transfer'));
+
+      if (isTransferContext) {
+        // Try to extract bank details from the image
+        try {
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            "📷 I can see you've sent an image. Let me analyze it for bank details..."
           );
 
-          // Inform user about extracted text
-          if (ocrResult.text.length > 10) {
+          const bankDetailsResult = await imageProcessingService.processBankDetailsImage(mediaId);
+          
+          if (bankDetailsResult.success && bankDetailsResult.bankDetails) {
+            const { bankDetails } = bankDetailsResult;
+            
+            // Validate extracted bank details
+            const validation = imageProcessingService.validateBankDetails(bankDetails);
+            
+            if (validation.isValid) {
+              // Store the extracted bank details in user's conversation state
+              await user.updateConversationState({
+                intent: 'TRANSFER_MONEY',
+                awaitingInput: 'transfer_amount',
+                context: 'transfer_verification',
+                extractedBankDetails: bankDetails
+              });
+
+              // Log successful bank details extraction
+              await ActivityLog.logUserActivity(
+                user.id,
+                'whatsapp_message_received',
+                'bank_details_extracted',
+                {
+                  source: 'whatsapp',
+                  description: 'Bank details extracted from image',
+                  accountNumber: bankDetails.accountNumber,
+                  bankName: bankDetails.bankName,
+                  confidence: bankDetails.confidence
+                }
+              );
+
+              // Send confirmation message with extracted details
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                `✅ *Bank Details Extracted!*\n\n` +
+                `🏦 *Bank:* ${bankDetails.bankName}\n` +
+                `💳 *Account Number:* ${bankDetails.accountNumber}\n` +
+                `👤 *Account Name:* ${bankDetails.accountHolderName || 'Will be verified'}\n\n` +
+                `Now please tell me the amount you want to transfer.\n\n` +
+                `Example: "Send ₦5000" or "Transfer ₦10,000"`
+              );
+
+              return { 
+                text: `Transfer to ${bankDetails.bankName} ${bankDetails.accountNumber}`, 
+                data: { bankDetails } 
+              };
+            } else {
+              // Invalid bank details
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                `❌ *Couldn't extract valid bank details*\n\n` +
+                `Issues found:\n${validation.errors.map(error => `• ${error}`).join('\n')}\n\n` +
+                `Please try:\n` +
+                `• Taking a clearer photo\n` +
+                `• Ensuring account number and bank name are visible\n` +
+                `• Or type the details manually`
+              );
+              return { text: null, data: null };
+            }
+          } else {
+            // Failed to extract bank details
             await whatsappService.sendTextMessage(
               user.whatsappNumber,
-              `📷 I can see text in your image:\n"${ocrResult.text.substring(0, 200)}${ocrResult.text.length > 200 ? '...' : ''}"\n\nProcessing your request...`
+              `❌ *Couldn't extract bank details from image*\n\n` +
+              `Please try:\n` +
+              `• Taking a clearer photo of the bank details\n` +
+              `• Ensuring the text is readable\n` +
+              `• Or type the details manually\n\n` +
+              `Example: "Send ₦5000 to GTBank 0123456789"`
             );
+            return { text: null, data: null };
           }
+        } catch (bankDetailsError) {
+          logger.error('Bank details extraction failed', { 
+            error: bankDetailsError.message, 
+            mediaId 
+          });
+          
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `❌ *Image processing failed*\n\n` +
+            `Please try typing the bank details manually:\n\n` +
+            `Example: "Send ₦5000 to GTBank 0123456789"`
+          );
+          return { text: null, data: null };
         }
-      } catch (ocrError) {
-        logger.warn('OCR processing failed', { error: ocrError.message, mediaId });
-      }
+      } else {
+        // General image processing (not bank details)
+        try {
+          const ocrResult = await imageProcessingService.extractTextFromImage(
+            await imageProcessingService.downloadImage(mediaId)
+          );
+          
+          if (ocrResult.text) {
+            processedText += (processedText ? '\n' : '') + ocrResult.text;
+            
+            // Log successful OCR
+            await ActivityLog.logUserActivity(
+              user.id,
+              'whatsapp_message_received',
+              'image_ocr_processed',
+              {
+                source: 'whatsapp',
+                description: 'Image OCR processed successfully',
+                extractedTextLength: ocrResult.text.length
+              }
+            );
 
-      // If no text extracted and no caption, ask for clarification
-      if (!processedText) {
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          "I can see your image, but I need more information. Please tell me what you'd like me to help you with."
-        );
-        return { text: null, data: null };
+            // Inform user about extracted text
+            if (ocrResult.text.length > 10) {
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                `📷 I can see text in your image:\n"${ocrResult.text.substring(0, 200)}${ocrResult.text.length > 200 ? '...' : ''}"\n\nProcessing your request...`
+              );
+            }
+          }
+        } catch (ocrError) {
+          logger.warn('OCR processing failed', { error: ocrError.message, mediaId });
+        }
+
+        // If no text extracted and no caption, ask for clarification
+        if (!processedText) {
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            "I can see your image, but I need more information. Please tell me what you'd like me to help you with."
+          );
+          return { text: null, data: null };
+        }
       }
 
       return { text: processedText, data: extractedData };
@@ -2136,6 +2238,7 @@ class MessageProcessor {
                        `💡 *Tips*\n` +
                        `• Send voice notes - I understand speech!\n` +
                        `• Send images of bills - I can read them!\n` +
+                       `• Send photos of bank details for transfers!\n` +
                        `• Just type naturally - I'm smart! 😊\n\n` +
                        `Need help? Type "support" 💬`;
 

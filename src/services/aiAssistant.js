@@ -902,6 +902,30 @@ Extract intent and data from this message. Consider the user context and any ext
     }
   }
 
+  // Resolve bank code from bank name
+  resolveBankCode(bankName) {
+    if (!bankName) return null;
+    
+    const bankNameLower = bankName.toLowerCase().trim();
+    const bankMapping = this.getStaticBankCodeMapping();
+    
+    // Try exact match first
+    if (bankMapping[bankNameLower]) {
+      return bankMapping[bankNameLower];
+    }
+    
+    // Try partial match
+    const partialMatch = Object.keys(bankMapping).find(key => 
+      bankNameLower.includes(key) || key.includes(bankNameLower)
+    );
+    
+    if (partialMatch) {
+      return bankMapping[partialMatch];
+    }
+    
+    return null;
+  }
+
   // Add comprehensive static bank code mapping method
   getStaticBankCodeMapping() {
     return {
@@ -1700,6 +1724,105 @@ Extract intent and data from this message. Consider the user context and any ext
           // Fallback to asking PIN in chat if Flow fails
           await user.updateConversationState({ intent: 'data', awaitingInput: 'data_pin', context: 'data_purchase', step: 5, data: conversationState.data });
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter your 4-digit PIN to authorize this purchase.');
+          return;
+        }
+      }
+
+      case 'transfer_amount': {
+        // Handle transfer amount when bank details were extracted from image
+        const whatsappService = require('./whatsapp');
+        const bankTransferService = require('./bankTransfer');
+        
+        // Parse amount from message
+        const amount = this.parseAmount(message);
+        if (!amount || amount < 100) {
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            'Please enter a valid amount (minimum ₦100).\n\nExample: "5000" or "₦10,000"'
+          );
+          return;
+        }
+
+        // Get extracted bank details
+        const extractedBankDetails = conversationState.extractedBankDetails;
+        if (!extractedBankDetails) {
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            '❌ Bank details not found. Please try sending the image again or type the details manually.'
+          );
+          return;
+        }
+
+        try {
+          // Resolve bank code
+          const bankName = extractedBankDetails.bankName;
+          const accountNumber = extractedBankDetails.accountNumber;
+          
+          const resolvedBankCode = this.resolveBankCode(bankName);
+          if (!resolvedBankCode) {
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              `❌ Couldn't identify bank "${bankName}". Please try typing the bank details manually.`
+            );
+            return;
+          }
+
+          // Validate account and get recipient name via BellBank name enquiry
+          const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
+          
+          if (!validation.valid) {
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              `❌ Invalid account details. Please check the account number and bank name.`
+            );
+            return;
+          }
+
+          // Calculate fees
+          const feeInfo = bankTransferService.calculateTransferFee(amount, bankTransferService.transferTypes.WALLET_TO_BANK);
+          
+          // Store transaction details and request confirmation
+          await user.updateConversationState({
+            intent: 'bank_transfer',
+            awaitingInput: 'confirm_transfer',
+            context: 'bank_transfer_confirmation',
+            step: 1,
+            data: {
+              accountNumber,
+              bankCode: resolvedBankCode,
+              bankName: bankName,
+              amount: amount,
+              totalFee: feeInfo.totalFee,
+              totalAmount: feeInfo.totalAmount,
+              narration: 'Wallet transfer',
+              reference: this.generateReference(),
+              recipientName: validation.accountName
+            }
+          });
+
+          // Generate confirmation message
+          const confirmationMessage = await this.generateTransferConfirmationMessage({
+            amount: amount,
+            fee: feeInfo.totalFee,
+            totalAmount: feeInfo.totalAmount,
+            recipientName: validation.accountName,
+            bankName: bankName,
+            accountNumber: accountNumber
+          });
+
+          await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
+          return;
+        } catch (error) {
+          logger.error('Transfer amount processing failed', { 
+            error: error.message, 
+            userId: user.id,
+            extractedBankDetails 
+          });
+          
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `❌ Failed to process transfer. Please try typing the bank details manually.\n\nExample: "Send ₦5000 to GTBank 0123456789"`
+          );
           return;
         }
       }
