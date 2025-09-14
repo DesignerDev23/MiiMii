@@ -2668,11 +2668,43 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
       }
     }
 
+    // Send separate PIN verification flow instead of navigating to PIN_VERIFICATION_SCREEN
+    try {
+      const aiAssistant = require('../services/aiAssistant');
+      const user = await User.findByPk(userId);
+      
+      if (user) {
+        // Send PIN verification flow for data purchase
+        await aiAssistant.sendPinVerificationFlow(user, {
+          service: 'data',
+          phoneNumber,
+          network,
+          dataPlan: { id: dataPlan, dataplan: selectedPlan?.title },
+          amount: selectedPlan?.price
+        });
+        
+        logger.info('PIN verification flow sent for data purchase', {
+          userId,
+          network,
+          phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
+          dataPlan: selectedPlan?.title
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to send PIN verification flow for data purchase', { 
+        error: error.message, 
+        userId,
+        network,
+        phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7)
+      });
+    }
+
+    // Return success response to close the current flow
     return {
-      screen: 'PIN_VERIFICATION_SCREEN',
+      screen: 'CONFIRMATION_SCREEN',
       data: {
         success: true,
-        message: 'Purchase confirmed. Please enter your PIN to complete the transaction.'
+        message: 'Purchase confirmed. Please check your messages for PIN verification.'
       }
     };
 

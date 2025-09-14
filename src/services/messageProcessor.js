@@ -173,7 +173,7 @@ class MessageProcessor {
               logger.error('Transfer PIN flow immediate processing failed', { error: err.message, userId: user.id });
             }
           } else if (result.flowType === 'airtime_pin' || result.flowType === 'bills_pin' || result.flowType === 'data_pin') {
-            // Handle airtime/bills PIN flow completion
+            // Handle airtime/bills/data PIN flow completion
             try {
               const redisClient = require('../utils/redis');
               const whatsappService = require('./whatsapp');

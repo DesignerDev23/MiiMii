@@ -1025,10 +1025,19 @@ Extract intent and data from this message. Consider the user context and any ext
     
     const detectedNetwork = network || this.detectNetwork(targetPhone);
     
-    // Store data purchase data and request PIN verification
+    // Use the complete data purchase flow
+    const whatsappService = require('./whatsapp');
+    await whatsappService.sendDataPurchaseFlow(user.whatsappNumber, {
+      id: user.id,
+      phoneNumber: targetPhone,
+      network: detectedNetwork,
+      dataPlan: selectedPlan
+    });
+
+    // Mark conversation as awaiting the flow completion
     await user.updateConversationState({
       intent: 'data',
-      awaitingInput: 'data_pin_verification',
+      awaitingInput: 'data_purchase_flow',
       context: 'data_purchase',
       data: {
         phoneNumber: targetPhone,
@@ -1037,13 +1046,12 @@ Extract intent and data from this message. Consider the user context and any ext
       }
     });
 
-    // Send PIN verification flow
-    return await this.sendPinVerificationFlow(user, {
-      service: 'data',
-      phoneNumber: targetPhone,
-      network: detectedNetwork,
-      dataPlan: selectedPlan
-    });
+    return {
+      intent: 'data',
+      message: 'Data purchase flow sent. Please complete the purchase in the flow.',
+      awaitingInput: 'data_purchase_flow',
+      context: 'data_purchase'
+    };
   }
 
   async handleBillPayment(user, extractedData, aiResponse) {
