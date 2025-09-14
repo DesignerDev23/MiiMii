@@ -1002,8 +1002,8 @@ Extract intent and data from this message. Consider the user context and any ext
       awaitingInput: 'airtime_pin_verification',
       context: 'airtime_purchase',
       data: {
-        amount: airtimeAmount,
-        phoneNumber: targetPhone,
+      amount: airtimeAmount,
+      phoneNumber: targetPhone,
         network: detectedNetwork
       }
     });
@@ -1119,7 +1119,7 @@ Extract intent and data from this message. Consider the user context and any ext
 
     // Store bill payment data and request PIN verification
     await user.updateConversationState({
-      intent: 'bills',
+        intent: 'bills',
       awaitingInput: 'bills_pin_verification',
       context: 'bill_payment',
       data: {
@@ -1134,7 +1134,7 @@ Extract intent and data from this message. Consider the user context and any ext
     return await this.sendPinVerificationFlow(user, {
       service: 'bills',
       amount: billAmount,
-      provider: actualProvider,
+        provider: actualProvider,
       meterNumber: meterNumber,
       billType: actualBillType
     });
@@ -2431,6 +2431,24 @@ Welcome to the future of banking! 🚀`;
               },
               response: `Processing transfer of ₦${amount.toLocaleString()} to ${extractedData.bankDetails.bankName} ${extractedData.bankDetails.accountNumber}`,
               suggestedAction: 'Process bank transfer with image-extracted details'
+            };
+          } else {
+            // Amount not found in caption, but we have bank details from image
+            logger.warn('Image bank details found but no amount in caption', {
+              message: message,
+              bankDetails: extractedData.bankDetails
+            });
+            return {
+              intent: 'bank_transfer',
+              confidence: 0.8,
+              extractedData: {
+                amount: null,
+                accountNumber: extractedData.bankDetails.accountNumber,
+                bankName: extractedData.bankDetails.bankName,
+                bankCode: null
+              },
+              response: `I found bank details in your image (${extractedData.bankDetails.bankName} ${extractedData.bankDetails.accountNumber}), but I need the amount. Please specify the amount you want to send.`,
+              suggestedAction: 'Request amount for image-extracted bank details'
             };
           }
         }

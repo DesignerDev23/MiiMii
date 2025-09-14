@@ -68,7 +68,7 @@ class ImageProcessingService {
    */
   async preprocessImage(imageBuffer) {
     try {
-      // Use sharp to enhance the image for better OCR
+      // Use sharp to enhance the image for better OCR, especially for handwritten text
       const processedBuffer = await sharp(imageBuffer)
         .resize(2000, 2000, { 
           fit: 'inside',
@@ -76,7 +76,9 @@ class ImageProcessingService {
         })
         .grayscale()
         .normalize()
-        .sharpen()
+        .sharpen({ sigma: 1.0, m1: 0.5, m2: 2.0 }) // Enhanced sharpening for handwritten text
+        .gamma(1.2) // Adjust gamma for better contrast
+        .threshold(120) // Lower threshold for handwritten text
         .png()
         .toBuffer();
 

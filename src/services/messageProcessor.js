@@ -1945,15 +1945,8 @@ class MessageProcessor {
                 fromImage: true
               };
 
-              // Send confirmation message with extracted details
-              await whatsappService.sendTextMessage(
-                user.whatsappNumber,
-                `✅ *Bank Details Extracted from Image!*\n\n` +
-                `🏦 *Bank:* ${bankDetails.bankName}\n` +
-                `💳 *Account Number:* ${bankDetails.accountNumber}\n` +
-                `👤 *Account Name:* ${bankDetails.accountHolderName || 'Will be verified'}\n\n` +
-                `Processing your transfer request...`
-              );
+              // Don't send confirmation message here - let the AI handle the response
+              // The AI will send the appropriate message based on the transfer processing
 
               return { 
                 text: processedText, 
