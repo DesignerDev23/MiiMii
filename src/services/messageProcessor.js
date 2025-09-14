@@ -1550,10 +1550,10 @@ class MessageProcessor {
             break;
             
           case 'bank_transfer':
-            return await this.handleTransferIntent(user, { text: processedText }, messageType, extractedData);
+            return await this.handleTransferIntent(user, { text: processedText }, messageType, aiAnalysis.extractedData);
             
           case 'transfer':
-            return await this.handleTransferIntent(user, { text: processedText }, messageType, extractedData);
+            return await this.handleTransferIntent(user, { text: processedText }, messageType, aiAnalysis.extractedData);
             
           case 'airtime':
             return await this.handleAirtimeIntent(user, { text: processedText }, messageType);
@@ -2406,12 +2406,12 @@ class MessageProcessor {
     let aiAnalysis;
     
     // If we have extracted data (e.g., from image processing), use it directly
-    if (extractedData && extractedData.bankDetails) {
+    if (extractedData && (extractedData.bankDetails || (extractedData.accountNumber && extractedData.bankName))) {
       logger.info('Using extracted bank details for transfer', {
         userId: user.id,
-        hasBankDetails: !!extractedData.bankDetails,
-        accountNumber: extractedData.bankDetails.accountNumber,
-        bankName: extractedData.bankDetails.bankName,
+        hasBankDetails: !!(extractedData.bankDetails || (extractedData.accountNumber && extractedData.bankName)),
+        accountNumber: extractedData.accountNumber || extractedData.bankDetails?.accountNumber,
+        bankName: extractedData.bankName || extractedData.bankDetails?.bankName,
         amount: extractedData.amount
       });
       
@@ -2421,9 +2421,9 @@ class MessageProcessor {
         confidence: 0.95,
         extractedData: {
           amount: extractedData.amount,
-          accountNumber: extractedData.bankDetails.accountNumber,
-          bankName: extractedData.bankDetails.bankName,
-          recipientName: extractedData.bankDetails.accountHolderName
+          accountNumber: extractedData.accountNumber || extractedData.bankDetails?.accountNumber,
+          bankName: extractedData.bankName || extractedData.bankDetails?.bankName,
+          recipientName: extractedData.recipientName || extractedData.bankDetails?.accountHolderName
         }
       };
     } else {
