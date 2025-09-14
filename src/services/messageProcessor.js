@@ -1424,6 +1424,16 @@ class MessageProcessor {
 
       // Process with AI Assistant for intent recognition and response
       const aiAssistant = require('./aiAssistant');
+      
+      // Debug: Log what we're sending to AI
+      logger.info('Processing message with AI', {
+        userId: user.id,
+        processedText: processedText,
+        messageType: messageType,
+        hasExtractedData: !!extractedData,
+        extractedDataKeys: extractedData ? Object.keys(extractedData) : []
+      });
+      
       // If user is mid-conversation (e.g., data purchase), route to conversation handler first
       if (user.conversationState && user.conversationState.awaitingInput) {
         try {
@@ -1433,7 +1443,9 @@ class MessageProcessor {
           logger.error('Conversation flow handling failed', { error: flowErr.message, userId: user.id, awaitingInput: user.conversationState.awaitingInput });
         }
       }
-      const aiAnalysis = await aiAssistant.analyzeUserIntent(processedText, user);
+      
+      // If we have extracted data from image (bank details), pass it to AI analysis
+      const aiAnalysis = await aiAssistant.analyzeUserIntent(processedText, user, extractedData);
       
       logger.info('AI intent analysis result', {
         userId: user.id,
@@ -1904,18 +1916,19 @@ class MessageProcessor {
                 data: extractedData 
               };
             } else {
-              // Invalid bank details
+              // Invalid bank details, but still process the caption
               await whatsappService.sendTextMessage(
                 user.whatsappNumber,
                 `❌ *Couldn't extract valid bank details from image*\n\n` +
                 `Issues found:\n${validation.errors.map(error => `• ${error}`).join('\n')}\n\n` +
-                `Please try:\n` +
-                `• Taking a clearer photo\n` +
-                `• Ensuring account number and bank name are visible\n` +
-                `• Or type the details manually\n\n` +
+                `But I'll process your message: "${caption}"\n\n` +
+                `Please provide bank details manually:\n` +
                 `Example: "Send ₦5000 to GTBank 0123456789"`
               );
-              return { text: null, data: null };
+              
+              // Still process the caption as text
+              processedText = caption || '';
+              return { text: processedText, data: null };
             }
           } else {
             // Failed to extract bank details, but still process the caption

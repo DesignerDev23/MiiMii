@@ -2385,7 +2385,7 @@ Welcome to the future of banking! 🚀`;
   /**
    * Analyze user message to determine intent
    */
-  async analyzeUserIntent(message, user) {
+  async analyzeUserIntent(message, user, extractedData = null) {
     try {
       // HARD OVERRIDE: Force ALL transfers to be bank_transfer (NO P2P)
       const lowerMessage = message.toLowerCase();
@@ -2393,6 +2393,35 @@ Welcome to the future of banking! 🚀`;
         // Check if it's a transfer message
         const amountMatch = message.match(/\b(\d+(?:k|000)?)\b/i);
         const accountMatch = message.match(/\b(\d{8,11})\b/);
+        
+        // If we have extracted data from image, use it
+        if (extractedData && extractedData.bankDetails) {
+          logger.info('Hard override: Transfer detected with image bank details, forcing bank_transfer intent', {
+            originalMessage: message,
+            userId: user.id,
+            hasImageBankDetails: true
+          });
+          
+          // Extract amount from message
+          const amount = amountMatch ? (amountMatch[1].toLowerCase().includes('k') ? 
+            parseInt(amountMatch[1].toLowerCase().replace('k', '')) * 1000 : 
+            parseInt(amountMatch[1])) : null;
+          
+          if (amount) {
+            return {
+              intent: 'bank_transfer',
+              confidence: 0.95,
+              extractedData: {
+                amount: amount.toString(),
+                accountNumber: extractedData.bankDetails.accountNumber,
+                bankName: extractedData.bankDetails.bankName,
+                bankCode: null // Will be resolved later
+              },
+              response: `Processing transfer of ₦${amount.toLocaleString()} to ${extractedData.bankDetails.bankName} ${extractedData.bankDetails.accountNumber}`,
+              suggestedAction: 'Process bank transfer with image-extracted details'
+            };
+          }
+        }
         
         if (amountMatch && accountMatch) {
           logger.info('Hard override: Transfer detected, forcing bank_transfer intent', {
