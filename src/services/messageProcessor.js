@@ -1476,6 +1476,13 @@ class MessageProcessor {
       }
       
       // If we have extracted data from image (bank details), pass it to AI analysis
+      logger.info('About to call analyzeUserIntent with extractedData', {
+        processedText: processedText,
+        hasExtractedData: !!extractedData,
+        extractedDataKeys: extractedData ? Object.keys(extractedData) : [],
+        extractedData: extractedData
+      });
+      
       const aiAnalysis = await aiAssistant.analyzeUserIntent(processedText, user, extractedData);
       
       logger.info('AI intent analysis result', {

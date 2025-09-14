@@ -2390,6 +2390,14 @@ Welcome to the future of banking! 🚀`;
    */
   async analyzeUserIntent(message, user, extractedData = null) {
     try {
+      // Debug: Log the extracted data
+      logger.info('analyzeUserIntent called', {
+        message: message,
+        hasExtractedData: !!extractedData,
+        extractedDataKeys: extractedData ? Object.keys(extractedData) : [],
+        extractedData: extractedData
+      });
+
       // HARD OVERRIDE: Force ALL transfers to be bank_transfer (NO P2P)
       const lowerMessage = message.toLowerCase();
       if (lowerMessage.includes('send') || lowerMessage.includes('transfer') || lowerMessage.includes('give')) {
@@ -2397,12 +2405,20 @@ Welcome to the future of banking! 🚀`;
         const amountMatch = message.match(/\b(\d+(?:k|000)?)\b/i);
         const accountMatch = message.match(/\b(\d{8,11})\b/);
         
+        logger.info('Transfer message detected, checking for image bank details', {
+          message: message,
+          hasExtractedData: !!extractedData,
+          hasBankDetails: !!(extractedData && extractedData.bankDetails),
+          extractedData: extractedData
+        });
+        
         // If we have extracted data from image, use it
         if (extractedData && extractedData.bankDetails) {
           logger.info('Hard override: Transfer detected with image bank details, forcing bank_transfer intent', {
             originalMessage: message,
             userId: user.id,
-            hasImageBankDetails: true
+            hasImageBankDetails: true,
+            bankDetails: extractedData.bankDetails
           });
           
           // Extract amount from message - improved pattern to handle "naira", "k", etc.
