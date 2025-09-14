@@ -686,9 +686,12 @@ Extract intent and data from this message. Consider the user context and any ext
     if (!amount || !finalAccountNumber) {
       logger.warn('Missing required data for bank transfer', {
         hasAmount: !!amount,
+        amount: amount,
         hasAccountNumber: !!finalAccountNumber,
+        finalAccountNumber: finalAccountNumber,
         hasImageBankDetails: !!imageBankDetails,
-        extractedData
+        imageBankDetails: imageBankDetails,
+        extractedData: extractedData
       });
       return {
         intent: 'bank_transfer',
@@ -2402,10 +2405,19 @@ Welcome to the future of banking! 🚀`;
             hasImageBankDetails: true
           });
           
-          // Extract amount from message
+          // Extract amount from message - improved pattern to handle "naira", "k", etc.
+          const amountPattern = /(?:send|transfer|give)\s*(\d+(?:k|000)?)\s*(?:naira|naira|₦|k|thousand)?/i;
+          const amountMatch = message.match(amountPattern);
           const amount = amountMatch ? (amountMatch[1].toLowerCase().includes('k') ? 
             parseInt(amountMatch[1].toLowerCase().replace('k', '')) * 1000 : 
             parseInt(amountMatch[1])) : null;
+          
+          logger.info('Amount extraction for image transfer', {
+            message: message,
+            amountPattern: amountPattern.toString(),
+            amountMatch: amountMatch,
+            extractedAmount: amount
+          });
           
           if (amount) {
             return {
