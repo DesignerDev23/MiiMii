@@ -1550,10 +1550,10 @@ class MessageProcessor {
             break;
             
           case 'bank_transfer':
-            return await this.handleTransferIntent(user, { text: processedText }, messageType);
+            return await this.handleTransferIntent(user, { text: processedText }, messageType, extractedData);
             
           case 'transfer':
-            return await this.handleTransferIntent(user, { text: processedText }, messageType);
+            return await this.handleTransferIntent(user, { text: processedText }, messageType, extractedData);
             
           case 'airtime':
             return await this.handleAirtimeIntent(user, { text: processedText }, messageType);
@@ -2392,7 +2392,7 @@ class MessageProcessor {
   /**
    * Handle transfer intent
    */
-  async handleTransferIntent(user, message, messageType) {
+  async handleTransferIntent(user, message, messageType, extractedData = null) {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
@@ -2403,9 +2403,34 @@ class MessageProcessor {
     const whatsappService = require('./whatsapp');
     const bankTransferService = require('./bankTransfer');
 
-    // First, let's use AI to analyze the message and extract data
-    const aiAssistant = require('./aiAssistant');
-    const aiAnalysis = await aiAssistant.analyzeUserIntent(message?.text || '', user);
+    let aiAnalysis;
+    
+    // If we have extracted data (e.g., from image processing), use it directly
+    if (extractedData && extractedData.bankDetails) {
+      logger.info('Using extracted bank details for transfer', {
+        userId: user.id,
+        hasBankDetails: !!extractedData.bankDetails,
+        accountNumber: extractedData.bankDetails.accountNumber,
+        bankName: extractedData.bankDetails.bankName,
+        amount: extractedData.amount
+      });
+      
+      // Use the extracted data directly instead of calling AI analysis
+      aiAnalysis = {
+        intent: 'bank_transfer',
+        confidence: 0.95,
+        extractedData: {
+          amount: extractedData.amount,
+          accountNumber: extractedData.bankDetails.accountNumber,
+          bankName: extractedData.bankDetails.bankName,
+          recipientName: extractedData.bankDetails.accountHolderName
+        }
+      };
+    } else {
+      // First, let's use AI to analyze the message and extract data
+      const aiAssistant = require('./aiAssistant');
+      aiAnalysis = await aiAssistant.analyzeUserIntent(message?.text || '', user);
+    }
     
     logger.info('AI transfer analysis', {
       intent: aiAnalysis.intent,
