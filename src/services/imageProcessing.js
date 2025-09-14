@@ -109,7 +109,8 @@ class ImageProcessingService {
         textLength: extractedText.length,
         confidence: result.data.confidence,
         extractedText: extractedText.substring(0, 200) + (extractedText.length > 200 ? '...' : ''),
-        fullText: extractedText // Log the full text for debugging
+        fullText: extractedText, // Log the full text for debugging
+        rawText: extractedText.replace(/\n/g, '\\n').replace(/\r/g, '\\r') // Show newlines as escape sequences
       });
 
       return {
@@ -145,13 +146,35 @@ class ImageProcessingService {
 You are a banking assistant that extracts bank details from text. Analyze the following text and extract bank information.
 
 Text to analyze:
-"${extractedText}"
+${extractedText}
 
 Extract the following information if present:
-1. Account Number (10-11 digits)
-2. Bank Name (full bank name)
+1. Account Number (10-11 digits) - look for numbers that could be account numbers
+2. Bank Name (full bank name or common abbreviations like GTB, Access Bank, First Bank, etc.)
 3. Account Holder Name (if mentioned)
 4. Any other relevant banking information
+
+Common Nigerian bank names to look for:
+- Guaranty Trust Bank (GTB)
+- Access Bank
+- First Bank of Nigeria
+- United Bank for Africa (UBA)
+- Zenith Bank
+- Sterling Bank
+- Fidelity Bank
+- Union Bank
+- Wema Bank
+- Polaris Bank
+- Jaiz Bank
+- Heritage Bank
+- Keystone Bank
+- Providus Bank
+- Titan Trust Bank
+- Globus Bank
+- Parallex Bank
+- Premium Trust Bank
+- Suntrust Bank
+- TAJ Bank
 
 Return ONLY a JSON object with this structure:
 {
@@ -163,6 +186,7 @@ Return ONLY a JSON object with this structure:
 }
 
 If any field is not found, use null. Be very careful with account numbers - they should be exactly as written.
+Look carefully for any numbers that could be account numbers, even if they're not clearly labeled.
 Only return the JSON object, no other text.
 `;
 
@@ -198,6 +222,17 @@ Only return the JSON object, no other text.
         confidence: bankDetails.confidence,
         bankDetails: bankDetails
       });
+
+      // If AI didn't find anything, try fallback extraction
+      if (!bankDetails.accountNumber && !bankDetails.bankName) {
+        logger.info('AI found no bank details, trying fallback extraction');
+        const fallbackDetails = this.fallbackBankDetailsExtraction(extractedText);
+        if (fallbackDetails.accountNumber || fallbackDetails.bankName) {
+          logger.info('Fallback extraction found details', { fallbackDetails });
+          // Merge fallback results with AI results
+          Object.assign(bankDetails, fallbackDetails);
+        }
+      }
       
       // Validate the extracted data
       if (bankDetails.accountNumber && !/^\d{10,11}$/.test(bankDetails.accountNumber)) {
@@ -286,6 +321,68 @@ Only return the JSON object, no other text.
         error: error.message
       };
     }
+  }
+
+  /**
+   * Fallback bank details extraction using regex patterns
+   */
+  fallbackBankDetailsExtraction(text) {
+    const result = {
+      accountNumber: null,
+      bankName: null,
+      accountHolderName: null,
+      confidence: 0.3,
+      extractedText: ''
+    };
+
+    // Look for account numbers (10-11 digits)
+    const accountNumberMatch = text.match(/\b(\d{10,11})\b/);
+    if (accountNumberMatch) {
+      result.accountNumber = accountNumberMatch[1];
+      result.extractedText += `Account: ${accountNumberMatch[1]} `;
+    }
+
+    // Look for bank names (common patterns)
+    const bankPatterns = [
+      /(?:guaranty\s+trust\s+bank|gtb)/i,
+      /(?:access\s+bank)/i,
+      /(?:first\s+bank)/i,
+      /(?:united\s+bank\s+for\s+africa|uba)/i,
+      /(?:zenith\s+bank)/i,
+      /(?:sterling\s+bank)/i,
+      /(?:fidelity\s+bank)/i,
+      /(?:union\s+bank)/i,
+      /(?:wema\s+bank)/i,
+      /(?:polaris\s+bank)/i,
+      /(?:jaiz\s+bank)/i,
+      /(?:heritage\s+bank)/i,
+      /(?:keystone\s+bank)/i,
+      /(?:providus\s+bank)/i,
+      /(?:titan\s+trust\s+bank)/i,
+      /(?:globus\s+bank)/i,
+      /(?:parallex\s+bank)/i,
+      /(?:premium\s+trust\s+bank)/i,
+      /(?:suntrust\s+bank)/i,
+      /(?:taj\s+bank)/i
+    ];
+
+    for (const pattern of bankPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        result.bankName = match[0];
+        result.extractedText += `Bank: ${match[0]} `;
+        break;
+      }
+    }
+
+    // Look for account holder names (words that could be names)
+    const nameMatch = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/);
+    if (nameMatch && !result.bankName) {
+      result.accountHolderName = nameMatch[1];
+      result.extractedText += `Name: ${nameMatch[1]} `;
+    }
+
+    return result;
   }
 
   /**
