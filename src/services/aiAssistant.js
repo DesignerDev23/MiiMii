@@ -665,6 +665,9 @@ Extract intent and data from this message. Consider the user context and any ext
   async handleBankTransfer(user, extractedData, aiResponse, originalMessage = '') {
     const { amount, accountNumber, bankName, bankCode } = extractedData;
     
+    // Check if bank details were extracted from image
+    const imageBankDetails = extractedData.bankDetails;
+    
     // Debug: Log the extracted data
     logger.info('handleBankTransfer called with extracted data', {
       extractedData,
@@ -672,13 +675,19 @@ Extract intent and data from this message. Consider the user context and any ext
       accountNumber,
       bankName,
       bankCode,
+      hasImageBankDetails: !!imageBankDetails,
       aiResponse
     });
     
-    if (!amount || !accountNumber) {
+    // If we have bank details from image, use them
+    const finalAccountNumber = accountNumber || (imageBankDetails && imageBankDetails.accountNumber);
+    const finalBankName = bankName || (imageBankDetails && imageBankDetails.bankName);
+    
+    if (!amount || !finalAccountNumber) {
       logger.warn('Missing required data for bank transfer', {
         hasAmount: !!amount,
-        hasAccountNumber: !!accountNumber,
+        hasAccountNumber: !!finalAccountNumber,
+        hasImageBankDetails: !!imageBankDetails,
         extractedData
       });
       return {
@@ -814,7 +823,7 @@ Extract intent and data from this message. Consider the user context and any ext
       if (!resolvedBankCode) {
         return {
           intent: 'bank_transfer',
-          message: `I couldn't identify the bank "${bankName}". Please specify a valid bank name like GTBank, Access, UBA, Zenith, Keystone, Opay, etc.`,
+          message: `I couldn't identify the bank "${finalBankName}". Please specify a valid bank name like GTBank, Access, UBA, Zenith, Keystone, Opay, etc.`,
           awaitingInput: 'bank_transfer_details',
           context: 'bank_transfer'
         };
@@ -822,7 +831,7 @@ Extract intent and data from this message. Consider the user context and any ext
 
       // Validate account and get recipient name via BellBank name enquiry
       const bankTransferService = require('./bankTransfer');
-      const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
+      const validation = await bankTransferService.validateBankAccount(finalAccountNumber, resolvedBankCode);
       
       if (!validation.valid) {
         return {
@@ -843,7 +852,7 @@ Extract intent and data from this message. Consider the user context and any ext
         context: 'bank_transfer_confirmation',
         step: 1,
         data: {
-          accountNumber,
+          accountNumber: finalAccountNumber,
           bankCode: resolvedBankCode,
           bankName: resolvedBankName,
           amount: transferAmount,
@@ -862,7 +871,7 @@ Extract intent and data from this message. Consider the user context and any ext
         totalAmount: feeInfo.totalAmount,
         recipientName: validation.accountName,
         bankName: resolvedBankName,
-        accountNumber
+        accountNumber: finalAccountNumber
       });
 
       return {
@@ -876,7 +885,7 @@ Extract intent and data from this message. Consider the user context and any ext
           totalAmount: feeInfo.totalAmount,
           recipientName: validation.accountName,
           bankName: resolvedBankName,
-          accountNumber
+          accountNumber: finalAccountNumber
         }
       };
 

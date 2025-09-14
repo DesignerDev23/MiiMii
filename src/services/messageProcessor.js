@@ -1842,17 +1842,20 @@ class MessageProcessor {
       let processedText = caption || '';
       let extractedData = null;
 
-      // Check if user is in transfer context or if caption suggests bank details
+      // Check if user is in transfer context or if caption suggests transfer
       const isTransferContext = user.conversationState?.intent === 'TRANSFER_MONEY' || 
                                 user.conversationState?.context === 'transfer_verification' ||
-                                (caption && caption.toLowerCase().includes('transfer'));
+                                (caption && (caption.toLowerCase().includes('transfer') || 
+                                            caption.toLowerCase().includes('send') ||
+                                            caption.toLowerCase().includes('₦') ||
+                                            /^\d+[k]?$/.test(caption.trim())));
 
-      if (isTransferContext) {
-        // Try to extract bank details from the image
+      if (isTransferContext || caption) {
+        // Process the caption as the main message and extract bank details from image
         try {
           await whatsappService.sendTextMessage(
             user.whatsappNumber,
-            "📷 I can see you've sent an image. Let me analyze it for bank details..."
+            "📷 I can see you've sent an image with a message. Let me analyze the image for bank details..."
           );
 
           const bankDetailsResult = await imageProcessingService.processBankDetailsImage(mediaId);
@@ -1864,14 +1867,6 @@ class MessageProcessor {
             const validation = imageProcessingService.validateBankDetails(bankDetails);
             
             if (validation.isValid) {
-              // Store the extracted bank details in user's conversation state
-              await user.updateConversationState({
-                intent: 'TRANSFER_MONEY',
-                awaitingInput: 'transfer_amount',
-                context: 'transfer_verification',
-                extractedBankDetails: bankDetails
-              });
-
               // Log successful bank details extraction
               await ActivityLog.logUserActivity(
                 user.id,
@@ -1886,46 +1881,55 @@ class MessageProcessor {
                 }
               );
 
+              // Process the caption as a transfer message with extracted bank details
+              // The caption will be processed as the main message, and we'll add bank details to extractedData
+              processedText = caption || '';
+              extractedData = {
+                bankDetails: bankDetails,
+                fromImage: true
+              };
+
               // Send confirmation message with extracted details
               await whatsappService.sendTextMessage(
                 user.whatsappNumber,
-                `✅ *Bank Details Extracted!*\n\n` +
+                `✅ *Bank Details Extracted from Image!*\n\n` +
                 `🏦 *Bank:* ${bankDetails.bankName}\n` +
                 `💳 *Account Number:* ${bankDetails.accountNumber}\n` +
                 `👤 *Account Name:* ${bankDetails.accountHolderName || 'Will be verified'}\n\n` +
-                `Now please tell me the amount you want to transfer.\n\n` +
-                `Example: "Send ₦5000" or "Transfer ₦10,000"`
+                `Processing your transfer request...`
               );
 
               return { 
-                text: `Transfer to ${bankDetails.bankName} ${bankDetails.accountNumber}`, 
-                data: { bankDetails } 
+                text: processedText, 
+                data: extractedData 
               };
             } else {
               // Invalid bank details
               await whatsappService.sendTextMessage(
                 user.whatsappNumber,
-                `❌ *Couldn't extract valid bank details*\n\n` +
+                `❌ *Couldn't extract valid bank details from image*\n\n` +
                 `Issues found:\n${validation.errors.map(error => `• ${error}`).join('\n')}\n\n` +
                 `Please try:\n` +
                 `• Taking a clearer photo\n` +
                 `• Ensuring account number and bank name are visible\n` +
-                `• Or type the details manually`
+                `• Or type the details manually\n\n` +
+                `Example: "Send ₦5000 to GTBank 0123456789"`
               );
               return { text: null, data: null };
             }
           } else {
-            // Failed to extract bank details
+            // Failed to extract bank details, but still process the caption
             await whatsappService.sendTextMessage(
               user.whatsappNumber,
               `❌ *Couldn't extract bank details from image*\n\n` +
-              `Please try:\n` +
-              `• Taking a clearer photo of the bank details\n` +
-              `• Ensuring the text is readable\n` +
-              `• Or type the details manually\n\n` +
+              `But I'll process your message: "${caption}"\n\n` +
+              `Please provide bank details manually:\n` +
               `Example: "Send ₦5000 to GTBank 0123456789"`
             );
-            return { text: null, data: null };
+            
+            // Still process the caption as text
+            processedText = caption || '';
+            return { text: processedText, data: null };
           }
         } catch (bankDetailsError) {
           logger.error('Bank details extraction failed', { 
@@ -1936,10 +1940,14 @@ class MessageProcessor {
           await whatsappService.sendTextMessage(
             user.whatsappNumber,
             `❌ *Image processing failed*\n\n` +
-            `Please try typing the bank details manually:\n\n` +
+            `But I'll process your message: "${caption}"\n\n` +
+            `Please provide bank details manually:\n` +
             `Example: "Send ₦5000 to GTBank 0123456789"`
           );
-          return { text: null, data: null };
+          
+          // Still process the caption as text
+          processedText = caption || '';
+          return { text: processedText, data: null };
         }
       } else {
         // General image processing (not bank details)
