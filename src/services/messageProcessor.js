@@ -172,6 +172,60 @@ class MessageProcessor {
             } catch (err) {
               logger.error('Transfer PIN flow immediate processing failed', { error: err.message, userId: user.id });
             }
+          } else if (result.flowType === 'airtime_pin' || result.flowType === 'bills_pin' || result.flowType === 'data_pin') {
+            // Handle airtime/bills PIN flow completion
+            try {
+              const redisClient = require('../utils/redis');
+              const whatsappService = require('./whatsapp');
+              const flowEndpoint = require('../routes/flowEndpoint');
+
+              const flowToken = flowData.flow_token || flowData.flowToken;
+              const pin = flowData.pin || flowData.pin_number || flowData.pin_code;
+
+              if (!pin || !/^\d{4}$/.test(pin)) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+                return;
+              }
+
+              // Get session data
+              let session = flowToken ? await redisClient.getSession(flowToken) : null;
+              if (!session && flowToken) {
+                session = await redisClient.getSession(`flow:${flowToken}`);
+              }
+
+              if (!session) {
+                logger.error('No session found for airtime/bills PIN flow', { userId: user.id, flowToken });
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction details not found. Please start again.');
+                return;
+              }
+
+              // Process the PIN verification through flow endpoint
+              const tokenData = { sessionData: session };
+              const result = await flowEndpoint.handleServicePinScreen(
+                { pin: pin },
+                user.id,
+                tokenData,
+                flowToken
+              );
+
+              if (Object.keys(result).length === 0) {
+                // Success - transaction completed
+                logger.info(`${result.flowType} transaction completed successfully`, { userId: user.id });
+              } else {
+                // Error occurred
+                logger.error(`${result.flowType} transaction failed`, { userId: user.id, error: result.data?.error });
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${result.data?.error || 'Transaction failed. Please try again.'}`);
+              }
+
+              // Clean up
+              try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
+              await user.clearConversationState();
+              return;
+            } catch (err) {
+              logger.error('Airtime/bills PIN flow processing failed', { error: err.message, userId: user.id });
+              const whatsappService = require('./whatsapp');
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction failed. Please try again.');
+            }
           } else if (result.flowType === 'login' || result.message === 'Login successful') {
             // Handle login flow completion
             const redisClient = require('../utils/redis');

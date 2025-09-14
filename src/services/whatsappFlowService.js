@@ -512,6 +512,19 @@ class WhatsAppFlowService {
             const result = await this.handleDataPurchaseFlow(completeFlowData, phoneNumber);
             return { ...result, flowType: 'data_purchase' };
           }
+          
+          // Check if this is an airtime, bills, or data PIN flow
+          if (sessionData.service && (sessionData.service === 'airtime' || sessionData.service === 'bills' || sessionData.service === 'data')) {
+            logger.info('Retrieved airtime/bills/data session data', {
+              phoneNumber,
+              service: sessionData.service,
+              sessionDataKeys: Object.keys(sessionData)
+            });
+            
+            // Airtime, bills, and data flows are handled in the flow endpoint
+            // We just need to return success here as the actual processing happens in flowEndpoint.js
+            return { success: true, flowType: `${sessionData.service}_pin` };
+          }
         }
         
         // If no session data found, check if this might be a data purchase flow that was processed in the background

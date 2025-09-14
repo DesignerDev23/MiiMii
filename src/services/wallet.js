@@ -456,6 +456,22 @@ class WalletService {
         };
       }
 
+      // Check for duplicate account numbers across all wallets
+      const existingWallet = await Wallet.findOne({
+        where: {
+          virtualAccountNumber: { [Op.ne]: null },
+          userId: { [Op.ne]: userId }
+        }
+      });
+
+      if (existingWallet) {
+        logger.warn('Potential duplicate account number detected', {
+          userId,
+          existingAccountNumber: existingWallet.virtualAccountNumber,
+          existingUserId: existingWallet.userId
+        });
+      }
+
       // Validate required user data for virtual account creation
       const requiredFields = ['firstName', 'lastName', 'whatsappNumber', 'bvn', 'gender', 'dateOfBirth'];
       const missingFields = requiredFields.filter(field => !user[field]);
@@ -505,6 +521,24 @@ class WalletService {
           message: virtualAccountResult.message
         });
         throw new Error(virtualAccountResult.message || 'Failed to create virtual account');
+      }
+
+      // Check for duplicate account numbers after creation
+      const duplicateWallet = await Wallet.findOne({
+        where: {
+          virtualAccountNumber: virtualAccountResult.accountNumber,
+          userId: { [Op.ne]: userId }
+        }
+      });
+
+      if (duplicateWallet) {
+        logger.error('Duplicate account number detected after creation', {
+          userId,
+          accountNumber: virtualAccountResult.accountNumber,
+          duplicateUserId: duplicateWallet.userId,
+          duplicateWalletId: duplicateWallet.id
+        });
+        throw new Error('Account number already exists for another user. Please contact support.');
       }
       
       await wallet.update({

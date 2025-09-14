@@ -1306,6 +1306,26 @@ class OnboardingService {
       if (flowData.screen_3_4Digit_PIN_0 && flowData.screen_3_Confirm_PIN_1) {
         // PIN setup screen
         if (flowData.screen_3_4Digit_PIN_0 === flowData.screen_3_Confirm_PIN_1) {
+          // Validate that all required user data is present before creating virtual account
+          const requiredFields = ['firstName', 'lastName', 'whatsappNumber', 'bvn', 'gender', 'dateOfBirth'];
+          const missingFields = requiredFields.filter(field => !user[field]);
+          
+          if (missingFields.length > 0) {
+            logger.error('Missing required fields for virtual account creation', {
+              userId: user.id,
+              missingFields,
+              userData: {
+                hasFirstName: !!user.firstName,
+                hasLastName: !!user.lastName,
+                hasWhatsappNumber: !!user.whatsappNumber,
+                hasBvn: !!user.bvn,
+                hasGender: !!user.gender,
+                hasDateOfBirth: !!user.dateOfBirth
+              }
+            });
+            return { success: false, error: `Missing required information: ${missingFields.join(', ')}. Please complete your profile first.` };
+          }
+
           await userService.setUserPin(user.id, flowData.screen_3_4Digit_PIN_0);
           await user.update({ onboardingStep: 'completed' });
           

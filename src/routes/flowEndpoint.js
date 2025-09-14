@@ -1049,15 +1049,15 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
           
           // If there was an error, return error response
           return result;
-        } else if (data && data.pin && tokenData.sessionData && (tokenData.sessionData.service === 'airtime' || tokenData.sessionData.service === 'bills')) {
-          logger.info('Detected airtime/bills PIN verification flow', {
+        } else if (data && data.pin && tokenData.sessionData && (tokenData.sessionData.service === 'airtime' || tokenData.sessionData.service === 'bills' || tokenData.sessionData.service === 'data')) {
+          logger.info('Detected airtime/bills/data PIN verification flow', {
             service: tokenData.sessionData.service,
             dataKeys: Object.keys(data || {}),
             sessionDataKeys: Object.keys(tokenData.sessionData || {}),
             hasPin: !!data.pin
           });
           
-          // Handle airtime or bills PIN verification
+          // Handle airtime, bills, or data PIN verification
           const result = await handleServicePinScreen(data, userId, tokenData, flowToken);
           
           // If transaction was successful, return empty response to close terminal flow
@@ -2780,6 +2780,28 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
           return {
             screen: 'PIN_VERIFICATION_SCREEN',
             data: { error: result.message || 'Airtime purchase failed. Please try again.', message: 'Purchase failed' }
+          };
+        }
+      } else if (service === 'data') {
+        // Handle data purchase
+        const bilalService = require('../services/bilal');
+        const result = await bilalService.purchaseData(user, {
+          phoneNumber: sessionData.phoneNumber,
+          network: sessionData.network,
+          dataPlan: sessionData.dataPlan,
+          pin: pin
+        }, user.whatsappNumber);
+
+        if (result.success) {
+          logger.info('Data purchase successful via PIN flow', { userId, plan: sessionData.dataPlan?.dataplan, network: sessionData.network });
+          // Clear session and conversation state
+          await redisClient.deleteSession(flowToken);
+          await user.clearConversationState();
+          return {}; // Empty response to close flow
+        } else {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: { error: result.message || 'Data purchase failed. Please try again.', message: 'Purchase failed' }
           };
         }
       } else if (service === 'bills') {

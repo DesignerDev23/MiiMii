@@ -1023,11 +1023,27 @@ Extract intent and data from this message. Consider the user context and any ext
       };
     }
     
-    return await bilalService.purchaseData(user, {
+    const detectedNetwork = network || this.detectNetwork(targetPhone);
+    
+    // Store data purchase data and request PIN verification
+    await user.updateConversationState({
+      intent: 'data',
+      awaitingInput: 'data_pin_verification',
+      context: 'data_purchase',
+      data: {
+        phoneNumber: targetPhone,
+        network: detectedNetwork,
+        dataPlan: selectedPlan
+      }
+    });
+
+    // Send PIN verification flow
+    return await this.sendPinVerificationFlow(user, {
+      service: 'data',
       phoneNumber: targetPhone,
-      network: network || this.detectNetwork(targetPhone),
+      network: detectedNetwork,
       dataPlan: selectedPlan
-    }, user.whatsappNumber);
+    });
   }
 
   async handleBillPayment(user, extractedData, aiResponse) {
@@ -1113,6 +1129,10 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'airtime':
           serviceMessage = `Enter your 4-digit PIN to authorize airtime purchase.\n\nAmount: ₦${transactionData.amount}\nPhone: ${transactionData.phoneNumber}\nNetwork: ${transactionData.network}`;
           serviceTitle = '🔐 Authorize Airtime Purchase';
+          break;
+        case 'data':
+          serviceMessage = `Enter your 4-digit PIN to authorize data purchase.\n\nPlan: ${transactionData.dataPlan?.dataplan || 'Data Plan'}\nPhone: ${transactionData.phoneNumber}\nNetwork: ${transactionData.network}`;
+          serviceTitle = '🔐 Authorize Data Purchase';
           break;
         case 'bills':
           serviceMessage = `Enter your 4-digit PIN to authorize bill payment.\n\nAmount: ₦${transactionData.amount}\nProvider: ${transactionData.provider}\nAccount: ${transactionData.meterNumber}`;
