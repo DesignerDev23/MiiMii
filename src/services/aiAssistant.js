@@ -2898,7 +2898,7 @@ Response format:
       const safeBankName = bankName || 'Bank';
       const safeAccountNumber = accountNumber || 'Account';
       
-      const prompt = `Generate a short, friendly bank transfer confirmation message (max 2 lines).
+      const prompt = `Generate a simple one-sentence bank transfer confirmation message.
 
 Transfer details:
 - Amount: ₦${safeAmount.toLocaleString()}
@@ -2907,24 +2907,15 @@ Transfer details:
 - Account: (${safeAccountNumber})
 
 Requirements:
-- Sound like a real person, not AI
+- Use EXACTLY this format: "Ready to send ₦[AMOUNT] to [NAME] at [BANK] ([ACCOUNT])? Just reply YES or NO!"
 - Keep it casual and friendly
 - Use proper English (not Nigerian pidgin)
-- Ask for YES/NO confirmation
-- Don't mention fees
-- Keep it under 2 lines
 - Make recipient name and bank name BOLD using *text*
-- Include account number in brackets (1234567890)
+- Include account number in brackets
+- Always end with "Just reply YES or NO!"
 
-Examples:
-❌ "I am ready to process your transfer request. Please confirm with YES or NO."
-✅ "Ready to send ₦5k to *John* at *GTB* (0123456789)? Reply YES or NO"
-
-❌ "Please confirm the transfer details above."
-✅ "Looks good! Send ₦2k to *Sarah* at *Access* (9876543210)? YES/NO"
-
-❌ "Make I send money give you" (pidgin)
-✅ "Ready to send the money to you"`;
+Example:
+"Ready to send ₦150 to *MUSA ABDULKADIR* at *opay* (9072874728)? Just reply YES or NO!"`;
 
       const response = await axios.post(`${this.openaiBaseUrl}/chat/completions`, {
         model: this.model,
@@ -2954,7 +2945,7 @@ Examples:
       }
       
       // Fallback message if AI fails
-      return `Ready to send ₦${safeAmount.toLocaleString()} to *${safeRecipientName}* at *${safeBankName}* (${safeAccountNumber})? Reply YES or NO`;
+      return `Ready to send ₦${safeAmount.toLocaleString()} to *${safeRecipientName}* at *${safeBankName}* (${safeAccountNumber})? Just reply YES or NO!`;
       
     } catch (error) {
       logger.error('Failed to generate AI confirmation message', { error: error.message, transferData });
@@ -2965,7 +2956,7 @@ Examples:
       const safeRecipientName = recipientName || 'Recipient';
       const safeBankName = bankName || 'Bank';
       
-      return `Ready to send ₦${safeAmount.toLocaleString()} to *${safeRecipientName}* at *${safeBankName}* (${safeAccountNumber})? Reply YES or NO`;
+      return `Ready to send ₦${safeAmount.toLocaleString()} to *${safeRecipientName}* at *${safeBankName}* (${safeAccountNumber})? Just reply YES or NO!`;
     }
   }
 
