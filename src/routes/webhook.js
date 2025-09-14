@@ -180,8 +180,11 @@ router.post('/whatsapp', logWebhook('whatsapp'), async (req, res) => {
 
     logger.info('Successfully parsed webhook message', {
       type: parsedMessage.type,
-              messageId: parsedMessage.messageId,
-      from: parsedMessage.from
+      messageId: parsedMessage.messageId,
+      from: parsedMessage.from,
+      messageType: parsedMessage.messageType,
+      hasMessage: !!parsedMessage.message,
+      messageContent: parsedMessage.message
     });
 
     // Handle verification requests

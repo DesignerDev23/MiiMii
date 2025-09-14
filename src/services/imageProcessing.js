@@ -15,11 +15,23 @@ class ImageProcessingService {
    */
   async downloadImage(mediaId) {
     try {
+      logger.info('Downloading image from WhatsApp', {
+        mediaId,
+        hasAccessToken: !!this.whatsappConfig.accessToken,
+        accessTokenLength: this.whatsappConfig.accessToken ? this.whatsappConfig.accessToken.length : 0
+      });
+
       const mediaUrl = `https://graph.facebook.com/v23.0/${mediaId}`;
       const response = await axios.get(mediaUrl, {
         headers: {
           'Authorization': `Bearer ${this.whatsappConfig.accessToken}`
         }
+      });
+
+      logger.info('Media URL response', {
+        status: response.status,
+        hasUrl: !!response.data.url,
+        responseData: response.data
       });
 
       if (!response.data.url) {
@@ -34,10 +46,17 @@ class ImageProcessingService {
         }
       });
 
+      logger.info('Image download successful', {
+        imageSize: imageResponse.data.length,
+        contentType: imageResponse.headers['content-type']
+      });
+
       return Buffer.from(imageResponse.data);
     } catch (error) {
       logger.error('Failed to download image from WhatsApp', {
         error: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
         mediaId
       });
       throw error;
@@ -73,7 +92,9 @@ class ImageProcessingService {
    */
   async extractTextFromImage(imageBuffer) {
     try {
-      logger.info('Starting OCR text extraction');
+      logger.info('Starting OCR text extraction', {
+        imageBufferSize: imageBuffer.length
+      });
       
       const result = await Tesseract.recognize(imageBuffer, 'eng', {
         logger: (m) => {
@@ -86,7 +107,8 @@ class ImageProcessingService {
       const extractedText = result.data.text;
       logger.info('OCR text extraction completed', {
         textLength: extractedText.length,
-        confidence: result.data.confidence
+        confidence: result.data.confidence,
+        extractedText: extractedText.substring(0, 200) + (extractedText.length > 200 ? '...' : '')
       });
 
       return {
@@ -107,6 +129,11 @@ class ImageProcessingService {
       if (!this.openaiApiKey) {
         throw new Error('OpenAI API key not configured');
       }
+
+      logger.info('Starting AI bank details extraction', {
+        extractedTextLength: extractedText.length,
+        hasOpenaiKey: !!this.openaiApiKey
+      });
 
       const openai = require('openai');
       const client = new openai.OpenAI({
@@ -178,11 +205,18 @@ Only return the JSON object, no other text.
    */
   async processBankDetailsImage(mediaId) {
     try {
-      logger.info('Starting bank details image processing', { mediaId });
+      logger.info('Starting bank details image processing', { 
+        mediaId,
+        hasOpenaiKey: !!this.openaiApiKey,
+        hasWhatsappConfig: !!this.whatsappConfig
+      });
 
       // Step 1: Download image
       const imageBuffer = await this.downloadImage(mediaId);
-      logger.info('Image downloaded successfully', { size: imageBuffer.length });
+      logger.info('Image downloaded successfully', { 
+        size: imageBuffer.length,
+        mediaId 
+      });
 
       // Step 2: Preprocess image
       const processedBuffer = await this.preprocessImage(imageBuffer);

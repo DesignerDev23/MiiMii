@@ -14,6 +14,16 @@ class MessageProcessor {
     try {
       const { from, message, messageType, contact, messageId } = parsedMessage;
       
+      // Debug: Log the parsed message details
+      logger.info('Processing incoming message', {
+        from,
+        messageType,
+        messageId,
+        hasMessage: !!message,
+        messageKeys: message ? Object.keys(message) : [],
+        messageContent: message
+      });
+      
       // Extract message content for text, button replies, and list selections
       let messageContent = message?.text || message?.buttonReply?.title || message?.listReply?.title || '';
       
@@ -1300,9 +1310,19 @@ class MessageProcessor {
           break;
           
         case 'image':
+          logger.info('Processing image message', {
+            mediaId: message.mediaId,
+            caption: message.caption,
+            userId: user.id
+          });
           const { text, data } = await this.processImageMessage(message.mediaId, message.caption, user);
           processedText = text;
           extractedData = data;
+          logger.info('Image message processing result', {
+            processedText: processedText,
+            hasExtractedData: !!extractedData,
+            extractedDataKeys: extractedData ? Object.keys(extractedData) : []
+          });
           break;
           
         case 'document':
@@ -1856,13 +1876,26 @@ class MessageProcessor {
 
       // Check if user is in transfer context or if caption suggests transfer
       const isTransferContext = user.conversationState?.intent === 'TRANSFER_MONEY' || 
-                                user.conversationState?.context === 'transfer_verification' ||
-                                (caption && (caption.toLowerCase().includes('transfer') || 
-                                            caption.toLowerCase().includes('send') ||
-                                            caption.toLowerCase().includes('₦') ||
-                                            /^\d+[k]?$/.test(caption.trim())));
+                                user.conversationState?.context === 'transfer_verification';
+      
+      const captionSuggestsTransfer = caption && (
+        caption.toLowerCase().includes('transfer') || 
+        caption.toLowerCase().includes('send') ||
+        caption.toLowerCase().includes('₦') ||
+        /^\d+[k]?$/.test(caption.trim()) ||
+        /send\s+\d+/i.test(caption) ||
+        /transfer\s+\d+/i.test(caption)
+      );
 
-      if (isTransferContext || caption) {
+      logger.info('Image processing context check', {
+        isTransferContext,
+        captionSuggestsTransfer,
+        caption,
+        userIntent: user.conversationState?.intent,
+        userContext: user.conversationState?.context
+      });
+
+      if (isTransferContext || captionSuggestsTransfer) {
         // Process the caption as the main message and extract bank details from image
         try {
           await whatsappService.sendTextMessage(
