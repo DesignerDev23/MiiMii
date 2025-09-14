@@ -108,7 +108,8 @@ class ImageProcessingService {
       logger.info('OCR text extraction completed', {
         textLength: extractedText.length,
         confidence: result.data.confidence,
-        extractedText: extractedText.substring(0, 200) + (extractedText.length > 200 ? '...' : '')
+        extractedText: extractedText.substring(0, 200) + (extractedText.length > 200 ? '...' : ''),
+        fullText: extractedText // Log the full text for debugging
       });
 
       return {
@@ -182,10 +183,21 @@ Only return the JSON object, no other text.
       });
 
       const aiResponse = response.choices[0].message.content.trim();
-      logger.info('AI bank details extraction completed', { aiResponse });
+      logger.info('AI bank details extraction completed', { 
+        aiResponse,
+        responseLength: aiResponse.length,
+        fullResponse: aiResponse
+      });
 
       // Parse the JSON response
       const bankDetails = JSON.parse(aiResponse);
+      logger.info('Parsed bank details from AI', {
+        hasAccountNumber: !!bankDetails.accountNumber,
+        hasBankName: !!bankDetails.bankName,
+        hasAccountHolderName: !!bankDetails.accountHolderName,
+        confidence: bankDetails.confidence,
+        bankDetails: bankDetails
+      });
       
       // Validate the extracted data
       if (bankDetails.accountNumber && !/^\d{10,11}$/.test(bankDetails.accountNumber)) {
@@ -236,6 +248,27 @@ Only return the JSON object, no other text.
       // Step 4: Extract bank details using AI
       const bankDetails = await this.extractBankDetailsFromText(ocrResult.text);
       logger.info('Bank details extraction completed', { bankDetails });
+
+      // Step 5: Validate extracted bank details
+      const validation = this.validateBankDetails(bankDetails);
+      logger.info('Bank details validation result', {
+        isValid: validation.isValid,
+        errors: validation.errors,
+        bankDetails: bankDetails
+      });
+      
+      if (!validation.isValid) {
+        logger.warn('Bank details validation failed', { 
+          errors: validation.errors,
+          bankDetails 
+        });
+        return {
+          success: false,
+          error: `Validation failed: ${validation.errors.join(', ')}`,
+          bankDetails,
+          ocrText: ocrResult.text
+        };
+      }
 
       return {
         success: true,
