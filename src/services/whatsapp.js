@@ -1383,6 +1383,112 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
    }
 
    /**
+    * Send image message via WhatsApp Business API using Media Link approach
+    * @param {string} to - Recipient phone number
+    * @param {string} imageUrl - Public URL to the image
+    * @param {string} caption - Optional caption for the image
+    * @returns {Promise<Object>} - Response from WhatsApp API
+    */
+   async sendImageMessageByUrl(to, imageUrl, caption = null) {
+     try {
+       const formattedNumber = this.formatToE164(to);
+       
+       logger.info('WhatsApp sendImageMessageByUrl called', {
+         originalNumber: to,
+         formattedNumber,
+         messageType: 'image',
+         hasCaption: !!caption,
+         imageUrl,
+         accessTokenPrefix: this.accessToken.substring(0, 20) + '...',
+         accessTokenLength: this.accessToken.length,
+         phoneNumberId: this.phoneNumberId
+       });
+
+       // Validate image URL
+       if (!imageUrl || typeof imageUrl !== 'string') {
+         throw new Error('Invalid image URL provided');
+       }
+
+       // Try different API versions
+       const apiVersions = ['v23.0', 'v22.0', 'v21.0'];
+       
+       for (const version of apiVersions) {
+         try {
+           const messageUrl = `https://graph.facebook.com/${version}/${this.phoneNumberId}/messages`;
+           const messagePayload = {
+             messaging_product: 'whatsapp',
+             to: formattedNumber,
+             type: 'image',
+             image: {
+               link: imageUrl
+             }
+           };
+
+           // Add caption if provided
+           if (caption) {
+             messagePayload.image.caption = caption;
+           }
+
+           logger.info('Sending image message via URL', {
+             url: messageUrl,
+             payload: messagePayload,
+             hasCaption: !!caption,
+             imageUrl,
+             apiVersion: version
+           });
+
+           const response = await axios.post(messageUrl, messagePayload, {
+             headers: {
+               'Authorization': `Bearer ${this.accessToken}`,
+               'Content-Type': 'application/json'
+             },
+             timeout: 30000
+           });
+
+           if (response.data.messages && response.data.messages[0]) {
+             logger.info('WhatsApp image message sent successfully via URL', {
+               to: formattedNumber,
+               messageId: response.data.messages[0].id,
+               apiVersion: version
+             });
+             return {
+               success: true,
+               messageId: response.data.messages[0].id,
+               response: response.data
+             };
+           }
+         } catch (versionError) {
+           logger.warn(`API version ${version} failed for URL method`, {
+             error: versionError.message,
+             status: versionError.response?.status,
+             response: versionError.response?.data
+           });
+           if (version === apiVersions[apiVersions.length - 1]) {
+             throw new Error(`WhatsApp image URL method failed on all API versions: ${versionError.message}`);
+           }
+         }
+       }
+
+     } catch (error) {
+       logger.error('Failed to send WhatsApp image message via URL', {
+         error: error.message,
+         errorResponse: error.response?.data,
+         errorStatus: error.response?.status,
+         to: to,
+         imageUrl,
+         hasCaption: !!caption
+       });
+
+       return {
+         success: false,
+         error: error.message,
+         errorResponse: error.response?.data,
+         errorStatus: error.response?.status
+       };
+     }
+   }
+
+   /**
     * Send image message via WhatsApp Business API
     * @param {string} to - Recipient phone number
     * @param {Buffer} imageBuffer - Image buffer
@@ -1416,44 +1522,69 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        }
 
        // Step 1: Upload media using form-data to get media ID
-       const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
+       // Try different API versions as per WhatsApp documentation
+       const apiVersions = ['v23.0', 'v22.0', 'v21.0'];
+       let uploadResponse;
+       let mediaId;
        
-       const formData = new FormData();
-       formData.append('messaging_product', 'whatsapp');
-       formData.append('file', imageBuffer, {
-         filename: filename,
-         contentType: 'image/jpeg'
-       });
+       for (const version of apiVersions) {
+         try {
+           const uploadUrl = `https://graph.facebook.com/${version}/${this.phoneNumberId}/media`;
+           logger.info(`Trying WhatsApp API version ${version}`, { uploadUrl });
+       
+           const formData = new FormData();
+           formData.append('messaging_product', 'whatsapp');
+           formData.append('file', imageBuffer, {
+             filename: filename,
+             contentType: 'image/jpeg'
+           });
 
-       logger.info('Uploading image to WhatsApp using form-data', {
-         uploadUrl,
-         phoneNumberId: this.phoneNumberId,
-         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
-         filename,
-         contentType: 'image/jpeg'
-       });
+           logger.info('Uploading image to WhatsApp using form-data', {
+             uploadUrl,
+             phoneNumberId: this.phoneNumberId,
+             fileSize: `${fileSizeInMB.toFixed(2)}MB`,
+             filename,
+             contentType: 'image/jpeg',
+             apiVersion: version
+           });
 
-       const uploadResponse = await axios.post(uploadUrl, formData, {
-         headers: {
-           'Authorization': `Bearer ${this.accessToken}`,
-           ...formData.getHeaders()
-         },
-         ...this.axiosConfig
-       });
+           uploadResponse = await axios.post(uploadUrl, formData, {
+             headers: {
+               'Authorization': `Bearer ${this.accessToken}`,
+               ...formData.getHeaders()
+             },
+             timeout: 30000 // 30 second timeout
+           });
 
-       if (!uploadResponse.data.id) {
-         logger.error('WhatsApp upload response missing media ID', {
-           response: uploadResponse.data,
-           status: uploadResponse.status
-         });
-         throw new Error('Failed to upload image to WhatsApp - no media ID returned');
+           if (uploadResponse.data.id) {
+             mediaId = uploadResponse.data.id;
+             logger.info('Media uploaded successfully', { mediaId, apiVersion: version });
+             break; // Success, exit the loop
+           } else {
+             logger.warn(`API version ${version} failed - no media ID`, {
+               response: uploadResponse.data,
+               status: uploadResponse.status
+             });
+             if (version === apiVersions[apiVersions.length - 1]) {
+               throw new Error('Failed to upload image to WhatsApp - no media ID returned from any API version');
+             }
+           }
+         } catch (versionError) {
+           logger.warn(`API version ${version} failed`, {
+             error: versionError.message,
+             status: versionError.response?.status,
+             response: versionError.response?.data
+           });
+           if (version === apiVersions[apiVersions.length - 1]) {
+             throw new Error(`WhatsApp image upload failed on all API versions: ${versionError.message}`);
+           }
+         }
        }
 
-       const mediaId = uploadResponse.data.id;
-       logger.info('Media uploaded successfully', { mediaId });
-
-       // Step 2: Send message with media ID
-       const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
+       // Step 2: Send message with media ID using the same API version that worked
+       const workingApiVersion = uploadResponse.config.url.includes('v22.0') ? 'v22.0' : 
+                                 uploadResponse.config.url.includes('v21.0') ? 'v21.0' : 'v23.0';
+       const messageUrl = `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`;
        const messagePayload = {
          messaging_product: 'whatsapp',
          to: formattedNumber,

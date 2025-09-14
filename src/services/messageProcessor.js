@@ -2459,6 +2459,47 @@ class MessageProcessor {
           return;
         }
 
+        // Check if this is an image transfer - if so, show confirmation first
+        const isImageTransfer = extractedData && (extractedData.bankDetails || extractedData.fromImage);
+        
+        if (isImageTransfer && accountNumber && bankName) {
+          // For image transfers, show confirmation message first
+          const aiAssistant = require('./aiAssistant');
+          
+          // Generate confirmation message using the simple format
+          const displayName = recipientName || 'Recipient';
+          const confirmationMessage = `Ready to send ₦${transferAmount.toLocaleString()} to *${displayName}* at *${bankName}* (${accountNumber})? Just reply YES or NO!`;
+          
+          await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
+          
+          // Store transfer data in conversation state for PIN verification
+          await user.updateConversationState({
+            intent: 'bank_transfer',
+            awaitingInput: 'pin_for_transfer',
+            context: 'bank_transfer_pin',
+            step: 1,
+            data: {
+              accountNumber: accountNumber,
+              bankCode: bankCode,
+              bankName: bankName,
+              amount: transferAmount,
+              recipientName: recipientName,
+              narration: 'Wallet transfer',
+              reference: `TXN${Date.now()}`,
+              isImageTransfer: true
+            }
+          });
+          
+          logger.info('Image transfer confirmation sent', {
+            userId: user.id,
+            amount: transferAmount,
+            accountNumber,
+            bankName
+          });
+          
+          return;
+        }
+
         // Check wallet balance first
         const walletService = require('./wallet');
         const wallet = await walletService.getUserWallet(user.id);
