@@ -1164,7 +1164,32 @@ Extract intent and data from this message. Consider the user context and any ext
         }
       };
 
-      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      logger.info('Sending PIN verification flow', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        service: transactionData.service,
+        flowId: flowData.flowId,
+        flowToken: flowToken
+      });
+
+      try {
+        await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+        
+        logger.info('PIN verification flow sent successfully', {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          service: transactionData.service
+        });
+      } catch (error) {
+        logger.error('Failed to send PIN verification flow', {
+          error: error.message,
+          userId: user.id,
+          phoneNumber: user.whatsappNumber,
+          service: transactionData.service,
+          flowId: flowData.flowId
+        });
+        throw error;
+      }
 
       // Mark conversation as awaiting the flow completion
       await user.updateConversationState({
@@ -1677,6 +1702,59 @@ Extract intent and data from this message. Consider the user context and any ext
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter your 4-digit PIN to authorize this purchase.');
           return;
         }
+      }
+
+      case 'data_pin_verification': {
+        // Handle PIN verification for data purchase after confirmation
+        const whatsappService = require('./whatsapp');
+        const bilalService = require('./bilal');
+        
+        if (!/^\d{4}$/.test(message)) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please enter your 4-digit PIN (numbers only).');
+          return;
+        }
+
+        // Verify PIN
+        const isValidPin = await user.validatePin(message);
+        if (!isValidPin) {
+          await user.update({ pinAttempts: user.pinAttempts + 1 });
+          
+          if (user.pinAttempts >= 3) {
+            await user.update({ isBlocked: true, pinAttempts: 0 });
+            await user.clearConversationState();
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Account temporarily blocked due to multiple incorrect PIN attempts. Please contact support.');
+            return;
+          }
+
+          await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Incorrect PIN. You have ${3 - user.pinAttempts} attempts remaining.`);
+          return;
+        }
+
+        // PIN is correct, execute data purchase
+        await user.update({ pinAttempts: 0 });
+        
+        const { phoneNumber, network, dataPlan, amount } = conversationState.data;
+        
+        try {
+          const result = await bilalService.purchaseData(user, {
+            phoneNumber,
+            network,
+            dataPlan,
+            pin: message
+          }, user.whatsappNumber);
+
+          if (result.success) {
+            await user.clearConversationState();
+            await whatsappService.sendTextMessage(user.whatsappNumber, `✅ Data purchase successful! ${dataPlan.dataplan} for ${phoneNumber} on ${network} network.`);
+          } else {
+            await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Data purchase failed: ${result.message || 'Please try again.'}`);
+          }
+        } catch (error) {
+          logger.error('Data purchase failed', { error: error.message, userId: user.id });
+          await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Data purchase failed. Please try again.');
+        }
+        
+        return;
       }
 
       case 'data_pin': {

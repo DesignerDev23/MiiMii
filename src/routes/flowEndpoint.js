@@ -2668,30 +2668,44 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
       }
     }
 
-    // Send separate PIN verification flow instead of navigating to PIN_VERIFICATION_SCREEN
+    // Process the data purchase directly with PIN verification
     try {
-      const aiAssistant = require('../services/aiAssistant');
       const user = await User.findByPk(userId);
       
       if (user) {
-        // Send PIN verification flow for data purchase
-        await aiAssistant.sendPinVerificationFlow(user, {
-          service: 'data',
-          phoneNumber,
-          network,
-          dataPlan: { id: dataPlan, dataplan: selectedPlan?.title },
-          amount: selectedPlan?.price
+        // Store the purchase data in user's conversation state for PIN verification
+        await user.updateConversationState({
+          intent: 'data',
+          awaitingInput: 'data_pin_verification',
+          context: 'data_purchase',
+          data: {
+            phoneNumber,
+            network,
+            dataPlan: { id: dataPlan, dataplan: selectedPlan?.title },
+            amount: selectedPlan?.price,
+            confirmed: true
+          }
         });
         
-        logger.info('PIN verification flow sent for data purchase', {
+        logger.info('Data purchase confirmed, requesting PIN verification', {
           userId,
           network,
           phoneNumber: phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7),
           dataPlan: selectedPlan?.title
         });
+
+        // Send message asking for PIN
+        const whatsappService = require('../services/whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          `🔐 Please enter your 4-digit PIN to authorize this data purchase:\n\n` +
+          `📱 Phone: ${phoneNumber}\n` +
+          `🌐 Network: ${network}\n` +
+          `📦 Plan: ${selectedPlan?.title}\n` +
+          `💰 Amount: ₦${selectedPlan?.price}`
+        );
       }
     } catch (error) {
-      logger.error('Failed to send PIN verification flow for data purchase', { 
+      logger.error('Failed to process data purchase confirmation', { 
         error: error.message, 
         userId,
         network,
@@ -2704,7 +2718,7 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
       screen: 'CONFIRMATION_SCREEN',
       data: {
         success: true,
-        message: 'Purchase confirmed. Please check your messages for PIN verification.'
+        message: 'Purchase confirmed. Please enter your PIN to complete the transaction.'
       }
     };
 
