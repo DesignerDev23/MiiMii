@@ -606,7 +606,7 @@ class BankTransferService {
               fee: parseFloat(feeCalculation.totalFee),
               totalAmount: parseFloat(feeCalculation.totalAmount),
               recipientName: accountValidation.accountName,
-              recipientBank: accountValidation.bank,
+              recipientBank: accountValidation.bankName || accountValidation.bank || 'Bank',
               recipientAccount: accountValidation.accountNumber,
               reference: transaction.reference,
               date: new Date().toLocaleString('en-GB'),

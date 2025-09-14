@@ -444,13 +444,40 @@ class TransactionService {
         };
 
         const receiptService = require('./receipt');
-        const receiptBuffer = await receiptService.generateReceipt(receiptData);
         
-        // Send receipt as text message (simplified for test numbers)
-        await whatsappService.sendTextMessage(
-          transaction.user.whatsappNumber,
-          `✅ *Transfer Receipt*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n💸 Fee: ₦${transaction.fee || 25}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
-        );
+        // Try to send image receipt first
+        try {
+          // Generate transfer receipt with proper bank name
+          const transferReceiptData = {
+            type: 'Bank Transfer',
+            amount: parseFloat(amount),
+            fee: transaction.fee || 25,
+            totalAmount: parseFloat(amount) + (transaction.fee || 25),
+            recipientName: recipient_account,
+            recipientBank: transaction.senderDetails?.bankName || transaction.senderDetails?.bank || 'Bank',
+            recipientAccount: transaction.senderDetails?.accountNumber || 'Account',
+            reference: transaction.reference,
+            date: new Date().toLocaleString('en-GB'),
+            senderName: transaction.user.name || 'MiiMii User'
+          };
+          
+          const transferReceiptBuffer = await receiptService.generateTransferReceipt(transferReceiptData);
+          
+          // Try to send as image
+          await whatsappService.sendImageMessage(transaction.user.whatsappNumber, transferReceiptBuffer, 'transfer-receipt.jpg');
+          logger.info('Transfer receipt image sent successfully via webhook', { reference: transaction.reference });
+          receiptSent = true;
+        } catch (imageError) {
+          logger.warn('Failed to send image receipt, falling back to text', { error: imageError.message });
+        }
+        
+        // Fallback to text receipt if image failed
+        if (!receiptSent) {
+          await whatsappService.sendTextMessage(
+            transaction.user.whatsappNumber,
+            `✅ *Transfer Receipt*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n💸 Fee: ₦${transaction.fee || 25}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
+          );
+        }
         
         // Send additional success message
         await whatsappService.sendTextMessage(

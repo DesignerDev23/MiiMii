@@ -783,7 +783,10 @@ Extract intent and data from this message. Consider the user context and any ext
         // Try new resolver which supports 3-letter prefixes and synonyms
         resolvedBankCode = await bellbankService.resolveInstitutionCode(bankName);
         
-        if (!resolvedBankCode) {
+        // Preserve the original bank name if resolution was successful
+        if (resolvedBankCode) {
+          resolvedBankName = bankName; // Keep the original bank name from image processing
+        } else {
           // Fallback: try explicit bank list scanning
           try {
             logger.info('Fallback: scanning BellBank bank list for bank name', { bankName });
