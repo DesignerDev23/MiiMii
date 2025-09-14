@@ -24,8 +24,8 @@ class MessageProcessor {
         messageContent: message
       });
       
-      // Extract message content for text, button replies, and list selections
-      let messageContent = message?.text || message?.buttonReply?.title || message?.listReply?.title || '';
+      // Extract message content for text, button replies, list selections, and image captions
+      let messageContent = message?.text || message?.buttonReply?.title || message?.listReply?.title || message?.caption || '';
       
       // Get user's WhatsApp profile name
       const userName = contact?.profile?.name || 'there';
@@ -48,6 +48,17 @@ class MessageProcessor {
           return await this.handleCompletedUserMessage(user, message, 'interactive');
         }
         // Fall through to Flow completion handling below
+      }
+
+      // If image message, handle via the image-aware pipeline
+      if (messageType === 'image') {
+        logger.info('Routing image message to handleCompletedUserMessage', {
+          userId: user.id,
+          messageType,
+          hasMediaId: !!message?.mediaId,
+          hasCaption: !!message?.caption
+        });
+        return await this.handleCompletedUserMessage(user, message, 'image');
       }
 
       // Daily login check will be moved to after transfer conversation handling
@@ -3230,6 +3241,8 @@ class MessageProcessor {
         return await this.handleTextMessage(user, userName, message);
       case 'interactive':
         return await this.handleInteractiveMessage(user, userName, message);
+      case 'image':
+        return await this.handleCompletedUserMessage(user, message, 'image');
       default:
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, 
