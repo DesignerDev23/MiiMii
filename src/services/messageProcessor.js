@@ -674,6 +674,12 @@ class MessageProcessor {
         }
       }
 
+      // Skip AI analysis for image messages - they are handled in handleCompletedUserMessage
+      if (messageType === 'image') {
+        logger.info('Skipping main AI analysis for image message - will be handled in handleCompletedUserMessage');
+        return;
+      }
+
       // Analyze user message with AI to determine intent
       const aiAssistant = require('./aiAssistant');
       const intentAnalysis = await aiAssistant.analyzeUserIntent(messageContent, user);
