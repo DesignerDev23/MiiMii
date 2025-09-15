@@ -40,8 +40,8 @@ class Config {
 
     // Bilal Configuration
     this.bilal = {
-      username: process.env.BILAL_USERNAME || process.env.PROVIDER_USERNAME,
-      password: process.env.BILAL_PASSWORD || process.env.PROVIDER_PASSWORD,
+      username: process.env.PROVIDER_USERNAME,
+      password: process.env.PROVIDER_PASSWORD,
       apiKey: process.env.BILAL_API_KEY,
       baseUrl: process.env.BILAL_BASE_URL
     };

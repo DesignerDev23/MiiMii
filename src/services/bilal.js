@@ -12,8 +12,8 @@ const receiptService = require('./receipt');
 class BilalService {
   constructor() {
     this.baseURL = process.env.BILAL_BASE_URL || 'https://bilalsadasub.com/api';
-    this.username = process.env.PROVIDER_USERNAME || process.env.BILAL_USERNAME;
-    this.password = process.env.PROVIDER_PASSWORD || process.env.BILAL_PASSWORD;
+    this.username = process.env.PROVIDER_USERNAME;
+    this.password = process.env.PROVIDER_PASSWORD;
     this.token = null;
     this.tokenExpiry = null;
     
@@ -210,7 +210,7 @@ class BilalService {
       
       const payload = {
         network: networkId,
-        phone: cleanPhoneNumber,
+        phone: parseInt(cleanPhoneNumber), // Convert to integer as per sample
         plan_type: 'VTU',
         bypass: false,
         amount: amount,
@@ -461,7 +461,7 @@ class BilalService {
       
       const payload = {
         network: networkId,
-        phone: cleanPhoneNumber,
+        phone: parseInt(cleanPhoneNumber), // Convert to integer as per sample
         data_plan: dataPlan.id,
         bypass: false,
         'request-id': requestId
