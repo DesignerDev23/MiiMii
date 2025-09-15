@@ -16,6 +16,8 @@ class BilalService {
     this.password = process.env.PROVIDER_PASSWORD;
     this.token = null;
     this.tokenExpiry = null;
+    this.balance = null;
+    this.cachedUsername = null;
     
     // Bilal's virtual account details for payments
     this.bilalAccount = {
@@ -52,7 +54,11 @@ class BilalService {
   async generateToken() {
     try {
       if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
-        return this.token;
+        return {
+          token: this.token,
+          balance: this.balance,
+          username: this.cachedUsername
+        };
       }
 
       // Use Basic Authentication as per Bilal documentation
@@ -69,6 +75,8 @@ class BilalService {
 
       if (response.data.status === 'success') {
         this.token = response.data.AccessToken;
+        this.balance = response.data.balance;
+        this.cachedUsername = response.data.username;
         // Set expiry to 23 hours (tokens typically last 24 hours)
         this.tokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
         
@@ -224,12 +232,12 @@ class BilalService {
         phoneNumber: cleanPhoneNumber,
         originalPhoneNumber: phoneNumber,
         amount,
-        endpoint: '/topup/',
+        endpoint: '/topup',
         method: 'POST',
         fullPayload: JSON.stringify(payload)
       });
 
-      const response = await this.makeRequest('POST', '/topup/', payload, tokenData.token);
+      const response = await this.makeRequest('POST', '/topup', payload, tokenData.token);
 
       logger.info('Bilal API airtime response received', {
         status: response.status,
