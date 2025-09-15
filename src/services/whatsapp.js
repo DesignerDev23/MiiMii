@@ -17,6 +17,21 @@ class WhatsAppService {
   }
 
   /**
+   * Get WhatsApp service configuration
+   * @returns {Object} - Configuration object
+   */
+  getConfig() {
+    return {
+      accessToken: this.accessToken,
+      phoneNumberId: this.phoneNumberId,
+      businessAccountId: this.businessAccountId,
+      baseURL: this.baseURL,
+      verifyToken: this.verifyToken,
+      axiosConfig: this.axiosConfig
+    };
+  }
+
+  /**
    * Format phone number to E.164 format required by WhatsApp Business API
    * @param {string} phoneNumber - Input phone number in various formats
    * @returns {string} - Phone number in E.164 format (+234xxxxxxxxxx)
@@ -1383,6 +1398,173 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
    }
 
    /**
+    * Send image message via WhatsApp Business API using Media Message Templates
+    * @param {string} to - Recipient phone number
+    * @param {Buffer} imageBuffer - Image buffer
+    * @param {string} filename - Filename for the image
+    * @param {string} caption - Optional caption for the image
+    * @returns {Promise<Object>} - Response from WhatsApp API
+    */
+   async sendImageMessageTemplate(to, imageBuffer, filename = 'image.png', caption = null) {
+     try {
+       const formattedNumber = this.formatToE164(to);
+       
+       logger.info('WhatsApp sendImageMessageTemplate called', {
+         originalNumber: to,
+         formattedNumber,
+         messageType: 'template',
+         hasCaption: !!caption,
+         accessTokenPrefix: this.accessToken.substring(0, 20) + '...',
+         accessTokenLength: this.accessToken.length,
+         phoneNumberId: this.phoneNumberId
+       });
+
+       // Validate image buffer
+       if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+         throw new Error('Invalid image buffer provided');
+       }
+       
+       // Check file size (WhatsApp images max 5MB)
+       const fileSizeInMB = imageBuffer.length / (1024 * 1024);
+       if (fileSizeInMB > 5) {
+         throw new Error(`Image file size (${fileSizeInMB.toFixed(2)}MB) exceeds WhatsApp's 5MB limit for images`);
+       }
+
+       // Step 1: Upload media using form-data to get media ID
+       const apiVersions = ['v23.0', 'v22.0', 'v21.0'];
+       let mediaId;
+       
+       for (const version of apiVersions) {
+         try {
+           const uploadUrl = `https://graph.facebook.com/${version}/${this.phoneNumberId}/media`;
+           logger.info(`Trying WhatsApp API version ${version} for template`, { uploadUrl });
+       
+           const formData = new FormData();
+           formData.append('messaging_product', 'whatsapp');
+           formData.append('file', imageBuffer, {
+             filename: filename,
+             contentType: 'image/jpeg'
+           });
+
+           const uploadResponse = await axios.post(uploadUrl, formData, {
+             headers: {
+               'Authorization': `Bearer ${this.accessToken}`,
+               ...formData.getHeaders()
+             },
+             timeout: 30000
+           });
+
+           if (uploadResponse.data.id) {
+             mediaId = uploadResponse.data.id;
+             logger.info('Media uploaded successfully for template', { mediaId, apiVersion: version });
+             break;
+           }
+         } catch (versionError) {
+           logger.warn(`API version ${version} failed for template`, {
+             error: versionError.message,
+             status: versionError.response?.status
+           });
+           if (version === apiVersions[apiVersions.length - 1]) {
+             throw new Error(`WhatsApp image template upload failed on all API versions: ${versionError.message}`);
+           }
+         }
+       }
+
+       if (!mediaId) {
+         throw new Error('Failed to upload media for template');
+       }
+
+       // Step 2: Send as Media Message Template (as per official docs)
+       const workingApiVersion = 'v23.0'; // Use the latest version for templates
+       const messageUrl = `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`;
+       
+       // Create a simple template message with the image as header
+       const messagePayload = {
+         messaging_product: 'whatsapp',
+         to: formattedNumber,
+         type: 'template',
+         template: {
+           name: 'transfer_receipt', // This needs to be a pre-approved template
+           language: {
+             code: 'en'
+           },
+           components: [
+             {
+               type: 'header',
+               parameters: [
+                 {
+                   type: 'image',
+                   image: {
+                     id: mediaId
+                   }
+                 }
+               ]
+             },
+             {
+               type: 'body',
+               parameters: [
+                 {
+                   type: 'text',
+                   text: caption || 'Transfer Receipt'
+                 }
+               ]
+             }
+           ]
+         }
+       };
+
+       logger.info('Sending image message template', {
+         url: messageUrl,
+         payload: messagePayload,
+         hasCaption: !!caption,
+         mediaId,
+         apiVersion: workingApiVersion
+       });
+
+       const response = await axios.post(messageUrl, messagePayload, {
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           'Content-Type': 'application/json'
+         },
+         timeout: 30000
+       });
+
+       if (response.data.messages && response.data.messages[0]) {
+         logger.info('WhatsApp image message template sent successfully', {
+           to: formattedNumber,
+           messageId: response.data.messages[0].id,
+           apiVersion: workingApiVersion
+         });
+         return {
+           success: true,
+           messageId: response.data.messages[0].id,
+           response: response.data
+         };
+       } else {
+         throw new Error('Unexpected response format from WhatsApp API');
+       }
+
+     } catch (error) {
+       logger.error('Failed to send WhatsApp image message template', {
+         error: error.message,
+         errorResponse: error.response?.data,
+         errorStatus: error.response?.status,
+         to: to,
+         filename,
+         hasCaption: !!caption,
+         imageBufferSize: imageBuffer?.length
+       });
+
+       return {
+         success: false,
+         error: error.message,
+         errorResponse: error.response?.data,
+         errorStatus: error.response?.status
+       };
+     }
+   }
+
+   /**
     * Send image message via WhatsApp Business API using Media Link approach
     * @param {string} to - Recipient phone number
     * @param {string} imageUrl - Public URL to the image
@@ -1581,60 +1763,110 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          }
        }
 
-       // Step 2: Send message with media ID using the same API version that worked
+       // Step 2: Send message with media ID using multiple approaches
        const workingApiVersion = uploadResponse.config.url.includes('v22.0') ? 'v22.0' : 
                                  uploadResponse.config.url.includes('v21.0') ? 'v21.0' : 'v23.0';
-       const messageUrl = `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`;
-       const messagePayload = {
-         messaging_product: 'whatsapp',
-         to: formattedNumber,
-         type: 'image',
-         image: {
-           id: mediaId
-         }
-       };
-
-       // Add caption if provided
-       if (caption) {
-         messagePayload.image.caption = caption;
-       }
-
-       logger.info('Sending image message with media ID', {
-         url: messageUrl,
-         payload: messagePayload,
-         hasCaption: !!caption,
-         mediaId,
-         authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
-       });
-
-       const response = await axios.post(messageUrl, messagePayload, {
-         headers: {
-           'Authorization': `Bearer ${this.accessToken}`,
-           'Content-Type': 'application/json'
+       
+       // Try different approaches to send the message
+       const sendApproaches = [
+         // Approach 1: Standard media message with caption
+         {
+           name: 'standard_media_with_caption',
+           url: `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`,
+           payload: {
+             messaging_product: 'whatsapp',
+             to: formattedNumber,
+             type: 'image',
+             image: { id: mediaId, ...(caption && { caption }) }
+           }
          },
-         ...this.axiosConfig
-       });
+         // Approach 2: Try without caption
+         {
+           name: 'media_without_caption',
+           url: `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`,
+           payload: {
+             messaging_product: 'whatsapp',
+             to: formattedNumber,
+             type: 'image',
+             image: { id: mediaId }
+           }
+         },
+         // Approach 3: Try different API version
+         {
+           name: 'different_api_version',
+           url: `https://graph.facebook.com/v22.0/${this.phoneNumberId}/messages`,
+           payload: {
+             messaging_product: 'whatsapp',
+             to: formattedNumber,
+             type: 'image',
+             image: { id: mediaId }
+           }
+         },
+         // Approach 4: Try v21.0
+         {
+           name: 'api_v21',
+           url: `https://graph.facebook.com/v21.0/${this.phoneNumberId}/messages`,
+           payload: {
+             messaging_product: 'whatsapp',
+             to: formattedNumber,
+             type: 'image',
+             image: { id: mediaId }
+           }
+         }
+       ];
 
-       if (!response.data.messages || !response.data.messages[0]?.id) {
-         logger.error('WhatsApp message response missing message ID', {
-           response: response.data,
-           status: response.status
-         });
-         throw new Error('Failed to send image message - no message ID returned');
+       for (const approach of sendApproaches) {
+         try {
+           logger.info(`Trying ${approach.name} approach`, {
+             url: approach.url,
+             payload: approach.payload,
+             hasCaption: !!caption,
+             mediaId
+           });
+
+           const response = await axios.post(approach.url, approach.payload, {
+             headers: {
+               'Authorization': `Bearer ${this.accessToken}`,
+               'Content-Type': 'application/json'
+             },
+             timeout: 30000
+           });
+
+           if (response.data.messages && response.data.messages[0]?.id) {
+             logger.info('WhatsApp image message sent successfully', {
+               to: formattedNumber,
+               messageId: response.data.messages[0].id,
+               mediaId,
+               hasCaption: !!caption,
+               approach: approach.name
+             });
+             
+             return {
+               success: true,
+               messageId: response.data.messages[0].id,
+               response: response.data
+             };
+           } else {
+             logger.warn(`${approach.name} approach returned unexpected response`, {
+               response: response.data,
+               status: response.status
+             });
+           }
+         } catch (approachError) {
+           logger.warn(`${approach.name} approach failed`, {
+             error: approachError.message,
+             status: approachError.response?.status,
+             response: approachError.response?.data
+           });
+           
+           // If this is the last approach, throw the error
+           if (approach === sendApproaches[sendApproaches.length - 1]) {
+             throw approachError;
+           }
+         }
        }
 
-       logger.info('WhatsApp image message sent successfully', {
-         to: formattedNumber,
-         messageId: response.data.messages[0].id,
-         mediaId,
-         hasCaption: !!caption
-       });
-
-       return {
-         success: true,
-         messageId: response.data.messages?.[0]?.id,
-         response: response.data
-       };
+       throw new Error('All approaches failed to send image message');
      } catch (error) {
        logger.error('Failed to send WhatsApp image message', {
          error: error.message,
