@@ -70,17 +70,27 @@ class ImageProcessingService {
     try {
       // Use sharp to enhance the image for better OCR, especially for handwritten text
       const processedBuffer = await sharp(imageBuffer)
-        .resize(2000, 2000, { 
+        .resize(3000, 3000, { 
           fit: 'inside',
           withoutEnlargement: false 
         })
         .grayscale()
         .normalize()
-        .sharpen({ sigma: 1.0, m1: 0.5, m2: 2.0 }) // Enhanced sharpening for handwritten text
-        .gamma(1.2) // Adjust gamma for better contrast
-        .threshold(120) // Lower threshold for handwritten text
+        .sharpen({ sigma: 1.5, m1: 0.8, m2: 3.0 }) // More aggressive sharpening for handwritten text
+        .gamma(1.3) // Higher gamma for better contrast
+        .threshold(110) // Even lower threshold for handwritten text
+        .modulate({
+          brightness: 1.1, // Slightly brighter
+          contrast: 1.2    // Higher contrast
+        })
         .png()
         .toBuffer();
+
+      logger.info('Image preprocessing completed', {
+        originalSize: imageBuffer.length,
+        processedSize: processedBuffer.length,
+        enhancement: 'Enhanced for handwritten text recognition'
+      });
 
       return processedBuffer;
     } catch (error) {
@@ -103,7 +113,15 @@ class ImageProcessingService {
           if (m.status === 'recognizing text') {
             logger.debug('OCR progress', { progress: Math.round(m.progress * 100) });
           }
-        }
+        },
+        // Enhanced OCR configuration for better text recognition
+        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,-:()',
+        tessedit_pageseg_mode: '6', // Assume a single uniform block of text
+        tessedit_ocr_engine_mode: '3', // Default, based on what is available
+        preserve_interword_spaces: '1', // Preserve spaces between words
+        textord_min_linesize: '2.5', // Minimum line size
+        textord_old_baselines: '1', // Use old baseline detection
+        textord_old_xheight: '1' // Use old x-height detection
       });
 
       const extractedText = result.data.text;

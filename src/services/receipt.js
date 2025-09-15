@@ -9,6 +9,9 @@ class ReceiptService {
     this.logoPath = path.join(__dirname, '../../assets/images');
     this.templatePath = path.join(__dirname, '../../assets/templates');
     
+    // High-quality scaling factor for better image resolution
+    this.scale = 2; // 2x scaling for 800x1200 instead of 400x600
+    
     // Register Google Outfit font if available
     try {
       const outfitFontPath = path.join(this.fontPath, 'Outfit-Regular.ttf');
@@ -26,6 +29,11 @@ class ReceiptService {
     } catch (error) {
       logger.warn('Font registration failed, using default fonts', { error: error.message });
     }
+  }
+
+  // Helper method to scale coordinates and dimensions
+  scale(value) {
+    return value * this.scale;
   }
 
   async loadLogo() {
@@ -60,17 +68,21 @@ class ReceiptService {
         discount = 0
       } = transactionData;
 
-      // Create canvas
-      const canvas = createCanvas(400, 600);
+      // Create high-quality canvas
+      const canvas = createCanvas(this.scale(400), this.scale(600));
       const ctx = canvas.getContext('2d');
+      
+      // Enable high-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Set background
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 400, 600);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(600));
 
       // Header
       ctx.fillStyle = '#ff0000';
-      ctx.fillRect(0, 0, 400, 80);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(80));
 
       // Load and draw logo
       const logo = await this.loadLogo();
@@ -90,20 +102,20 @@ class ReceiptService {
 
       // MiiMii.AI title
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px Outfit, Arial';
+      ctx.font = `bold ${this.scale(24)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('MiiMii.AI', 200, 35);
+      ctx.fillText('MiiMii.AI', this.scale(200), this.scale(35));
 
       // Transaction Receipt title
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold italic 28px Outfit, Arial';
+      ctx.font = `bold italic ${this.scale(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('Transaction Receipt', 200, 120);
 
       // Generated date
-      ctx.font = '12px Outfit, Arial';
+      ctx.font = `${this.scale(12)}px Outfit, Arial`;
       ctx.fillStyle = '#666666';
-      ctx.fillText(`Generated from The MiiMii AI on ${date}`, 200, 140);
+      ctx.fillText(`Generated from The MiiMii AI on ${date}`, this.scale(200), this.scale(140));
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
@@ -126,7 +138,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = 'bold 12px Outfit, Arial';
+        ctx.font = `bold ${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, 40, yPos);
 
@@ -140,7 +152,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Outfit, Arial';
+        ctx.font = `${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, 360, yPos);
 
@@ -149,11 +161,11 @@ class ReceiptService {
 
       // Footer
       ctx.fillStyle = '#666666';
-      ctx.font = '10px Outfit, Arial';
+      ctx.font = `${this.scale(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('If you have any questions or would like more information,', 200, 520);
-      ctx.fillText('please call +234 907 110 2959, +234 701 405 5875 or send an email', 200, 535);
-      ctx.fillText('to contactcenter@chatmiimiiai.com', 200, 550);
+      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scale(200), this.scale(535));
+      ctx.fillText('to contactcenter@chatmiimii.com', this.scale(200), this.scale(550));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
@@ -165,12 +177,12 @@ class ReceiptService {
 
       // Thank you message
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold 14px Outfit, Arial';
+      ctx.font = `bold ${this.scale(14)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', 200, 590);
+      ctx.fillText('Thank you for using The MiiMii.AI', this.scale(200), this.scale(590));
 
       // Convert to buffer
-      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
       
       // Validate the generated buffer
       if (!buffer || !Buffer.isBuffer(buffer)) {
@@ -204,17 +216,21 @@ class ReceiptService {
         discount = 0
       } = transactionData;
 
-      // Create canvas
-      const canvas = createCanvas(400, 600);
+      // Create high-quality canvas
+      const canvas = createCanvas(this.scale(400), this.scale(600));
       const ctx = canvas.getContext('2d');
+      
+      // Enable high-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Set background
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 400, 600);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(600));
 
       // Header
       ctx.fillStyle = '#ff0000';
-      ctx.fillRect(0, 0, 400, 80);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(80));
 
       // Load and draw logo
       const logo = await this.loadLogo();
@@ -234,20 +250,20 @@ class ReceiptService {
 
       // MiiMii.AI title
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px Outfit, Arial';
+      ctx.font = `bold ${this.scale(24)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('MiiMii.AI', 200, 35);
+      ctx.fillText('MiiMii.AI', this.scale(200), this.scale(35));
 
       // Transaction Receipt title
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold italic 28px Outfit, Arial';
+      ctx.font = `bold italic ${this.scale(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('Transaction Receipt', 200, 120);
 
       // Generated date
-      ctx.font = '12px Outfit, Arial';
+      ctx.font = `${this.scale(12)}px Outfit, Arial`;
       ctx.fillStyle = '#666666';
-      ctx.fillText(`Generated from The MiiMii AI on ${date}`, 200, 140);
+      ctx.fillText(`Generated from The MiiMii AI on ${date}`, this.scale(200), this.scale(140));
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
@@ -268,7 +284,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = 'bold 12px Outfit, Arial';
+        ctx.font = `bold ${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, 40, yPos);
 
@@ -282,7 +298,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Outfit, Arial';
+        ctx.font = `${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, 360, yPos);
 
@@ -291,11 +307,11 @@ class ReceiptService {
 
       // Footer
       ctx.fillStyle = '#666666';
-      ctx.font = '10px Outfit, Arial';
+      ctx.font = `${this.scale(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('If you have any questions or would like more information,', 200, 520);
-      ctx.fillText('please call +234 907 110 2959, +234 701 405 5875 or send an email', 200, 535);
-      ctx.fillText('to contactcenter@chatmiimiiai.com', 200, 550);
+      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scale(200), this.scale(535));
+      ctx.fillText('to contactcenter@chatmiimii.com', this.scale(200), this.scale(550));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
@@ -307,12 +323,12 @@ class ReceiptService {
 
       // Thank you message
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold 14px Outfit, Arial';
+      ctx.font = `bold ${this.scale(14)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', 200, 590);
+      ctx.fillText('Thank you for using The MiiMii.AI', this.scale(200), this.scale(590));
 
       // Convert to buffer
-      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
       
       // Validate the generated buffer
       if (!buffer || !Buffer.isBuffer(buffer)) {
@@ -348,17 +364,21 @@ class ReceiptService {
         discount = 0
       } = transactionData;
 
-      // Create canvas
-      const canvas = createCanvas(400, 600);
+      // Create high-quality canvas
+      const canvas = createCanvas(this.scale(400), this.scale(600));
       const ctx = canvas.getContext('2d');
+      
+      // Enable high-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Set background
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 400, 600);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(600));
 
       // Header
       ctx.fillStyle = '#ff0000';
-      ctx.fillRect(0, 0, 400, 80);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(80));
 
       // Load and draw logo
       const logo = await this.loadLogo();
@@ -376,20 +396,20 @@ class ReceiptService {
 
       // MiiMii.AI title
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px Outfit, Arial';
+      ctx.font = `bold ${this.scale(24)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('MiiMii.AI', 200, 35);
+      ctx.fillText('MiiMii.AI', this.scale(200), this.scale(35));
 
       // Transaction Receipt title
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold italic 28px Outfit, Arial';
+      ctx.font = `bold italic ${this.scale(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('Transaction Receipt', 200, 120);
 
       // Generated date
-      ctx.font = '12px Outfit, Arial';
+      ctx.font = `${this.scale(12)}px Outfit, Arial`;
       ctx.fillStyle = '#666666';
-      ctx.fillText(`Generated from The MiiMii AI on ${date}`, 200, 140);
+      ctx.fillText(`Generated from The MiiMii AI on ${date}`, this.scale(200), this.scale(140));
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
@@ -411,7 +431,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = 'bold 12px Outfit, Arial';
+        ctx.font = `bold ${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, 40, yPos);
 
@@ -425,7 +445,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Outfit, Arial';
+        ctx.font = `${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, 360, yPos);
 
@@ -434,11 +454,11 @@ class ReceiptService {
 
       // Footer
       ctx.fillStyle = '#666666';
-      ctx.font = '10px Outfit, Arial';
+      ctx.font = `${this.scale(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('If you have any questions or would like more information,', 200, 520);
-      ctx.fillText('please call +234 907 110 2959, +234 701 405 5875 or send an email', 200, 535);
-      ctx.fillText('to contactcenter@chatmiimiiai.com', 200, 550);
+      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scale(200), this.scale(535));
+      ctx.fillText('to contactcenter@chatmiimii.com', this.scale(200), this.scale(550));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
@@ -450,12 +470,12 @@ class ReceiptService {
 
       // Thank you message
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold 14px Outfit, Arial';
+      ctx.font = `bold ${this.scale(14)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', 200, 590);
+      ctx.fillText('Thank you for using The MiiMii.AI', this.scale(200), this.scale(590));
 
       // Convert to buffer
-      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
       
       // Validate the generated buffer
       if (!buffer || !Buffer.isBuffer(buffer)) {
@@ -493,17 +513,21 @@ class ReceiptService {
         token = null
       } = transactionData;
 
-      // Create canvas
-      const canvas = createCanvas(400, 650);
+      // Create high-quality canvas
+      const canvas = createCanvas(this.scale(400), this.scale(650));
       const ctx = canvas.getContext('2d');
+      
+      // Enable high-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Set background
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 400, 650);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(650));
 
       // Header
       ctx.fillStyle = '#ff0000';
-      ctx.fillRect(0, 0, 400, 80);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(80));
 
       // Load and draw logo
       const logo = await this.loadLogo();
@@ -521,20 +545,20 @@ class ReceiptService {
 
       // MiiMii.AI title
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px Outfit, Arial';
+      ctx.font = `bold ${this.scale(24)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('MiiMii.AI', 200, 35);
+      ctx.fillText('MiiMii.AI', this.scale(200), this.scale(35));
 
       // Transaction Receipt title
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold italic 28px Outfit, Arial';
+      ctx.font = `bold italic ${this.scale(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('Transaction Receipt', 200, 120);
 
       // Generated date
-      ctx.font = '12px Outfit, Arial';
+      ctx.font = `${this.scale(12)}px Outfit, Arial`;
       ctx.fillStyle = '#666666';
-      ctx.fillText(`Generated from The MiiMii AI on ${date}`, 200, 140);
+      ctx.fillText(`Generated from The MiiMii AI on ${date}`, this.scale(200), this.scale(140));
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
@@ -557,7 +581,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = 'bold 12px Outfit, Arial';
+        ctx.font = `bold ${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, 40, yPos);
 
@@ -571,7 +595,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Outfit, Arial';
+        ctx.font = `${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, 360, yPos);
 
@@ -582,7 +606,7 @@ class ReceiptService {
       if (token) {
         yPos += 10;
         ctx.fillStyle = '#333333';
-        ctx.font = 'bold 12px Outfit, Arial';
+        ctx.font = `bold ${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText('Meter Token', 40, yPos);
 
@@ -594,18 +618,18 @@ class ReceiptService {
         ctx.stroke();
 
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Outfit, Arial';
+        ctx.font = `${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(token, 360, yPos);
       }
 
       // Footer
       ctx.fillStyle = '#666666';
-      ctx.font = '10px Outfit, Arial';
+      ctx.font = `${this.scale(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('If you have any questions or would like more information,', 200, 570);
-      ctx.fillText('please call +234 907 110 2959, +234 701 405 5875 or send an email', 200, 585);
-      ctx.fillText('to contactcenter@chatmiimiiai.com', 200, 600);
+      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scale(200), this.scale(585));
+      ctx.fillText('to contactcenter@chatmiimii.com', this.scale(200), this.scale(600));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
@@ -617,12 +641,12 @@ class ReceiptService {
 
       // Thank you message
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold 14px Outfit, Arial';
+      ctx.font = `bold ${this.scale(14)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', 200, 640);
+      ctx.fillText('Thank you for using The MiiMii.AI', this.scale(200), this.scale(640));
 
       // Convert to buffer
-      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
       
       // Validate the generated buffer
       if (!buffer || !Buffer.isBuffer(buffer)) {
@@ -661,17 +685,21 @@ class ReceiptService {
         senderName
       } = transactionData;
 
-      // Create canvas
-      const canvas = createCanvas(400, 650);
+      // Create high-quality canvas
+      const canvas = createCanvas(this.scale(400), this.scale(650));
       const ctx = canvas.getContext('2d');
+      
+      // Enable high-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Set background
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 400, 650);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(650));
 
       // Header
       ctx.fillStyle = '#ff0000';
-      ctx.fillRect(0, 0, 400, 80);
+      ctx.fillRect(0, 0, this.scale(400), this.scale(80));
 
       // Load and draw logo
       const logo = await this.loadLogo();
@@ -689,20 +717,20 @@ class ReceiptService {
 
       // MiiMii.AI title
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px Outfit, Arial';
+      ctx.font = `bold ${this.scale(24)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('MiiMii.AI', 200, 35);
+      ctx.fillText('MiiMii.AI', this.scale(200), this.scale(35));
 
       // Transaction Receipt title
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold italic 28px Outfit, Arial';
+      ctx.font = `bold italic ${this.scale(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('Transaction Receipt', 200, 120);
 
       // Generated date
-      ctx.font = '12px Outfit, Arial';
+      ctx.font = `${this.scale(12)}px Outfit, Arial`;
       ctx.fillStyle = '#666666';
-      ctx.fillText(`Generated from The MiiMii AI on ${date}`, 200, 140);
+      ctx.fillText(`Generated from The MiiMii AI on ${date}`, this.scale(200), this.scale(140));
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
@@ -726,7 +754,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = 'bold 12px Outfit, Arial';
+        ctx.font = `bold ${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, 40, yPos);
 
@@ -740,7 +768,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Outfit, Arial';
+        ctx.font = `${this.scale(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, 360, yPos);
 
@@ -749,11 +777,11 @@ class ReceiptService {
 
       // Footer
       ctx.fillStyle = '#666666';
-      ctx.font = '10px Outfit, Arial';
+      ctx.font = `${this.scale(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
       ctx.fillText('If you have any questions or would like more information,', 200, 570);
-      ctx.fillText('please call +234 907 110 2959, +234 701 405 5875 or send an email', 200, 585);
-      ctx.fillText('to contactcenter@chatmiimiiai.com', 200, 600);
+      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scale(200), this.scale(585));
+      ctx.fillText('to contactcenter@chatmiimii.com', this.scale(200), this.scale(600));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
@@ -765,12 +793,12 @@ class ReceiptService {
 
       // Thank you message
       ctx.fillStyle = '#000000';
-      ctx.font = 'bold 14px Outfit, Arial';
+      ctx.font = `bold ${this.scale(14)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', 200, 640);
+      ctx.fillText('Thank you for using The MiiMii.AI', this.scale(200), this.scale(640));
 
       // Convert to buffer
-      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.9 });
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
       
       // Validate the generated buffer
       if (!buffer || !Buffer.isBuffer(buffer)) {

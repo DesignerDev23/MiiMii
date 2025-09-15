@@ -424,7 +424,7 @@ class BellBankService {
           accountName: response.data.accountName || response.data.account_name,
           accountNumber: response.data.accountNumber || response.data.account_number,
           bankCode: response.data.bankCode || response.data.bank_code,
-          bankName: response.data.bankName || response.data.bank_name,
+          bankName: response.data.bankName || response.data.bank_name || response.data.bank,
           sessionId: response.data.sessionId || response.data.session_id
         };
       } else {

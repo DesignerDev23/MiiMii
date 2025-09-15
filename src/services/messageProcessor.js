@@ -2466,9 +2466,15 @@ class MessageProcessor {
           // For image transfers, show confirmation message first
           const aiAssistant = require('./aiAssistant');
           
-          // Generate confirmation message using the simple format
-          const displayName = recipientName || 'Recipient';
-          const confirmationMessage = `Ready to send ₦${transferAmount.toLocaleString()} to *${displayName}* at *${bankName}* (${accountNumber})? Just reply YES or NO!`;
+          // Generate confirmation message using AI for consistent one-sentence format
+          const confirmationMessage = await aiAssistant.generateTransferConfirmationMessage({
+            amount: transferAmount,
+            fee: 25, // Standard fee
+            totalAmount: transferAmount + 25,
+            recipientName: recipientName || 'Recipient',
+            bankName: bankName,
+            accountNumber: accountNumber
+          });
           
           await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
           

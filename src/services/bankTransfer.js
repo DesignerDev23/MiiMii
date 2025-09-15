@@ -190,7 +190,8 @@ class BankTransferService {
           accountNumber: cleanAccountNumber,
           bankCode,
           accountName: accountDetails.account_name || accountDetails.accountName,
-          bank: accountDetails.bank_name || accountDetails.bankName || this.getBankNameByCode(bankCode),
+          bank: accountDetails.bank_name || accountDetails.bankName || accountDetails.bank || this.getBankNameByCode(bankCode),
+          bankName: accountDetails.bank_name || accountDetails.bankName || accountDetails.bank || this.getBankNameByCode(bankCode),
           currency: 'NGN'
         };
       }
