@@ -88,15 +88,15 @@ class ReceiptService {
       const logo = await this.loadLogo();
       if (logo) {
         // Calculate logo dimensions to fit in header
-        const logoSize = 40;
-        const logoX = 30;
-        const logoY = 20;
+        const logoSize = this.scaleValue(40);
+        const logoX = this.scaleValue(30);
+        const logoY = this.scaleValue(20);
         ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
       } else {
         // Logo placeholder (red swirl)
         ctx.fillStyle = '#ff6666';
         ctx.beginPath();
-        ctx.arc(50, 40, 20, 0, 2 * Math.PI);
+        ctx.arc(this.scaleValue(50), this.scaleValue(40), this.scaleValue(20), 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -110,7 +110,7 @@ class ReceiptService {
       ctx.fillStyle = '#000000';
       ctx.font = `bold italic ${this.scaleValue(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Transaction Receipt', 200, 120);
+      ctx.fillText('Transaction Receipt', this.scaleValue(200), this.scaleValue(120));
 
       // Generated date
       ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
@@ -119,7 +119,7 @@ class ReceiptService {
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
-      ctx.fillRect(20, 160, 360, 320);
+      ctx.fillRect(this.scaleValue(20), this.scaleValue(160), this.scaleValue(360), this.scaleValue(320));
 
       // Transaction details
       const details = [
@@ -134,36 +134,36 @@ class ReceiptService {
         { label: 'Transaction Status', value: status }
       ];
 
-      let yPos = 180;
+      let yPos = this.scaleValue(180);
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
         ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
-        ctx.fillText(detail.label, 40, yPos);
+        ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
         // Separator line
         ctx.strokeStyle = '#cccccc';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(40, yPos + 5);
-        ctx.lineTo(360, yPos + 5);
+        ctx.moveTo(this.scaleValue(40), yPos + this.scaleValue(5));
+        ctx.lineTo(this.scaleValue(360), yPos + this.scaleValue(5));
         ctx.stroke();
 
         // Value
         ctx.fillStyle = '#000000';
         ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
-        ctx.fillText(detail.value, 360, yPos);
+        ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
-        yPos += 35;
+        yPos += this.scaleValue(35);
       });
 
       // Footer
       ctx.fillStyle = '#666666';
       ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', 200, 520);
+      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(520));
       ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(535));
       ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(550));
 
@@ -171,8 +171,8 @@ class ReceiptService {
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(50, 570);
-      ctx.lineTo(350, 570);
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(570));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(570));
       ctx.stroke();
 
       // Thank you message
@@ -236,15 +236,15 @@ class ReceiptService {
       const logo = await this.loadLogo();
       if (logo) {
         // Calculate logo dimensions to fit in header
-        const logoSize = 40;
-        const logoX = 30;
-        const logoY = 20;
+        const logoSize = this.scaleValue(40);
+        const logoX = this.scaleValue(30);
+        const logoY = this.scaleValue(20);
         ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
       } else {
         // Logo placeholder (red swirl)
         ctx.fillStyle = '#ff6666';
         ctx.beginPath();
-        ctx.arc(50, 40, 20, 0, 2 * Math.PI);
+        ctx.arc(this.scaleValue(50), this.scaleValue(40), this.scaleValue(20), 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -258,7 +258,7 @@ class ReceiptService {
       ctx.fillStyle = '#000000';
       ctx.font = `bold italic ${this.scaleValue(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Transaction Receipt', 200, 120);
+      ctx.fillText('Transaction Receipt', this.scaleValue(200), this.scaleValue(120));
 
       // Generated date
       ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
@@ -267,7 +267,7 @@ class ReceiptService {
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
-      ctx.fillRect(20, 160, 360, 320);
+      ctx.fillRect(this.scaleValue(20), this.scaleValue(160), this.scaleValue(360), this.scaleValue(320));
 
       // Transaction details (removed discount as requested)
       const details = [
@@ -280,36 +280,36 @@ class ReceiptService {
         { label: 'Transaction Status', value: status }
       ];
 
-      let yPos = 180;
+      let yPos = this.scaleValue(180);
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
         ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
-        ctx.fillText(detail.label, 40, yPos);
+        ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
         // Separator line
         ctx.strokeStyle = '#cccccc';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(40, yPos + 5);
-        ctx.lineTo(360, yPos + 5);
+        ctx.moveTo(this.scaleValue(40), yPos + this.scaleValue(5));
+        ctx.lineTo(this.scaleValue(360), yPos + this.scaleValue(5));
         ctx.stroke();
 
         // Value
         ctx.fillStyle = '#000000';
         ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
-        ctx.fillText(detail.value, 360, yPos);
+        ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
-        yPos += 35;
+        yPos += this.scaleValue(35);
       });
 
       // Footer
       ctx.fillStyle = '#666666';
       ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', 200, 520);
+      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(520));
       ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(535));
       ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(550));
 
@@ -317,8 +317,8 @@ class ReceiptService {
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(50, 570);
-      ctx.lineTo(350, 570);
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(570));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(570));
       ctx.stroke();
 
       // Thank you message
@@ -383,14 +383,14 @@ class ReceiptService {
       // Load and draw logo
       const logo = await this.loadLogo();
       if (logo) {
-        const logoSize = 40;
-        const logoX = 30;
-        const logoY = 20;
+        const logoSize = this.scaleValue(40);
+        const logoX = this.scaleValue(30);
+        const logoY = this.scaleValue(20);
         ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
       } else {
         ctx.fillStyle = '#ff6666';
         ctx.beginPath();
-        ctx.arc(50, 40, 20, 0, 2 * Math.PI);
+        ctx.arc(this.scaleValue(50), this.scaleValue(40), this.scaleValue(20), 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -404,7 +404,7 @@ class ReceiptService {
       ctx.fillStyle = '#000000';
       ctx.font = `bold italic ${this.scaleValue(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Transaction Receipt', 200, 120);
+      ctx.fillText('Transaction Receipt', this.scaleValue(200), this.scaleValue(120));
 
       // Generated date
       ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
@@ -413,7 +413,7 @@ class ReceiptService {
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
-      ctx.fillRect(20, 160, 360, 320);
+      ctx.fillRect(this.scaleValue(20), this.scaleValue(160), this.scaleValue(360), this.scaleValue(320));
 
       // Transaction details
       const details = [
@@ -427,36 +427,36 @@ class ReceiptService {
         { label: 'Transaction Status', value: status }
       ];
 
-      let yPos = 180;
+      let yPos = this.scaleValue(180);
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
         ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
-        ctx.fillText(detail.label, 40, yPos);
+        ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
         // Separator line
         ctx.strokeStyle = '#cccccc';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(40, yPos + 5);
-        ctx.lineTo(360, yPos + 5);
+        ctx.moveTo(this.scaleValue(40), yPos + this.scaleValue(5));
+        ctx.lineTo(this.scaleValue(360), yPos + this.scaleValue(5));
         ctx.stroke();
 
         // Value
         ctx.fillStyle = '#000000';
         ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
-        ctx.fillText(detail.value, 360, yPos);
+        ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
-        yPos += 35;
+        yPos += this.scaleValue(35);
       });
 
       // Footer
       ctx.fillStyle = '#666666';
       ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', 200, 520);
+      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(520));
       ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(535));
       ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(550));
 
@@ -464,8 +464,8 @@ class ReceiptService {
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(50, 570);
-      ctx.lineTo(350, 570);
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(570));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(570));
       ctx.stroke();
 
       // Thank you message
@@ -532,14 +532,14 @@ class ReceiptService {
       // Load and draw logo
       const logo = await this.loadLogo();
       if (logo) {
-        const logoSize = 40;
-        const logoX = 30;
-        const logoY = 20;
+        const logoSize = this.scaleValue(40);
+        const logoX = this.scaleValue(30);
+        const logoY = this.scaleValue(20);
         ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
       } else {
         ctx.fillStyle = '#ff6666';
         ctx.beginPath();
-        ctx.arc(50, 40, 20, 0, 2 * Math.PI);
+        ctx.arc(this.scaleValue(50), this.scaleValue(40), this.scaleValue(20), 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -553,7 +553,7 @@ class ReceiptService {
       ctx.fillStyle = '#000000';
       ctx.font = `bold italic ${this.scaleValue(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Transaction Receipt', 200, 120);
+      ctx.fillText('Transaction Receipt', this.scaleValue(200), this.scaleValue(120));
 
       // Generated date
       ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
@@ -562,7 +562,7 @@ class ReceiptService {
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
-      ctx.fillRect(20, 160, 360, 370);
+      ctx.fillRect(this.scaleValue(20), this.scaleValue(160), this.scaleValue(360), this.scaleValue(370));
 
       // Transaction details
       const details = [
@@ -577,34 +577,34 @@ class ReceiptService {
         { label: 'Transaction Status', value: status }
       ];
 
-      let yPos = 180;
+      let yPos = this.scaleValue(180);
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
         ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
-        ctx.fillText(detail.label, 40, yPos);
+        ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
         // Separator line
         ctx.strokeStyle = '#cccccc';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(40, yPos + 5);
-        ctx.lineTo(360, yPos + 5);
+        ctx.moveTo(this.scaleValue(40), yPos + this.scaleValue(5));
+        ctx.lineTo(this.scaleValue(360), yPos + this.scaleValue(5));
         ctx.stroke();
 
         // Value
         ctx.fillStyle = '#000000';
         ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
-        ctx.fillText(detail.value, 360, yPos);
+        ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
-        yPos += 35;
+        yPos += this.scaleValue(35);
       });
 
       // Add token if available
       if (token) {
-        yPos += 10;
+        yPos += this.scaleValue(10);
         ctx.fillStyle = '#333333';
         ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
@@ -613,8 +613,8 @@ class ReceiptService {
         ctx.strokeStyle = '#cccccc';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(40, yPos + 5);
-        ctx.lineTo(360, yPos + 5);
+        ctx.moveTo(this.scaleValue(40), yPos + this.scaleValue(5));
+        ctx.lineTo(this.scaleValue(360), yPos + this.scaleValue(5));
         ctx.stroke();
 
         ctx.fillStyle = '#000000';
@@ -627,7 +627,7 @@ class ReceiptService {
       ctx.fillStyle = '#666666';
       ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', 200, 570);
+      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(570));
       ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(585));
       ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(600));
 
@@ -635,8 +635,8 @@ class ReceiptService {
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(50, 620);
-      ctx.lineTo(350, 620);
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(620));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(620));
       ctx.stroke();
 
       // Thank you message
@@ -704,14 +704,14 @@ class ReceiptService {
       // Load and draw logo
       const logo = await this.loadLogo();
       if (logo) {
-        const logoSize = 40;
-        const logoX = 30;
-        const logoY = 20;
+        const logoSize = this.scaleValue(40);
+        const logoX = this.scaleValue(30);
+        const logoY = this.scaleValue(20);
         ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
       } else {
         ctx.fillStyle = '#ff6666';
         ctx.beginPath();
-        ctx.arc(50, 40, 20, 0, 2 * Math.PI);
+        ctx.arc(this.scaleValue(50), this.scaleValue(40), this.scaleValue(20), 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -725,7 +725,7 @@ class ReceiptService {
       ctx.fillStyle = '#000000';
       ctx.font = `bold italic ${this.scaleValue(28)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Transaction Receipt', 200, 120);
+      ctx.fillText('Transaction Receipt', this.scaleValue(200), this.scaleValue(120));
 
       // Generated date
       ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
@@ -734,7 +734,7 @@ class ReceiptService {
 
       // Content area background
       ctx.fillStyle = '#f0f8f0';
-      ctx.fillRect(20, 160, 360, 370);
+      ctx.fillRect(this.scaleValue(20), this.scaleValue(160), this.scaleValue(360), this.scaleValue(370));
 
       // Transaction details
       const details = [
@@ -750,36 +750,36 @@ class ReceiptService {
         { label: 'Transaction Status', value: status }
       ];
 
-      let yPos = 180;
+      let yPos = this.scaleValue(180);
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
         ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'left';
-        ctx.fillText(detail.label, 40, yPos);
+        ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
         // Separator line
         ctx.strokeStyle = '#cccccc';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(40, yPos + 5);
-        ctx.lineTo(360, yPos + 5);
+        ctx.moveTo(this.scaleValue(40), yPos + this.scaleValue(5));
+        ctx.lineTo(this.scaleValue(360), yPos + this.scaleValue(5));
         ctx.stroke();
 
         // Value
         ctx.fillStyle = '#000000';
         ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
         ctx.textAlign = 'right';
-        ctx.fillText(detail.value, 360, yPos);
+        ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
-        yPos += 35;
+        yPos += this.scaleValue(35);
       });
 
       // Footer
       ctx.fillStyle = '#666666';
       ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', 200, 570);
+      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(570));
       ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(585));
       ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(600));
 
@@ -787,8 +787,8 @@ class ReceiptService {
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(50, 620);
-      ctx.lineTo(350, 620);
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(620));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(620));
       ctx.stroke();
 
       // Thank you message
