@@ -200,7 +200,7 @@ router.get('/summary/:phoneNumber',
 
       const where = {
         userId: user.id,
-        category: 'data',
+        category: 'data_purchase',
         type: 'debit'
       };
 

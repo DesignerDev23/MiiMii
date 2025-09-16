@@ -198,7 +198,7 @@ router.get('/summary/:phoneNumber',
 
       const where = {
         userId: user.id,
-        category: 'airtime',
+        category: 'airtime_purchase',
         type: 'debit'
       };
 
@@ -291,7 +291,7 @@ router.get('/recent-recipients/:phoneNumber',
       const transactions = await Transaction.findAll({
         where: {
           userId: user.id,
-          category: 'airtime',
+          category: 'airtime_purchase',
           type: 'debit',
           status: 'completed'
         },

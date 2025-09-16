@@ -140,7 +140,7 @@ class AirtimeService {
       // Create transaction record
       const transaction = await transactionService.createTransaction(userId, {
         type: 'debit',
-        category: 'airtime',
+        category: 'airtime_purchase',
         amount: validAmount,
         fee: fee,
         totalAmount: totalAmount,

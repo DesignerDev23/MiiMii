@@ -940,7 +940,7 @@ router.get('/revenue/stats', async (req, res) => {
 
       // Airtime margin: ₦2 per completed airtime debit
       const airtimeCount = await require('../models').Transaction.count({
-        where: { ...whereBase, category: 'airtime', type: 'debit' }
+        where: { ...whereBase, category: 'airtime_purchase', type: 'debit' }
       });
       const airtimeMargin = airtimeCount * 2;
 
