@@ -200,7 +200,29 @@ class BilalService {
       const requestId = `Airtime_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
       // Get token
-      const tokenData = await this.generateToken();
+      logger.info('About to generate token for airtime purchase', {
+        hasUsername: !!this.username,
+        hasPassword: !!this.password,
+        baseURL: this.baseURL
+      });
+      
+      let tokenData;
+      try {
+        tokenData = await this.generateToken();
+        
+        logger.info('Token generated for airtime purchase', {
+          hasToken: !!tokenData.token,
+          tokenLength: tokenData.token ? tokenData.token.length : 0,
+          hasBalance: !!tokenData.balance,
+          hasUsername: !!tokenData.username
+        });
+      } catch (tokenError) {
+        logger.error('Token generation failed for airtime purchase', {
+          error: tokenError.message,
+          stack: tokenError.stack
+        });
+        throw new Error(`Token generation failed: ${tokenError.message}`);
+      }
 
       // Purchase airtime via BILALSADASUB API
       // Remove country code from phone number (Bilal expects 11 digits without +234)
@@ -461,7 +483,29 @@ class BilalService {
       const requestId = `Data_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
       // Get token
-      const tokenData = await this.generateToken();
+      logger.info('About to generate token for data purchase', {
+        hasUsername: !!this.username,
+        hasPassword: !!this.password,
+        baseURL: this.baseURL
+      });
+      
+      let tokenData;
+      try {
+        tokenData = await this.generateToken();
+        
+        logger.info('Token generated for data purchase', {
+          hasToken: !!tokenData.token,
+          tokenLength: tokenData.token ? tokenData.token.length : 0,
+          hasBalance: !!tokenData.balance,
+          hasUsername: !!tokenData.username
+        });
+      } catch (tokenError) {
+        logger.error('Token generation failed for data purchase', {
+          error: tokenError.message,
+          stack: tokenError.stack
+        });
+        throw new Error(`Token generation failed: ${tokenError.message}`);
+      }
 
       // Purchase data via BILALSADASUB API
       // Remove country code from phone number (Bilal expects 11 digits without +234)
