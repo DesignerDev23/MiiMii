@@ -132,8 +132,9 @@ class DataService {
   // Get all data plans for all networks
   async getAllDataPlans() {
     try {
-      const allPlans = {};
-      // Fetch overrides once
+      const { DATA_PLANS } = require('../routes/flowEndpoint');
+      
+      // Fetch admin-set selling prices from KVStore
       let overrides = {};
       try {
         const KVStore = require('../models/KVStore');
@@ -141,14 +142,22 @@ class DataService {
         overrides = record?.value || {};
       } catch (_) {}
       
-      for (const [networkName, networkCode] of Object.entries(this.networks)) {
-        allPlans[networkCode] = this.dataPlans[networkCode].map(plan => {
-          const overridePrice = overrides?.[networkCode]?.[plan.id];
+      // Return all plans with admin-set selling prices
+      const allPlans = {};
+      for (const [networkName, plans] of Object.entries(DATA_PLANS)) {
+        allPlans[networkName] = plans.map(plan => {
+          const adminSellingPrice = overrides?.[networkName]?.[plan.id];
+          const sellingPrice = typeof adminSellingPrice === 'number' ? adminSellingPrice : plan.price;
+          
           return {
-            ...plan,
-            price: typeof overridePrice === 'number' ? overridePrice : plan.price,
-            network: networkCode,
-            networkName
+            id: plan.id,
+            title: plan.title,
+            validity: plan.validity,
+            type: plan.type,
+            price: sellingPrice, // Admin-set selling price (what users see)
+            retailPrice: plan.price, // Provider's retail price
+            network: networkName,
+            margin: sellingPrice - plan.price
           };
         });
       }
@@ -295,7 +304,7 @@ class DataService {
             success: true,
             transaction: {
               reference: transaction.reference,
-              amount: plan.price,
+              amount: sellingPrice,
               phoneNumber: validation.cleanNumber,
               network: networkCode,
               planDetails: plan,

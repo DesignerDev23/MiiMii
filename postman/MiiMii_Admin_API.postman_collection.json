@@ -301,7 +301,7 @@
       ]
     },
     {
-      "name": "Data Pricing - Get Overrides",
+      "name": "Data Pricing - Get All Plans",
       "request": {
         "method": "GET",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
@@ -309,11 +309,11 @@
       },
       "response": [
         {
-          "name": "200 OK - Current overrides",
+          "name": "200 OK - All data plans with pricing",
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{ \n  \"success\": true,\n  \"overrides\": { \n    \"mtn\": { \"mtn-1gb-300\": 350 },\n    \"airtel\": { \"airtel-1gb-350\": 400 }\n  } \n}"
+          "body": "{\n  \"success\": true,\n  \"dataPlans\": {\n    \"MTN\": [\n      {\n        \"id\": 1,\n        \"title\": \"500MB\",\n        \"validity\": \"30days\",\n        \"type\": \"SME\",\n        \"retailPrice\": 380,\n        \"sellingPrice\": 450,\n        \"margin\": 70\n      },\n      {\n        \"id\": 2,\n        \"title\": \"1GB\",\n        \"validity\": \"30days\",\n        \"type\": \"SME\",\n        \"retailPrice\": 620,\n        \"sellingPrice\": 700,\n        \"margin\": 80\n      }\n    ],\n    \"AIRTEL\": [\n      {\n        \"id\": 25,\n        \"title\": \"1.1GB\",\n        \"validity\": \"30days\",\n        \"type\": \"SME\",\n        \"retailPrice\": 400,\n        \"sellingPrice\": 400,\n        \"margin\": 0\n      }\n    ]\n  },\n  \"overrides\": {\n    \"MTN\": { \"1\": 450, \"2\": 700 },\n    \"AIRTEL\": {}\n  }\n}"
         },
         {
           "name": "401 Unauthorized",
@@ -327,25 +327,64 @@
           "status": "Internal Server Error",
           "code": 500,
           "_postman_previewlanguage": "json",
-          "body": "{ \n  \"error\": \"Failed to get overrides\" \n}"
+          "body": "{ \n  \"error\": \"Failed to get data pricing\" \n}"
         }
       ]
     },
     {
-      "name": "Data Pricing - Set Overrides",
+      "name": "Data Pricing - Set Individual Plan",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/data-pricing/plan", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing","plan"] },
+        "body": { "mode": "raw", "raw": "{\n  \"network\": \"MTN\",\n  \"planId\": 1,\n  \"sellingPrice\": 450\n}" }
+      },
+      "response": [
+        {
+          "name": "200 OK - Plan pricing updated",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Plan pricing updated\",\n  \"plan\": {\n    \"network\": \"MTN\",\n    \"planId\": 1,\n    \"sellingPrice\": 450\n  }\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"errors\": [ { \"type\": \"field\", \"msg\": \"Invalid value\", \"path\": \"sellingPrice\", \"location\": \"body\" } ] \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to update plan pricing\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Data Pricing - Bulk Update",
       "request": {
         "method": "POST",
         "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
         "url": { "raw": "{{baseUrl}}/api/admin/data-pricing", "host": ["{{baseUrl}}"], "path": ["api","admin","data-pricing"] },
-        "body": { "mode": "raw", "raw": "{\n  \"overrides\": {\n    \"mtn\": { \"mtn-1gb-300\": 350 },\n    \"airtel\": { \"airtel-1gb-350\": 400 }\n  }\n}" }
+        "body": { "mode": "raw", "raw": "{\n  \"overrides\": {\n    \"MTN\": { \"1\": 450, \"2\": 700, \"3\": 1200 },\n    \"AIRTEL\": { \"25\": 500, \"27\": 900 }\n  }\n}" }
       },
       "response": [
         {
-          "name": "200 OK - Overrides updated",
+          "name": "200 OK - Bulk pricing updated",
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{ \n  \"success\": true,\n  \"message\": \"Overrides updated\",\n  \"overrides\": { \n    \"mtn\": { \"mtn-1gb-300\": 350 },\n    \"airtel\": { \"airtel-1gb-350\": 400 }\n  } \n}"
+          "body": "{\n  \"success\": true,\n  \"message\": \"Bulk pricing updated\",\n  \"overrides\": {\n    \"MTN\": { \"1\": 450, \"2\": 700, \"3\": 1200 },\n    \"AIRTEL\": { \"25\": 500, \"27\": 900 }\n  }\n}"
         },
         {
           "name": "400 Bad Request - Validation error",
@@ -367,6 +406,37 @@
           "code": 500,
           "_postman_previewlanguage": "json",
           "body": "{ \n  \"error\": \"Failed to update overrides\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Data Plans - Get User View",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/data-plans", "host": ["{{baseUrl}}"], "path": ["api","admin","data-plans"] }
+      },
+      "response": [
+        {
+          "name": "200 OK - User view of data plans",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"dataPlans\": {\n    \"MTN\": [\n      {\n        \"id\": 1,\n        \"title\": \"500MB\",\n        \"validity\": \"30days\",\n        \"type\": \"SME\",\n        \"price\": 450\n      },\n      {\n        \"id\": 2,\n        \"title\": \"1GB\",\n        \"validity\": \"30days\",\n        \"type\": \"SME\",\n        \"price\": 700\n      }\n    ],\n    \"AIRTEL\": [\n      {\n        \"id\": 25,\n        \"title\": \"1.1GB\",\n        \"validity\": \"30days\",\n        \"type\": \"SME\",\n        \"price\": 400\n      }\n    ]\n  }\n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get data plans\" \n}"
         }
       ]
     },
@@ -410,11 +480,18 @@
       },
       "response": [
         {
-          "name": "200 OK - Revenue stats",
+          "name": "200 OK - Revenue stats (Fixed)",
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"period\": { \"startDate\": \"2024-01-01\", \"endDate\": \"2024-01-31\" },\n  \"streams\": {\n    \"transferOutFees\": 2500,\n    \"monthlyMaintenanceFees\": 12000,\n    \"dataMargin\": 15000.5,\n    \"airtimeMargin\": 400\n  },\n  \"totalRevenue\": 29900.5\n}"
+          "body": "{\n  \"success\": true,\n  \"period\": { \"startDate\": \"2024-01-01\", \"endDate\": \"2024-01-31\" },\n  \"streams\": {\n    \"transferOutFees\": 2500.00,\n    \"monthlyMaintenanceFees\": 12000.00,\n    \"dataMargin\": 15000.50,\n    \"airtimeMargin\": 400\n  },\n  \"totalRevenue\": 29900.50\n}"
+        },
+        {
+          "name": "200 OK - All time revenue",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"period\": { \"startDate\": null, \"endDate\": null },\n  \"streams\": {\n    \"transferOutFees\": 15000.00,\n    \"monthlyMaintenanceFees\": 50000.00,\n    \"dataMargin\": 75000.25,\n    \"airtimeMargin\": 2000\n  },\n  \"totalRevenue\": 142000.25\n}"
         },
         {
           "name": "400 Bad Request - Validation error",

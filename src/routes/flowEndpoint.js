@@ -1827,8 +1827,17 @@ function getBilalOfficialPlanId(planId, network) {
   return actualPlanId;
 }
 
-function getDataPlansForNetwork(network) {
-  return DATA_PLANS[network] || [];
+async function getDataPlansForNetwork(network) {
+  try {
+    // Use the data service to get plans with admin-set selling prices
+    const dataService = require('../services/data');
+    const plans = await dataService.getDataPlans(network);
+    return plans;
+  } catch (error) {
+    logger.error('Failed to get data plans for network', { error: error.message, network });
+    // Fallback to raw DATA_PLANS if service fails
+    return DATA_PLANS[network] || [];
+  }
 }
 
 /**
@@ -2456,7 +2465,7 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
     }
 
     // Validate data plan
-    const availablePlans = getDataPlansForNetwork(network);
+    const availablePlans = await getDataPlansForNetwork(network);
     const selectedPlan = availablePlans.find(plan => plan.id.toString() === dataPlan.toString());
     
     if (!selectedPlan) {
@@ -2578,7 +2587,7 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
     // If no confirmation yet, show the confirmation screen with actual data
     if (!confirm) {
       // Get the selected plan details
-      const availablePlans = getDataPlansForNetwork(network);
+      const availablePlans = await getDataPlansForNetwork(network);
       const selectedPlan = availablePlans.find(plan => plan.id.toString() === dataPlan.toString());
       
       if (!selectedPlan) {

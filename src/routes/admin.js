@@ -326,49 +326,36 @@ router.delete('/data-pricing', async (req, res) => {
   }
 });
 
-// Add new data plan
-router.post('/data-plans',
-  body('network').isString(),
-  body('title').isString(),
-  body('retailPrice').isFloat({ min: 0 }),
-  body('validity').isString(),
-  body('type').optional().isString(),
-  validateRequest,
-  async (req, res) => {
-    try {
-      const { network, title, retailPrice, validity, type = 'SME' } = req.body;
-      
-      // Get the next available plan ID for the network
-      const { DATA_PLANS } = require('./flowEndpoint');
-      const networkPlans = DATA_PLANS[network.toUpperCase()] || [];
-      const maxId = Math.max(...networkPlans.map(p => p.id), 0);
-      const newPlanId = maxId + 1;
-      
-      // Create new plan object
-      const newPlan = {
-        id: newPlanId,
-        title,
-        price: parseFloat(retailPrice),
-        validity,
-        type
-      };
-      
-      // Note: In a real implementation, you would update the DATA_PLANS constant
-      // or store this in a database. For now, we'll just return the plan structure
-      // that should be added to the DATA_PLANS constant.
-      
-      res.json({
-        success: true,
-        message: 'New data plan created',
-        plan: newPlan,
-        note: 'This plan needs to be manually added to the DATA_PLANS constant in flowEndpoint.js'
-      });
-    } catch (error) {
-      logger.error('Failed to add new data plan', { error: error.message });
-      res.status(500).json({ error: 'Failed to add new data plan' });
+// Get data plans (what users see)
+router.get('/data-plans', async (req, res) => {
+  try {
+    const { DATA_PLANS } = require('./flowEndpoint');
+    const record = await KVStore.findByPk('data_pricing_overrides');
+    const overrides = record?.value || {};
+    
+    // Return plans with admin-set selling prices (what users see)
+    const dataPlans = {};
+    
+    for (const [network, plans] of Object.entries(DATA_PLANS)) {
+      dataPlans[network] = plans.map(plan => ({
+        id: plan.id,
+        title: plan.title,
+        validity: plan.validity,
+        type: plan.type,
+        price: overrides[network]?.[plan.id] || plan.price // Admin-set price or retail
+      }));
     }
+    
+    res.json({ 
+      success: true, 
+      dataPlans: dataPlans
+    });
+  } catch (error) {
+    logger.error('Failed to get data plans', { error: error.message });
+    res.status(500).json({ error: 'Failed to get data plans' });
   }
-);
+});
+
 
 // Get user details
 router.get('/users/:userId', async (req, res) => {
