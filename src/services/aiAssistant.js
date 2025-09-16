@@ -1436,7 +1436,10 @@ Extract intent and data from this message. Consider the user context and any ext
               '9MOBILE': [25, 27, 28, 46, 47, 48, 49, 50, 51, 52]
             };
 
-            const plans = (DATA_PLANS[network] || []).filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
+            // Get plans with admin-set pricing
+            const dataService = require('./data');
+            const allPlans = await dataService.getDataPlans(network);
+            const plans = allPlans.filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
 
             if (!plans.length) {
               await whatsappService.sendTextMessage(user.whatsappNumber, 'No plans available for the selected network. Please try another network.');
@@ -1533,7 +1536,10 @@ Extract intent and data from this message. Consider the user context and any ext
           GLO: [11, 12, 13, 14, 15],
           '9MOBILE': [25, 27, 28, 46, 47, 48, 49, 50, 51, 52]
         };
-        const plans = (DATA_PLANS[network] || []).filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
+        // Get plans with admin-set pricing
+        const dataService = require('./data');
+        const allPlans = await dataService.getDataPlans(network);
+        const plans = allPlans.filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
 
         const sessionId = conversationState?.data?.sessionId || null;
         const nextState = { intent: 'data', awaitingInput: 'data_plan', context: 'data_purchase', step: 2, data: { network, sessionId } };
@@ -1576,7 +1582,8 @@ Extract intent and data from this message. Consider the user context and any ext
 
         // Try to parse plan selection from free text (fallback)
         const input = (message || '').trim();
-        const plans = DATA_PLANS[network] || [];
+        const dataService = require('./data');
+        const plans = await dataService.getDataPlans(network);
         let planId = null;
         if (/^\d+$/.test(input)) {
           const numeric = parseInt(input, 10);
@@ -1641,7 +1648,9 @@ Extract intent and data from this message. Consider the user context and any ext
           return;
         }
 
-        const plan = (DATA_PLANS[network] || []).find(p => p.id === planId);
+        const dataService = require('./data');
+        const allPlans = await dataService.getDataPlans(network);
+        const plan = allPlans.find(p => p.id === planId);
         const price = plan?.price || 0;
         const title = plan?.title || '';
 
@@ -1914,7 +1923,9 @@ Extract intent and data from this message. Consider the user context and any ext
         }
 
         const { network, planId, phone } = conversationState.data || {};
-        const plan = (DATA_PLANS[(network || '').toUpperCase()] || []).find(p => p.id === planId);
+        const dataService = require('./data');
+        const allPlans = await dataService.getDataPlans((network || '').toUpperCase());
+        const plan = allPlans.find(p => p.id === planId);
         if (!plan) {
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Unable to find the selected plan. Please start again.');
           await user.clearConversationState();
