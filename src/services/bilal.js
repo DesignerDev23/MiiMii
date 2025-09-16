@@ -241,6 +241,7 @@ class BilalService {
       const payload = {
         network: networkId,
         phone: parseInt(cleanPhoneNumber), // Convert to integer as per sample
+        plan_type: 'VTU', // Required field as per official documentation
         bypass: false,
         amount: amount,
         'request-id': requestId
