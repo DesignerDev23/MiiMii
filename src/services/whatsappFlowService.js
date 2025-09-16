@@ -311,35 +311,61 @@ class WhatsAppFlowService {
   }
 
   /**
-   * Get data plan price from plan ID
+   * Get data plan price from plan ID with admin-set pricing
    * @param {string} planId - The data plan ID
-   * @returns {number} - The price in Naira
+   * @param {string} network - The network name
+   * @returns {Promise<number>} - The price in Naira
    */
-  getDataPlanPrice(planId) {
-    // Import the DATA_PLANS from the flow endpoint to get accurate pricing
-    const { DATA_PLANS } = require('../routes/flowEndpoint');
-    
-    // If planId is numeric, find the plan in DATA_PLANS
-    if (/^\d+$/.test(planId)) {
-      const numericId = parseInt(planId);
-      for (const network of Object.values(DATA_PLANS)) {
-        const plan = network.find(p => p.id === numericId);
-        if (plan) {
-          return plan.price;
+  async getDataPlanPrice(planId, network = null) {
+    try {
+      // If we have a network, use the data service to get admin-set prices
+      if (network) {
+        const dataService = require('./data');
+        const plans = await dataService.getDataPlans(network);
+        
+        // If planId is numeric, find the plan
+        if (/^\d+$/.test(planId)) {
+          const numericId = parseInt(planId);
+          const plan = plans.find(p => p.id === numericId);
+          if (plan) {
+            return plan.price; // This will be the admin-set selling price
+          }
+        } else {
+          // If planId is a title, find it
+          const plan = plans.find(p => p.title === planId);
+          if (plan) {
+            return plan.price; // This will be the admin-set selling price
+          }
         }
       }
-    } else {
-      // If planId is a title, find it in DATA_PLANS
-      for (const network of Object.values(DATA_PLANS)) {
-        const plan = network.find(p => p.title === planId);
-        if (plan) {
-          return plan.price;
+      
+      // Fallback to raw DATA_PLANS if network not provided or plan not found
+      const { DATA_PLANS } = require('../routes/flowEndpoint');
+      
+      if (/^\d+$/.test(planId)) {
+        const numericId = parseInt(planId);
+        for (const networkPlans of Object.values(DATA_PLANS)) {
+          const plan = networkPlans.find(p => p.id === numericId);
+          if (plan) {
+            return plan.price;
+          }
+        }
+      } else {
+        // If planId is a title, find it in DATA_PLANS
+        for (const networkPlans of Object.values(DATA_PLANS)) {
+          const plan = networkPlans.find(p => p.title === planId);
+          if (plan) {
+            return plan.price;
+          }
         }
       }
+      
+      logger.warn('Plan not found, using default price', { planId, network });
+      return 1000; // Default fallback
+    } catch (error) {
+      logger.error('Failed to get data plan price', { error: error.message, planId, network });
+      return 1000; // Default fallback
     }
-    
-    logger.warn('Plan not found in DATA_PLANS, using default price', { planId });
-    return 1000; // Default fallback
   }
 
   /**
@@ -389,7 +415,7 @@ class WhatsAppFlowService {
       const dataPurchaseData = {
         phoneNumber: flowData.phoneNumber,
         network: flowData.network,
-        dataPlan: { id: bilalPlanId, price: this.getDataPlanPrice(flowData.dataPlan) },
+        dataPlan: { id: bilalPlanId, price: await this.getDataPlanPrice(flowData.dataPlan, flowData.network) },
         pin: pin
       };
 
@@ -398,7 +424,7 @@ class WhatsAppFlowService {
         dataPurchaseData,
         originalPlanId: flowData.dataPlan,
         bilalPlanId: bilalPlanId,
-        planPrice: this.getDataPlanPrice(flowData.dataPlan)
+        planPrice: await this.getDataPlanPrice(flowData.dataPlan, flowData.network)
       });
 
       logger.info('About to call bilalService.purchaseData with:', {
@@ -425,7 +451,7 @@ class WhatsAppFlowService {
                               `📱 Network: ${flowData.network}\n` +
                               `📞 Phone: ${flowData.phoneNumber}\n` +
                               `📦 Plan: ${flowData.dataPlan}\n` +
-                              `💰 Amount: ₦${this.getDataPlanPrice(flowData.dataPlan).toLocaleString()}\n` +
+                              `💰 Amount: ₦${(await this.getDataPlanPrice(flowData.dataPlan, flowData.network)).toLocaleString()}\n` +
                               `📋 Reference: ${result.data?.['request-id']}\n` +
                               `📅 Date: ${new Date().toLocaleString('en-GB')}\n\n` +
                               `Your data has been purchased successfully! 🎉`;

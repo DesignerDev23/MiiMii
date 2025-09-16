@@ -1407,7 +1407,7 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       dataPurchaseData: {
       phoneNumber,
       network,
-        dataPlan: { id: getBilalOfficialPlanId(dataPlan, network), price: getDataPlanPrice(dataPlan) }
+        dataPlan: { id: getBilalOfficialPlanId(dataPlan, network), price: await getDataPlanPrice(dataPlan, network) }
       },
       flowToken: flowToken,
       timestamp: Date.now()
@@ -1712,28 +1712,54 @@ const DATA_PLANS = {
   ]
 };
 
-function getDataPlanPrice(planId) {
-  // If planId is numeric, find the plan in DATA_PLANS
-  if (/^\d+$/.test(planId)) {
-    const numericId = parseInt(planId);
-    for (const network of Object.values(DATA_PLANS)) {
-      const plan = network.find(p => p.id === numericId);
-      if (plan) {
-        return plan.price;
+async function getDataPlanPrice(planId, network = null) {
+  try {
+    // If we have a network, use the data service to get admin-set prices
+    if (network) {
+      const dataService = require('../services/data');
+      const plans = await dataService.getDataPlans(network);
+      
+      // If planId is numeric, find the plan
+      if (/^\d+$/.test(planId)) {
+        const numericId = parseInt(planId);
+        const plan = plans.find(p => p.id === numericId);
+        if (plan) {
+          return plan.price; // This will be the admin-set selling price
+        }
+      } else {
+        // If planId is a title, find it
+        const plan = plans.find(p => p.title === planId);
+        if (plan) {
+          return plan.price; // This will be the admin-set selling price
+        }
       }
     }
-  } else {
-    // If planId is a title, find it in DATA_PLANS
-    for (const network of Object.values(DATA_PLANS)) {
-      const plan = network.find(p => p.title === planId);
-      if (plan) {
-        return plan.price;
+    
+    // Fallback to raw DATA_PLANS if network not provided or plan not found
+    if (/^\d+$/.test(planId)) {
+      const numericId = parseInt(planId);
+      for (const networkPlans of Object.values(DATA_PLANS)) {
+        const plan = networkPlans.find(p => p.id === numericId);
+        if (plan) {
+          return plan.price;
+        }
+      }
+    } else {
+      // If planId is a title, find it in DATA_PLANS
+      for (const networkPlans of Object.values(DATA_PLANS)) {
+        const plan = networkPlans.find(p => p.title === planId);
+        if (plan) {
+          return plan.price;
+        }
       }
     }
+    
+    logger.warn('Plan not found, using default price', { planId, network });
+    return 1000; // Default fallback
+  } catch (error) {
+    logger.error('Failed to get data plan price', { error: error.message, planId, network });
+    return 1000; // Default fallback
   }
-  
-  logger.warn('Plan not found in DATA_PLANS, using default price', { planId });
-  return 1000; // Default fallback
 }
 
 function getBilalPlanId(planId) {
