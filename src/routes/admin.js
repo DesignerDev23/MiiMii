@@ -223,19 +223,82 @@ router.post('/users/:userId/wallet/credit',
   }
 );
 
-// Data pricing overrides
-// Get current overrides
+// Data pricing management
+// Get current data plans with retail and selling prices
 router.get('/data-pricing', async (req, res) => {
   try {
+    const { DATA_PLANS } = require('./flowEndpoint');
     const record = await KVStore.findByPk('data_pricing_overrides');
-    res.json({ success: true, overrides: record?.value || {} });
+    const overrides = record?.value || {};
+    
+    // Combine retail prices from DATA_PLANS with admin-set selling prices
+    const dataPlansWithPricing = {};
+    
+    for (const [network, plans] of Object.entries(DATA_PLANS)) {
+      dataPlansWithPricing[network] = plans.map(plan => ({
+        id: plan.id,
+        title: plan.title,
+        validity: plan.validity,
+        type: plan.type,
+        retailPrice: plan.price, // Provider's retail price
+        sellingPrice: overrides[network]?.[plan.id] || plan.price, // Admin-set price or default to retail
+        margin: (overrides[network]?.[plan.id] || plan.price) - plan.price
+      }));
+    }
+    
+    res.json({ 
+      success: true, 
+      dataPlans: dataPlansWithPricing,
+      overrides: overrides
+    });
   } catch (error) {
-    logger.error('Failed to get data pricing overrides', { error: error.message });
-    res.status(500).json({ error: 'Failed to get overrides' });
+    logger.error('Failed to get data pricing', { error: error.message });
+    res.status(500).json({ error: 'Failed to get data pricing' });
   }
 });
 
-// Set overrides
+// Set individual plan pricing
+router.post('/data-pricing/plan',
+  body('network').isString(),
+  body('planId').isInt(),
+  body('sellingPrice').isFloat({ min: 0 }),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { network, planId, sellingPrice } = req.body;
+      
+      // Get current overrides
+      const record = await KVStore.findByPk('data_pricing_overrides');
+      const overrides = record?.value || {};
+      
+      // Initialize network if it doesn't exist
+      if (!overrides[network]) {
+        overrides[network] = {};
+      }
+      
+      // Set the selling price for the specific plan
+      overrides[network][planId] = parseFloat(sellingPrice);
+      
+      // Save updated overrides
+      await KVStore.upsert({ key: 'data_pricing_overrides', value: overrides });
+      
+      res.json({ 
+        success: true, 
+        message: 'Plan pricing updated',
+        plan: {
+          network,
+          planId,
+          sellingPrice: parseFloat(sellingPrice)
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to update plan pricing', { error: error.message });
+      res.status(500).json({ error: 'Failed to update plan pricing' });
+    }
+  }
+);
+
+// Set bulk overrides
 router.post('/data-pricing',
   body('overrides').isObject(),
   validateRequest,
@@ -244,7 +307,7 @@ router.post('/data-pricing',
       const { overrides } = req.body;
       // Structure: { [network]: { [planId]: price } }
       const record = await KVStore.upsert({ key: 'data_pricing_overrides', value: overrides });
-      res.json({ success: true, message: 'Overrides updated', overrides });
+      res.json({ success: true, message: 'Bulk pricing updated', overrides });
     } catch (error) {
       logger.error('Failed to update data pricing overrides', { error: error.message });
       res.status(500).json({ error: 'Failed to update overrides' });
@@ -262,6 +325,50 @@ router.delete('/data-pricing', async (req, res) => {
     res.status(500).json({ error: 'Failed to clear overrides' });
   }
 });
+
+// Add new data plan
+router.post('/data-plans',
+  body('network').isString(),
+  body('title').isString(),
+  body('retailPrice').isFloat({ min: 0 }),
+  body('validity').isString(),
+  body('type').optional().isString(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { network, title, retailPrice, validity, type = 'SME' } = req.body;
+      
+      // Get the next available plan ID for the network
+      const { DATA_PLANS } = require('./flowEndpoint');
+      const networkPlans = DATA_PLANS[network.toUpperCase()] || [];
+      const maxId = Math.max(...networkPlans.map(p => p.id), 0);
+      const newPlanId = maxId + 1;
+      
+      // Create new plan object
+      const newPlan = {
+        id: newPlanId,
+        title,
+        price: parseFloat(retailPrice),
+        validity,
+        type
+      };
+      
+      // Note: In a real implementation, you would update the DATA_PLANS constant
+      // or store this in a database. For now, we'll just return the plan structure
+      // that should be added to the DATA_PLANS constant.
+      
+      res.json({
+        success: true,
+        message: 'New data plan created',
+        plan: newPlan,
+        note: 'This plan needs to be manually added to the DATA_PLANS constant in flowEndpoint.js'
+      });
+    } catch (error) {
+      logger.error('Failed to add new data plan', { error: error.message });
+      res.status(500).json({ error: 'Failed to add new data plan' });
+    }
+  }
+);
 
 // Get user details
 router.get('/users/:userId', async (req, res) => {
@@ -774,7 +881,7 @@ router.get('/revenue/stats',
       // Transfer out charges: sum of fee for completed bank transfers
       const transferOutFee = parseFloat(
         (await require('../models').Transaction.findOne({
-          where: { ...whereBase, category: 'bank_transfer' },
+          where: { ...whereBase, category: 'bank_transfer', type: 'debit' },
           attributes: [[fn('SUM', col('fee')), 'sumFee']],
           raw: true
         }))?.sumFee || 0
@@ -791,7 +898,7 @@ router.get('/revenue/stats',
 
       // Data margin: sum(selling - retail)
       const dataRows = await require('../models').Transaction.findAll({
-        where: { ...whereBase, category: 'data', type: 'debit' },
+        where: { ...whereBase, category: 'data_purchase', type: 'debit' },
         attributes: ['amount', 'metadata'],
         raw: true
       });
@@ -801,9 +908,10 @@ router.get('/revenue/stats',
         if (typeof meta === 'string') {
           try { meta = JSON.parse(meta); } catch (_) { meta = null; }
         }
-        const retail = parseFloat(meta?.planRetailPrice ?? 0);
-        // selling price defaults to transaction.amount if not present in metadata
-        const selling = parseFloat(meta?.planSellingPrice ?? row.amount ?? 0);
+        // Get retail price from metadata or use a default calculation
+        const retail = parseFloat(meta?.retailPrice ?? meta?.planRetailPrice ?? 0);
+        // selling price is the transaction amount
+        const selling = parseFloat(row.amount ?? 0);
         if (!isNaN(retail) && !isNaN(selling) && selling >= retail) {
           dataMargin += (selling - retail);
         }

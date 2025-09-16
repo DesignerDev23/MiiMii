@@ -88,15 +88,18 @@ class DataService {
     }
   }
 
-  // Get data plans for a specific network
+  // Get data plans for a specific network (with admin-set selling prices)
   async getDataPlans(network) {
     try {
-      const networkCode = this.networks[network.toUpperCase()];
-      if (!networkCode) {
-        throw new Error('Unsupported network');
+      // Use the DATA_PLANS from flowEndpoint which has the current plan structure
+      const { DATA_PLANS } = require('../routes/flowEndpoint');
+      const networkPlans = DATA_PLANS[network.toUpperCase()] || [];
+      
+      if (networkPlans.length === 0) {
+        throw new Error('Unsupported network or no plans available');
       }
 
-      // Fetch overrides from KVStore if present
+      // Fetch admin-set selling prices from KVStore
       let overrides = {};
       try {
         const KVStore = require('../models/KVStore');
@@ -104,14 +107,20 @@ class DataService {
         overrides = record?.value || {};
       } catch (_) {}
 
-      const plans = this.dataPlans[networkCode] || [];
-      return plans.map(plan => {
-        const overridePrice = overrides?.[networkCode]?.[plan.id];
+      // Return plans with admin-set selling prices (what users see)
+      return networkPlans.map(plan => {
+        const adminSellingPrice = overrides?.[network.toUpperCase()]?.[plan.id];
+        const sellingPrice = typeof adminSellingPrice === 'number' ? adminSellingPrice : plan.price;
+        
         return {
-          ...plan,
-          price: typeof overridePrice === 'number' ? overridePrice : plan.price,
-          network: networkCode,
-          networkName: network.toUpperCase()
+          id: plan.id,
+          title: plan.title,
+          validity: plan.validity,
+          type: plan.type,
+          price: sellingPrice, // This is what users see (admin-set selling price)
+          retailPrice: plan.price, // Provider's retail price (for internal use)
+          network: network.toUpperCase(),
+          margin: sellingPrice - plan.price
         };
       });
     } catch (error) {
@@ -198,23 +207,26 @@ class DataService {
       // Validate phone number and network
       const validation = await this.validatePhoneNumber(phoneNumber, network);
       
-      // Get plan details and apply selling price override if set
-      const networkCode = this.networks[network.toUpperCase()];
-      const plan = this.dataPlans[networkCode].find(p => p.id === planId);
+      // Get plan details from DATA_PLANS and apply admin-set selling price
+      const { DATA_PLANS } = require('../routes/flowEndpoint');
+      const networkPlans = DATA_PLANS[network.toUpperCase()] || [];
+      const plan = networkPlans.find(p => p.id === parseInt(planId));
       
       if (!plan) {
         throw new Error('Invalid data plan selected');
       }
 
-      // Determine selling price (override > retail)
-      let sellingPrice = plan.price;
+      // Get admin-set selling price
+      let sellingPrice = plan.price; // Default to retail price
+      let retailPrice = plan.price; // Provider's retail price
+      
       try {
         const KVStore = require('../models/KVStore');
         const record = await KVStore.findByPk('data_pricing_overrides');
         const overrides = record?.value || {};
-        const overridePrice = overrides?.[networkCode]?.[plan.id];
-        if (typeof overridePrice === 'number' && overridePrice > 0) {
-          sellingPrice = overridePrice;
+        const adminSellingPrice = overrides?.[network.toUpperCase()]?.[plan.id];
+        if (typeof adminSellingPrice === 'number' && adminSellingPrice > 0) {
+          sellingPrice = adminSellingPrice;
         }
       } catch (_) {}
 
@@ -227,36 +239,39 @@ class DataService {
       // Create transaction record
       const transaction = await transactionService.createTransaction(userId, {
         type: 'debit',
-        category: 'data',
+        category: 'data_purchase',
         amount: sellingPrice,
         fee: 0,
         totalAmount: sellingPrice,
-        description: `Data purchase: ${plan.size} for ${validation.cleanNumber} (${network})`,
+        description: `Data purchase: ${plan.title} for ${validation.cleanNumber} (${network})`,
         recipientDetails: {
           phoneNumber: validation.cleanNumber,
-          network: networkCode,
+          network: network.toUpperCase(),
           planId,
-          planSize: plan.size,
-          duration: plan.duration
+          planTitle: plan.title,
+          validity: plan.validity
         },
         metadata: {
-          service: 'data',
-          network: networkCode,
-          planId: planId,
-          planDetails: plan, // contains retail price
-          planRetailPrice: plan.price,
-          planSellingPrice: sellingPrice,
+          service: 'data_purchase',
+          network: network.toUpperCase(),
+          planId: plan.id,
+          planTitle: plan.title,
+          planType: plan.type,
+          validity: plan.validity,
+          retailPrice: retailPrice, // Provider's retail price
+          sellingPrice: sellingPrice, // Admin-set selling price
+          margin: sellingPrice - retailPrice,
           phoneNumber: validation.cleanNumber
         }
       });
 
       try {
         // Process data purchase through Bilal API
-        const purchaseResult = await this.processBilalDataPurchase(validation.cleanNumber, networkCode, plan);
+        const purchaseResult = await this.processBilalDataPurchase(validation.cleanNumber, network.toUpperCase(), plan);
         
         if (purchaseResult.success) {
           // Debit wallet with selling price (our charge to user)
-          await walletService.debitWallet(userId, sellingPrice, `Data purchase: ${plan.size}`, {
+          await walletService.debitWallet(userId, sellingPrice, `Data purchase: ${plan.title}`, {
             category: 'data',
             transactionId: transaction.id
           });
