@@ -241,9 +241,17 @@ class BilalService {
       // Generate simple request ID as per documentation format
       const simpleRequestId = `Airtime_${Date.now()}`;
       
+      // Debug: Log the phone number types
+      logger.info('Phone number processing debug', {
+        originalPhoneNumber: phoneNumber,
+        cleanPhoneNumber: cleanPhoneNumber,
+        cleanPhoneNumberType: typeof cleanPhoneNumber,
+        cleanPhoneNumberLength: cleanPhoneNumber.length
+      });
+      
       const payload = {
         network: networkId,
-        phone: parseInt(cleanPhoneNumber), // Send as integer with leading 0 as per documentation
+        phone: cleanPhoneNumber, // Send as string with leading 0 as per documentation
         plan_type: 'VTU', // Required field as per official documentation
         bypass: false,
         amount: amount,
@@ -519,7 +527,7 @@ class BilalService {
       
       const payload = {
         network: networkId,
-        phone: parseInt(cleanPhoneNumber), // Send as integer with leading 0 as per documentation
+        phone: cleanPhoneNumber, // Send as string with leading 0 as per documentation
         data_plan: dataPlan.id,
         bypass: false,
         'request-id': simpleRequestId
