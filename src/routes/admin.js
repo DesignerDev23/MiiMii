@@ -356,6 +356,50 @@ router.get('/data-plans', async (req, res) => {
   }
 });
 
+// Add new data plan
+router.post('/data-plans',
+  body('network').isString(),
+  body('title').isString(),
+  body('retailPrice').isFloat({ min: 0 }),
+  body('validity').isString(),
+  body('type').optional().isString(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { network, title, retailPrice, validity, type = 'SME' } = req.body;
+      
+      // Get the next available plan ID for the network
+      const { DATA_PLANS } = require('./flowEndpoint');
+      const networkPlans = DATA_PLANS[network.toUpperCase()] || [];
+      const maxId = Math.max(...networkPlans.map(p => p.id), 0);
+      const newPlanId = maxId + 1;
+      
+      // Create new plan object
+      const newPlan = {
+        id: newPlanId,
+        title,
+        price: parseFloat(retailPrice),
+        validity,
+        type
+      };
+      
+      // Note: In a real implementation, you would update the DATA_PLANS constant
+      // or store this in a database. For now, we'll just return the plan structure
+      // that should be added to the DATA_PLANS constant.
+      
+      res.json({
+        success: true,
+        message: 'New data plan created',
+        plan: newPlan,
+        note: 'This plan needs to be manually added to the DATA_PLANS constant in flowEndpoint.js'
+      });
+    } catch (error) {
+      logger.error('Failed to add new data plan', { error: error.message });
+      res.status(500).json({ error: 'Failed to add new data plan' });
+    }
+  }
+);
+
 
 // Get user details
 router.get('/users/:userId', async (req, res) => {
@@ -850,20 +894,10 @@ router.get('/users-without-va', async (req, res) => {
 
 // Revenue statistics
 // Streams: transfer out charges (bank_transfer fees), monthly maintenance fees, data margin, airtime margin (+₦2 per purchase)
-router.get('/revenue/stats',
-  query('startDate').optional().isISO8601(),
-  query('endDate').optional().isISO8601(),
-  validateRequest,
-  async (req, res) => {
+router.get('/revenue/stats', async (req, res) => {
     try {
-      const { startDate, endDate } = req.query;
-      const { Op, fn, col } = require('sequelize');
+      const { fn, col } = require('sequelize');
       const whereBase = { status: 'completed' };
-      if (startDate || endDate) {
-        whereBase.createdAt = {};
-        if (startDate) whereBase.createdAt[Op.gte] = new Date(startDate);
-        if (endDate) whereBase.createdAt[Op.lte] = new Date(endDate);
-      }
 
       // Transfer out charges: sum of fee for completed bank transfers
       const transferOutFee = parseFloat(
@@ -914,7 +948,6 @@ router.get('/revenue/stats',
 
       res.json({
         success: true,
-        period: { startDate: startDate || null, endDate: endDate || null },
         streams: {
           transferOutFees: parseFloat(transferOutFee.toFixed(2)),
           monthlyMaintenanceFees: parseFloat(maintenanceRevenue.toFixed(2)),
