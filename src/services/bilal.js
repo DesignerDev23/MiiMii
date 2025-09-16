@@ -196,7 +196,7 @@ class BilalService {
         throw new Error(`Insufficient balance. Required: ₦${requiredAmount}, Available: ₦${walletBalance}`);
       }
 
-      // Generate unique request ID
+      // Generate unique request ID (will be overridden with simple format below)
       const requestId = `Airtime_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
       // Get token
@@ -225,7 +225,7 @@ class BilalService {
       }
 
       // Purchase airtime via BILALSADASUB API
-      // Remove country code from phone number (Bilal expects 11 digits without +234)
+      // Remove country code from phone number but keep the leading 0 (Bilal expects 11 digits with leading 0)
       const cleanPhoneNumber = phoneNumber.replace(/^\+234/, '').replace(/^234/, '');
       
       // Validate phone number format
@@ -238,13 +238,16 @@ class BilalService {
         throw new Error(`Invalid amount: ₦${amount}. Amount must be between ₦50 and ₦50,000`);
       }
       
+      // Generate simple request ID as per documentation format
+      const simpleRequestId = `Airtime_${Date.now()}`;
+      
       const payload = {
         network: networkId,
-        phone: parseInt(cleanPhoneNumber), // Convert to integer as per sample
+        phone: parseInt(cleanPhoneNumber), // Send as integer with leading 0 as per documentation
         plan_type: 'VTU', // Required field as per official documentation
         bypass: false,
         amount: amount,
-        'request-id': requestId
+        'request-id': simpleRequestId
       };
 
       logger.info('Making airtime purchase request to Bilal API', {
@@ -348,7 +351,7 @@ class BilalService {
           network: response.network,
           phoneNumber: response.phone_number,
           amount: actualAmount,
-          requestId
+          requestId: simpleRequestId
         });
 
         return {
@@ -479,7 +482,7 @@ class BilalService {
         throw new Error(`Insufficient balance. Required: ₦${requiredAmount}, Available: ₦${walletBalance}`);
       }
 
-      // Generate unique request ID
+      // Generate unique request ID (will be overridden with simple format below)
       const requestId = `Data_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
       // Get token
@@ -508,15 +511,18 @@ class BilalService {
       }
 
       // Purchase data via BILALSADASUB API
-      // Remove country code from phone number (Bilal expects 11 digits without +234)
+      // Remove country code from phone number but keep the leading 0 (Bilal expects 11 digits with leading 0)
       const cleanPhoneNumber = phoneNumber.replace(/^\+234/, '').replace(/^234/, '');
+      
+      // Generate simple request ID as per documentation format
+      const simpleRequestId = `Data_${Date.now()}`;
       
       const payload = {
         network: networkId,
-        phone: parseInt(cleanPhoneNumber), // Convert to integer as per sample
+        phone: parseInt(cleanPhoneNumber), // Send as integer with leading 0 as per documentation
         data_plan: dataPlan.id,
         bypass: false,
-        'request-id': requestId
+        'request-id': simpleRequestId
       };
 
       logger.info('Making data purchase request to Bilal API', {
@@ -623,7 +629,7 @@ class BilalService {
           phoneNumber: response.phone_number,
           dataPlan: response.dataplan,
           amount: actualAmount,
-          requestId
+          requestId: simpleRequestId
         });
 
         return {
@@ -705,8 +711,8 @@ class BilalService {
         throw new Error(`Insufficient balance. Required: ₦${requiredAmount}, Available: ₦${walletBalance}`);
       }
 
-      // Generate unique request ID
-      const requestId = `Bill_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      // Generate simple request ID as per documentation format
+      const simpleRequestId = `Bill_${Date.now()}`;
 
       // Get token
       const tokenData = await this.generateToken();
@@ -718,7 +724,7 @@ class BilalService {
         meter_number: meterNumber,
         amount: amount,
         bypass: false,
-        'request-id': requestId
+        'request-id': simpleRequestId
       };
 
       const response = await this.makeRequest('POST', '/bill', payload, tokenData.token);
@@ -813,7 +819,7 @@ class BilalService {
           meterType: response.meter_type,
           meterNumber: response.meter_number,
           amount: actualAmount,
-          requestId
+          requestId: simpleRequestId
         });
 
         return {
