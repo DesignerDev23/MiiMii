@@ -254,12 +254,12 @@ class BilalService {
         phoneNumber: cleanPhoneNumber,
         originalPhoneNumber: phoneNumber,
         amount,
-        endpoint: '/topup/',
+        endpoint: '/topup',
         method: 'POST',
         fullPayload: JSON.stringify(payload)
       });
 
-      const response = await this.makeRequest('POST', '/topup/', payload, tokenData.token);
+      const response = await this.makeRequest('POST', '/topup', payload, tokenData.token);
 
       logger.info('Bilal API airtime response received', {
         status: response.status,
