@@ -241,7 +241,6 @@ class BilalService {
       const payload = {
         network: networkId,
         phone: parseInt(cleanPhoneNumber), // Convert to integer as per sample
-        plan_type: 'VTU',
         bypass: false,
         amount: amount,
         'request-id': requestId
@@ -254,12 +253,12 @@ class BilalService {
         phoneNumber: cleanPhoneNumber,
         originalPhoneNumber: phoneNumber,
         amount,
-        endpoint: '/topup',
+        endpoint: '/topup/',
         method: 'POST',
         fullPayload: JSON.stringify(payload)
       });
 
-      const response = await this.makeRequest('POST', '/topup', payload, tokenData.token);
+      const response = await this.makeRequest('POST', '/topup/', payload, tokenData.token);
 
       logger.info('Bilal API airtime response received', {
         status: response.status,
@@ -987,10 +986,20 @@ class BilalService {
       if (token) {
         // Use token authentication for API calls (as per Bilal documentation)
         config.headers['Authorization'] = `Token ${token}`;
+        logger.info('Using Token authentication for API call', {
+          endpoint,
+          tokenPrefix: token.substring(0, 20) + '...',
+          tokenLength: token.length
+        });
       } else {
         // Use Basic Authentication for token generation
         const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
         config.headers['Authorization'] = `Basic ${credentials}`;
+        logger.info('Using Basic authentication for token generation', {
+          endpoint,
+          hasUsername: !!this.username,
+          hasPassword: !!this.password
+        });
       }
 
       if (data) {
@@ -1000,6 +1009,20 @@ class BilalService {
           config.data = data;
         }
       }
+
+      logger.info('Making Bilal API request', {
+        method,
+        endpoint,
+        url: config.url,
+        timeout: config.timeout,
+        hasData: !!data,
+        hasHeaders: !!config.headers,
+        dataKeys: data ? Object.keys(data) : 'null',
+        headerKeys: config.headers ? Object.keys(config.headers) : 'null',
+        contentType: config.headers['Content-Type'],
+        authorizationHeader: config.headers['Authorization'] ? config.headers['Authorization'].substring(0, 20) + '...' : 'none',
+        fullPayload: data ? JSON.stringify(data) : 'null'
+      });
 
       const response = await axios(config);
 
