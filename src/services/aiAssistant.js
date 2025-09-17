@@ -227,10 +227,20 @@ For ALL transfers (bank transfers only), extract:
 - recipientName (if provided)
 
 EXTRACTION RULES:
-1. Amount: Look for numbers followed by "k" (5k = 5000) or plain numbers
+1. Amount: Look for numbers followed by "k" (5k = 5000, 2k = 2000) or plain numbers
 2. Account Number: Look for 8-11 digit numbers (for ALL transfers)
 3. Bank Name: Look for bank names in the message (GTBank, Access, Opay, etc.)
 4. Recipient Name: Look for names before account numbers or bank names
+
+AIRTIME & DATA PURCHASE RULES:
+- Commands: "buy", "purchase", "send", "get", "recharge" + airtime/data
+- Amount formats: "2k" = 2000, "1k" = 1000, "500" = 500
+- Examples:
+  * "Buy 2k airtime" → airtime purchase for ₦2000
+  * "Send 1k airtime to 08012345678" → airtime for specific number
+  * "Purchase 500 airtime" → airtime purchase for ₦500
+  * "Get 2GB data" → data purchase
+  * "Buy data 1k" → data purchase for ₦1000
 
 ALL TRANSFERS ARE BANK TRANSFERS:
 - ALL transfers use "bank_transfer" intent
@@ -273,12 +283,153 @@ For ALL Transfers (Bank Transfers Only):
   "suggestedAction": "Process bank transfer"
 }
 
+For Airtime Purchase:
+{
+  "intent": "airtime",
+  "confidence": 0.95,
+  "extractedData": {
+    "amount": 2000,
+    "phoneNumber": "08012345678",
+    "network": "MTN"
+  },
+  "response": "Perfect! ₦2k airtime coming up. PIN please? 🔐",
+  "suggestedAction": "Process airtime purchase"
+}
+
+For Data Purchase:
+{
+  "intent": "data",
+  "confidence": 0.95,
+  "extractedData": {
+    "amount": 1000,
+    "phoneNumber": "08012345678",
+    "dataSize": "1GB"
+  },
+  "response": "Cool! 1GB data bundle for you. Just need your PIN 🔐",
+  "suggestedAction": "Process data purchase"
+}
+
 FINAL CHECK: ALL transfers are "bank_transfer" - NO P2P transfers. If the message contains "opay" or "opay bank", the intent MUST be "bank_transfer".
 
 Keep responses natural, friendly, and human-like. Use proper English, not pidgin!`;
 
     // Test API key validity on startup
     this.validateApiKey();
+  }
+
+  /**
+   * Make bot responses more natural and conversational using AI
+   */
+  async makeResponseNatural(message, context = {}) {
+    try {
+      if (!this.openaiApiKey) {
+        return message; // Return original if no AI key
+      }
+
+      const openai = require('openai');
+      const client = new openai.OpenAI({
+        apiKey: this.openaiApiKey
+      });
+
+      const prompt = `
+You are MiiMii, a friendly Nigerian fintech assistant. Make this bot response more natural, conversational, and human-like while keeping it SHORT and to the point.
+
+Original message: "${message}"
+
+Context: ${JSON.stringify(context)}
+
+Rules:
+1. Keep it very short and natural (max 2 sentences)
+2. Use proper English, not pidgin
+3. Be warm and friendly like talking to a friend
+4. Use appropriate emojis naturally (not too many)
+5. Keep the same meaning and information
+6. Make it sound human, not robotic
+7. For Nigerian context, use ₦ for amounts, understand "k" means thousand
+
+Examples:
+"Transfer successful" → "All done! ✅ Your money has been sent"
+"Please enter your PIN" → "Just need your PIN to complete this 🔐"
+"Invalid account number" → "Hmm, that account number doesn't look right 🤔"
+
+Return only the improved message, nothing else.
+`;
+
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant that makes bot messages more natural and conversational. Always return only the improved message.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 150
+      });
+
+      const naturalResponse = response.choices[0].message.content.trim();
+      
+      // Remove quotes if AI wrapped the response
+      return naturalResponse.replace(/^["']|["']$/g, '');
+    } catch (error) {
+      logger.error('Failed to make response natural', { error: error.message, originalMessage: message });
+      return message; // Return original on error
+    }
+  }
+
+  /**
+   * Check if user wants to switch to a different service mid-conversation
+   */
+  async checkForServiceSwitch(message, user, currentConversationState) {
+    try {
+      // Common service switch patterns
+      const serviceSwitchPatterns = [
+        // Airtime patterns
+        { patterns: [/buy.*airtime/i, /purchase.*airtime/i, /send.*airtime/i, /airtime/i, /recharge/i], intent: 'airtime' },
+        // Data patterns  
+        { patterns: [/buy.*data/i, /purchase.*data/i, /data/i, /internet/i, /gb|mb/i], intent: 'data' },
+        // Transfer patterns
+        { patterns: [/transfer/i, /send.*money/i, /send.*₦/i, /bank.*transfer/i], intent: 'bank_transfer' },
+        // Balance patterns
+        { patterns: [/balance/i, /wallet/i, /how.*much/i], intent: 'balance' },
+        // Menu patterns
+        { patterns: [/menu/i, /help/i, /services/i, /what.*can/i], intent: 'menu' }
+      ];
+
+      const messageLower = message.toLowerCase();
+      
+      // Check for service switch patterns
+      for (const service of serviceSwitchPatterns) {
+        if (service.patterns.some(pattern => pattern.test(messageLower))) {
+          // Don't switch if already in the same intent
+          if (currentConversationState.intent === service.intent) {
+            return null;
+          }
+          
+          // Use AI to extract parameters for the new service
+          const aiResponse = await this.analyzeUserIntent(message, user);
+          
+          if (aiResponse.intent === service.intent || service.intent === 'menu' || service.intent === 'balance') {
+            return {
+              intent: service.intent,
+              confidence: 0.9,
+              extractedData: aiResponse.extractedData || {},
+              response: `Switching to ${service.intent}`,
+              suggestedAction: `Process ${service.intent}`
+            };
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      logger.error('Error checking for service switch', { error: error.message, message });
+      return null;
+    }
   }
 
   // Add API key validation method
@@ -1391,6 +1542,31 @@ Extract intent and data from this message. Consider the user context and any ext
 
   async handleConversationFlow(user, message, conversationState) {
     const { intent, awaitingInput, transactionData } = conversationState;
+    
+    // Check if user wants to switch to a different service mid-conversation
+    const switchIntent = await this.checkForServiceSwitch(message, user, conversationState);
+    if (switchIntent) {
+      logger.info('User wants to switch services', {
+        userId: user.id,
+        currentIntent: intent,
+        newIntent: switchIntent.intent,
+        currentStep: awaitingInput
+      });
+      
+      // Clear current conversation state
+      await user.clearConversationState();
+      
+      // Process the new service request
+      const whatsappService = require('./whatsapp');
+      const naturalMessage = await this.makeResponseNatural(
+        `Got it! Switching to ${switchIntent.intent}. Let me help you with that instead.`,
+        { service: switchIntent.intent }
+      );
+      await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage);
+      
+      // Handle the new intent
+      return await this.processIntent(switchIntent, user, message);
+    }
     
     switch (awaitingInput) {
       case 'list_reply': {

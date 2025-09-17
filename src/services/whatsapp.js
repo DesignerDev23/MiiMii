@@ -218,8 +218,20 @@ class WhatsAppService {
     }
   }
 
-  async sendTextMessage(to, text) {
-    return this.sendMessage(to, text, 'text');
+  async sendTextMessage(to, text, makeNatural = true) {
+    // Make response more natural using AI if enabled
+    let finalText = text;
+    if (makeNatural && text && text.length < 500) { // Only for short messages to avoid API costs
+      try {
+        const aiAssistant = require('./aiAssistant');
+        finalText = await aiAssistant.makeResponseNatural(text, { recipient: to });
+      } catch (aiError) {
+        logger.debug('AI response processing failed, using original text', { error: aiError.message });
+        finalText = text; // Use original text if AI fails
+      }
+    }
+    
+    return this.sendMessage(to, finalText || text, 'text');
   }
 
   async sendTemplateMessage(to, templateName, components = []) {
