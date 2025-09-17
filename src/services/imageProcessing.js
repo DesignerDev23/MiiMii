@@ -163,51 +163,96 @@ class ImageProcessingService {
       });
 
       const prompt = `
-You are a banking assistant that extracts bank details from text. Analyze the following text and extract bank information.
+You are an expert banking assistant specialized in extracting Nigerian bank details from text, even when not explicitly labeled.
 
 Text to analyze:
 ${extractedText}
 
-Extract the following information if present:
-1. Account Number (10-11 digits) - look for numbers that could be account numbers
-2. Bank Name (full bank name or common abbreviations like GTB, Access Bank, First Bank, etc.)
-3. Account Holder Name (if mentioned)
-4. Any other relevant banking information
+CRITICAL INSTRUCTIONS:
+1. Find ANY 10-digit number in the text - this is likely an account number, regardless of context or labels
+2. Find ANY Nigerian bank name or abbreviation, even partial matches
+3. Don't require labels like "Account Number:" or "Bank Name:" - extract from context
+4. Be very aggressive in pattern matching - users often don't format details clearly
 
-Common Nigerian bank names to look for:
-- Guaranty Trust Bank (GTB)
-- Access Bank
-- First Bank of Nigeria
-- United Bank for Africa (UBA)
-- Zenith Bank
-- Sterling Bank
-- Fidelity Bank
+ACCOUNT NUMBER DETECTION:
+- Look for exactly 10 digits (most Nigerian accounts)
+- Can be grouped with spaces, dashes, or continuous
+- Examples: "1234567890", "1234 567 890", "1234-567-890"
+- Ignore phone numbers (usually 11 digits starting with 0)
+- Ignore amounts with currency symbols
+
+NIGERIAN BANK DETECTION (including digital banks):
+Traditional Banks:
+- GTB, Guaranty Trust, GT Bank, Guaranty Trust Bank
+- Access, Access Bank
+- First Bank, FBN, First Bank of Nigeria
+- UBA, United Bank for Africa
+- Zenith, Zenith Bank
+- Sterling, Sterling Bank
+- Fidelity, Fidelity Bank
 - Union Bank
-- Wema Bank
-- Polaris Bank
-- Jaiz Bank
-- Heritage Bank
-- Keystone Bank
-- Providus Bank
+- Wema, Wema Bank
+- Polaris, Polaris Bank
+- Jaiz, Jaiz Bank
+- Heritage, Heritage Bank
+- Keystone, Keystone Bank
+- Providus, Providus Bank
+- Stanbic, Stanbic IBTC
+- Standard Chartered
+- Citibank
+- Ecobank
+- FCMB
+- Unity Bank
+
+Digital Banks & Fintechs:
+- Opay, OPay Bank
+- Palmpay, PalmPay
+- Kuda, Kuda Bank
+- Carbon, Carbon Bank
+- VBank, V Bank
+- Rubies Bank
+- Moniepoint, Moniepoint MFB
+- Sparkle, Sparkle Microfinance
+- Mintyn, Mintyn Bank
+- Fairmoney
+- Branch
+- Eyowo
+- ALAT (by Wema)
 - Titan Trust Bank
+- TAJ Bank
 - Globus Bank
 - Parallex Bank
 - Premium Trust Bank
 - Suntrust Bank
-- TAJ Bank
+- Coronation Bank
+- Rand Merchant Bank
+- Nova Merchant Bank
+- Bowen Microfinance
+- NPF Microfinance
 
-Return ONLY a JSON object with this structure:
+EXTRACTION STRATEGY:
+1. Scan entire text for 10-digit sequences
+2. Look for bank names/abbreviations anywhere in text
+3. Extract names that appear near numbers or bank names
+4. Don't require specific formatting or labels
+5. Be flexible with spacing, capitalization, and abbreviations
+
+Return ONLY a JSON object:
 {
   "accountNumber": "1234567890",
-  "bankName": "Guaranty Trust Bank",
+  "bankName": "Access Bank",
   "accountHolderName": "John Doe",
   "confidence": 0.95,
   "extractedText": "relevant portion of text that contains the bank details"
 }
 
-If any field is not found, use null. Be very careful with account numbers - they should be exactly as written.
-Look carefully for any numbers that could be account numbers, even if they're not clearly labeled.
-Only return the JSON object, no other text.
+Set confidence based on clarity:
+- 0.9+: Clear account number + clear bank name
+- 0.7-0.9: Clear account number OR clear bank name
+- 0.5-0.7: Partial matches or unclear formatting
+- <0.5: Very uncertain matches
+
+Use null for missing fields. Extract the most likely 10-digit account number and most recognizable Nigerian bank name.
 `;
 
       const response = await client.chat.completions.create({
@@ -254,10 +299,27 @@ Only return the JSON object, no other text.
         }
       }
       
-      // Validate the extracted data
-      if (bankDetails.accountNumber && !/^\d{10,11}$/.test(bankDetails.accountNumber)) {
-        logger.warn('Invalid account number format', { accountNumber: bankDetails.accountNumber });
-        bankDetails.accountNumber = null;
+      // Validate and clean the extracted data
+      if (bankDetails.accountNumber) {
+        // Clean account number - remove spaces, dashes, and other formatting
+        const cleanAccountNumber = bankDetails.accountNumber.toString().replace(/[\s\-]/g, '');
+        
+        // Validate format - should be 8-11 digits, but prioritize 10-digit accounts
+        if (!/^\d{8,11}$/.test(cleanAccountNumber)) {
+          logger.warn('Invalid account number format', { accountNumber: bankDetails.accountNumber });
+          bankDetails.accountNumber = null;
+        } else {
+          // Use the cleaned version
+          bankDetails.accountNumber = cleanAccountNumber;
+          
+          // Warn if not 10 digits (most common format)
+          if (cleanAccountNumber.length !== 10) {
+            logger.info('Account number length not standard 10 digits', { 
+              accountNumber: cleanAccountNumber, 
+              length: cleanAccountNumber.length 
+            });
+          }
+        }
       }
 
       return bankDetails;
@@ -344,7 +406,7 @@ Only return the JSON object, no other text.
   }
 
   /**
-   * Fallback bank details extraction using regex patterns
+   * Enhanced fallback bank details extraction using improved regex patterns
    */
   fallbackBankDetailsExtraction(text) {
     const result = {
@@ -355,75 +417,183 @@ Only return the JSON object, no other text.
       extractedText: ''
     };
 
-    // Look for account numbers (10-11 digits)
-    const accountNumberMatch = text.match(/\b(\d{10,11})\b/);
-    if (accountNumberMatch) {
-      result.accountNumber = accountNumberMatch[1];
-      result.extractedText += `Account: ${accountNumberMatch[1]} `;
+    // Enhanced account number detection - prioritize 10-digit numbers, avoid phone numbers
+    const cleanText = text.replace(/[^\w\s]/g, ' '); // Remove special chars but keep numbers
+    const numberMatches = cleanText.match(/\b(\d{8,11})\b/g);
+    
+    if (numberMatches) {
+      // Filter out phone numbers (11 digits starting with 0) and prioritize 10-digit numbers
+      const accountCandidates = numberMatches
+        .filter(num => {
+          // Exclude phone numbers (11 digits starting with 0)
+          if (num.length === 11 && num.startsWith('0')) return false;
+          // Exclude very common numbers that are likely not accounts
+          if (['1234567890', '0000000000', '1111111111'].includes(num)) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          // Prioritize 10-digit numbers
+          if (a.length === 10 && b.length !== 10) return -1;
+          if (b.length === 10 && a.length !== 10) return 1;
+          return 0;
+        });
+      
+      if (accountCandidates.length > 0) {
+        result.accountNumber = accountCandidates[0];
+        result.extractedText += `Account: ${accountCandidates[0]} `;
+      }
     }
 
-    // Look for bank names (common patterns)
+    // Enhanced bank name patterns including digital banks and common abbreviations
     const bankPatterns = [
-      /(?:guaranty\s+trust\s+bank|gtb)/i,
-      /(?:access\s+bank)/i,
-      /(?:first\s+bank)/i,
+      // Traditional banks with variations
+      /(?:guaranty\s+trust\s*(?:bank)?|gtb?|gt\s+bank)/i,
+      /(?:access\s*(?:bank)?)/i,
+      /(?:first\s+bank(?:\s+of\s+nigeria)?|fbn)/i,
       /(?:united\s+bank\s+for\s+africa|uba)/i,
-      /(?:zenith\s+bank)/i,
-      /(?:sterling\s+bank)/i,
-      /(?:fidelity\s+bank)/i,
-      /(?:union\s+bank)/i,
-      /(?:wema\s+bank)/i,
-      /(?:polaris\s+bank)/i,
-      /(?:jaiz\s+bank)/i,
-      /(?:heritage\s+bank)/i,
-      /(?:keystone\s+bank)/i,
-      /(?:providus\s+bank)/i,
-      /(?:titan\s+trust\s+bank)/i,
-      /(?:globus\s+bank)/i,
-      /(?:parallex\s+bank)/i,
-      /(?:premium\s+trust\s+bank)/i,
-      /(?:suntrust\s+bank)/i,
-      /(?:taj\s+bank)/i
+      /(?:zenith\s*(?:bank)?)/i,
+      /(?:sterling\s*(?:bank)?)/i,
+      /(?:fidelity\s*(?:bank)?)/i,
+      /(?:union\s*(?:bank)?)/i,
+      /(?:wema\s*(?:bank)?)/i,
+      /(?:polaris\s*(?:bank)?)/i,
+      /(?:jaiz\s*(?:bank)?)/i,
+      /(?:heritage\s*(?:bank)?)/i,
+      /(?:keystone\s*(?:bank)?)/i,
+      /(?:providus\s*(?:bank)?)/i,
+      /(?:stanbic\s*(?:ibtc)?)/i,
+      /(?:standard\s+chartered)/i,
+      /(?:citibank)/i,
+      /(?:ecobank)/i,
+      /(?:fcmb)/i,
+      /(?:unity\s*(?:bank)?)/i,
+      
+      // Digital banks and fintechs
+      /(?:opay\s*(?:bank)?)/i,
+      /(?:palmpay)/i,
+      /(?:kuda\s*(?:bank)?)/i,
+      /(?:carbon\s*(?:bank)?)/i,
+      /(?:v\s*bank|vbank)/i,
+      /(?:rubies\s*(?:bank)?)/i,
+      /(?:moniepoint(?:\s+mfb)?)/i,
+      /(?:sparkle(?:\s+microfinance)?)/i,
+      /(?:mintyn\s*(?:bank)?)/i,
+      /(?:fairmoney)/i,
+      /(?:branch)/i,
+      /(?:eyowo)/i,
+      /(?:alat)/i,
+      /(?:titan\s+trust\s*(?:bank)?)/i,
+      /(?:taj\s*(?:bank)?)/i,
+      /(?:globus\s*(?:bank)?)/i,
+      /(?:parallex\s*(?:bank)?)/i,
+      /(?:premium\s+trust\s*(?:bank)?)/i,
+      /(?:suntrust\s*(?:bank)?)/i,
+      /(?:coronation\s*(?:bank)?)/i,
+      /(?:rand\s+merchant\s*(?:bank)?)/i,
+      /(?:nova\s+merchant\s*(?:bank)?)/i,
+      /(?:bowen\s*(?:microfinance)?)/i,
+      /(?:npf\s*(?:microfinance)?)/i
     ];
 
     for (const pattern of bankPatterns) {
       const match = text.match(pattern);
       if (match) {
-        result.bankName = match[0];
-        result.extractedText += `Bank: ${match[0]} `;
+        // Normalize bank name
+        let bankName = match[0].trim();
+        
+        // Convert common abbreviations to full names
+        const bankNameMap = {
+          'gtb': 'Guaranty Trust Bank',
+          'gt bank': 'Guaranty Trust Bank',
+          'uba': 'United Bank for Africa',
+          'fbn': 'First Bank of Nigeria',
+          'fcmb': 'First City Monument Bank',
+          'opay': 'Opay',
+          'palmpay': 'Palmpay',
+          'kuda': 'Kuda Bank',
+          'carbon': 'Carbon Bank',
+          'v bank': 'VBank',
+          'vbank': 'VBank',
+          'alat': 'ALAT by Wema'
+        };
+        
+        const normalizedName = bankName.toLowerCase().replace(/\s+/g, ' ').trim();
+        result.bankName = bankNameMap[normalizedName] || bankName;
+        result.extractedText += `Bank: ${result.bankName} `;
+        result.confidence = 0.5; // Higher confidence when bank is found
         break;
       }
     }
 
-    // Look for account holder names (words that could be names)
-    const nameMatch = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/);
-    if (nameMatch && !result.bankName) {
-      result.accountHolderName = nameMatch[1];
-      result.extractedText += `Name: ${nameMatch[1]} `;
+    // Enhanced name extraction - look for capitalized words that could be names
+    const namePatterns = [
+      // Full names (2-3 words, properly capitalized)
+      /\b([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\b/g,
+      // Single names that might be account holders
+      /\b([A-Z][a-z]{3,})\b/g
+    ];
+    
+    for (const pattern of namePatterns) {
+      const matches = text.match(pattern);
+      if (matches) {
+        // Filter out bank names from potential account holder names
+        const bankKeywords = ['bank', 'trust', 'access', 'first', 'united', 'zenith', 'sterling', 'fidelity', 'union', 'wema', 'polaris', 'heritage', 'keystone', 'opay', 'kuda', 'carbon'];
+        const validNames = matches.filter(name => {
+          const lowerName = name.toLowerCase();
+          return !bankKeywords.some(keyword => lowerName.includes(keyword));
+        });
+        
+        if (validNames.length > 0) {
+          result.accountHolderName = validNames[0];
+          result.extractedText += `Name: ${validNames[0]} `;
+          break;
+        }
+      }
+    }
+
+    // Increase confidence if we found both account number and bank
+    if (result.accountNumber && result.bankName) {
+      result.confidence = 0.7;
+    } else if (result.accountNumber || result.bankName) {
+      result.confidence = 0.5;
     }
 
     return result;
   }
 
   /**
-   * Validate extracted bank details
+   * Validate extracted bank details with flexible requirements
    */
   validateBankDetails(bankDetails) {
     const errors = [];
 
+    // Account number validation - more flexible
     if (!bankDetails.accountNumber) {
       errors.push('Account number not found');
-    } else if (!/^\d{10,11}$/.test(bankDetails.accountNumber)) {
-      errors.push('Invalid account number format');
+    } else if (!/^\d{8,11}$/.test(bankDetails.accountNumber)) {
+      errors.push('Invalid account number format (should be 8-11 digits)');
     }
 
+    // Bank name validation - more flexible, allow partial matches
     if (!bankDetails.bankName) {
       errors.push('Bank name not found');
+    } else {
+      // Check if bank name is too short or generic
+      const bankName = bankDetails.bankName.toLowerCase();
+      if (bankName.length < 3 || ['bank', 'ltd', 'plc'].includes(bankName)) {
+        errors.push('Bank name too generic or short');
+      }
     }
 
+    // If we have at least one piece of information with decent confidence, consider it valid
+    const hasMinimumInfo = bankDetails.accountNumber || bankDetails.bankName;
+    const hasDecentConfidence = bankDetails.confidence >= 0.5;
+
     return {
-      isValid: errors.length === 0,
-      errors
+      isValid: hasMinimumInfo && hasDecentConfidence && errors.length <= 1, // Allow 1 error if we have good confidence
+      errors,
+      hasMinimumInfo,
+      confidence: bankDetails.confidence
     };
   }
 }
