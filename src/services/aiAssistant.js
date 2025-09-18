@@ -1611,8 +1611,19 @@ Extract intent and data from this message. Consider the user context and any ext
       );
       await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage);
       
-      // Handle the new intent immediately
-      return await this.processIntent(switchIntent, user, message);
+      // Handle the new intent immediately and process the response
+      const intentResult = await this.processIntent(switchIntent, user, message);
+      
+      // Send the response message if one was generated
+      if (intentResult && intentResult.message) {
+        const finalMessage = await this.makeResponseNatural(intentResult.message, { 
+          service: switchIntent.intent, 
+          context: 'service_result' 
+        });
+        await whatsappService.sendTextMessage(user.whatsappNumber, finalMessage);
+      }
+      
+      return intentResult;
     }
     
     switch (awaitingInput) {
