@@ -479,6 +479,49 @@ class MessageProcessor {
         // Confirmation step
         if (state.awaitingInput === 'confirm_transfer') {
           const lower = (messageContent || '').toLowerCase();
+          
+          // Check if user wants to switch to a different service instead of confirming
+          try {
+            const aiAssistant = require('./aiAssistant');
+            const switchIntent = await aiAssistant.checkForServiceSwitch(messageContent, user, state);
+            if (switchIntent) {
+              logger.info('User wants to switch from transfer confirmation to another service', {
+                userId: user.id,
+                currentIntent: state.intent,
+                newIntent: switchIntent.intent,
+                currentStep: state.awaitingInput
+              });
+              
+              // Clear transfer conversation state
+              await user.clearConversationState();
+              
+              // Process the new service request
+              const whatsappService = require('./whatsapp');
+              const naturalMessage = await aiAssistant.makeResponseNatural(
+                `Got it! Let me help you with ${switchIntent.intent === 'airtime' ? 'airtime' : switchIntent.intent === 'data' ? 'data' : switchIntent.intent} instead.`,
+                { service: switchIntent.intent, switching: true }
+              );
+              await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage);
+              
+              // Handle the new intent and send response
+              const intentResult = await aiAssistant.processIntent(switchIntent, user, messageContent);
+              if (intentResult && intentResult.message) {
+                const finalMessage = await aiAssistant.makeResponseNatural(intentResult.message, { 
+                  service: switchIntent.intent, 
+                  context: 'service_result' 
+                });
+                await whatsappService.sendTextMessage(user.whatsappNumber, finalMessage);
+              }
+              
+              return;
+            }
+          } catch (switchError) {
+            logger.error('Error checking for service switch in transfer confirmation', { 
+              error: switchError.message, 
+              userId: user.id 
+            });
+          }
+          
           if (/(^|\b)(yes|y|confirm|ok|sure)(\b|$)/.test(lower)) {
             // Preserve existing data and only update awaitingInput
             const updatedState = { 
