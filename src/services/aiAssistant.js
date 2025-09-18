@@ -673,7 +673,7 @@ Extract intent and data from this message. Consider the user context and any ext
         if (!user.canPerformTransactions()) {
           return {
             intent: 'REGISTRATION_REQUIRED',
-            message: "🔐 To perform transactions, please complete your account setup first.\n\nYou need to:\n✅ Complete KYC verification\n✅ Set up your transaction PIN\n\nType 'help' for assistance with account setup.",
+            message: "🔐 To perform transactions, please complete your account setup first.\n\nYou need to:\n✅ Complete KYC verification\n✅ Set up your transaction PIN\n\nLet me help you complete this now!",
             requiresAction: 'COMPLETE_REGISTRATION'
           };
         }
@@ -1546,25 +1546,39 @@ Extract intent and data from this message. Consider the user context and any ext
     // Check if user wants to switch to a different service mid-conversation
     const switchIntent = await this.checkForServiceSwitch(message, user, conversationState);
     if (switchIntent) {
-      logger.info('User wants to switch services', {
+      logger.info('User wants to switch services - automatically switching', {
         userId: user.id,
         currentIntent: intent,
         newIntent: switchIntent.intent,
-        currentStep: awaitingInput
+        currentStep: awaitingInput,
+        message: 'Auto-switching without requiring cancel'
       });
       
-      // Clear current conversation state
+      // Clear current conversation state immediately
       await user.clearConversationState();
       
-      // Process the new service request
+      // Clear any pending sessions in Redis
+      try {
+        const redisClient = require('../utils/redis');
+        if (conversationState.data?.sessionId) {
+          await redisClient.deleteSession(conversationState.data.sessionId);
+        }
+        if (conversationState.data?.flowToken) {
+          await redisClient.deleteSession(conversationState.data.flowToken);
+        }
+      } catch (redisError) {
+        logger.debug('Redis cleanup during service switch', { error: redisError.message });
+      }
+      
+      // Process the new service request directly
       const whatsappService = require('./whatsapp');
       const naturalMessage = await this.makeResponseNatural(
-        `Got it! Switching to ${switchIntent.intent}. Let me help you with that instead.`,
-        { service: switchIntent.intent }
+        `Got it! Let me help you with ${switchIntent.intent === 'airtime' ? 'airtime' : switchIntent.intent === 'data' ? 'data' : switchIntent.intent === 'bank_transfer' ? 'that transfer' : switchIntent.intent} instead.`,
+        { service: switchIntent.intent, switching: true }
       );
       await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage);
       
-      // Handle the new intent
+      // Handle the new intent immediately
       return await this.processIntent(switchIntent, user, message);
     }
     

@@ -2339,7 +2339,18 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Complete your account setup first before checking balance");
+        "I'd love to show you your balance! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for balance inquiry intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
       return;
     }
 
@@ -2396,7 +2407,18 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Hey! 👋 I'd love to help you with transfers, but we need to complete your account setup first. It's quick and secure! Just let me know when you're ready to get started.");
+        "Hey! 👋 I'd love to help you with transfers, but we need to complete your account setup first. Let me help you with that now!");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for transfer intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
       return;
     }
 
@@ -3071,7 +3093,18 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Please complete your account setup first before buying airtime.");
+        "I'd love to help you buy airtime! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for airtime intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
       return;
     }
 
@@ -3107,7 +3140,18 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Please complete your account setup first before buying data.");
+        "I'd love to help you buy data! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for data intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
       return;
     }
 
@@ -3185,7 +3229,18 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Please complete your account setup first before paying bills.");
+        "I'd love to help you pay bills! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for bills intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
       return;
     }
 
@@ -3243,7 +3298,18 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Please complete your account setup first to view account details.");
+        "I'd love to show you your account details! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for wallet details intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
       return;
     }
 
@@ -3286,7 +3352,18 @@ class MessageProcessor {
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "Please complete your account setup first to view transaction history.");
+        "I'd love to show you your transaction history! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for transaction history intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
       return;
     }
 
