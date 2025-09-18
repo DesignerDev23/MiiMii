@@ -393,7 +393,17 @@ Return only the improved message, nothing else.
         // Data patterns  
         { patterns: [/buy.*data/i, /purchase.*data/i, /data/i, /internet/i, /gb|mb/i], intent: 'data' },
         // Transfer patterns
-        { patterns: [/transfer/i, /send.*money/i, /send.*₦/i, /bank.*transfer/i], intent: 'bank_transfer' },
+        { patterns: [
+          /transfer/i, 
+          /send.*money/i, 
+          /send.*₦/i, 
+          /send.*naira/i,
+          /send.*\d+.*naira/i,
+          /send.*\d+.*to.*\d+/i,
+          /send.*\d+k?.*to/i,
+          /bank.*transfer/i,
+          /pay.*to.*\d+/i
+        ], intent: 'bank_transfer' },
         // Balance patterns
         { patterns: [/balance/i, /wallet/i, /how.*much/i], intent: 'balance' },
         // Menu patterns
@@ -402,16 +412,39 @@ Return only the improved message, nothing else.
 
       const messageLower = message.toLowerCase();
       
+      // Debug logging for service switch detection
+      logger.info('Checking for service switch', {
+        message,
+        messageLower,
+        currentIntent: currentConversationState.intent,
+        awaitingInput: currentConversationState.awaitingInput
+      });
+      
       // Check for service switch patterns
       for (const service of serviceSwitchPatterns) {
-        if (service.patterns.some(pattern => pattern.test(messageLower))) {
+        const matchingPattern = service.patterns.find(pattern => pattern.test(messageLower));
+        if (matchingPattern) {
+          logger.info('Service switch pattern matched', {
+            service: service.intent,
+            pattern: matchingPattern.toString(),
+            currentIntent: currentConversationState.intent,
+            message
+          });
+          
           // Don't switch if already in the same intent
           if (currentConversationState.intent === service.intent) {
+            logger.info('Already in same intent, not switching', { intent: service.intent });
             return null;
           }
           
           // Use AI to extract parameters for the new service
           const aiResponse = await this.analyzeUserIntent(message, user);
+          
+          logger.info('AI analysis for service switch', {
+            detectedIntent: aiResponse.intent,
+            targetIntent: service.intent,
+            confidence: aiResponse.confidence
+          });
           
           if (aiResponse.intent === service.intent || service.intent === 'menu' || service.intent === 'balance') {
             return {
