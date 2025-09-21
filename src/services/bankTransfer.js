@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const userService = require('./user');
 const walletService = require('./wallet');
 const transactionService = require('./transaction');
-const bellbankService = require('./bellbank');
+const rubiesService = require('./rubies');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
@@ -39,23 +39,23 @@ class BankTransferService {
   // Get all supported banks
   async getSupportedBanks() {
     try {
-      // Get banks from BellBank API
-      const banks = await bellbankService.getBankList();
+      // Get banks from Rubies API
+      const banks = await rubiesService.getBankList();
       
       if (banks && banks.length > 0) {
         return banks.map(bank => ({
           code: bank.code,
           name: bank.name,
           slug: bank.slug || bank.code,
-          type: 'commercial',
-          category: 'deposit_money_bank'
+          type: bank.type || 'commercial',
+          category: bank.category || 'deposit_money_bank'
         }));
       }
 
       // Fallback to static bank list if API fails
       return this.getStaticBankList();
     } catch (error) {
-      logger.error('Failed to get banks from API, using static list', { error: error.message });
+      logger.error('Failed to get banks from Rubies API, using static list', { error: error.message });
       return this.getStaticBankList();
     }
   }
@@ -138,10 +138,10 @@ class BankTransferService {
       // Convert bank code to 6-digit institution code for BellBank API
       let institutionCode = bankCode;
       if (bankCode && bankCode.length !== 6) {
-        // Try to get dynamic bank mapping from BellBank API first
+        // Try to get dynamic bank mapping from Rubies API first
         try {
-          logger.info('Attempting to fetch dynamic bank mapping from BellBank API');
-          const bankMapping = await bellbankService.getBankMapping();
+          logger.info('Attempting to fetch dynamic bank mapping from Rubies API');
+          const bankMapping = await rubiesService.getBankMapping();
           
           // Try to find the bank by common name variations
           const bankName = this.getBankNameByCode(bankCode);
@@ -159,7 +159,7 @@ class BankTransferService {
               originalCode: bankCode,
               bankName,
               institutionCode,
-              source: 'BellBank API'
+              source: 'Rubies API'
             });
           } else {
             // Fallback to static mapping if dynamic lookup fails
@@ -181,8 +181,8 @@ class BankTransferService {
         }
       }
 
-      // Use BellBank name enquiry for account validation
-      const accountDetails = await bellbankService.nameEnquiry(cleanAccountNumber, institutionCode);
+      // Use Rubies name enquiry for account validation
+      const accountDetails = await rubiesService.nameEnquiry(cleanAccountNumber, institutionCode);
       
       if (accountDetails && (accountDetails.account_name || accountDetails.accountName)) {
         return {
@@ -197,8 +197,8 @@ class BankTransferService {
       }
 
       // Mock validation for testing when API is not available or in sandbox
-      if (!process.env.BANK_CONSUMER_KEY || process.env.NODE_ENV === 'development') {
-        logger.warn('BellBank API not configured or in development, using mock validation', {
+      if (!process.env.RUBIES_API_KEY || process.env.NODE_ENV === 'development') {
+        logger.warn('Rubies API not configured or in development, using mock validation', {
           accountNumber,
           bankCode,
           environment: process.env.NODE_ENV
@@ -335,12 +335,12 @@ class BankTransferService {
     return bank ? bank.name : 'Unknown Bank';
   }
 
-  // Convert bank name to institution code using BellBank API
+  // Convert bank name to institution code using Rubies API
   async getInstitutionCode(bankName) {
     try {
-      return await bellbankService.getInstitutionCode(bankName);
+      return await rubiesService.getInstitutionCode(bankName);
     } catch (error) {
-      logger.error('Failed to get institution code from BellBank', { 
+      logger.error('Failed to get institution code from Rubies', { 
         bankName, 
         error: error.message 
       });
@@ -563,8 +563,8 @@ class BankTransferService {
       });
 
       try {
-        // Process transfer through BellBank API
-        const transferResult = await this.processBellBankTransfer({
+        // Process transfer through Rubies API
+        const transferResult = await this.processRubiesTransfer({
           accountNumber: accountValidation.accountNumber,
           bankCode: accountValidation.bankCode,
           amount: feeCalculation.amount,
@@ -675,12 +675,12 @@ class BankTransferService {
     }
   }
 
-  // Process transfer through BellBank API
-  async processBellBankTransfer(transferData) {
+  // Process transfer through Rubies API
+  async processRubiesTransfer(transferData) {
     try {
-      if (!process.env.BANK_CONSUMER_KEY) {
+      if (!process.env.RUBIES_API_KEY) {
         // Mock response for testing
-        logger.warn('BellBank API not configured, using mock response');
+        logger.warn('Rubies API not configured, using mock response');
         return {
           success: true,
           reference: `MOCK_TRANSFER_${Date.now()}`,
@@ -693,75 +693,18 @@ class BankTransferService {
         };
       }
 
-      // Convert bank code to 6-digit institution code for BellBank API
-      let institutionCode = transferData.bankCode;
-      if (transferData.bankCode && transferData.bankCode.length !== 6) {
-        // Try to get dynamic bank mapping from BellBank API first
-        try {
-          logger.info('Attempting to fetch dynamic bank mapping for transfer');
-          const bankMapping = await bellbankService.getBankMapping();
-          
-          // Try to find the bank by common name variations
-          const bankName = this.getBankNameByCode(transferData.bankCode);
-          const bankNameLower = bankName.toLowerCase();
-          
-          // Look for exact match or partial match
-          const foundCode = bankMapping.bankMapping[bankNameLower] || 
-                           Object.keys(bankMapping.bankMapping).find(key => 
-                             key.includes(bankNameLower) || bankNameLower.includes(key)
-                           );
-          
-          if (foundCode) {
-            institutionCode = bankMapping.bankMapping[foundCode];
-            logger.info('Found dynamic bank code mapping for transfer', {
-              originalCode: transferData.bankCode,
-              bankName,
-              institutionCode,
-              source: 'BellBank API'
-            });
-          } else {
-            // Fallback to static mapping if dynamic lookup fails
-            logger.warn('Dynamic bank mapping failed for transfer, using static fallback', {
-              bankCode: transferData.bankCode,
-              bankName
-            });
-            const staticMapping = this.getStaticBankCodeMapping();
-            institutionCode = staticMapping[transferData.bankCode] || transferData.bankCode;
-          }
-        } catch (dynamicError) {
-          logger.warn('Dynamic bank mapping failed for transfer, using static fallback', {
-            error: dynamicError.message,
-            bankCode: transferData.bankCode
-          });
-          // Fallback to static mapping
-          const staticMapping = this.getStaticBankCodeMapping();
-          institutionCode = staticMapping[transferData.bankCode] || transferData.bankCode;
-        }
-        
-        logger.info('Converted bank code to institution code for transfer', {
-          originalCode: transferData.bankCode,
-          institutionCode
-        });
-      }
-
-      // Update transfer data with institution code
-      const updatedTransferData = {
-        ...transferData,
-        bankCode: institutionCode
-      };
-
-      // Use BellBank service for actual transfer
-      const result = await bellbankService.initiateTransfer(updatedTransferData);
+      // Use Rubies service for actual transfer
+      const result = await rubiesService.initiateTransfer(transferData);
       
       return {
         success: result.success || result.status === 'success',
         reference: result.reference || result.transaction_id,
-        sessionId: result.session_id,
+        sessionId: result.session_id || result.sessionId,
         message: result.message || 'Transfer processed',
-        response: result
+        response: result.response || result
       };
     } catch (error) {
-      logger.error('BellBank transfer failed', { error: error.message, transferData });
+      logger.error('Rubies transfer failed', { error: error.message, transferData });
       
       return {
         success: false,

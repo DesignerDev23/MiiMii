@@ -1,6 +1,6 @@
 const { Wallet, Transaction, User, ActivityLog } = require('../models');
 const { sequelize } = require('../database/connection');
-const bellBankService = require('./bellbank');
+const rubiesService = require('./rubies');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize'); // Added Op for date range queries
@@ -500,9 +500,9 @@ class WalletService {
         dateOfBirth: user.dateOfBirth
       });
 
-      const bellBankService = require('./bellbank');
+      const rubiesService = require('./rubies');
       
-      const virtualAccountResult = await bellBankService.createVirtualAccount({
+      const virtualAccountResult = await rubiesService.createVirtualAccount({
         firstName: user.firstName,
         lastName: user.lastName,
         middleName: user.middleName,

@@ -57,6 +57,27 @@ const User = sequelize.define('User', {
       len: [11, 11]
     }
   },
+  bvnVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    comment: 'Whether BVN has been verified with Rubies API'
+  },
+  bvnVerificationDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Date when BVN was successfully verified'
+  },
+  alternatePhone: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Alternate phone number from BVN data'
+  },
+  bvnData: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment: 'Additional data returned from BVN verification'
+  },
   kycStatus: {
     type: DataTypes.ENUM('pending', 'verified', 'rejected', 'incomplete', 'not_required'),
     defaultValue: 'not_required'

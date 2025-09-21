@@ -32,7 +32,13 @@ class Config {
       flowSecretKey: process.env.FLOW_SECRET_KEY || 'default-flow-secret-key'
     };
 
-    // Bellbank Configuration
+    // Rubies Configuration (replacing Bellbank)
+    this.rubies = {
+      apiKey: process.env.RUBIES_API_KEY, // Direct API key for Authorization header
+      webhookSecret: process.env.RUBIES_WEBHOOK_SECRET
+    };
+
+    // Legacy Bellbank Configuration (deprecated - use Rubies)
     this.bellbank = {
       consumerKey: process.env.BANK_CONSUMER_KEY,
       consumerSecret: process.env.BANK_CONSUMER_SECRET
@@ -114,6 +120,7 @@ class Config {
       hasDatabaseUrl: !!this.database.url,
       hasWhatsappToken: !!this.whatsapp.accessToken,
       hasWhatsappPhoneId: !!this.whatsapp.phoneNumberId,
+      hasRubiesKey: !!this.rubies.apiKey,
       hasBellbankKey: !!this.bellbank.consumerKey,
       hasOpenAIKey: !!this.openai.apiKey,
       hasJwtSecret: !!this.server.jwtSecret,
@@ -199,6 +206,10 @@ class Config {
     });
     
     return this.whatsapp;
+  }
+
+  getRubiesConfig() {
+    return this.rubies;
   }
 
   getBellbankConfig() {

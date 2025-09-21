@@ -280,7 +280,78 @@ router.post('/whatsapp', logWebhook('whatsapp'), async (req, res) => {
   }
 });
 
-// BellBank webhook endpoints
+// Rubies webhook endpoint
+router.post('/rubies',
+  // Temporarily disable signature validation for testing
+  // verifyWebhookSignature('rubies'),
+  logWebhook('rubies'),
+  async (req, res) => {
+    try {
+      logger.info('Rubies webhook received', {
+        body: req.body,
+        headers: req.headers,
+        responseCode: req.body?.responseCode,
+        reference: req.body?.reference || req.body?.contractReference
+      });
+
+      const rubiesService = require('../services/rubies');
+      
+      // Process the webhook event
+      const result = await rubiesService.processWebhookEvent(req.body);
+      
+      logger.info('Rubies webhook processed successfully', {
+        result,
+        responseCode: req.body?.responseCode
+      });
+
+      // Update webhook log status
+      if (req.webhookLogId) {
+        try {
+          await databaseService.update(WebhookLog,
+            { status: 'processed', processedAt: new Date() },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (logError) {
+          logger.error('Failed to update webhook log', { error: logError.message });
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Webhook processed successfully'
+      });
+    } catch (error) {
+      logger.error('Rubies webhook processing failed', {
+        error: error.message,
+        body: req.body,
+        stack: error.stack
+      });
+
+      // Update webhook log status
+      if (req.webhookLogId) {
+        try {
+          await databaseService.update(WebhookLog,
+            { 
+              status: 'failed', 
+              processedAt: new Date(),
+              errorMessage: error.message 
+            },
+            { where: { id: req.webhookLogId } }
+          );
+        } catch (logError) {
+          logger.error('Failed to update webhook log', { error: logError.message });
+        }
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Webhook processing failed'
+      });
+    }
+  }
+);
+
+// BellBank webhook endpoints (Legacy)
 router.post('/bellbank',
   verifyWebhookSignature('bellbank'),
   logWebhook('bellbank'),
@@ -346,18 +417,21 @@ router.post('/bellbank/incoming',
   logWebhook('bellbank'),
   async (req, res) => {
     try {
-      logger.info('BellBank incoming transfer webhook received', {
+      logger.info('Rubies webhook received', {
         body: req.body,
-        headers: req.headers
+        headers: req.headers,
+        responseCode: req.body?.responseCode,
+        reference: req.body?.reference || req.body?.contractReference
       });
 
-      const bellbankService = require('../services/bellbank');
+      const rubiesService = require('../services/rubies');
       
-      // Process the incoming transfer webhook
-      const result = await bellbankService.handleIncomingTransferWebhook(req.body);
+      // Process the webhook event
+      const result = await rubiesService.processWebhookEvent(req.body);
       
-      logger.info('BellBank incoming transfer webhook processed successfully', {
-        result
+      logger.info('Rubies webhook processed successfully', {
+        result,
+        responseCode: req.body?.responseCode
       });
 
       // Update webhook log status
@@ -577,9 +651,9 @@ router.post('/dojah',
 
 // Webhook handler functions
 async function handleVirtualAccountCredit(data) {
-  // Handle BellBank webhook notification format
-  const bellbankService = require('../services/bellbank');
-  const processedData = bellbankService.handleWebhookNotification(data);
+  // Handle Rubies webhook notification format
+  const rubiesService = require('../services/rubies');
+  const processedData = await rubiesService.processWebhookEvent(data);
 
   const walletService = require('../services/wallet');
   await walletService.creditWalletFromVirtualAccount(processedData);

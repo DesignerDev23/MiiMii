@@ -1,7 +1,7 @@
 const logger = require('../utils/logger');
 const whatsappService = require('./whatsapp');
 const userService = require('./user');
-const bellbankService = require('./bellbank');
+const rubiesService = require('./rubies');
 const walletService = require('./wallet');
 const { ActivityLog } = require('../models');
 
@@ -340,14 +340,129 @@ class OnboardingService {
         return { success: true, step: 'bvn_invalid' };
       }
 
-      await user.update({ bvn, kycStatus: 'not_required', onboardingStep: 'pin_setup' });
+      // Validate BVN with Rubies API
+      try {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `🔄 *Validating your BVN...*\n\nPlease wait while we verify your information with the bank.`
+        );
 
-      const nextMessage = `✅ *BVN captured successfully!*\n\n` +
-                          `Now let's set up your 4-digit PIN to secure your transactions.\n\n` +
-                          `Please enter your 4-digit PIN:`;
-      await whatsappService.sendTextMessage(user.whatsappNumber, nextMessage);
+        const bvnValidationResult = await rubiesService.validateBVN({
+          bvn: bvn,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          dateOfBirth: user.dateOfBirth,
+          phoneNumber: user.whatsappNumber,
+          userId: user.id
+        });
 
-      return { success: true, step: 'bvn_captured' };
+        if (bvnValidationResult.success) {
+          // BVN validation successful
+          const bvnData = bvnValidationResult.bvn_data;
+          
+          // Update user with validated BVN and any additional data from validation
+          const updateData = {
+            bvn: bvn,
+            kycStatus: 'verified',
+            bvnVerified: true,
+            bvnVerificationDate: new Date(),
+            onboardingStep: 'pin_setup'
+          };
+
+          // If BVN data contains additional info, update user profile
+          if (bvnData) {
+            if (bvnData.first_name && !user.firstName) {
+              updateData.firstName = bvnData.first_name;
+            }
+            if (bvnData.last_name && !user.lastName) {
+              updateData.lastName = bvnData.last_name;
+            }
+            if (bvnData.middle_name && !user.middleName) {
+              updateData.middleName = bvnData.middle_name;
+            }
+            if (bvnData.date_of_birth && !user.dateOfBirth) {
+              updateData.dateOfBirth = bvnData.date_of_birth;
+            }
+            if (bvnData.phone_number1 && !user.alternatePhone) {
+              updateData.alternatePhone = bvnData.phone_number1;
+            }
+          }
+
+          await user.update(updateData);
+
+          const nextMessage = `✅ *BVN verified successfully!*\n\n` +
+                              `Your identity has been confirmed with the bank.\n\n` +
+                              `Now let's set up your 4-digit PIN to secure your transactions.\n\n` +
+                              `Please enter your 4-digit PIN:`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, nextMessage);
+
+          // Log successful BVN verification
+          await ActivityLog.logUserActivity(
+            user.id,
+            'onboarding',
+            'bvn_verified',
+            {
+              description: 'BVN successfully verified during onboarding',
+              bvnMasked: `***${bvn.slice(-4)}`,
+              provider: 'rubies',
+              verification_status: bvnValidationResult.verification_status,
+              source: 'onboarding'
+            }
+          );
+
+          return { success: true, step: 'bvn_verified' };
+        } else {
+          // BVN validation failed
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `❌ *BVN validation failed*\n\n` +
+            `${bvnValidationResult.message || 'Unable to verify your BVN with the bank.'}\n\n` +
+            `Please check your BVN and try again, or contact support if you continue to have issues.\n\n` +
+            `Send your correct 11-digit BVN:`
+          );
+
+          // Log failed BVN verification
+          await ActivityLog.logUserActivity(
+            user.id,
+            'onboarding',
+            'bvn_verification_failed',
+            {
+              description: 'BVN verification failed during onboarding',
+              bvnMasked: `***${bvn.slice(-4)}`,
+              provider: 'rubies',
+              error: bvnValidationResult.message,
+              source: 'onboarding'
+            }
+          );
+
+          return { success: true, step: 'bvn_validation_failed' };
+        }
+      } catch (error) {
+        logger.error('BVN validation error during onboarding', {
+          userId: user.id,
+          bvnMasked: `***${bvn.slice(-4)}`,
+          error: error.message
+        });
+
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `⚠️ *Technical issue during BVN validation*\n\n` +
+          `We're experiencing temporary technical difficulties.\n\n` +
+          `Your BVN has been saved and we'll continue with the setup. You may be asked to verify it later.\n\n` +
+          `Let's proceed to set up your PIN.\n\n` +
+          `Please enter your 4-digit PIN:`
+        );
+
+        // Save BVN but mark as unverified
+        await user.update({ 
+          bvn: bvn, 
+          kycStatus: 'pending_verification',
+          bvnVerified: false,
+          onboardingStep: 'pin_setup' 
+        });
+
+        return { success: true, step: 'bvn_saved_unverified' };
+      }
     }
 
     await whatsappService.sendTextMessage(
@@ -748,7 +863,7 @@ class OnboardingService {
       );
 
       // Create virtual account with BellBank
-      const virtualAccountData = await bellbankService.createVirtualAccount({
+      const virtualAccountData = await rubiesService.createVirtualAccount({
         firstName: user.firstName,
         lastName: user.lastName,
         middleName: user.middleName,
