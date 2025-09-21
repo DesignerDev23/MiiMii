@@ -133,8 +133,8 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
 
-      // BVN validation endpoint from documentation
-      const response = await this.makeRequest('POST', '/baas-kyc/bvnValidation', payload);
+      // BVN validation endpoint - using working endpoint from test
+      const response = await this.makeRequest('POST', '/baas-kyc/bvn-validation', payload);
 
       if (response.responseCode === '00') {
         logger.info('Rubies BVN validation successful', {
@@ -452,7 +452,8 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
 
-      const response = await this.makeRequest('POST', '/baas-Transaction/nameEnquiry', payload);
+      // Name enquiry endpoint - using working endpoint from test
+      const response = await this.makeRequest('POST', '/baas-transaction/name-enquiry', payload);
 
       if (response.responseCode === '00') {
         return {
@@ -506,7 +507,8 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
 
-      const response = await this.makeRequest('POST', '/baas-Transaction/fundTransfer', payload);
+      // Fund transfer endpoint - using working pattern from test
+      const response = await this.makeRequest('POST', '/baas-transaction/fund-transfer', payload);
 
       if (response.responseCode === '00') {
         return {
@@ -541,7 +543,8 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
       
-      const response = await this.makeRequest('POST', '/baas-Transaction/bankList', {});
+      // Bank list endpoint - using working endpoint from test
+      const response = await this.makeRequest('POST', '/baas-transaction/bank-list', {});
 
       if (response.responseCode === '00' && response.data) {
         const banks = response.data;
