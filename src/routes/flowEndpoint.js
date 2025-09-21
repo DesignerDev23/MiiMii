@@ -1249,33 +1249,120 @@ async function handleBvnVerificationScreen(data, userId, tokenData = {}) {
       };
     }
 
-    // Persist BVN to user if we can resolve the user
+    // Get user data for BVN validation
+    let user = null;
     try {
       if (userId) {
         const userService = require('../services/user');
-        const user = await userService.getUserById(userId);
-        if (user) {
-          await user.update({ bvn });
-        }
+        user = await userService.getUserById(userId);
       }
-    } catch (persistErr) {
-      logger.warn('Failed to persist BVN from flow', { error: persistErr.message });
+    } catch (userErr) {
+      logger.warn('Failed to get user for BVN validation', { error: userErr.message });
     }
 
-    logger.info('BVN verification received from Flow', {
-      userId: userId || 'unknown',
-      flowId: tokenData.flowId || 'unknown',
-      source: tokenData.source || 'unknown',
-      bvn: bvn.substring(0, 3) + '********'
-    });
+    // Validate BVN with Rubies API
+    try {
+      logger.info('Starting BVN verification with Rubies API', {
+        userId: userId || 'unknown',
+        bvnMasked: `***${bvn.slice(-4)}`,
+        hasUserData: !!user
+      });
 
-    return {
-      screen: 'screen_wkunnj',
-      data: {
-        success: true,
-        message: 'BVN verified successfully! Please proceed to set up your PIN.'
+      const rubiesService = require('../services/rubies');
+      const bvnValidationResult = await rubiesService.validateBVN({
+        bvn: bvn,
+        firstName: user?.firstName || data.screen_1_First_Name_0,
+        lastName: user?.lastName || data.screen_1_Last_Name_1,
+        dateOfBirth: user?.dateOfBirth || data.screen_1_Date_of_Birth_3,
+        phoneNumber: user?.whatsappNumber,
+        userId: userId
+      });
+
+      if (bvnValidationResult.success) {
+        // BVN validation successful - update user with verified BVN
+        if (user) {
+          const updateData = {
+            bvn: bvn,
+            bvnVerified: true,
+            bvnVerificationDate: new Date()
+          };
+
+          // Enrich profile with BVN data if available
+          if (bvnValidationResult.bvn_data) {
+            const bvnData = bvnValidationResult.bvn_data;
+            if (bvnData.first_name && !user.firstName) {
+              updateData.firstName = bvnData.first_name;
+            }
+            if (bvnData.last_name && !user.lastName) {
+              updateData.lastName = bvnData.last_name;
+            }
+            if (bvnData.phone_number1 && !user.alternatePhone) {
+              updateData.alternatePhone = bvnData.phone_number1;
+            }
+            updateData.bvnData = bvnData;
+          }
+
+          await user.update(updateData);
+        }
+
+        logger.info('BVN verification successful from Flow', {
+          userId: userId || 'unknown',
+          bvnMasked: `***${bvn.slice(-4)}`,
+          responseCode: bvnValidationResult.responseCode
+        });
+
+        return {
+          screen: 'screen_wkunnj',
+          data: {
+            success: true,
+            message: 'BVN verified successfully! Your identity has been confirmed with the bank. Please proceed to set up your PIN.',
+            bvn_verified: true
+          }
+        };
+      } else {
+        // BVN validation failed
+        logger.warn('BVN verification failed from Flow', {
+          userId: userId || 'unknown',
+          bvnMasked: `***${bvn.slice(-4)}`,
+          error: bvnValidationResult.message
+        });
+
+        return {
+          screen: 'screen_kswuhq',
+          data: {
+            error: `BVN verification failed: ${bvnValidationResult.message || 'Unable to verify your BVN with the bank. Please check your BVN and try again.'}`,
+            validation: {
+              bvn: 'BVN verification failed'
+            }
+          }
+        };
       }
-    };
+    } catch (apiError) {
+      // API error - save BVN but mark as unverified
+      logger.error('BVN verification API error from Flow', {
+        userId: userId || 'unknown',
+        bvnMasked: `***${bvn.slice(-4)}`,
+        error: apiError.message
+      });
+
+      // Save BVN but mark as unverified
+      if (user) {
+        await user.update({ 
+          bvn: bvn, 
+          bvnVerified: false 
+        });
+      }
+
+      return {
+        screen: 'screen_wkunnj',
+        data: {
+          success: true,
+          message: 'BVN saved. Verification will be completed later due to technical issues. Please proceed to set up your PIN.',
+          bvn_verified: false,
+          warning: 'BVN verification pending'
+        }
+      };
+    }
 
   } catch (error) {
     logger.error('BVN verification processing failed', { error: error.message });
