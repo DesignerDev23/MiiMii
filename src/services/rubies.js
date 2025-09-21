@@ -10,16 +10,17 @@ class RubiesService {
   constructor() {
     // Rubies API URLs - from actual documentation
     this.devURL = 'https://api-sme-dev.rubies.ng/dev';
-    this.productionURL = 'https://api-sme.rubies.ng'; // Production URL (to be confirmed)
+    this.productionURL = 'https://api-sme.rubies.ng/prod'; // Production URL from documentation
 
-    // Environment detection
+    // Environment detection - Use development with DEV API key
     const overrideEnv = (process.env.RUBIES_ENV || process.env.APP_ENV || '').toLowerCase();
     const isProduction = overrideEnv
       ? overrideEnv === 'prod' || overrideEnv === 'production'
       : process.env.NODE_ENV === 'production';
 
-    this.selectedEnvironment = isProduction ? 'production' : 'development';
-    this.baseURL = isProduction ? this.productionURL : this.devURL;
+    // Since we have DEV API key, use development environment
+    this.selectedEnvironment = 'development';
+    this.baseURL = this.devURL;
 
     // Rubies API credentials - Uses Authorization header with API key (sk_test_ or sk_live_)
     this.apiKey = process.env.RUBIES_API_KEY;
@@ -122,11 +123,17 @@ class RubiesService {
         throw new Error('Invalid BVN format. BVN must be exactly 11 digits.');
       }
 
-      // Prepare payload based on Rubies documentation
+      // Prepare payload based on Rubies production documentation
       const payload = {
-        bvn: bvn.toString().trim()
-        // Additional fields may be added based on specific Rubies BVN validation requirements
+        bvn: bvn.toString().trim(),
+        dob: dateOfBirth ? this.formatDateForRubies(dateOfBirth) : undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        reference: `BVN_${Date.now()}_${bvnData.userId || 'unknown'}`
       };
+
+      // Remove undefined fields
+      Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
 
       logger.info('Starting Rubies BVN validation', {
         bvnMasked: `***${bvn.slice(-4)}`,
@@ -205,26 +212,10 @@ class RubiesService {
         }
       }
 
-      // Step 1: Get channel code first (required for virtual account creation)
-      let accountParent = '090175'; // Default to Rubies bank code
-      
-      try {
-        const channelResponse = await this.makeRequest('POST', '/baas-virtual-account/get-channel-code', {
-          requestType: 'ALL'
-        });
-
-        if (channelResponse.responseCode === '00' && channelResponse.data) {
-          const channelData = channelResponse.data[0];
-          accountParent = channelData.bankCode || channelData.accountParent || '090175';
-        }
-      } catch (channelError) {
-        logger.warn('Failed to get channel code, using default', { error: channelError.message });
-      }
-
-      // Step 2: Prepare payload based on Rubies documentation
+      // Step 1: Prepare payload based on Rubies production documentation
       const payload = {
         accountAmountControl: 'EXACT', // Control type as per documentation
-        accountParent: accountParent, // Use channel code or default
+        accountParent: '9018866641', // From production documentation examples
         accountType: 'DISPOSABLE', // Account type: DISPOSABLE or REUSABLE
         amount: '0', // Initial amount
         bvn: userData.bvn.toString().trim(),
@@ -244,19 +235,8 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
 
-      // Step 3: Initiate virtual account creation
-      // Try different variations of the endpoint
-      let response;
-      try {
-        response = await this.makeRequest('POST', '/baas-virtual-account/initiate-create-virtual-account', payload);
-      } catch (error) {
-        if (error.message.includes('404')) {
-          // Fallback to the exact spelling from documentation (with typo)
-          response = await this.makeRequest('POST', '/baas-virtual-account/initiaiteCreateVirtualAccount', payload);
-        } else {
-          throw error;
-        }
-      }
+      // Step 2: Initiate virtual account creation using production endpoint
+      const response = await this.makeRequest('POST', '/baas-virtual-account/initiate-create-virtual-account', payload);
 
       if (response.responseCode === '00') {
         logger.info('Virtual account initiation successful, OTP sent', {
