@@ -206,20 +206,25 @@ class RubiesService {
       }
 
       // Step 1: Get channel code first (required for virtual account creation)
-      const channelResponse = await this.makeRequest('POST', '/baas-virtual-account/get-channel-code', {
-        requestType: 'ALL'
-      });
+      let accountParent = '090175'; // Default to Rubies bank code
+      
+      try {
+        const channelResponse = await this.makeRequest('POST', '/baas-virtual-account/get-channel-code', {
+          requestType: 'ALL'
+        });
 
-      if (channelResponse.responseCode !== '00') {
-        throw new Error('Failed to get channel code: ' + channelResponse.responseMessage);
+        if (channelResponse.responseCode === '00' && channelResponse.data) {
+          const channelData = channelResponse.data[0];
+          accountParent = channelData.bankCode || channelData.accountParent || '090175';
+        }
+      } catch (channelError) {
+        logger.warn('Failed to get channel code, using default', { error: channelError.message });
       }
-
-      const channelData = channelResponse.data[0]; // Use first available channel
 
       // Step 2: Prepare payload based on Rubies documentation
       const payload = {
         accountAmountControl: 'EXACT', // Control type as per documentation
-        accountParent: channelData.accountParent || '1000000267', // From channel or default
+        accountParent: accountParent, // Use channel code or default
         accountType: 'DISPOSABLE', // Account type: DISPOSABLE or REUSABLE
         amount: '0', // Initial amount
         bvn: userData.bvn.toString().trim(),
@@ -240,7 +245,18 @@ class RubiesService {
       });
 
       // Step 3: Initiate virtual account creation
-      const response = await this.makeRequest('POST', '/baas-virtual-account/initiaiteCreateVirtualAccount', payload);
+      // Try different variations of the endpoint
+      let response;
+      try {
+        response = await this.makeRequest('POST', '/baas-virtual-account/initiate-create-virtual-account', payload);
+      } catch (error) {
+        if (error.message.includes('404')) {
+          // Fallback to the exact spelling from documentation (with typo)
+          response = await this.makeRequest('POST', '/baas-virtual-account/initiaiteCreateVirtualAccount', payload);
+        } else {
+          throw error;
+        }
+      }
 
       if (response.responseCode === '00') {
         logger.info('Virtual account initiation successful, OTP sent', {
@@ -798,30 +814,40 @@ class RubiesService {
     try {
       logger.info('Processing Rubies webhook event', {
         responseCode: event.responseCode,
-        reference: event.reference || event.contractReference,
+        reference: event.reference || event.paymentReference,
+        service: event.service,
+        drCr: event.drCr,
+        amount: event.amount,
         environment: this.selectedEnvironment
       });
 
-      // Process based on response code from Rubies documentation
-      switch (event.responseCode) {
-        case '00':
+      // Process based on response code and transaction type from Rubies documentation
+      if (event.responseCode === '00') {
+        // Check if this is a credit to one of our virtual accounts
+        if (event.drCr === 'CR' || event.service === 'Fund Transfer') {
+          await this.handleAccountCredit(event);
+        } else {
           await this.handleTransferSuccess(event);
-          break;
-        case '14':
-        case '33':
-          await this.handleTransferFailed(event);
-          break;
-        case '34':
-          await this.handleSettlementRequired(event);
-          break;
-        case '-1':
-          await this.handleTransferProcessing(event);
-          break;
-        default:
-          logger.info('Unhandled Rubies webhook response code', { 
-            responseCode: event.responseCode,
-            responseMessage: event.responseMessage 
-          });
+        }
+      } else {
+        // Handle failed transactions
+        switch (event.responseCode) {
+          case '14':
+          case '33':
+            await this.handleTransferFailed(event);
+            break;
+          case '34':
+            await this.handleSettlementRequired(event);
+            break;
+          case '-1':
+            await this.handleTransferProcessing(event);
+            break;
+          default:
+            logger.info('Unhandled Rubies webhook response code', { 
+              responseCode: event.responseCode,
+              responseMessage: event.responseMessage 
+            });
+        }
       }
     } catch (error) {
       logger.error('Failed to process Rubies webhook event', { error: error.message, event });
@@ -921,35 +947,36 @@ class RubiesService {
 
   async handleAccountCredit(data) {
     try {
-      const accountNumber = data.accountNumber;
+      // Rubies webhook data structure based on documentation
+      const accountNumber = data.creditAccount || data.accountNumber;
       const amount = parseFloat(data.amount);
       
       if (accountNumber && amount > 0) {
-        // Find user by account number
-        const user = await User.findOne({
-          where: { accountNumber }
+        // Find user by virtual account number in wallet
+        const { Wallet } = require('../models');
+        const wallet = await Wallet.findOne({
+          where: { virtualAccountNumber: accountNumber },
+          include: [{ model: User, as: 'user' }]
         });
         
-        if (user) {
-          // Credit wallet
-          await walletService.creditWallet(
-            user.id,
-            amount,
-            `Account credit - ${data.counterPartyAccountName || 'Bank Transfer'}`,
-            {
-              category: 'bank_transfer_in',
-              providerReference: data.contractReference,
-              senderName: data.counterPartyAccountName,
-              senderAccount: data.counterPartyAccountNumber,
-              provider: 'rubies'
-            }
-          );
-          
-          logger.info('Wallet credited from Rubies account credit', {
-            userId: user.id,
-            amount,
-            reference: data.contractReference
+        if (wallet && wallet.user) {
+          // Credit the digital wallet using the existing mechanism
+          await walletService.creditWalletFromVirtualAccount({
+            customer_id: wallet.user.id,
+            amount: data.amount,
+            reference: data.paymentReference || data.sessionId,
+            sender_name: data.originatorName || data.creditAccountName,
+            sender_bank: data.bankName || 'Unknown Bank'
           });
+          
+          logger.info('Digital wallet credited from Rubies virtual account', {
+            userId: wallet.user.id,
+            amount,
+            reference: data.paymentReference,
+            accountNumber
+          });
+        } else {
+          logger.warn('No wallet found for virtual account number', { accountNumber });
         }
       }
     } catch (error) {
