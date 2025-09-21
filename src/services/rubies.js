@@ -146,6 +146,7 @@ class RubiesService {
         // Log activity
         await ActivityLog.create({
           userId: bvnData.userId || null,
+          activityType: 'kyc_verification', // Use valid ENUM value
           action: 'bvn_verification',
           details: {
             bvnMasked: `***${bvn.slice(-4)}`,
@@ -177,6 +178,7 @@ class RubiesService {
       // Log activity
       await ActivityLog.create({
         userId: bvnData.userId || null,
+        activityType: 'kyc_verification', // Use valid ENUM value
         action: 'bvn_verification',
         details: {
           bvnMasked: bvnData.bvn ? `***${bvnData.bvn.slice(-4)}` : 'unknown',
@@ -204,7 +206,7 @@ class RubiesService {
       }
 
       // Step 1: Get channel code first (required for virtual account creation)
-      const channelResponse = await this.makeRequest('POST', '/baas-virtual-account/getChannelCode', {
+      const channelResponse = await this.makeRequest('POST', '/baas-virtual-account/get-channel-code', {
         requestType: 'ALL'
       });
 
