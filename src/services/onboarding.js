@@ -392,9 +392,9 @@ class OnboardingService {
 
           const nextMessage = `✅ *BVN verified successfully!*\n\n` +
                               `Your identity has been confirmed with the bank.\n\n` +
-                              `Now let's set up your 4-digit PIN to secure your transactions.\n\n` +
-                              `Please enter your 4-digit PIN:`;
-          await whatsappService.sendTextMessage(user.whatsappNumber, nextMessage);
+                          `Now let's set up your 4-digit PIN to secure your transactions.\n\n` +
+                          `Please enter your 4-digit PIN:`;
+      await whatsappService.sendTextMessage(user.whatsappNumber, nextMessage);
 
           // Log successful BVN verification
           await ActivityLog.logUserActivity(
