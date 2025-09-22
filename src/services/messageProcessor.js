@@ -33,19 +33,6 @@ class MessageProcessor {
       // Get or create user with proper parameters
       const user = await userService.getOrCreateUser(from, userName);
       
-      // Check if user has completed onboarding (virtual account creation)
-      const onboardingStatus = await userService.checkUserOnboardingStatus(user.id);
-      if (!onboardingStatus.isComplete) {
-        logger.info('User has not completed onboarding, redirecting to onboarding flow', {
-          userId: user.id,
-          onboardingStep: user.onboardingStep,
-          hasVirtualAccount: onboardingStatus.hasVirtualAccount,
-          missingFields: onboardingStatus.missingFields
-        });
-        
-        await this.redirectToOnboarding(user, onboardingStatus);
-        return;
-      }
       // Mark as read + typing indicator to improve UX while processing
       try {
         const whatsappService = require('./whatsapp');
@@ -58,6 +45,13 @@ class MessageProcessor {
       // If interactive (buttons/lists/flows), handle via the interactive-aware pipeline
       // BUT do not short-circuit Flow completions (nfm_reply with flowResponse)
       if (messageType === 'interactive') {
+        logger.info('Processing interactive message', {
+          userId: user.id,
+          hasFlowResponse: !!message?.flowResponse,
+          hasResponseJson: !!message?.flowResponse?.responseJson,
+          flowResponse: message?.flowResponse
+        });
+        
         if (!message?.flowResponse?.responseJson) {
           return await this.handleCompletedUserMessage(user, message, 'interactive');
         }
@@ -80,6 +74,20 @@ class MessageProcessor {
           return await this.processFlowCompletion(flowCompletionData);
         }
         // Fall through to Flow completion handling below
+      }
+      
+      // Check if user has completed onboarding (virtual account creation)
+      const onboardingStatus = await userService.checkUserOnboardingStatus(user.id);
+      if (!onboardingStatus.isComplete) {
+        logger.info('User has not completed onboarding, redirecting to onboarding flow', {
+          userId: user.id,
+          onboardingStep: user.onboardingStep,
+          hasVirtualAccount: onboardingStatus.hasVirtualAccount,
+          missingFields: onboardingStatus.missingFields
+        });
+        
+        await this.redirectToOnboarding(user, onboardingStatus);
+        return;
       }
 
       // If image message, handle via the image-aware pipeline
@@ -3571,11 +3579,9 @@ class MessageProcessor {
         shouldStartFlow = true;
       }
       
-      // Send redirect message
-      await whatsappService.sendTextMessage(user.whatsappNumber, redirectMessage);
-      
+      // Skip redirect message for new users - go directly to flow
       if (shouldStartFlow) {
-        // Start the onboarding flow
+        // Start the onboarding flow directly without pre-message
         await this.startOnboardingFlow(user);
       }
       
@@ -3641,12 +3647,8 @@ class MessageProcessor {
           `Let's get your MiiMii account fully set up so you can start using our services!\n\nI'll guide you through the process step by step.`
         );
       } else {
-        // Generate AI-processed flow message content
-        const aiAssistant = require('./aiAssistant');
+        // Send the proper onboarding flow message without pre-text
         const userName = user.firstName || user.fullName || 'there';
-        const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
-        
-        // Send the proper onboarding flow message
         const flowToken = whatsappFlowService.generateFlowToken(user.id);
         
         const flowData = {
@@ -3658,7 +3660,7 @@ class MessageProcessor {
             type: 'text',
             text: `👋 Hello ${userName}!`
           },
-          body: personalizedMessage,
+          body: `Hi ${userName}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
           footer: 'Secure • Fast • Easy',
           flowActionPayload: {
             screen: 'QUESTION_ONE',
