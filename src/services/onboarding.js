@@ -124,10 +124,10 @@ class OnboardingService {
       const flowId = config.getWhatsappConfig().onboardingFlowId;
       if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
         // Fallback to text message if flow is not configured
-        const greetingMessage = `👋 *Hello ${userName}!* Welcome to MiiMii!\n\n` +
+      const greetingMessage = `👋 *Hello ${userName}!* Welcome to MiiMii!\n\n` +
                                `I'm your AI assistant. I'll help you set up your account step by step.\n\n` +
-                               `Let's start by collecting some basic information about you.`;
-        
+                             `Let's start by collecting some basic information about you.`;
+      
         await whatsappService.sendTextMessage(user.whatsappNumber, greetingMessage);
       } else {
         // Generate AI-processed flow message content
@@ -182,11 +182,11 @@ class OnboardingService {
       const flowId = config.getWhatsappConfig().onboardingFlowId;
       if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
         // Fallback to text message if flow is not configured
-        const nameMessage = `👋 *Hello ${userName}!* Let's get you set up!\n\n` +
-                           `First, I need to collect some basic information about you.\n\n` +
-                           `What's your full name? (First and Last name)`;
-        
-        await whatsappService.sendTextMessage(user.whatsappNumber, nameMessage);
+      const nameMessage = `👋 *Hello ${userName}!* Let's get you set up!\n\n` +
+                         `First, I need to collect some basic information about you.\n\n` +
+                         `What's your full name? (First and Last name)`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, nameMessage);
       } else {
         // Generate AI-processed flow message content
         const aiAssistant = require('./aiAssistant');
@@ -1565,6 +1565,58 @@ class OnboardingService {
     } catch (error) {
       logger.error('Failed to process onboarding flow data', { error: error.message });
       return { success: false, error: error.message };
+    }
+  }
+
+  // Process completed flow data from WhatsApp Flow
+  async processCompletedFlow(user, flowData) {
+    try {
+      logger.info('Processing completed onboarding flow', {
+        userId: user.id,
+        flowToken: flowData.flowToken,
+        screen: flowData.screen,
+        hasData: !!flowData.data
+      });
+
+      // Extract data from flow response
+      const data = flowData.data || {};
+      
+      // Process the flow data using the existing method
+      const result = await this.processOnboardingFlowData(data, user.whatsappNumber);
+      
+      if (result.success) {
+        logger.info('Onboarding flow completed successfully', {
+          userId: user.id,
+          hasAccountDetails: !!result.accountDetails
+        });
+        
+        return {
+          success: true,
+          userId: user.id,
+          accountDetails: result.accountDetails
+        };
+      } else {
+        logger.error('Onboarding flow completion failed', {
+          userId: user.id,
+          error: result.error
+        });
+        
+        return {
+          success: false,
+          error: result.error
+        };
+      }
+    } catch (error) {
+      logger.error('Error processing completed onboarding flow', {
+        userId: user.id,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 

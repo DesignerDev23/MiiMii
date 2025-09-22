@@ -61,6 +61,24 @@ class MessageProcessor {
         if (!message?.flowResponse?.responseJson) {
           return await this.handleCompletedUserMessage(user, message, 'interactive');
         }
+        
+        // Handle Flow completion
+        if (message?.flowResponse?.responseJson) {
+          logger.info('Processing Flow completion from interactive message', {
+            userId: user.id,
+            flowToken: message.flowResponse.flowToken,
+            responseJson: message.flowResponse.responseJson
+          });
+          
+          // Process as flow completion
+          const flowCompletionData = {
+            flowToken: message.flowResponse.flowToken,
+            screen: 'PIN_VERIFICATION_SCREEN', // Default screen for onboarding completion
+            data: message.flowResponse.responseJson
+          };
+          
+          return await this.processFlowCompletion(flowCompletionData);
+        }
         // Fall through to Flow completion handling below
       }
 
