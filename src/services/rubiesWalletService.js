@@ -63,7 +63,7 @@ class RubiesWalletService {
         // Log activity
         await ActivityLog.logUserActivity(
           userId,
-          'wallet_creation',
+          'wallet_funding',
           'rubies_wallet_created',
           {
             description: 'Rubies wallet created successfully',
@@ -94,7 +94,7 @@ class RubiesWalletService {
       // Log activity
       await ActivityLog.logUserActivity(
         userId,
-        'wallet_creation',
+        'wallet_funding',
         'rubies_wallet_creation_error',
         {
           description: 'Rubies wallet creation failed',
