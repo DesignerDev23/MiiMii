@@ -970,7 +970,7 @@ router.post('/test-interactive-bot', async (req, res) => {
 
         const welcomeText = `👋 *Hey Designer!* 👋\n\n` +
 
-                           `I'm Xara, your Personal Account Manager AI from Xava Technologies! 😎\n\n` +
+                           `I'm your Personal Account Manager AI from MiiMii! 😎\n\n` +
 
                            `I can handle transactions, schedule payments, and even analyze your spending! 📊\n\n` +
 
@@ -1006,7 +1006,7 @@ router.post('/test-interactive-bot', async (req, res) => {
 
         const returnText = `🌟 *Welcome back, Designer!* 🌟\n\n` +
 
-                          `Great to see you again! I'm Xara, your Personal Account Manager AI from Xava Technologies.\n\n` +
+                          `Great to see you again! I'm your Personal Account Manager AI from MiiMii.\n\n` +
 
                           `I'm here to help you manage your finances. What would you like to do today?`;
 

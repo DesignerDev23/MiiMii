@@ -3589,7 +3589,7 @@ class MessageProcessor {
   async startOnboardingFlow(user) {
     try {
       const whatsappService = require('./whatsapp');
-      const onboardingService = require('./onboarding');
+      const config = require('../config');
       
       // Determine the appropriate starting point based on user's current status
       let startingStep = 'greeting';
@@ -3611,13 +3611,23 @@ class MessageProcessor {
         currentOnboardingStep: user.onboardingStep
       });
       
-      // Start the onboarding process
-      await onboardingService.handleOnboarding(
-        user.whatsappNumber, 
-        '', 
-        'text', 
-        user.firstName || 'User'
-      );
+      // Send WhatsApp Flow message for onboarding
+      const flowData = {
+        flowId: config.getWhatsappConfig().welcomeFlowId || '1223628202852216',
+        flowToken: 'unused',
+        flowCta: 'Start Setup',
+        header: {
+          type: 'text',
+          text: `👋 Hello ${user.firstName || 'there'}!`
+        },
+        body: `Let's get your MiiMii account fully set up so you can start using our services!\n\nI'll guide you through the process step by step.`,
+        footer: 'Your data is secure and encrypted'
+      };
+      
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      
+      // Update user step
+      await user.update({ onboardingStep: 'name_collection' });
       
     } catch (error) {
       logger.error('Error starting onboarding flow', { 

@@ -116,17 +116,20 @@ class OnboardingService {
     const userName = user.firstName || contactName || 'there';
     
     if (isGreeting || !user.firstName) {
-      const greetingMessage = `👋 *Hello ${userName}!* Welcome to MiiMii!\n\n` +
-                             `I'm Xara, your AI assistant. I'll help you set up your account step by step.\n\n` +
-                             `Let's start by collecting some basic information about you.`;
+      // Send WhatsApp Flow message instead of button message
+      const flowData = {
+        flowId: config.getWhatsappConfig().welcomeFlowId || '1223628202852216',
+        flowToken: 'unused',
+        flowCta: 'Start Setup',
+        header: {
+          type: 'text',
+          text: `👋 Hello ${userName}!`
+        },
+        body: `Welcome to MiiMii!\n\nI'm your AI assistant. I'll help you set up your account step by step.\n\nLet's start by collecting some basic information about you.`,
+        footer: 'Your data is secure and encrypted'
+      };
       
-      const buttons = [
-        { id: 'start_onboarding', title: '🚀 Start Setup' },
-        { id: 'learn_more', title: '📚 Learn More' },
-        { id: 'get_help', title: '❓ Get Help' }
-      ];
-      
-      await whatsappService.sendButtonMessage(user.whatsappNumber, greetingMessage, buttons);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Move to next step
       await user.update({ onboardingStep: 'name_collection' });
@@ -140,19 +143,27 @@ class OnboardingService {
 
   async startStepByStepOnboarding(user) {
     try {
-      // Start with name collection
+      // Start with name collection using flow message
       const userName = user.firstName || user.fullName || 'there';
       
-      const nameMessage = `👋 *Hello ${userName}!* Let's get you set up!\n\n` +
-                         `First, I need to collect some basic information about you.\n\n` +
-                         `What's your full name? (First and Last name)`;
+      const flowData = {
+        flowId: config.getWhatsappConfig().welcomeFlowId || '1223628202852216',
+        flowToken: 'unused',
+        flowCta: 'Enter Details',
+        header: {
+          type: 'text',
+          text: `👋 Hello ${userName}!`
+        },
+        body: `Let's get you set up!\n\nFirst, I need to collect some basic information about you.\n\nWhat's your full name? (First and Last name)`,
+        footer: 'Your data is secure and encrypted'
+      };
       
-      await whatsappService.sendTextMessage(user.whatsappNumber, nameMessage);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       // Update user step
       await user.update({ onboardingStep: 'name_collection' });
       
-      logger.info('Started step-by-step onboarding', {
+      logger.info('Started step-by-step onboarding with flow', {
         userId: user.id,
         phoneNumber: user.whatsappNumber
       });
