@@ -116,20 +116,46 @@ class OnboardingService {
     const userName = user.firstName || contactName || 'there';
     
     if (isGreeting || !user.firstName) {
-      // Send WhatsApp Flow message instead of button message
-      const flowData = {
-        flowId: config.getWhatsappConfig().welcomeFlowId || '1223628202852216',
-        flowToken: 'unused',
-        flowCta: 'Start Setup',
-        header: {
-          type: 'text',
-          text: `👋 Hello ${userName}!`
-        },
-        body: `Welcome to MiiMii!\n\nI'm your AI assistant. I'll help you set up your account step by step.\n\nLet's start by collecting some basic information about you.`,
-        footer: 'Your data is secure and encrypted'
-      };
+      // Send the original onboarding flow message
+      const config = require('../config');
+      const whatsappFlowService = require('./whatsappFlowService');
       
-      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      // Check if we have a valid flow ID configured
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        // Fallback to text message if flow is not configured
+        const greetingMessage = `👋 *Hello ${userName}!* Welcome to MiiMii!\n\n` +
+                               `I'm your AI assistant. I'll help you set up your account step by step.\n\n` +
+                               `Let's start by collecting some basic information about you.`;
+        
+        await whatsappService.sendTextMessage(user.whatsappNumber, greetingMessage);
+      } else {
+        // Send the proper onboarding flow message
+        const flowToken = whatsappFlowService.generateFlowToken(user.id);
+        
+        const flowData = {
+          flowId: flowId,
+          flowToken: flowToken,
+          flowCta: 'Complete Onboarding',
+          flowAction: 'navigate',
+          header: {
+            type: 'text',
+            text: 'MiiMii Account Setup'
+          },
+          body: `Hi ${userName}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          footer: 'Secure • Fast • Easy',
+          flowActionPayload: {
+            screen: 'QUESTION_ONE',
+            data: {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              step: 'personal_details'
+            }
+          }
+        };
+        
+        await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      }
       
       // Move to next step
       await user.update({ onboardingStep: 'name_collection' });
@@ -143,29 +169,55 @@ class OnboardingService {
 
   async startStepByStepOnboarding(user) {
     try {
-      // Start with name collection using flow message
+      // Start with name collection using the proper onboarding flow
       const userName = user.firstName || user.fullName || 'there';
+      const config = require('../config');
+      const whatsappFlowService = require('./whatsappFlowService');
       
-      const flowData = {
-        flowId: config.getWhatsappConfig().welcomeFlowId || '1223628202852216',
-        flowToken: 'unused',
-        flowCta: 'Enter Details',
-        header: {
-          type: 'text',
-          text: `👋 Hello ${userName}!`
-        },
-        body: `Let's get you set up!\n\nFirst, I need to collect some basic information about you.\n\nWhat's your full name? (First and Last name)`,
-        footer: 'Your data is secure and encrypted'
-      };
-      
-      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      // Check if we have a valid flow ID configured
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        // Fallback to text message if flow is not configured
+        const nameMessage = `👋 *Hello ${userName}!* Let's get you set up!\n\n` +
+                           `First, I need to collect some basic information about you.\n\n` +
+                           `What's your full name? (First and Last name)`;
+        
+        await whatsappService.sendTextMessage(user.whatsappNumber, nameMessage);
+      } else {
+        // Send the proper onboarding flow message
+        const flowToken = whatsappFlowService.generateFlowToken(user.id);
+        
+        const flowData = {
+          flowId: flowId,
+          flowToken: flowToken,
+          flowCta: 'Complete Onboarding',
+          flowAction: 'navigate',
+          header: {
+            type: 'text',
+            text: 'MiiMii Account Setup'
+          },
+          body: `Hi ${userName}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          footer: 'Secure • Fast • Easy',
+          flowActionPayload: {
+            screen: 'QUESTION_ONE',
+            data: {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              step: 'personal_details'
+            }
+          }
+        };
+        
+        await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      }
       
       // Update user step
       await user.update({ onboardingStep: 'name_collection' });
       
-      logger.info('Started step-by-step onboarding with flow', {
+      logger.info('Started step-by-step onboarding with proper flow', {
         userId: user.id,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        flowId: flowId
       });
       
       return { success: true, step: 'name_collection_started' };

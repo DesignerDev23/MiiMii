@@ -3611,20 +3611,44 @@ class MessageProcessor {
         currentOnboardingStep: user.onboardingStep
       });
       
-      // Send WhatsApp Flow message for onboarding
-      const flowData = {
-        flowId: config.getWhatsappConfig().welcomeFlowId || '1223628202852216',
-        flowToken: 'unused',
-        flowCta: 'Start Setup',
-        header: {
-          type: 'text',
-          text: `👋 Hello ${user.firstName || 'there'}!`
-        },
-        body: `Let's get your MiiMii account fully set up so you can start using our services!\n\nI'll guide you through the process step by step.`,
-        footer: 'Your data is secure and encrypted'
-      };
+      // Send the proper onboarding flow message
+      const whatsappFlowService = require('./whatsappFlowService');
       
-      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      // Check if we have a valid flow ID configured
+      const flowId = config.getWhatsappConfig().onboardingFlowId;
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'miimii_onboarding_flow' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        // Fallback to text message if flow is not configured
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `Let's get your MiiMii account fully set up so you can start using our services!\n\nI'll guide you through the process step by step.`
+        );
+      } else {
+        // Send the proper onboarding flow message
+        const flowToken = whatsappFlowService.generateFlowToken(user.id);
+        
+        const flowData = {
+          flowId: flowId,
+          flowToken: flowToken,
+          flowCta: 'Complete Onboarding',
+          flowAction: 'navigate',
+          header: {
+            type: 'text',
+            text: 'MiiMii Account Setup'
+          },
+          body: `Hi ${user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          footer: 'Secure • Fast • Easy',
+          flowActionPayload: {
+            screen: 'QUESTION_ONE',
+            data: {
+              userId: user.id,
+              phoneNumber: user.whatsappNumber,
+              step: 'personal_details'
+            }
+          }
+        };
+        
+        await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
+      }
       
       // Update user step
       await user.update({ onboardingStep: 'name_collection' });
