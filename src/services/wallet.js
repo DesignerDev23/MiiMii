@@ -547,13 +547,17 @@ class WalletService {
         virtualAccountName: virtualAccountResult.accountName
       });
 
-      // Note: Welcome message is sent by onboarding service to prevent duplicates
+      // Mark user onboarding as completed since virtual account is created
+      await user.update({
+        onboardingStep: 'completed'
+      });
 
       logger.info('Virtual account created successfully for wallet', {
         userId,
         accountNumber: virtualAccountResult.accountNumber,
         bankName: virtualAccountResult.bankName,
-        accountName: virtualAccountResult.accountName
+        accountName: virtualAccountResult.accountName,
+        onboardingStep: 'completed'
       });
 
       return {

@@ -32,6 +32,20 @@ class MessageProcessor {
       
       // Get or create user with proper parameters
       const user = await userService.getOrCreateUser(from, userName);
+      
+      // Check if user has completed onboarding (virtual account creation)
+      const onboardingStatus = await userService.checkUserOnboardingStatus(user.id);
+      if (!onboardingStatus.isComplete) {
+        logger.info('User has not completed onboarding, redirecting to onboarding flow', {
+          userId: user.id,
+          onboardingStep: user.onboardingStep,
+          hasVirtualAccount: onboardingStatus.hasVirtualAccount,
+          missingFields: onboardingStatus.missingFields
+        });
+        
+        await this.redirectToOnboarding(user, onboardingStatus);
+        return;
+      }
       // Mark as read + typing indicator to improve UX while processing
       try {
         const whatsappService = require('./whatsapp');
@@ -3493,6 +3507,130 @@ class MessageProcessor {
       // Handle other interactive message types
       await whatsappService.sendTextMessage(user.whatsappNumber, 
         "I received your interactive message. Please send a text message or use the menu options.");
+    }
+  }
+
+
+  /**
+   * Redirect user to onboarding flow based on their current status
+   */
+  async redirectToOnboarding(user, onboardingStatus) {
+    try {
+      const whatsappService = require('./whatsapp');
+      const onboardingService = require('./onboarding');
+      
+      // Clear any existing conversation state
+      await user.clearConversationState();
+      
+      // Determine the appropriate onboarding step
+      let redirectMessage = '';
+      let shouldStartFlow = false;
+      
+      if (onboardingStatus.missingFields.length > 0) {
+        // User is missing required fields
+        const missingFieldsText = onboardingStatus.missingFields.join(', ');
+        redirectMessage = `👋 Hi ${user.firstName || 'there'}!\n\n` +
+          `I notice you haven't completed your account setup yet. To use MiiMii's services, you'll need to provide some information:\n\n` +
+          `📋 Missing: ${missingFieldsText}\n\n` +
+          `Let's get you set up quickly! 🚀`;
+        shouldStartFlow = true;
+      } else if (!onboardingStatus.hasVirtualAccount) {
+        // User has all fields but no virtual account
+        redirectMessage = `👋 Hi ${user.firstName || 'there'}!\n\n` +
+          `Great! I have your information, but I need to create your virtual account to complete your setup.\n\n` +
+          `Let's finish your account setup! 🚀`;
+        shouldStartFlow = true;
+      } else if (!onboardingStatus.isOnboardingComplete) {
+        // User has virtual account but onboarding not marked complete
+        redirectMessage = `👋 Hi ${user.firstName || 'there'}!\n\n` +
+          `I see you have a virtual account, but let me just verify everything is set up correctly.\n\n` +
+          `Let's complete your account setup! 🚀`;
+        shouldStartFlow = true;
+      } else {
+        // Fallback - something unexpected
+        redirectMessage = `👋 Hi ${user.firstName || 'there'}!\n\n` +
+          `Let's get your MiiMii account fully set up so you can start using our services! 🚀`;
+        shouldStartFlow = true;
+      }
+      
+      // Send redirect message
+      await whatsappService.sendTextMessage(user.whatsappNumber, redirectMessage);
+      
+      if (shouldStartFlow) {
+        // Start the onboarding flow
+        await this.startOnboardingFlow(user);
+      }
+      
+      logger.info('User redirected to onboarding', {
+        userId: user.id,
+        onboardingStep: user.onboardingStep,
+        hasVirtualAccount: onboardingStatus.hasVirtualAccount,
+        missingFields: onboardingStatus.missingFields
+      });
+      
+    } catch (error) {
+      logger.error('Error redirecting to onboarding', { 
+        error: error.message, 
+        userId: user.id 
+      });
+      
+      // Fallback message
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `👋 Hi! Let's get your MiiMii account set up. Please type "start" to begin the setup process.`
+      );
+    }
+  }
+
+  /**
+   * Start the onboarding flow for the user
+   */
+  async startOnboardingFlow(user) {
+    try {
+      const whatsappService = require('./whatsapp');
+      const onboardingService = require('./onboarding');
+      
+      // Determine the appropriate starting point based on user's current status
+      let startingStep = 'greeting';
+      
+      if (user.onboardingStep && user.onboardingStep !== 'initial') {
+        // User has started onboarding before, continue from where they left off
+        startingStep = user.onboardingStep;
+      } else if (user.firstName && user.lastName) {
+        // User has basic info, start from KYC
+        startingStep = 'kyc_data';
+      } else if (user.firstName) {
+        // User has first name, continue from name collection
+        startingStep = 'name_collection';
+      }
+      
+      logger.info('Starting onboarding flow', {
+        userId: user.id,
+        startingStep,
+        currentOnboardingStep: user.onboardingStep
+      });
+      
+      // Start the onboarding process
+      await onboardingService.handleOnboarding(
+        user.whatsappNumber, 
+        '', 
+        'text', 
+        user.firstName || 'User'
+      );
+      
+    } catch (error) {
+      logger.error('Error starting onboarding flow', { 
+        error: error.message, 
+        userId: user.id 
+      });
+      
+      // Fallback to simple text-based onboarding
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `Let's get started! Please provide your full name (First Name Last Name).`
+      );
     }
   }
 }

@@ -1338,11 +1338,13 @@ async function handleBvnVerificationScreen(data, userId, tokenData = {}) {
         };
       }
     } catch (apiError) {
-      // API error - save BVN but mark as unverified
+      // API error - handle different types of errors
       logger.error('BVN verification API error from Flow', {
         userId: userId || 'unknown',
         bvnMasked: `***${bvn.slice(-4)}`,
-        error: apiError.message
+        error: apiError.message,
+        errorType: apiError.name || 'Unknown',
+        isRetryable: apiError.isRetryable || false
       });
 
       // Save BVN but mark as unverified
@@ -1353,15 +1355,40 @@ async function handleBvnVerificationScreen(data, userId, tokenData = {}) {
         });
       }
 
-      return {
-        screen: 'screen_wkunnj',
-        data: {
-          success: true,
-          message: 'BVN saved. Verification will be completed later due to technical issues. Please proceed to set up your PIN.',
-          bvn_verified: false,
-          warning: 'BVN verification pending'
-        }
-      };
+      // Handle different error types
+      const isServerError = apiError.message && (
+        apiError.message.includes('502') || 
+        apiError.message.includes('503') || 
+        apiError.message.includes('504') ||
+        apiError.message.includes('Gateway time-out') ||
+        apiError.message.includes('Bad Gateway')
+      );
+
+      if (isServerError) {
+        // Server error - allow user to proceed with manual verification later
+        return {
+          screen: 'screen_wkunnj',
+          data: {
+            success: true,
+            message: 'BVN saved successfully! ✅\n\nDue to temporary technical issues with our verification service, your BVN will be verified manually within 24 hours.\n\nYou can proceed to set up your PIN and start using your account.',
+            bvn_verified: false,
+            warning: 'BVN verification pending - will be completed within 24 hours',
+            can_proceed: true
+          }
+        };
+      } else {
+        // Other API errors - more specific message
+        return {
+          screen: 'screen_kswuhq',
+          data: {
+            error: 'BVN verification service is temporarily unavailable. Please try again in a few minutes.',
+            validation: {
+              bvn: 'Service temporarily unavailable'
+            },
+            retry_available: true
+          }
+        };
+      }
     }
 
   } catch (error) {

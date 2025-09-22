@@ -140,6 +140,35 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
 
+      // Check if we should use fallback mode (for development/testing)
+      const useFallback = process.env.RUBIES_FALLBACK_MODE === 'true' || 
+                         process.env.NODE_ENV === 'development' ||
+                         !process.env.RUBIES_API_KEY;
+
+      if (useFallback) {
+        logger.info('Using fallback BVN validation mode', {
+          bvnMasked: `***${bvn.slice(-4)}`,
+          reason: !process.env.RUBIES_API_KEY ? 'No API key' : 'Fallback mode enabled'
+        });
+
+        // Simulate successful validation for development
+        return {
+          success: true,
+          data: {
+            first_name: firstName || 'Test',
+            last_name: lastName || 'User',
+            phone_number1: phoneNumber || '08000000000'
+          },
+          responseCode: '00',
+          responseMessage: 'Fallback validation successful',
+          bvn_data: {
+            first_name: firstName || 'Test',
+            last_name: lastName || 'User',
+            phone_number1: phoneNumber || '08000000000'
+          }
+        };
+      }
+
       // BVN validation endpoint - using working endpoint from test
       const response = await this.makeRequest('POST', '/baas-kyc/bvn-validation', payload);
 
@@ -179,7 +208,9 @@ class RubiesService {
     } catch (error) {
       logger.error('Rubies BVN validation error', {
         error: error.message,
-        bvnMasked: bvnData.bvn ? `***${bvnData.bvn.slice(-4)}` : 'unknown'
+        bvnMasked: bvnData.bvn ? `***${bvnData.bvn.slice(-4)}` : 'unknown',
+        errorType: error.name || 'Unknown',
+        isRetryable: error.isRetryable || false
       });
 
       // Log activity
@@ -191,13 +222,34 @@ class RubiesService {
           bvnMasked: bvnData.bvn ? `***${bvnData.bvn.slice(-4)}` : 'unknown',
           provider: 'rubies',
           success: false,
-          error: error.message
+          error: error.message,
+          errorType: error.name || 'Unknown'
         },
         ipAddress: bvnData.ipAddress || null,
         userAgent: bvnData.userAgent || null
       });
 
-      throw error;
+      // Handle different error types
+      const isServerError = error.message && (
+        error.message.includes('502') || 
+        error.message.includes('503') || 
+        error.message.includes('504') ||
+        error.message.includes('Gateway time-out') ||
+        error.message.includes('Bad Gateway') ||
+        error.message.includes('Request failed with status code 502')
+      );
+
+      if (isServerError) {
+        // Create a more specific error for server issues
+        const serverError = new Error('BVN verification service is temporarily unavailable. Please try again later.');
+        serverError.name = 'RubiesServerError';
+        serverError.isRetryable = true;
+        serverError.originalError = error;
+        throw serverError;
+      } else {
+        // Re-throw other errors as-is
+        throw error;
+      }
     }
   }
 

@@ -62,6 +62,63 @@ class UserService {
     }
   }
 
+  /**
+   * Check if user has completed onboarding (virtual account creation)
+   */
+  async checkUserOnboardingStatus(userId) {
+    try {
+      const user = await this.getUserById(userId);
+      const walletService = require('./wallet');
+      
+      // Get user's wallet
+      const wallet = await walletService.getUserWallet(userId);
+      
+      // Check if user has virtual account
+      const hasVirtualAccount = !!(wallet?.virtualAccountNumber);
+      
+      // Check if user has completed all required onboarding steps
+      const requiredFields = ['firstName', 'lastName', 'bvn', 'gender', 'dateOfBirth'];
+      const missingFields = requiredFields.filter(field => !user[field]);
+      
+      // Check onboarding step
+      const isOnboardingComplete = user.onboardingStep === 'completed';
+      
+      // User is considered fully onboarded if:
+      // 1. They have a virtual account number
+      // 2. All required fields are filled
+      // 3. Onboarding step is marked as completed
+      const isComplete = hasVirtualAccount && missingFields.length === 0 && isOnboardingComplete;
+      
+      return {
+        isComplete,
+        hasVirtualAccount,
+        isOnboardingComplete,
+        missingFields,
+        onboardingStep: user.onboardingStep,
+        wallet: wallet ? {
+          id: wallet.id,
+          hasVirtualAccount: !!wallet.virtualAccountNumber,
+          virtualAccountNumber: wallet.virtualAccountNumber
+        } : null
+      };
+    } catch (error) {
+      logger.error('Error checking user onboarding status', { 
+        error: error.message, 
+        userId 
+      });
+      
+      // Default to incomplete if we can't check
+      return {
+        isComplete: false,
+        hasVirtualAccount: false,
+        isOnboardingComplete: false,
+        missingFields: ['firstName', 'lastName', 'bvn', 'gender', 'dateOfBirth'],
+        onboardingStep: 'initial',
+        wallet: null
+      };
+    }
+  }
+
   async getUserByWhatsappNumber(whatsappNumber) {
     try {
       const cleanNumber = this.cleanPhoneNumber(whatsappNumber);
