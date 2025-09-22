@@ -130,6 +130,10 @@ class OnboardingService {
         
         await whatsappService.sendTextMessage(user.whatsappNumber, greetingMessage);
       } else {
+        // Generate AI-processed flow message content
+        const aiAssistant = require('./aiAssistant');
+        const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+        
         // Send the proper onboarding flow message
         const flowToken = whatsappFlowService.generateFlowToken(user.id);
         
@@ -140,9 +144,9 @@ class OnboardingService {
           flowAction: 'navigate',
           header: {
             type: 'text',
-            text: 'MiiMii Account Setup'
+            text: `👋 Hello ${userName}!`
           },
-          body: `Hi ${userName}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          body: personalizedMessage,
           footer: 'Secure • Fast • Easy',
           flowActionPayload: {
             screen: 'QUESTION_ONE',
@@ -184,6 +188,10 @@ class OnboardingService {
         
         await whatsappService.sendTextMessage(user.whatsappNumber, nameMessage);
       } else {
+        // Generate AI-processed flow message content
+        const aiAssistant = require('./aiAssistant');
+        const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+        
         // Send the proper onboarding flow message
         const flowToken = whatsappFlowService.generateFlowToken(user.id);
         
@@ -194,9 +202,9 @@ class OnboardingService {
           flowAction: 'navigate',
           header: {
             type: 'text',
-            text: 'MiiMii Account Setup'
+            text: `👋 Hello ${userName}!`
           },
-          body: `Hi ${userName}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          body: personalizedMessage,
           footer: 'Secure • Fast • Easy',
           flowActionPayload: {
             screen: 'QUESTION_ONE',

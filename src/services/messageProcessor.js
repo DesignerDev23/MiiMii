@@ -3623,6 +3623,11 @@ class MessageProcessor {
           `Let's get your MiiMii account fully set up so you can start using our services!\n\nI'll guide you through the process step by step.`
         );
       } else {
+        // Generate AI-processed flow message content
+        const aiAssistant = require('./aiAssistant');
+        const userName = user.firstName || user.fullName || 'there';
+        const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+        
         // Send the proper onboarding flow message
         const flowToken = whatsappFlowService.generateFlowToken(user.id);
         
@@ -3633,9 +3638,9 @@ class MessageProcessor {
           flowAction: 'navigate',
           header: {
             type: 'text',
-            text: 'MiiMii Account Setup'
+            text: `👋 Hello ${userName}!`
           },
-          body: `Hi ${user.firstName || 'there'}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          body: personalizedMessage,
           footer: 'Secure • Fast • Easy',
           flowActionPayload: {
             screen: 'QUESTION_ONE',

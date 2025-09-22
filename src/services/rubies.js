@@ -12,15 +12,15 @@ class RubiesService {
     this.devURL = 'https://api-sme-dev.rubies.ng/dev';
     this.productionURL = 'https://api-sme.rubies.ng/prod'; // Production URL from documentation
 
-    // Environment detection - Use development with DEV API key
+    // Environment detection - Force production environment
     const overrideEnv = (process.env.RUBIES_ENV || process.env.APP_ENV || '').toLowerCase();
     const isProduction = overrideEnv
       ? overrideEnv === 'prod' || overrideEnv === 'production'
       : process.env.NODE_ENV === 'production';
 
-    // Since we have DEV API key, use development environment
-    this.selectedEnvironment = 'development';
-    this.baseURL = this.devURL;
+    // Force production environment
+    this.selectedEnvironment = 'production';
+    this.baseURL = this.productionURL;
 
     // Rubies API credentials - Uses Authorization header with API key (sk_test_ or sk_live_)
     this.apiKey = process.env.RUBIES_API_KEY;
@@ -140,10 +140,9 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
 
-      // Check if we should use fallback mode (for development/testing)
-      const useFallback = process.env.RUBIES_FALLBACK_MODE === 'true' || 
-                         process.env.NODE_ENV === 'development' ||
-                         !process.env.RUBIES_API_KEY;
+      // Check if we should use fallback mode (only for development/testing)
+      const useFallback = process.env.RUBIES_FALLBACK_MODE === 'true' && 
+                         process.env.NODE_ENV === 'development';
 
       if (useFallback) {
         logger.info('Using fallback BVN validation mode', {
