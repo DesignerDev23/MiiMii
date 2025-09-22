@@ -988,6 +988,37 @@ Extract intent and data from this message. Consider the user context and any ext
             }
           } catch (e) {
             logger.warn('Fallback bank list scan failed', { error: e.message });
+            
+            // Final fallback: use static bank mapping
+            const staticBankMapping = {
+              'opay': '100004',
+              'moniepoint': '100004', 
+              'gtbank': '000058',
+              'gtb': '000058',
+              'access': '000014',
+              'first bank': '000016',
+              'firstbank': '000016',
+              'zenith': '000057',
+              'uba': '000033',
+              'keystone': '000082',
+              'stanbic': '000221',
+              'ecobank': '000050',
+              'fidelity': '000070',
+              'union': '000032',
+              'wema': '000035',
+              'sterling': '000232',
+              'kuda': '000090',
+              'palm pay': '000091',
+              'palmpay': '000091'
+            };
+            
+            const bankNameLower = bankName.toLowerCase().trim();
+            const mappedCode = staticBankMapping[bankNameLower];
+            if (mappedCode) {
+              logger.info('Using static bank mapping fallback', { bankName, mappedCode });
+              resolvedBankCode = mappedCode;
+              resolvedBankName = bankName;
+            }
           }
         }
       }
@@ -1007,6 +1038,41 @@ Extract intent and data from this message. Consider the user context and any ext
           }
         } catch (err) {
           logger.warn('Bank inference from original message failed', { error: err.message });
+          
+          // Fallback: try static bank mapping for tokens
+          const staticBankMapping = {
+            'opay': '100004',
+            'moniepoint': '100004', 
+            'gtbank': '000058',
+            'gtb': '000058',
+            'access': '000014',
+            'first bank': '000016',
+            'firstbank': '000016',
+            'zenith': '000057',
+            'uba': '000033',
+            'keystone': '000082',
+            'stanbic': '000221',
+            'ecobank': '000050',
+            'fidelity': '000070',
+            'union': '000032',
+            'wema': '000035',
+            'sterling': '000232',
+            'kuda': '000090',
+            'palm pay': '000091',
+            'palmpay': '000091'
+          };
+          
+          const lower = originalMessage.toLowerCase();
+          const tokens = lower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
+          for (const token of tokens) {
+            const mappedCode = staticBankMapping[token];
+            if (mappedCode) {
+              logger.info('Using static bank mapping for token', { token, mappedCode });
+              resolvedBankCode = mappedCode;
+              resolvedBankName = token;
+              break;
+            }
+          }
         }
       }
       

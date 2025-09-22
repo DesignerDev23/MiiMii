@@ -631,8 +631,17 @@ class RubiesService {
     } catch (error) {
       logger.error('Failed to get bank list from Rubies', { 
         error: error.message,
-        environment: this.selectedEnvironment 
+        environment: this.selectedEnvironment,
+        statusCode: error.response?.status,
+        is404: error.response?.status === 404
       });
+      
+      // If it's a 404 error, return empty array to trigger fallback mechanisms
+      if (error.response?.status === 404) {
+        logger.warn('Rubies bank list endpoint not found (404), using fallback mechanisms');
+        return [];
+      }
+      
       throw error;
     }
   }
@@ -1127,6 +1136,65 @@ class RubiesService {
         error: error.message, 
         input: raw 
       });
+    }
+
+    // Fallback to static bank mapping
+    const staticBankMapping = {
+      'opay': '100004',
+      'moniepoint': '100004', 
+      'gtbank': '000058',
+      'gtb': '000058',
+      'guaranty trust': '000058',
+      'access': '000014',
+      'access bank': '000014',
+      'first bank': '000016',
+      'firstbank': '000016',
+      'fbn': '000016',
+      'zenith': '000057',
+      'zenith bank': '000057',
+      'uba': '000033',
+      'united bank for africa': '000033',
+      'keystone': '000082',
+      'keystone bank': '000082',
+      'stanbic': '000221',
+      'stanbic ibtc': '000221',
+      'ibtc': '000221',
+      'ecobank': '000050',
+      'eco bank': '000050',
+      'fidelity': '000070',
+      'fidelity bank': '000070',
+      'union': '000032',
+      'union bank': '000032',
+      'wema': '000035',
+      'wema bank': '000035',
+      'sterling': '000232',
+      'sterling bank': '000232',
+      'kuda': '000090',
+      'kuda bank': '000090',
+      'palm pay': '000091',
+      'palmpay': '000091',
+      'vfd': '000092',
+      'vfd microfinance': '000092',
+      'providus': '000101',
+      'providus bank': '000101',
+      'jaiz': '000103',
+      'jaiz bank': '000103',
+      'taj': '000104',
+      'taj bank': '000104',
+      'unity': '000105',
+      'unity bank': '000105',
+      'heritage': '000106',
+      'heritage bank': '000106'
+    };
+
+    const mappedCode = staticBankMapping[normalized];
+    if (mappedCode) {
+      logger.info('Using static bank mapping for Rubies', {
+        input: raw,
+        normalized,
+        mappedCode
+      });
+      return mappedCode;
     }
 
     return null;
