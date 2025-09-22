@@ -544,26 +544,40 @@ class RubiesService {
   async initiateTransfer(transferData) {
     try {
       // Validate transfer data
-      const requiredFields = ['amount', 'accountNumber', 'bankCode', 'narration', 'reference'];
+      const requiredFields = ['userId', 'amount', 'accountNumber', 'bankCode', 'narration', 'reference'];
       for (const field of requiredFields) {
         if (!transferData[field]) {
           throw new Error(`Missing required field: ${field}`);
         }
       }
 
+      // Get user's virtual account number from wallet
+      const { Wallet } = require('../models');
+      const userWallet = await Wallet.findOne({
+        where: { userId: transferData.userId },
+        include: [{ model: require('../models').User, as: 'user' }]
+      });
+
+      if (!userWallet || !userWallet.virtualAccountNumber) {
+        throw new Error('User virtual account not found');
+      }
+
       const payload = {
-        amount: parseFloat(transferData.amount).toString(),
-        accountNumber: transferData.accountNumber.toString().trim(),
+        amount: parseFloat(transferData.amount), // Should be number, not string
         bankCode: transferData.bankCode.toString().trim(),
+        bankName: transferData.bankName || 'OPay',
+        creditAccountName: transferData.beneficiaryName || 'Recipient',
+        creditAccountNumber: transferData.accountNumber.toString().trim(),
+        debitAccountName: transferData.senderName || 'MiiMii User',
+        debitAccountNumber: userWallet.virtualAccountNumber,
         narration: transferData.narration.trim(),
         reference: transferData.reference,
-        beneficiaryName: transferData.beneficiaryName || '',
-        senderName: transferData.senderName || 'MiiMii User'
+        sessionId: transferData.reference // Use reference as sessionId
       };
 
       logger.info('Initiating Rubies transfer', {
         amount: payload.amount,
-        accountNumber: payload.accountNumber,
+        creditAccountNumber: payload.creditAccountNumber,
         bankCode: payload.bankCode,
         reference: payload.reference,
         environment: this.selectedEnvironment

@@ -565,12 +565,15 @@ class BankTransferService {
       try {
         // Process transfer through Rubies API
         const transferResult = await this.processRubiesTransfer({
+          userId: userId,
           accountNumber: accountValidation.accountNumber,
           bankCode: accountValidation.bankCode,
           amount: feeCalculation.amount,
           narration: narration || 'Wallet transfer',
           reference: transaction.reference,
-          senderName: `${user.firstName} ${user.lastName}`.trim() || user.whatsappNumber
+          senderName: `${user.firstName} ${user.lastName}`.trim() || user.whatsappNumber,
+          beneficiaryName: accountValidation.accountName,
+          bankName: accountValidation.bankName || accountValidation.bank
         });
 
         if (transferResult.success) {
