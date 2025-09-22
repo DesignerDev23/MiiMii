@@ -505,12 +505,12 @@ class RubiesService {
     try {
       const payload = {
         accountNumber: accountNumber.toString().trim(),
-        bankCode: bankCode.toString().trim()
+        accountBankCode: bankCode.toString().trim()
       };
 
       logger.info('Making Rubies name enquiry', {
         accountNumber: payload.accountNumber,
-        bankCode: payload.bankCode,
+        accountBankCode: payload.accountBankCode,
         environment: this.selectedEnvironment
       });
 
@@ -605,8 +605,10 @@ class RubiesService {
         environment: this.selectedEnvironment
       });
       
-      // Bank list endpoint - using working endpoint from test
-      const response = await this.makeRequest('POST', '/baas-transaction/bank-list', {});
+      // Bank list endpoint - using correct endpoint from documentation
+      const response = await this.makeRequest('POST', '/baas-transaction/bankList', {
+        readAll: "YES"
+      });
 
       if (response.responseCode === '00' && response.data) {
         const banks = response.data;
@@ -1054,6 +1056,80 @@ class RubiesService {
     }
     
     return normalized;
+  }
+
+  // Resolve institution code from bank name or code
+  async resolveInstitutionCode(input) {
+    if (!input) return null;
+
+    const raw = String(input).trim().toLowerCase();
+
+    // Ignore pure numeric tokens (prevents mapping amounts like "100" -> 000100)
+    if (/^\d+$/.test(raw)) {
+      return null;
+    }
+
+    // Skip generic words that commonly appear in messages
+    const genericWords = new Set([
+      'bank','account','acct','acc','number','no','acctno','accno','send','transfer','to','for','the','my','your',
+      'amount','money','naira','fee','charges','pin','yes','no','confirm','confirmation','receipt','reference','ref',
+      'successful','success','completed','complete','please','help','buy','pay','data','airtime','bill','bills',
+      'recipient','name','mr','mrs','ms','sir','ma','and','on','in','of','with','at','from','via'
+    ]);
+    if (genericWords.has(raw)) {
+      return null;
+    }
+
+    // If already a 6-digit institution code
+    if (/^\d{6}$/.test(raw)) {
+      return raw;
+    }
+
+    // If 3-digit bank code (CBN style), try convert using mappings
+    if (/^\d{3}$/.test(raw)) {
+      const codeMapping = {
+        '082': '000082', '044': '000044', '014': '000014', '011': '000016', '058': '000058', '057': '000057',
+        '070': '000070', '032': '000032', '035': '000035', '232': '000232', '050': '000050', '214': '000214',
+        '221': '000221', '068': '000068', '023': '000023', '030': '000030', '215': '000215', '084': '000084',
+        '033': '000033', '090': '000090', '091': '000091', '092': '000092', '093': '000093', '094': '000094',
+        '095': '000095', '096': '000096', '097': '000097', '098': '000098', '099': '000099', '100': '000100',
+        '101': '000101', '102': '000102', '103': '000103', '104': '000104', '105': '000105', '106': '000106'
+      };
+      return codeMapping[raw] || null;
+    }
+
+    // Normalize common synonyms/misspellings
+    let normalized = raw
+      .replace(/moni[e]?point|monipoint/gi, 'moniepoint')
+      .replace(/gtb|gt bank|guaranty\s*trust/gi, 'gtbank')
+      .replace(/first\s*bank(?:\s*of\s*nigeria)?|firstbank|fbn/gi, 'first bank')
+      .replace(/stanbic\s*ibtc|ibtc/gi, 'stanbic ibtc')
+      .replace(/eco\s*bank/gi, 'ecobank')
+      .replace(/opay/gi, 'opay')
+      .trim();
+
+    // Try to get bank list from Rubies API
+    try {
+      const bankList = await this.getBankList();
+      if (bankList && bankList.length > 0) {
+        const bankNameLower = normalized.toLowerCase();
+        const matchingBank = bankList.find(bank => {
+          const institutionName = bank.name.toLowerCase();
+          return institutionName.includes(bankNameLower) || bankNameLower.includes(institutionName);
+        });
+        
+        if (matchingBank) {
+          return matchingBank.code;
+        }
+      }
+    } catch (error) {
+      logger.warn('Rubies bank list lookup failed during institution code resolution', { 
+        error: error.message, 
+        input: raw 
+      });
+    }
+
+    return null;
   }
 }
 

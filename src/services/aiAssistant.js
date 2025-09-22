@@ -998,7 +998,7 @@ Extract intent and data from this message. Consider the user context and any ext
           const lower = originalMessage.toLowerCase();
           const tokens = lower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
           for (const token of tokens) {
-            const code = await bellbankService.resolveInstitutionCode(token);
+            const code = await rubiesService.resolveInstitutionCode(token);
             if (code) {
               resolvedBankCode = code;
               resolvedBankName = token;
@@ -2730,10 +2730,10 @@ Welcome to the future of banking! 🚀`;
           let detectedBankName = null;
           let detectedBankCode = null;
           try {
-            const bellbankService = require('./bellbank');
+            const rubiesService = require('./rubies');
             const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
             for (const token of tokens) {
-              const code = await bellbankService.resolveInstitutionCode(token);
+              const code = await rubiesService.resolveInstitutionCode(token);
               if (code) {
                 detectedBankName = token; // keep original token; proper name will be set after validation
                 detectedBankCode = code;  // 6-digit institution code
