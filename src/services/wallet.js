@@ -1,6 +1,7 @@
 const { Wallet, Transaction, User, ActivityLog } = require('../models');
 const { sequelize } = require('../database/connection');
 const rubiesService = require('./rubies');
+const rubiesWalletService = require('./rubiesWalletService');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize'); // Added Op for date range queries
@@ -29,37 +30,38 @@ class WalletService {
       // Get user for virtual account creation
       const user = await User.findByPk(userId);
       
-      // Only create virtual account if user has completed onboarding
+      // Only create Rubies wallet if user has completed onboarding
       if (user.onboardingStep === 'completed' && user.firstName && user.lastName && user.bvn && user.gender && user.dateOfBirth) {
         try {
-          const virtualAccount = await bellBankService.createVirtualAccount({
-            firstName: user.firstName,
-            lastName: user.lastName,
-            middleName: user.middleName,
-            phoneNumber: user.whatsappNumber,
-            address: user.address,
-            bvn: user.bvn,
-            gender: user.gender,
-            dateOfBirth: user.dateOfBirth,
-            userId: user.id
-          });
+          const rubiesWallet = await rubiesWalletService.createRubiesWallet(userId);
           
-          await wallet.update({
-            virtualAccountNumber: virtualAccount.accountNumber,
-            virtualAccountBank: virtualAccount.bankName,
-            virtualAccountName: virtualAccount.accountName,
-            bankCode: virtualAccount.bankCode,
-            accountReference: virtualAccount.reference
-          }, { transaction });
+          if (rubiesWallet.success) {
+            await wallet.update({
+              rubiesAccountNumber: rubiesWallet.accountNumber,
+              rubiesCustomerId: rubiesWallet.customerId,
+              rubiesWalletStatus: 'ACTIVE'
+            }, { transaction });
+            
+            logger.info('Rubies wallet created successfully', {
+              userId,
+              accountNumber: rubiesWallet.accountNumber,
+              customerId: rubiesWallet.customerId
+            });
+          } else {
+            logger.warn('Failed to create Rubies wallet', {
+              error: rubiesWallet.error,
+              userId
+            });
+          }
         } catch (error) {
-          logger.warn('Failed to create virtual account during wallet creation', {
+          logger.warn('Failed to create Rubies wallet during wallet creation', {
             error: error.message,
             userId
           });
-          // Continue without virtual account - can be created later
+          // Continue without Rubies wallet - can be created later
         }
       } else {
-        logger.info('Skipping virtual account creation - user not fully onboarded', {
+        logger.info('Skipping Rubies wallet creation - user not fully onboarded', {
           userId,
           onboardingStep: user.onboardingStep,
           hasFirstName: !!user.firstName,
@@ -75,7 +77,7 @@ class WalletService {
       logger.info('Wallet created successfully', {
         userId,
         walletId: wallet.id,
-        hasVirtualAccount: !!wallet.virtualAccountNumber
+        hasRubiesWallet: !!wallet.rubiesAccountNumber
       });
 
       return wallet;
@@ -500,118 +502,106 @@ class WalletService {
         dateOfBirth: user.dateOfBirth
       });
 
-      const rubiesService = require('./rubies');
+      const rubiesWalletResult = await rubiesWalletService.createRubiesWallet(userId);
       
-      const virtualAccountResult = await rubiesService.createVirtualAccount({
-        firstName: user.firstName,
-        lastName: user.lastName,
-        middleName: user.middleName,
-        phoneNumber: user.whatsappNumber,
-        address: user.address,
-        bvn: user.bvn,
-        gender: user.gender,
-        dateOfBirth: user.dateOfBirth,
-        userId: user.id
-      });
-      
-      if (!virtualAccountResult.success) {
-        logger.error('Virtual account creation failed', {
+      if (!rubiesWalletResult.success) {
+        logger.error('Rubies wallet creation failed', {
           userId,
-          error: virtualAccountResult.error,
-          message: virtualAccountResult.message
+          error: rubiesWalletResult.error,
+          message: rubiesWalletResult.message
         });
-        throw new Error(virtualAccountResult.message || 'Failed to create virtual account');
+        throw new Error(rubiesWalletResult.message || 'Failed to create Rubies wallet');
       }
 
       // Check for duplicate account numbers after creation
       const duplicateWallet = await Wallet.findOne({
         where: {
-          virtualAccountNumber: virtualAccountResult.accountNumber,
+          rubiesAccountNumber: rubiesWalletResult.accountNumber,
           userId: { [Op.ne]: userId }
         }
       });
 
       if (duplicateWallet) {
-        logger.error('Duplicate account number detected after creation', {
+        logger.error('Duplicate Rubies account number detected after creation', {
           userId,
-          accountNumber: virtualAccountResult.accountNumber,
+          accountNumber: rubiesWalletResult.accountNumber,
           duplicateUserId: duplicateWallet.userId,
           duplicateWalletId: duplicateWallet.id
         });
-        throw new Error('Account number already exists for another user. Please contact support.');
+        throw new Error('Rubies account number already exists for another user. Please contact support.');
       }
       
       await wallet.update({
-        virtualAccountNumber: virtualAccountResult.accountNumber,
-        virtualAccountBank: virtualAccountResult.bankName,
-        virtualAccountName: virtualAccountResult.accountName
+        rubiesAccountNumber: rubiesWalletResult.accountNumber,
+        rubiesCustomerId: rubiesWalletResult.customerId,
+        rubiesWalletStatus: 'ACTIVE'
       });
 
-      // Mark user onboarding as completed since virtual account is created
+      // Mark user onboarding as completed since Rubies wallet is created
       await user.update({
         onboardingStep: 'completed'
       });
 
-      logger.info('Virtual account created successfully for wallet', {
+      logger.info('Rubies wallet created successfully for wallet', {
         userId,
-        accountNumber: virtualAccountResult.accountNumber,
-        bankName: virtualAccountResult.bankName,
-        accountName: virtualAccountResult.accountName,
+        accountNumber: rubiesWalletResult.accountNumber,
+        customerId: rubiesWalletResult.customerId,
         onboardingStep: 'completed'
       });
 
       return {
         success: true,
-        accountNumber: virtualAccountResult.accountNumber,
-        bankName: virtualAccountResult.bankName,
-        accountName: virtualAccountResult.accountName
+        accountNumber: rubiesWalletResult.accountNumber,
+        customerId: rubiesWalletResult.customerId,
+        message: 'Rubies wallet created successfully'
       };
     } catch (error) {
-      // Handle specific BellBank API errors
-      const isBellBankError = error.message && (
+      // Handle specific Rubies API errors
+      const isRubiesError = error.message && (
         error.message.includes('504') || 
         error.message.includes('Gateway time-out') ||
-        error.message.includes('BellBank') ||
-        error.message.includes('HTTP 5')
+        error.message.includes('Rubies') ||
+        error.message.includes('HTTP 5') ||
+        error.message.includes('Account parent does not belong to this user')
       );
 
-      if (isBellBankError) {
-        logger.error('BellBank API error during virtual account creation', {
+      if (isRubiesError) {
+        logger.error('Rubies API error during wallet creation', {
           userId,
           error: error.message,
-          errorType: 'bellbank_api_error',
+          errorType: 'rubies_api_error',
           stack: error.stack
         });
 
-        // Log activity for BellBank API failure
+        // Log activity for Rubies API failure
         try {
           await ActivityLog.logUserActivity(
             userId,
             'wallet_funding',
-            'virtual_account_creation_bellbank_error',
+            'rubies_wallet_creation_error',
             {
-              description: 'Virtual account creation failed due to BellBank API error',
-              provider: 'bellbank',
+              description: 'Rubies wallet creation failed due to Rubies API error',
+              provider: 'rubies',
               success: false,
               error: error.message,
-              errorType: 'bellbank_api_error',
+              errorType: 'rubies_api_error',
               source: 'api'
             }
           );
         } catch (logError) {
-          logger.error('Failed to log BellBank error activity', { userId, logError: logError.message });
+          logger.error('Failed to log Rubies error activity', { userId, logError: logError.message });
         }
 
         // Return a structured error that can be handled by the calling service
-        const bellBankError = new Error(`BellBank API temporarily unavailable: ${error.message}`);
-        bellBankError.name = 'BellBankAPIError';
-        bellBankError.isRetryable = true;
-        bellBankError.originalError = error;
-        throw bellBankError;
+        const rubiesError = new Error(`Rubies API temporarily unavailable: ${error.message}`);
+        rubiesError.name = 'RubiesAPIError';
+        rubiesError.isRetryable = true;
+        rubiesError.originalError = error;
+        throw rubiesError;
       }
 
       // Handle other errors
-      logger.error('Failed to create virtual account for wallet', {
+      logger.error('Failed to create Rubies wallet for wallet', {
         error: error.message,
         userId,
         errorType: 'general_error',
@@ -903,6 +893,78 @@ class WalletService {
         monthlyUsed: 0,
         dailyRemaining: 5000000,
         monthlyRemaining: 50000000
+      };
+    }
+  }
+
+  // Sync wallet balance with Rubies
+  async syncWalletBalanceWithRubies(userId) {
+    try {
+      const wallet = await this.getUserWallet(userId);
+      
+      if (!wallet.rubiesAccountNumber) {
+        throw new Error('No Rubies wallet found for user');
+      }
+
+      const syncResult = await rubiesWalletService.syncWalletBalance(userId);
+      
+      if (syncResult.success) {
+        logger.info('Wallet balance synced with Rubies', {
+          userId,
+          balance: syncResult.balance,
+          ledgerBalance: syncResult.ledgerBalance
+        });
+
+        return {
+          success: true,
+          balance: syncResult.balance,
+          ledgerBalance: syncResult.ledgerBalance,
+          message: 'Wallet balance synced successfully'
+        };
+      } else {
+        throw new Error(syncResult.error || 'Failed to sync wallet balance');
+      }
+    } catch (error) {
+      logger.error('Failed to sync wallet balance with Rubies', {
+        userId,
+        error: error.message
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to sync wallet balance'
+      };
+    }
+  }
+
+  // Check if user has Rubies wallet
+  async hasRubiesWallet(userId) {
+    try {
+      return await rubiesWalletService.hasRubiesWallet(userId);
+    } catch (error) {
+      logger.error('Failed to check Rubies wallet status', {
+        userId,
+        error: error.message
+      });
+      return false;
+    }
+  }
+
+  // Get Rubies wallet status
+  async getRubiesWalletStatus(userId) {
+    try {
+      return await rubiesWalletService.getRubiesWalletStatus(userId);
+    } catch (error) {
+      logger.error('Failed to get Rubies wallet status', {
+        userId,
+        error: error.message
+      });
+
+      return {
+        hasWallet: false,
+        status: 'ERROR',
+        message: 'Failed to check wallet status'
       };
     }
   }

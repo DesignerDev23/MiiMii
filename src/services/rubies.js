@@ -266,7 +266,7 @@ class RubiesService {
       // Step 1: Prepare payload based on Rubies production documentation
       const payload = {
         accountAmountControl: 'EXACT', // Control type as per documentation
-        accountParent: '9018866641', // From production documentation examples
+        accountParent: process.env.RUBIES_ACCOUNT_PARENT || '9018866641', // Configurable parent account
         accountType: 'DISPOSABLE', // Account type: DISPOSABLE or REUSABLE
         amount: '0', // Initial amount
         bvn: userData.bvn.toString().trim(),
@@ -331,6 +331,20 @@ class RubiesService {
         stack: error.stack
       });
 
+      // Handle specific Rubies API errors
+      let errorMessage = 'Virtual account creation failed due to technical issues. Please try again later or contact support.';
+      
+      if (error.message.includes('Account parent does not belong to this user')) {
+        errorMessage = 'Virtual account creation failed: Invalid account configuration. Please contact support.';
+        logger.error('Rubies API configuration error - account parent not valid', {
+          userId: userData.userId,
+          accountParent: process.env.RUBIES_ACCOUNT_PARENT || '9018866641',
+          error: error.message
+        });
+      } else if (error.message.includes('Invalid account parent')) {
+        errorMessage = 'Virtual account creation failed: Account configuration error. Please contact support.';
+      }
+
       // Log activity
       await ActivityLog.logUserActivity(
         userData.userId,
@@ -348,7 +362,7 @@ class RubiesService {
       return {
         success: false,
         error: error.message,
-        message: 'Virtual account creation failed due to technical issues. Please try again later or contact support.'
+        message: errorMessage
       };
     }
   }
