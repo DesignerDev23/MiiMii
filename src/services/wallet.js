@@ -361,9 +361,10 @@ class WalletService {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
-        `💰 *Money Received!*\n\n` +
+        `💰 *INCOMING TRANSFER*\n\n` +
         `Amount: ₦${finalAmount.toLocaleString()}\n` +
         `From: ${sender_name}\n` +
+        `Bank: ${sender_bank}\n` +
         `New Balance: ₦${result.newBalance.toLocaleString()}\n\n` +
         `${fee > 0 ? `Fee: ₦${fee.toLocaleString()}\n` : ''}` +
         `Reference: ${result.transaction.reference}`

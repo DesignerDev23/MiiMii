@@ -956,16 +956,16 @@ Extract intent and data from this message. Consider the user context and any ext
         };
       }
 
-      // Resolve bank code with flexible prefix/synonym detection (BellBank API mapping first)
+      // Resolve bank code with flexible prefix/synonym detection (Rubies API mapping first)
       let resolvedBankCode = bankCode;
       let resolvedBankName = bankName;
-      const bellbankService = require('./bellbank');
+      const rubiesService = require('./rubies');
 
       // 1) If we already have a bankName, try resolve directly
       if (!resolvedBankCode && bankName) {
-        const bellbankService = require('./bellbank');
+        const rubiesService = require('./rubies');
         // Try new resolver which supports 3-letter prefixes and synonyms
-        resolvedBankCode = await bellbankService.resolveInstitutionCode(bankName);
+        resolvedBankCode = await rubiesService.resolveInstitutionCode(bankName);
         
         // Preserve the original bank name if resolution was successful
         if (resolvedBankCode) {
@@ -973,8 +973,8 @@ Extract intent and data from this message. Consider the user context and any ext
         } else {
           // Fallback: try explicit bank list scanning
           try {
-            logger.info('Fallback: scanning BellBank bank list for bank name', { bankName });
-            const bankListResponse = await bellbankService.getBankList();
+            logger.info('Fallback: scanning Rubies bank list for bank name', { bankName });
+            const bankListResponse = await rubiesService.getBankList();
             if (bankListResponse.success && bankListResponse.banks) {
               const bankNameLower = bankName.toLowerCase().trim();
               const matchingBank = bankListResponse.banks.find(bank => {
@@ -1019,7 +1019,7 @@ Extract intent and data from this message. Consider the user context and any ext
         };
       }
 
-      // Validate account and get recipient name via BellBank name enquiry
+      // Validate account and get recipient name via Rubies name enquiry
       const bankTransferService = require('./bankTransfer');
       const validation = await bankTransferService.validateBankAccount(finalAccountNumber, resolvedBankCode);
       
@@ -2025,7 +2025,7 @@ Extract intent and data from this message. Consider the user context and any ext
             return;
           }
 
-          // Validate account and get recipient name via BellBank name enquiry
+          // Validate account and get recipient name via Rubies name enquiry
           const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
           
           if (!validation.valid) {

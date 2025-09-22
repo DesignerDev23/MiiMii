@@ -4,6 +4,7 @@ const whatsappService = require('./whatsapp');
 const aiAssistantService = require('./aiAssistant');
 const whatsappFlowService = require('./whatsappFlowService');
 const bellbankService = require('./bellbank');
+const rubiesService = require('./rubies');
 const imageProcessingService = require('./imageProcessing');
 const { ActivityLog } = require('../models');
 const logger = require('../utils/logger');
@@ -2642,13 +2643,13 @@ class MessageProcessor {
         // Determine if this is a bank transfer or P2P transfer
         if (accountNumber && bankName) {
           // This is a bank transfer
-          // Try to get dynamic bank mapping from BellBank API first
+          // Try to get dynamic bank mapping from Rubies API first
           let resolvedBankCode = bankCode;
           
           if (!resolvedBankCode) {
             try {
-              logger.info('Resolving bank code via BellBank resolver');
-              const resolved = await bellbankService.resolveInstitutionCode(bankName);
+              logger.info('Resolving bank code via Rubies resolver');
+              const resolved = await rubiesService.resolveInstitutionCode(bankName);
               resolvedBankCode = resolved || null;
               // If dynamic mapping failed or returned undefined, use static fallback
               if (!resolvedBankCode) {
@@ -2801,7 +2802,7 @@ class MessageProcessor {
           await whatsappService.sendTextMessage(user.whatsappNumber, 
             "🔍 Validating account details... Please wait a moment.");
 
-          // Validate account via BellBank API
+          // Validate account via Rubies API
           const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
           
           if (!validation.valid) {
@@ -2920,12 +2921,12 @@ class MessageProcessor {
       }
     }
 
-    // If not found, try resolving via BellBank resolver using tokens (supports 3-letter prefixes)
+    // If not found, try resolving via Rubies resolver using tokens (supports 3-letter prefixes)
     if (!bankCode) {
       try {
         const tokens = textLower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
         for (const token of tokens) {
-          const resolved = await bellbankService.resolveInstitutionCode(token);
+          const resolved = await rubiesService.resolveInstitutionCode(token);
           if (resolved) {
             bankCode = resolved; // 6-digit institution code
             break;

@@ -19,10 +19,10 @@ class BankTransferService {
       monthlyLimit: 50000000 // 50 million naira
     };
 
-    // Transfer fees structure
+    // Transfer fees structure - Updated for Rubies
     this.fees = {
-      sameBankFee: 10, // Fixed fee for same bank transfers
-      otherBankFee: 25, // Fixed fee for other bank transfers (updated to 25 naira)
+      sameBankFee: 15, // Rubies fee for same bank transfers
+      otherBankFee: 15, // Rubies fee for other bank transfers
       percentageFee: 0.005, // 0.5% for amounts above certain threshold
       freeThreshold: 10000 // No percentage fee below this amount
     };
