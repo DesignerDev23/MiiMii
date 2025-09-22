@@ -8,7 +8,7 @@ const WebhookLog = sequelize.define('WebhookLog', {
     primaryKey: true
   },
   provider: {
-    type: DataTypes.ENUM('whatsapp', 'bellbank', 'bilal', 'dojah'),
+    type: DataTypes.ENUM('whatsapp', 'bellbank', 'bilal', 'dojah', 'rubies'),
     allowNull: false
   },
   event: {

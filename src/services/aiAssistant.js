@@ -2535,28 +2535,26 @@ Format the response as a WhatsApp message with proper formatting.`;
 
   async generateWelcomeMessage(user, accountDetails) {
     try {
-      const prompt = `Generate a warm, welcoming message for a newly onboarded user on MiiMii. 
+      const prompt = `Generate a short, professional welcome message for a newly onboarded user on MiiMii.
 
 User Details:
 - Name: ${user.firstName} ${user.lastName}
 - Phone: ${user.whatsappNumber}
 
-Bank Account Details:
+Account Details:
 - Account Number: ${accountDetails?.accountNumber || 'N/A'}
 - Account Name: ${accountDetails?.accountName || `${user.firstName} ${user.lastName}`}
-- Bank: ${accountDetails?.bankName || 'BellBank'}
+- Bank: ${accountDetails?.bankName || 'Rubies MFB'}
 
 Requirements:
-1. Be warm, friendly, and welcoming
-2. Include emojis to make it engaging
-3. Mention their successful onboarding
-4. Include their bank account details clearly
-5. Welcome them to MiiMii's financial services
-6. Keep it conversational and not too formal
-7. Mention they can now receive money and make transfers
-8. Include a call to action to explore features
+1. Keep it SHORT and professional (max 2-3 sentences)
+2. Include account number and bank name
+3. Mention they can now use MiiMii services
+4. Be warm but concise
+5. Use minimal emojis (1-2 max)
+6. Professional tone
 
-Format the response as a friendly WhatsApp message with proper formatting.`;
+Format as a WhatsApp message.`;
 
       const response = await axios.post(
         `${this.openaiBaseUrl}/chat/completions`,
@@ -2572,8 +2570,8 @@ Format the response as a friendly WhatsApp message with proper formatting.`;
               content: prompt
             }
           ],
-          max_tokens: 300,
-          temperature: 0.7
+          max_tokens: 150,
+          temperature: 0.5
         },
         {
           headers: {

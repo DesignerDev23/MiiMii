@@ -1384,21 +1384,8 @@ class OnboardingService {
       // Mark onboarding completed
       await user.update({ onboardingStep: 'completed', kycStatus: 'not_required' });
 
-      // Send completion message with account details (35 words max)
-      let completionMessage = `🎉 *Welcome to MiiMii!* 🎉\n\n` +
-        `Your account is ready! You can now send money, buy airtime, and pay bills.`;
-
-      if (virtualAccountDetails) {
-        completionMessage += `\n\n💳 *Account:* ${virtualAccountDetails.accountNumber}\n` +
-                           `🏦 *Bank:* ${virtualAccountDetails.bankName}`;
-      }
-
-      completionMessage += `\n\nStart by checking your balance or sending money! 💰`;
-
-      await whatsappService.sendTextMessage(
-        user.whatsappNumber,
-        completionMessage
-      );
+      // AI-generated welcome message is sent in processOnboardingFlowData
+      // No additional completion message needed
 
       // Send main menu
       const buttons = [
@@ -1531,7 +1518,7 @@ class OnboardingService {
                 const accountDetails = {
                   accountNumber: virtualAccountResult.accountNumber,
                   accountName: virtualAccountResult.accountName,
-                  bankName: virtualAccountResult.bankName || 'BellBank'
+                  bankName: virtualAccountResult.bankName || 'Rubies MFB'
                 };
                 const welcomeMessage = await aiAssistant.generateWelcomeMessage(user, accountDetails);
                 await whatsappService.sendTextMessage(user.whatsappNumber, welcomeMessage);
@@ -1547,7 +1534,7 @@ class OnboardingService {
                 accountDetails: {
                   accountNumber: virtualAccountResult.accountNumber,
                   accountName: virtualAccountResult.accountName,
-                  bankName: virtualAccountResult.bankName || 'BellBank'
+                  bankName: virtualAccountResult.bankName || 'Rubies MFB'
                 }
               };
             }

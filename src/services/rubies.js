@@ -2,7 +2,6 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 const { Transaction, ActivityLog, User, Wallet } = require('../models');
 const { axiosConfig } = require('../utils/httpsAgent');
-const walletService = require('./wallet');
 const whatsappService = require('./whatsapp');
 const RetryHelper = require('../utils/retryHelper');
 
@@ -1006,6 +1005,7 @@ class RubiesService {
         
         if (wallet && wallet.user) {
           // Credit the digital wallet using the existing mechanism
+          const walletService = require('./wallet');
           await walletService.creditWalletFromVirtualAccount({
             customer_id: wallet.user.id,
             amount: data.amount,

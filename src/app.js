@@ -39,7 +39,6 @@ const bankTransferRoutes = require('./routes/bankTransfer');
 const virtualCardRoutes = require('./routes/virtualCard');
 const testRoutes = require('./routes/test');
 const testWhatsAppRoutes = require('./routes/testWhatsApp');
-const migrationRoutes = require('./routes/migration');
 
 const app = express();
 
@@ -292,7 +291,6 @@ app.use('/api/bank-transfer', bankTransferRoutes);
 app.use('/api/virtual-cards', virtualCardRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/test-whatsapp', testWhatsAppRoutes);
-app.use('/api/migration', migrationRoutes);
 
 // Serve admin dashboard
 app.get('/admin*', (req, res) => {

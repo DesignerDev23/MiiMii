@@ -1912,15 +1912,8 @@ class MessageProcessor {
             screen
           });
 
-          // Send completion message
-          const completionMessage = `🎉 Welcome to MiiMii! Your account setup is complete. You can now use all our services including transfers, airtime, data, and bill payments.`;
-          await whatsappService.sendTextMessage(user.whatsappNumber, completionMessage);
-
-          // Send account details if available
-          if (result.accountDetails) {
-            const accountMessage = `📋 *Account Details*\n\n🏦 Virtual Account: ${result.accountDetails.accountNumber}\n🏛️ Bank: ${result.accountDetails.bankName}\n💰 Balance: ₦${result.accountDetails.balance || '0.00'}\n\nYour virtual account is ready for use!`;
-            await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
-          }
+          // AI-generated welcome message is already sent in onboarding service
+          // No additional messages needed
         } else {
           logger.error('Onboarding flow completion processing failed', {
             userId: user.id,
