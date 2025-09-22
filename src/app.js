@@ -39,6 +39,7 @@ const bankTransferRoutes = require('./routes/bankTransfer');
 const virtualCardRoutes = require('./routes/virtualCard');
 const testRoutes = require('./routes/test');
 const testWhatsAppRoutes = require('./routes/testWhatsApp');
+const migrationRoutes = require('./routes/migration');
 
 const app = express();
 
@@ -291,6 +292,7 @@ app.use('/api/bank-transfer', bankTransferRoutes);
 app.use('/api/virtual-cards', virtualCardRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/test-whatsapp', testWhatsAppRoutes);
+app.use('/api/migration', migrationRoutes);
 
 // Serve admin dashboard
 app.get('/admin*', (req, res) => {
@@ -411,7 +413,7 @@ async function initializeDatabaseConnection() {
     await sequelize.sync({ force: false, alter: false });
     logger.info('✅ Database models synchronized');
     
-    // Self-healing: attempt to add missing lastWelcomedAt column if it doesn't exist (async, non-blocking)
+    // Self-healing: attempt to add missing columns if they don't exist (async, non-blocking)
     setTimeout(async () => {
       try {
         const { attemptColumnAddition } = require('../fix_missing_column');
@@ -420,6 +422,16 @@ async function initializeDatabaseConnection() {
         logger.warn('Self-healing column addition failed (non-critical):', error.message);
       }
     }, 5000); // Wait 5 seconds after startup to avoid blocking
+
+    // Self-healing: ensure Rubies wallet columns exist (async, non-blocking)
+    setTimeout(async () => {
+      try {
+        const startupMigration = require('./services/startupMigration');
+        await startupMigration.runStartupMigrations();
+      } catch (error) {
+        logger.warn('Self-healing Rubies wallet migration failed (non-critical):', error.message);
+      }
+    }, 7000); // Wait 7 seconds after startup to avoid blocking
     
   } catch (error) {
     logger.warn('⚠️ Database connection failed - continuing without database features:', {

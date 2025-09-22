@@ -76,6 +76,28 @@ const Wallet = sequelize.define('Wallet', {
     allowNull: true,
     comment: 'External provider reference'
   },
+  // Rubies Wallet Integration
+  rubiesAccountNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true,
+    comment: 'Rubies wallet account number'
+  },
+  rubiesCustomerId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Rubies customer ID'
+  },
+  rubiesWalletStatus: {
+    type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'SUSPENDED', 'PENDING'),
+    allowNull: true,
+    comment: 'Rubies wallet status'
+  },
+  lastSyncAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Last sync with Rubies wallet'
+  },
   dailyLimit: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 50000.00,
