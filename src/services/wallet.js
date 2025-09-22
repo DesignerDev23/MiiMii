@@ -516,7 +516,7 @@ class WalletService {
       // Check for duplicate account numbers after creation
       const duplicateWallet = await Wallet.findOne({
         where: {
-          rubiesAccountNumber: rubiesWalletResult.accountNumber,
+          virtualAccountNumber: rubiesWalletResult.accountNumber,
           userId: { [Op.ne]: userId }
         }
       });
@@ -532,9 +532,10 @@ class WalletService {
       }
       
       await wallet.update({
-        rubiesAccountNumber: rubiesWalletResult.accountNumber,
-        rubiesCustomerId: rubiesWalletResult.customerId,
-        rubiesWalletStatus: 'ACTIVE'
+        virtualAccountNumber: rubiesWalletResult.accountNumber,
+        virtualAccountBank: 'Rubies MFB',
+        virtualAccountName: `${user.firstName} ${user.lastName}`,
+        accountReference: rubiesWalletResult.customerId
       });
 
       // Mark user onboarding as completed since Rubies wallet is created

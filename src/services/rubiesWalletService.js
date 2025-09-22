@@ -54,9 +54,10 @@ class RubiesWalletService {
         const wallet = await Wallet.findOne({ where: { userId } });
         if (wallet) {
           await wallet.update({
-            rubiesAccountNumber: response.accountNumber,
-            rubiesCustomerId: response.customerId,
-            rubiesWalletStatus: 'ACTIVE'
+            virtualAccountNumber: response.accountNumber,
+            virtualAccountBank: 'Rubies MFB',
+            virtualAccountName: `${user.firstName} ${user.lastName}`,
+            accountReference: response.customerId
           });
         }
 
@@ -332,11 +333,11 @@ class RubiesWalletService {
   async syncWalletBalance(userId) {
     try {
       const wallet = await Wallet.findOne({ where: { userId } });
-      if (!wallet || !wallet.rubiesAccountNumber) {
+      if (!wallet || !wallet.virtualAccountNumber) {
         throw new Error('Rubies wallet not found for user');
       }
 
-      const walletDetails = await this.getRubiesWalletDetails(wallet.rubiesAccountNumber);
+      const walletDetails = await this.getRubiesWalletDetails(wallet.virtualAccountNumber);
       
       if (walletDetails.success) {
         const rubiesBalance = walletDetails.wallet.accountBalance;
@@ -345,13 +346,12 @@ class RubiesWalletService {
         // Update local wallet with Rubies balance
         await wallet.update({
           balance: rubiesBalance,
-          ledgerBalance: rubiesLedgerBalance,
-          lastSyncAt: new Date()
+          ledgerBalance: rubiesLedgerBalance
         });
 
         logger.info('Wallet balance synced with Rubies', {
           userId,
-          accountNumber: wallet.rubiesAccountNumber,
+          accountNumber: wallet.virtualAccountNumber,
           balance: rubiesBalance,
           ledgerBalance: rubiesLedgerBalance
         });
@@ -383,7 +383,7 @@ class RubiesWalletService {
   async hasRubiesWallet(userId) {
     try {
       const wallet = await Wallet.findOne({ where: { userId } });
-      return !!(wallet && wallet.rubiesAccountNumber && wallet.rubiesWalletStatus === 'ACTIVE');
+      return !!(wallet && wallet.virtualAccountNumber && wallet.virtualAccountBank === 'Rubies MFB');
     } catch (error) {
       logger.error('Failed to check Rubies wallet status', {
         userId,
@@ -406,7 +406,7 @@ class RubiesWalletService {
         };
       }
 
-      if (!wallet.rubiesAccountNumber) {
+      if (!wallet.virtualAccountNumber || wallet.virtualAccountBank !== 'Rubies MFB') {
         return {
           hasWallet: false,
           status: 'NO_RUBIES_WALLET',
@@ -415,7 +415,7 @@ class RubiesWalletService {
       }
 
       // Get current status from Rubies
-      const walletDetails = await this.getRubiesWalletDetails(wallet.rubiesAccountNumber);
+      const walletDetails = await this.getRubiesWalletDetails(wallet.virtualAccountNumber);
       
       if (walletDetails.success) {
         return {

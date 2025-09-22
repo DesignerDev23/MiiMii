@@ -423,15 +423,8 @@ async function initializeDatabaseConnection() {
       }
     }, 5000); // Wait 5 seconds after startup to avoid blocking
 
-    // Self-healing: ensure Rubies wallet columns exist (async, non-blocking)
-    setTimeout(async () => {
-      try {
-        const startupMigration = require('./services/startupMigration');
-        await startupMigration.runStartupMigrations();
-      } catch (error) {
-        logger.warn('Self-healing Rubies wallet migration failed (non-critical):', error.message);
-      }
-    }, 7000); // Wait 7 seconds after startup to avoid blocking
+    // Note: Using existing virtual account columns for Rubies wallet integration
+    // No additional migration needed
     
   } catch (error) {
     logger.warn('⚠️ Database connection failed - continuing without database features:', {
