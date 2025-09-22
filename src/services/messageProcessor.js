@@ -1707,9 +1707,22 @@ class MessageProcessor {
         hasData: !!data
       });
 
-      // Get user from flow token or phone number
+      // Get user from flow token
       let user = null;
-      if (data?.phoneNumber) {
+      
+      // Try to get user from flow token
+      try {
+        const whatsappFlowService = require('./whatsappFlowService');
+        const tokenData = whatsappFlowService.verifyFlowToken(flowToken);
+        if (tokenData.valid && tokenData.userId) {
+          user = await userService.getUserById(tokenData.userId);
+        }
+      } catch (error) {
+        logger.warn('Failed to get user from flow token', { error: error.message });
+      }
+      
+      // Fallback: try to get user from phone number in data
+      if (!user && data?.phoneNumber) {
         user = await userService.getUserByWhatsappNumber(data.phoneNumber);
       }
 
@@ -1717,7 +1730,8 @@ class MessageProcessor {
         logger.warn('No user found for Flow completion', {
           flowToken,
           screen,
-          phoneNumber: data?.phoneNumber
+          phoneNumber: data?.phoneNumber,
+          hasTokenData: !!tokenData
         });
         return;
       }
@@ -3647,8 +3661,12 @@ class MessageProcessor {
           `Let's get your MiiMii account fully set up so you can start using our services!\n\nI'll guide you through the process step by step.`
         );
       } else {
-        // Send the proper onboarding flow message without pre-text
+        // Generate AI-processed flow message content
+        const aiAssistant = require('./aiAssistant');
         const userName = user.firstName || user.fullName || 'there';
+        const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
+        
+        // Send the proper onboarding flow message
         const flowToken = whatsappFlowService.generateFlowToken(user.id);
         
         const flowData = {
@@ -3660,7 +3678,7 @@ class MessageProcessor {
             type: 'text',
             text: `👋 Hello ${userName}!`
           },
-          body: `Hi ${userName}! 👋\n\nLet's complete your MiiMii account setup securely. This will only take a few minutes.\n\nYou'll provide:\n✅ Personal details\n✅ BVN for verification\n✅ Set up your PIN\n\nReady to start?`,
+          body: personalizedMessage,
           footer: 'Secure • Fast • Easy',
           flowActionPayload: {
             screen: 'QUESTION_ONE',
