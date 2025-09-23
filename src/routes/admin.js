@@ -1152,51 +1152,274 @@ router.post('/notifications/push',
   [
     body('title').notEmpty().withMessage('Notification title is required'),
     body('message').notEmpty().withMessage('Notification message is required'),
+    body('type').optional().isIn(['info', 'warning', 'success', 'error']).withMessage('Invalid notification type'),
+    body('targetUsers').optional().isIn(['all', 'active', 'new']).withMessage('Invalid target users type'),
+    body('schedule').optional().isISO8601().withMessage('Invalid schedule date format')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { title, message, type = 'info', targetUsers = 'all', schedule } = req.body;
+      
+      // Check if notification is scheduled for later
+      if (schedule && new Date(schedule) > new Date()) {
+        // TODO: Implement scheduled notifications
+        return res.status(400).json({ 
+          error: 'Scheduled notifications not yet implemented' 
+        });
+      }
+      
+      // Build where clause based on target users
+      let whereClause = { isActive: true, isBanned: false };
+      
+      if (targetUsers === 'active') {
+        // Users who have been active in the last 30 days
+        whereClause.lastSeen = {
+          [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        };
+      } else if (targetUsers === 'new') {
+        // Users created in the last 7 days
+        whereClause.createdAt = {
+          [Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+        };
+      }
+      
+      // Get target users
+      const users = await User.findAll({
+        where: whereClause,
+        attributes: ['id', 'whatsappNumber', 'firstName', 'lastSeen']
+      });
+      
+      if (users.length === 0) {
+        return res.json({
+          success: true,
+          message: 'No users found matching the criteria',
+          stats: {
+            total: 0,
+            successful: 0,
+            failed: 0
+          }
+        });
+      }
+      
+      // Format notification based on type
+      const typeEmojis = {
+        info: '🔔',
+        warning: '⚠️',
+        success: '✅',
+        error: '❌'
+      };
+      
+      const emoji = typeEmojis[type] || '🔔';
+      const formattedMessage = `${emoji} *${title}*\n\n${message}\n\n_MiiMii Team_`;
+      
+      let successCount = 0;
+      let failCount = 0;
+      const failedUsers = [];
+      
+      // Send notification to each user with rate limiting
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        
+        try {
+          // Add small delay to avoid rate limiting
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            formattedMessage
+          );
+          successCount++;
+          
+          // Log successful notification
+          logger.info('Notification sent successfully', {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            type
+          });
+          
+        } catch (error) {
+          logger.error('Failed to send notification to user', { 
+            userId: user.id, 
+            phoneNumber: user.whatsappNumber,
+            error: error.message 
+          });
+          failCount++;
+          failedUsers.push({
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            error: error.message
+          });
+        }
+      }
+      
+      // Log notification campaign
+      logger.info('Push notification campaign completed', {
+        type,
+        targetUsers,
+        total: users.length,
+        successful: successCount,
+        failed: failCount,
+        failedUsers: failedUsers.slice(0, 5) // Log first 5 failures
+      });
+      
+      res.json({
+        success: true,
+        message: 'Push notification sent',
+        notification: {
+          title,
+          message,
+          type,
+          targetUsers
+        },
+        stats: {
+          total: users.length,
+          successful: successCount,
+          failed: failCount,
+          successRate: `${((successCount / users.length) * 100).toFixed(1)}%`
+        },
+        failedUsers: failedUsers.length > 0 ? failedUsers.slice(0, 10) : undefined
+      });
+    } catch (error) {
+      logger.error('Failed to send push notification', { error: error.message });
+      res.status(500).json({ error: 'Failed to send push notification' });
+    }
+  }
+);
+
+// Get notification history/stats
+router.get('/notifications/stats', async (req, res) => {
+  try {
+    const { days = 30 } = req.query;
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    
+    // Get user counts by activity
+    const [totalUsers, activeUsers, newUsers] = await Promise.all([
+      User.count({ where: { isActive: true, isBanned: false } }),
+      User.count({ 
+        where: { 
+          isActive: true, 
+          isBanned: false,
+          lastSeen: { [Op.gte]: startDate }
+        } 
+      }),
+      User.count({ 
+        where: { 
+          isActive: true, 
+          isBanned: false,
+          createdAt: { [Op.gte]: startDate }
+        } 
+      })
+    ]);
+    
+    res.json({
+      success: true,
+      stats: {
+        totalUsers,
+        activeUsers,
+        newUsers,
+        period: `${days} days`
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get notification stats', { error: error.message });
+    res.status(500).json({ error: 'Failed to get notification stats' });
+  }
+});
+
+// Send notification to specific users
+router.post('/notifications/send',
+  [
+    body('title').notEmpty().withMessage('Notification title is required'),
+    body('message').notEmpty().withMessage('Notification message is required'),
+    body('userIds').isArray().withMessage('User IDs must be an array'),
+    body('userIds.*').isUUID().withMessage('Invalid user ID format'),
     body('type').optional().isIn(['info', 'warning', 'success', 'error']).withMessage('Invalid notification type')
   ],
   validateRequest,
   async (req, res) => {
     try {
-      const { title, message, type = 'info' } = req.body;
+      const { title, message, userIds, type = 'info' } = req.body;
       
-      // Get all active users
+      // Get specific users
       const users = await User.findAll({
-        where: { isActive: true, isBanned: false },
+        where: { 
+          id: { [Op.in]: userIds },
+          isActive: true, 
+          isBanned: false 
+        },
         attributes: ['id', 'whatsappNumber', 'firstName']
       });
       
+      if (users.length === 0) {
+        return res.status(404).json({ 
+          error: 'No active users found with the provided IDs' 
+        });
+      }
+      
+      // Format notification based on type
+      const typeEmojis = {
+        info: '🔔',
+        warning: '⚠️',
+        success: '✅',
+        error: '❌'
+      };
+      
+      const emoji = typeEmojis[type] || '🔔';
+      const formattedMessage = `${emoji} *${title}*\n\n${message}\n\n_MiiMii Team_`;
+      
       let successCount = 0;
       let failCount = 0;
+      const failedUsers = [];
       
       // Send notification to each user
-      for (const user of users) {
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        
         try {
+          // Add small delay to avoid rate limiting
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
           await whatsappService.sendTextMessage(
             user.whatsappNumber,
-            `🔔 *${title}*\n\n${message}\n\n_MiiMii Team_`
+            formattedMessage
           );
           successCount++;
+          
         } catch (error) {
           logger.error('Failed to send notification to user', { 
             userId: user.id, 
+            phoneNumber: user.whatsappNumber,
             error: error.message 
           });
           failCount++;
+          failedUsers.push({
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            error: error.message
+          });
         }
       }
       
       res.json({
         success: true,
-        message: 'Push notification sent',
+        message: 'Notifications sent to specified users',
         stats: {
-          total: users.length,
+          requested: userIds.length,
+          found: users.length,
           successful: successCount,
-          failed: failCount
-        }
+          failed: failCount,
+          successRate: `${((successCount / users.length) * 100).toFixed(1)}%`
+        },
+        failedUsers: failedUsers.length > 0 ? failedUsers : undefined
       });
     } catch (error) {
-      logger.error('Failed to send push notification', { error: error.message });
-      res.status(500).json({ error: 'Failed to send push notification' });
+      logger.error('Failed to send targeted notifications', { error: error.message });
+      res.status(500).json({ error: 'Failed to send targeted notifications' });
     }
   }
 );
