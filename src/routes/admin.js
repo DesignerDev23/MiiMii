@@ -1549,8 +1549,12 @@ router.post('/support/tickets',
         return res.status(404).json({ error: 'User not found' });
       }
       
+      // Generate unique ticket number
+      const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+      
       // Create support ticket
       const ticket = await SupportTicket.create({
+        ticketNumber,
         userId,
         subject: subject.trim(),
         description: description.trim(),
@@ -1575,6 +1579,7 @@ router.post('/support/tickets',
         message: 'Support ticket created successfully',
         ticket: {
           id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
           subject: ticket.subject,
           priority: ticket.priority,
           status: ticket.status,
@@ -1582,8 +1587,18 @@ router.post('/support/tickets',
         }
       });
     } catch (error) {
-      logger.error('Failed to create support ticket', { error: error.message });
-      res.status(500).json({ error: 'Failed to create support ticket' });
+      logger.error('Failed to create support ticket', { 
+        error: error.message,
+        stack: error.stack,
+        userId,
+        subject,
+        description,
+        priority
+      });
+      res.status(500).json({ 
+        error: 'Failed to create support ticket',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 );
