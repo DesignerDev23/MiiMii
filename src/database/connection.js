@@ -207,8 +207,7 @@ class DatabaseManager {
         port: this.sequelize.config.port
       });
 
-      // Run self-healing migration for Rubies BVN fields
-      await this.runRubiesMigration();
+      // Self-healing migration removed - all BVN fields are now properly defined in the User model
 
       return this.sequelize;
     } catch (error) {
@@ -358,57 +357,6 @@ class DatabaseManager {
     );
   }
 
-  // Self-healing migration for Rubies BVN fields
-  async runRubiesMigration() {
-    try {
-      logger.info('🔄 Running self-healing migration for Rubies BVN fields...');
-      
-      // Check if columns already exist
-      const [results] = await this.sequelize.query(`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'users' 
-          AND column_name IN ('bvnVerified', 'bvnVerificationDate', 'alternatePhone', 'bvnData')
-      `);
-
-      const existingColumns = results.map(row => row.column_name);
-      
-      // Add missing columns
-      if (!existingColumns.includes('bvnVerified')) {
-        await this.sequelize.query('ALTER TABLE users ADD COLUMN "bvnVerified" BOOLEAN DEFAULT FALSE NOT NULL');
-        logger.info('✅ Added bvnVerified column');
-      }
-      
-      if (!existingColumns.includes('bvnVerificationDate')) {
-        await this.sequelize.query('ALTER TABLE users ADD COLUMN "bvnVerificationDate" TIMESTAMPTZ NULL');
-        logger.info('✅ Added bvnVerificationDate column');
-      }
-      
-      if (!existingColumns.includes('alternatePhone')) {
-        await this.sequelize.query('ALTER TABLE users ADD COLUMN "alternatePhone" VARCHAR(255) NULL');
-        logger.info('✅ Added alternatePhone column');
-      }
-      
-      if (!existingColumns.includes('bvnData')) {
-        await this.sequelize.query('ALTER TABLE users ADD COLUMN "bvnData" JSONB NULL');
-        logger.info('✅ Added bvnData column');
-      }
-
-      // Create indexes if they don't exist
-      try {
-        await this.sequelize.query('CREATE INDEX IF NOT EXISTS "idx_users_bvn_verified" ON users ("bvnVerified")');
-        await this.sequelize.query('CREATE INDEX IF NOT EXISTS "idx_users_bvn_verification_date" ON users ("bvnVerificationDate")');
-        logger.info('✅ Created indexes for BVN fields');
-      } catch (indexError) {
-        logger.warn('Index creation skipped (may already exist)', { error: indexError.message });
-      }
-
-      logger.info('🎉 Rubies BVN fields migration completed successfully');
-    } catch (error) {
-      logger.error('❌ Rubies migration failed:', { error: error.message });
-      // Don't throw error to prevent app startup failure
-    }
-  }
 
   async gracefulShutdown() {
     if (this.isShuttingDown) {

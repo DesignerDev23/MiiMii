@@ -332,17 +332,10 @@ class WalletService {
         throw new Error('User not found for virtual account credit');
       }
 
-      // Apply transfer fee logic
+      // No fees for incoming transfers - users should receive the full amount
       const creditAmount = parseFloat(amount);
-      let finalAmount = creditAmount;
-      let fee = 0;
-
-      // Apply incoming transfer fees based on amount
-      if (creditAmount > 1000) {
-        fee = Math.round(creditAmount * 0.005); // 0.5% for amounts above ₦1,000
-        finalAmount = creditAmount - fee;
-      }
-      // Amounts ₦0-₦500 are free, ₦501-₦1000 are also free for now
+      const finalAmount = creditAmount; // No fee deduction for incoming transfers
+      const fee = 0; // No fees for incoming transfers
 
       const description = `Transfer from ${sender_name} (${sender_bank})`;
 
@@ -361,12 +354,11 @@ class WalletService {
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
-        `💰 *INCOMING TRANSFER*\n\n` +
+        `🌟 *You've got an incoming transfer!*\n\n` +
         `Amount: ₦${finalAmount.toLocaleString()}\n` +
         `From: ${sender_name}\n` +
         `Bank: ${sender_bank}\n` +
         `New Balance: ₦${result.newBalance.toLocaleString()}\n\n` +
-        `${fee > 0 ? `Fee: ₦${fee.toLocaleString()}\n` : ''}` +
         `Reference: ${result.transaction.reference}`
       );
 

@@ -72,41 +72,14 @@ class FeesService {
     };
   }
 
-  // Calculate incoming transfer fee
+  // Calculate incoming transfer fee - NO FEES for incoming transfers
   calculateIncomingTransferFee(amount) {
     const numAmount = parseFloat(amount);
     
-    if (numAmount <= this.feeStructure.incomingTransfers.freeThreshold) {
-      return {
-        fee: 0,
-        reason: 'Free transfer (₦0-₦500)',
-        breakdown: {
-          amount: numAmount,
-          feePercentage: 0,
-          calculatedFee: 0,
-          finalFee: 0
-        }
-      };
-    }
-    
-    if (numAmount >= this.feeStructure.incomingTransfers.minimumChargeable) {
-      const calculatedFee = numAmount * this.feeStructure.incomingTransfers.feePercentage;
-      return {
-        fee: Math.ceil(calculatedFee), // Round up to nearest naira
-        reason: `0.5% fee on amounts ≥₦1,000`,
-        breakdown: {
-          amount: numAmount,
-          feePercentage: this.feeStructure.incomingTransfers.feePercentage * 100,
-          calculatedFee,
-          finalFee: Math.ceil(calculatedFee)
-        }
-      };
-    }
-    
-    // Between ₦500 and ₦1,000 - you can decide if this should be free or have a small fee
+    // All incoming transfers are free - users receive the full amount
     return {
       fee: 0,
-      reason: 'Free transfer (₦500-₦1,000)',
+      reason: 'Free incoming transfer - no fees charged',
       breakdown: {
         amount: numAmount,
         feePercentage: 0,
