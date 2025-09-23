@@ -185,13 +185,16 @@ class BankTransferService {
       const accountDetails = await rubiesService.nameEnquiry(cleanAccountNumber, institutionCode);
       
       if (accountDetails && (accountDetails.account_name || accountDetails.accountName)) {
+        // Get proper bank name from bank code since Rubies doesn't return bank name
+        const bankName = await this.getBankNameFromCode(accountDetails.bankCode || bankCode);
+        
         return {
           valid: true,
           accountNumber: cleanAccountNumber,
-          bankCode,
+          bankCode: accountDetails.bankCode || bankCode,
           accountName: accountDetails.account_name || accountDetails.accountName,
-          bank: accountDetails.bank_name || accountDetails.bankName || accountDetails.bank || this.getBankNameByCode(bankCode),
-          bankName: accountDetails.bank_name || accountDetails.bankName || accountDetails.bank || this.getBankNameByCode(bankCode),
+          bank: bankName,
+          bankName: bankName,
           currency: 'NGN'
         };
       }
@@ -333,6 +336,49 @@ class BankTransferService {
     const banks = this.getStaticBankList();
     const bank = banks.find(b => b.code === bankCode);
     return bank ? bank.name : 'Unknown Bank';
+  }
+
+  // Enhanced bank name resolution with Rubies API support
+  async getBankNameFromCode(bankCode) {
+    try {
+      // First try to get from Rubies API bank list
+      const rubiesService = require('./rubies');
+      const bankListResponse = await rubiesService.getBankList();
+      
+      if (bankListResponse.success && bankListResponse.banks) {
+        const bank = bankListResponse.banks.find(b => b.institutionCode === bankCode);
+        if (bank) {
+          logger.info('Bank name resolved from Rubies API', { bankCode, bankName: bank.institutionName });
+          return bank.institutionName;
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to get bank name from Rubies API', { error: error.message, bankCode });
+    }
+
+    // Fallback to static mapping
+    const staticBankMapping = {
+      '999058': 'GTBank',
+      '000058': 'GTBank',
+      '000014': 'Access Bank',
+      '000016': 'First Bank',
+      '000033': 'UBA',
+      '000057': 'Zenith Bank',
+      '000070': 'Fidelity Bank',
+      '000035': 'Wema Bank',
+      '000032': 'Union Bank',
+      '000082': 'Keystone Bank',
+      '000221': 'Stanbic IBTC',
+      '000050': 'Ecobank',
+      '000232': 'Sterling Bank',
+      '100004': 'Opay',
+      '000090': 'Kuda Bank',
+      '000091': 'PalmPay'
+    };
+
+    const bankName = staticBankMapping[bankCode] || this.getBankNameByCode(bankCode);
+    logger.info('Bank name resolved from static mapping', { bankCode, bankName });
+    return bankName;
   }
 
   // Convert bank name to institution code using Rubies API
@@ -603,14 +649,19 @@ class BankTransferService {
           try {
             const receiptService = require('./receipt');
             const whatsappService = require('./whatsapp');
-            
+            // Get proper bank name for receipt using enhanced resolution
+            const bankName = accountValidation.bankName || 
+                           accountValidation.bank || 
+                           await this.getBankNameFromCode(accountValidation.bankCode || transferData.bankCode) || 
+                           'Bank';
+
             const receiptData = {
               type: 'Bank Transfer',
               amount: parseFloat(feeCalculation.amount),
               fee: parseFloat(feeCalculation.totalFee),
               totalAmount: parseFloat(feeCalculation.totalAmount),
               recipientName: accountValidation.accountName,
-              recipientBank: accountValidation.bankName || accountValidation.bank || 'Bank',
+              recipientBank: bankName,
               recipientAccount: accountValidation.accountNumber,
               reference: transaction.reference,
               date: new Date().toLocaleString('en-GB'),
@@ -627,7 +678,7 @@ class BankTransferService {
               logger.warn('Failed to send receipt image, falling back to text', { error: sendErr.message });
               await whatsappService.sendTextMessage(
                 user.whatsappNumber,
-                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bankName || accountValidation.bank || 'Bank'}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
+                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${bankName}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
               );
             }
           } catch (receiptError) {
@@ -636,7 +687,7 @@ class BankTransferService {
               const whatsappService = require('./whatsapp');
               await whatsappService.sendTextMessage(
                 user.whatsappNumber,
-                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${accountValidation.bankName || accountValidation.bank || 'Bank'}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
+                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${bankName}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
               );
             } catch (_) {}
           }

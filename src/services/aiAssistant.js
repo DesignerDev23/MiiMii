@@ -865,7 +865,17 @@ Extract intent and data from this message. Consider the user context and any ext
     
     // If we have bank details from image, use them
     const finalAccountNumber = accountNumber || (imageBankDetails && imageBankDetails.accountNumber);
-    const finalBankName = bankName || (imageBankDetails && imageBankDetails.bankName);
+    let finalBankName = bankName || (imageBankDetails && imageBankDetails.bankName);
+    
+    // Enhanced OCR bank name parsing
+    if (imageBankDetails && imageBankDetails.bankName) {
+      // Clean up OCR bank name (remove extra spaces, normalize case)
+      finalBankName = imageBankDetails.bankName.trim().replace(/\s+/g, ' ');
+      logger.info('Using bank name from OCR data', { 
+        originalBankName: imageBankDetails.bankName, 
+        cleanedBankName: finalBankName 
+      });
+    }
     
     if (!amount || !finalAccountNumber) {
       logger.warn('Missing required data for bank transfer', {
@@ -970,6 +980,11 @@ Extract intent and data from this message. Consider the user context and any ext
         // Preserve the original bank name if resolution was successful
         if (resolvedBankCode) {
           resolvedBankName = bankName; // Keep the original bank name from image processing
+          logger.info('Bank name resolved successfully', { 
+            originalBankName: bankName, 
+            resolvedBankCode, 
+            resolvedBankName 
+          });
         } else {
           // Fallback: try explicit bank list scanning
           try {
@@ -984,40 +999,45 @@ Extract intent and data from this message. Consider the user context and any ext
               if (matchingBank) {
                 resolvedBankCode = matchingBank.institutionCode;
                 resolvedBankName = matchingBank.institutionName;
+                logger.info('Bank name resolved via bank list scan', { 
+                  originalBankName: bankName, 
+                  resolvedBankCode, 
+                  resolvedBankName: matchingBank.institutionName 
+                });
               }
             }
           } catch (e) {
             logger.warn('Fallback bank list scan failed', { error: e.message });
             
-            // Final fallback: use static bank mapping
+            // Final fallback: use static bank mapping with proper names
             const staticBankMapping = {
-              'opay': '100004',
-              'moniepoint': '100004', 
-              'gtbank': '000058',
-              'gtb': '000058',
-              'access': '000014',
-              'first bank': '000016',
-              'firstbank': '000016',
-              'zenith': '000057',
-              'uba': '000033',
-              'keystone': '000082',
-              'stanbic': '000221',
-              'ecobank': '000050',
-              'fidelity': '000070',
-              'union': '000032',
-              'wema': '000035',
-              'sterling': '000232',
-              'kuda': '000090',
-              'palm pay': '000091',
-              'palmpay': '000091'
+              'opay': { code: '100004', name: 'Opay' },
+              'moniepoint': { code: '100004', name: 'Moniepoint' }, 
+              'gtbank': { code: '000058', name: 'GTBank' },
+              'gtb': { code: '000058', name: 'GTBank' },
+              'access': { code: '000014', name: 'Access Bank' },
+              'first bank': { code: '000016', name: 'First Bank' },
+              'firstbank': { code: '000016', name: 'First Bank' },
+              'zenith': { code: '000057', name: 'Zenith Bank' },
+              'uba': { code: '000033', name: 'UBA' },
+              'keystone': { code: '000082', name: 'Keystone Bank' },
+              'stanbic': { code: '000221', name: 'Stanbic IBTC' },
+              'ecobank': { code: '000050', name: 'Ecobank' },
+              'fidelity': { code: '000070', name: 'Fidelity Bank' },
+              'union': { code: '000032', name: 'Union Bank' },
+              'wema': { code: '000035', name: 'Wema Bank' },
+              'sterling': { code: '000232', name: 'Sterling Bank' },
+              'kuda': { code: '000090', name: 'Kuda Bank' },
+              'palm pay': { code: '000091', name: 'PalmPay' },
+              'palmpay': { code: '000091', name: 'PalmPay' }
             };
             
             const bankNameLower = bankName.toLowerCase().trim();
-            const mappedCode = staticBankMapping[bankNameLower];
-            if (mappedCode) {
-              logger.info('Using static bank mapping fallback', { bankName, mappedCode });
-              resolvedBankCode = mappedCode;
-              resolvedBankName = bankName;
+            const mappedBank = staticBankMapping[bankNameLower];
+            if (mappedBank) {
+              logger.info('Using static bank mapping fallback', { bankName, mappedBank });
+              resolvedBankCode = mappedBank.code;
+              resolvedBankName = mappedBank.name;
             }
           }
         }
@@ -1041,35 +1061,35 @@ Extract intent and data from this message. Consider the user context and any ext
           
           // Fallback: try static bank mapping for tokens
           const staticBankMapping = {
-            'opay': '100004',
-            'moniepoint': '100004', 
-            'gtbank': '000058',
-            'gtb': '000058',
-            'access': '000014',
-            'first bank': '000016',
-            'firstbank': '000016',
-            'zenith': '000057',
-            'uba': '000033',
-            'keystone': '000082',
-            'stanbic': '000221',
-            'ecobank': '000050',
-            'fidelity': '000070',
-            'union': '000032',
-            'wema': '000035',
-            'sterling': '000232',
-            'kuda': '000090',
-            'palm pay': '000091',
-            'palmpay': '000091'
+            'opay': { code: '100004', name: 'Opay' },
+            'moniepoint': { code: '100004', name: 'Moniepoint' }, 
+            'gtbank': { code: '000058', name: 'GTBank' },
+            'gtb': { code: '000058', name: 'GTBank' },
+            'access': { code: '000014', name: 'Access Bank' },
+            'first bank': { code: '000016', name: 'First Bank' },
+            'firstbank': { code: '000016', name: 'First Bank' },
+            'zenith': { code: '000057', name: 'Zenith Bank' },
+            'uba': { code: '000033', name: 'UBA' },
+            'keystone': { code: '000082', name: 'Keystone Bank' },
+            'stanbic': { code: '000221', name: 'Stanbic IBTC' },
+            'ecobank': { code: '000050', name: 'Ecobank' },
+            'fidelity': { code: '000070', name: 'Fidelity Bank' },
+            'union': { code: '000032', name: 'Union Bank' },
+            'wema': { code: '000035', name: 'Wema Bank' },
+            'sterling': { code: '000232', name: 'Sterling Bank' },
+            'kuda': { code: '000090', name: 'Kuda Bank' },
+            'palm pay': { code: '000091', name: 'PalmPay' },
+            'palmpay': { code: '000091', name: 'PalmPay' }
           };
           
           const lower = originalMessage.toLowerCase();
           const tokens = lower.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3);
           for (const token of tokens) {
-            const mappedCode = staticBankMapping[token];
-            if (mappedCode) {
-              logger.info('Using static bank mapping for token', { token, mappedCode });
-              resolvedBankCode = mappedCode;
-              resolvedBankName = token;
+            const mappedBank = staticBankMapping[token];
+            if (mappedBank) {
+              logger.info('Using static bank mapping for token', { token, mappedBank });
+              resolvedBankCode = mappedBank.code;
+              resolvedBankName = mappedBank.name;
               break;
             }
           }
@@ -1088,6 +1108,15 @@ Extract intent and data from this message. Consider the user context and any ext
       // Validate account and get recipient name via Rubies name enquiry
       const bankTransferService = require('./bankTransfer');
       const validation = await bankTransferService.validateBankAccount(finalAccountNumber, resolvedBankCode);
+      
+      // Update resolved bank name with the actual bank name from validation
+      if (validation.valid && validation.bankName) {
+        resolvedBankName = validation.bankName;
+        logger.info('Bank name updated from account validation', { 
+          originalBankName: bankName, 
+          resolvedBankName: validation.bankName 
+        });
+      }
       
       if (!validation.valid) {
         return {
@@ -3204,8 +3233,16 @@ Response format:
       // Ensure all values are properly defined
       const safeAmount = amount || 0;
       const safeRecipientName = recipientName || 'Recipient';
-      const safeBankName = bankName || 'Bank';
+      const safeBankName = bankName || 'Unknown Bank';
       const safeAccountNumber = accountNumber || 'Account';
+      
+      // Log the bank name resolution for debugging
+      logger.info('Transfer confirmation message generation', {
+        originalBankName: bankName,
+        safeBankName,
+        recipientName: safeRecipientName,
+        accountNumber: safeAccountNumber
+      });
       
       const prompt = `Generate a simple one-sentence bank transfer confirmation message.
 
