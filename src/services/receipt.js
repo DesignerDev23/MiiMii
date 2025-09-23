@@ -128,6 +128,7 @@ class ReceiptService {
         { label: 'Transaction Date', value: date },
         { label: 'Sender', value: sender || 'N/A' },
         { label: 'Beneficiary', value: beneficiary || 'N/A' },
+        { label: 'Bank', value: transactionData.recipientBank || 'Rubies MFB' },
         { label: 'Remark', value: remark || 'N/A' },
         { label: 'Transaction Fee', value: `₦ ${parseFloat(charges || 0).toLocaleString()}.00` },
         { label: 'Transaction Reference', value: reference },
@@ -138,7 +139,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `bold ${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
@@ -152,7 +153,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
@@ -284,7 +285,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `bold ${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
@@ -298,7 +299,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
@@ -431,7 +432,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `bold ${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
@@ -445,7 +446,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
@@ -581,7 +582,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `bold ${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
@@ -595,7 +596,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, this.scaleValue(360), yPos);
 
@@ -606,7 +607,7 @@ class ReceiptService {
       if (token) {
         yPos += this.scaleValue(10);
         ctx.fillStyle = '#333333';
-        ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `bold ${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText('Meter Token', 40, yPos);
 
@@ -618,7 +619,7 @@ class ReceiptService {
         ctx.stroke();
 
         ctx.fillStyle = '#000000';
-        ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(token, 360, yPos);
       }
@@ -754,7 +755,7 @@ class ReceiptService {
       details.forEach((detail, index) => {
         // Label
         ctx.fillStyle = '#333333';
-        ctx.font = `bold ${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `bold ${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'left';
         ctx.fillText(detail.label, this.scaleValue(40), yPos);
 
@@ -768,7 +769,7 @@ class ReceiptService {
 
         // Value
         ctx.fillStyle = '#000000';
-        ctx.font = `${this.scaleValue(12)}px Outfit, Arial`;
+        ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
         ctx.textAlign = 'right';
         ctx.fillText(detail.value, this.scaleValue(360), yPos);
 

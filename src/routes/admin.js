@@ -2,6 +2,8 @@ const express = require('express');
 const { User, Wallet, Transaction, SupportTicket, WebhookLog } = require('../models');
 const userService = require('../services/user');
 const walletService = require('../services/wallet');
+const rubiesService = require('../services/rubies');
+const whatsappService = require('../services/whatsapp');
 const { Op } = require('sequelize');
 const { body, query, param, validationResult } = require('express-validator');
 const logger = require('../utils/logger');
@@ -959,6 +961,406 @@ router.get('/revenue/stats', async (req, res) => {
     } catch (error) {
       logger.error('Failed to compute revenue stats', { error: error.message });
       res.status(500).json({ error: 'Failed to compute revenue stats' });
+    }
+  }
+);
+
+// Transaction Requery Endpoint
+router.post('/transactions/requery', 
+  [
+    body('reference').notEmpty().withMessage('Transaction reference is required')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { reference } = req.body;
+      
+      // Query transaction status from Rubies
+      const rubiesResult = await rubiesService.queryTransactionStatus(reference);
+      
+      if (rubiesResult.success) {
+        // Update local transaction status
+        const transaction = await Transaction.findOne({ where: { reference } });
+        if (transaction) {
+          await transaction.update({
+            status: 'completed',
+            providerResponse: rubiesResult
+          });
+        }
+        
+        res.json({
+          success: true,
+          message: 'Transaction status updated successfully',
+          transaction: rubiesResult
+        });
+      } else {
+        res.json({
+          success: false,
+          message: 'Transaction query failed',
+          error: rubiesResult.responseMessage
+        });
+      }
+    } catch (error) {
+      logger.error('Transaction requery failed', { error: error.message });
+      res.status(500).json({ error: 'Transaction requery failed' });
+    }
+  }
+);
+
+// Get User Transactions
+router.get('/users/:userId/transactions',
+  [
+    param('userId').isUUID().withMessage('Invalid user ID'),
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+    query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be non-negative')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const limit = parseInt(req.query.limit) || 20;
+      const offset = parseInt(req.query.offset) || 0;
+      
+      const transactions = await Transaction.findAndCountAll({
+        where: { userId },
+        include: [
+          { model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset
+      });
+      
+      res.json({
+        success: true,
+        transactions: transactions.rows,
+        total: transactions.count,
+        limit,
+        offset
+      });
+    } catch (error) {
+      logger.error('Failed to get user transactions', { error: error.message });
+      res.status(500).json({ error: 'Failed to get user transactions' });
+    }
+  }
+);
+
+// Get Transaction Details
+router.get('/transactions/:transactionId',
+  [
+    param('transactionId').isUUID().withMessage('Invalid transaction ID')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { transactionId } = req.params;
+      
+      const transaction = await Transaction.findOne({
+        where: { id: transactionId },
+        include: [
+          { model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber', 'email'] },
+          { model: Wallet, as: 'wallet', attributes: ['virtualAccountNumber', 'virtualAccountBank'] }
+        ]
+      });
+      
+      if (!transaction) {
+        return res.status(404).json({ error: 'Transaction not found' });
+      }
+      
+      res.json({
+        success: true,
+        transaction
+      });
+    } catch (error) {
+      logger.error('Failed to get transaction details', { error: error.message });
+      res.status(500).json({ error: 'Failed to get transaction details' });
+    }
+  }
+);
+
+// Update Dashboard Stats for New KYC Service
+router.get('/dashboard/stats', async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      activeUsers,
+      totalTransactions,
+      totalVolume,
+      pendingTransactions,
+      openTickets,
+      kycStats,
+      rubiesStats
+    ] = await Promise.all([
+      User.count(),
+      User.count({ where: { isActive: true, isBanned: false } }),
+      Transaction.count(),
+      Transaction.sum('amount', { where: { status: 'completed' } }),
+      Transaction.count({ where: { status: 'pending' } }),
+      SupportTicket.count({ where: { status: 'open' } }),
+      // KYC stats with Rubies integration
+      User.findAll({
+        attributes: [
+          'kycStatus',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+        ],
+        group: ['kycStatus']
+      }),
+      // Rubies-specific stats
+      Transaction.findAll({
+        attributes: [
+          'status',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+          [sequelize.fn('SUM', sequelize.col('amount')), 'totalAmount']
+        ],
+        where: {
+          category: 'bank_transfer',
+          createdAt: {
+            [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+          }
+        },
+        group: ['status']
+      })
+    ]);
+
+    res.json({
+      success: true,
+      stats: {
+        users: {
+          total: totalUsers,
+          active: activeUsers,
+          kycBreakdown: kycStats
+        },
+        transactions: {
+          total: totalTransactions,
+          volume: totalVolume || 0,
+          pending: pendingTransactions,
+          rubiesStats: rubiesStats
+        },
+        support: {
+          openTickets: openTickets
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get dashboard stats', { error: error.message });
+    res.status(500).json({ error: 'Failed to get dashboard stats' });
+  }
+});
+
+// Push Notification to All Users
+router.post('/notifications/push',
+  [
+    body('title').notEmpty().withMessage('Notification title is required'),
+    body('message').notEmpty().withMessage('Notification message is required'),
+    body('type').optional().isIn(['info', 'warning', 'success', 'error']).withMessage('Invalid notification type')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { title, message, type = 'info' } = req.body;
+      
+      // Get all active users
+      const users = await User.findAll({
+        where: { isActive: true, isBanned: false },
+        attributes: ['id', 'whatsappNumber', 'firstName']
+      });
+      
+      let successCount = 0;
+      let failCount = 0;
+      
+      // Send notification to each user
+      for (const user of users) {
+        try {
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `🔔 *${title}*\n\n${message}\n\n_MiiMii Team_`
+          );
+          successCount++;
+        } catch (error) {
+          logger.error('Failed to send notification to user', { 
+            userId: user.id, 
+            error: error.message 
+          });
+          failCount++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: 'Push notification sent',
+        stats: {
+          total: users.length,
+          successful: successCount,
+          failed: failCount
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to send push notification', { error: error.message });
+      res.status(500).json({ error: 'Failed to send push notification' });
+    }
+  }
+);
+
+// Customer Support Endpoints
+
+// Get All Support Tickets
+router.get('/support/tickets', async (req, res) => {
+  try {
+    const { status, limit = 20, offset = 0 } = req.query;
+    
+    const whereClause = status ? { status } : {};
+    
+    const tickets = await SupportTicket.findAndCountAll({
+      where: whereClause,
+      include: [
+        { model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+    
+    res.json({
+      success: true,
+      tickets: tickets.rows,
+      total: tickets.count,
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+  } catch (error) {
+    logger.error('Failed to get support tickets', { error: error.message });
+    res.status(500).json({ error: 'Failed to get support tickets' });
+  }
+});
+
+// Update Support Ticket Status
+router.patch('/support/tickets/:ticketId',
+  [
+    param('ticketId').isUUID().withMessage('Invalid ticket ID'),
+    body('status').isIn(['open', 'in_progress', 'resolved', 'closed']).withMessage('Invalid status'),
+    body('response').optional().isString().withMessage('Response must be a string')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const { status, response } = req.body;
+      
+      const ticket = await SupportTicket.findByPk(ticketId, {
+        include: [{ model: User, as: 'user' }]
+      });
+      
+      if (!ticket) {
+        return res.status(404).json({ error: 'Support ticket not found' });
+      }
+      
+      await ticket.update({ status, resolution: response });
+      
+      // Send response to user if provided
+      if (response && ticket.user) {
+        await whatsappService.sendTextMessage(
+          ticket.user.whatsappNumber,
+          `📞 *Support Response*\n\n${response}\n\n_MiiMii Support Team_`
+        );
+      }
+      
+      res.json({
+        success: true,
+        message: 'Support ticket updated successfully',
+        ticket
+      });
+    } catch (error) {
+      logger.error('Failed to update support ticket', { error: error.message });
+      res.status(500).json({ error: 'Failed to update support ticket' });
+    }
+  }
+);
+
+// Get Support Ticket Details
+router.get('/support/tickets/:ticketId',
+  [
+    param('ticketId').isUUID().withMessage('Invalid ticket ID')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      const ticket = await SupportTicket.findByPk(ticketId, {
+        include: [
+          { model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber', 'email'] }
+        ]
+      });
+      
+      if (!ticket) {
+        return res.status(404).json({ error: 'Support ticket not found' });
+      }
+      
+      res.json({
+        success: true,
+        ticket
+      });
+    } catch (error) {
+      logger.error('Failed to get support ticket details', { error: error.message });
+      res.status(500).json({ error: 'Failed to get support ticket details' });
+    }
+  }
+);
+
+// Create Support Ticket (User endpoint)
+router.post('/support/tickets',
+  [
+    body('userId').isUUID().withMessage('Valid user ID is required'),
+    body('subject').notEmpty().withMessage('Subject is required'),
+    body('description').notEmpty().withMessage('Description is required'),
+    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']).withMessage('Invalid priority level')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId, subject, description, priority = 'medium' } = req.body;
+      
+      // Verify user exists
+      const user = await User.findByPk(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Create support ticket
+      const ticket = await SupportTicket.create({
+        userId,
+        subject: subject.trim(),
+        description: description.trim(),
+        priority,
+        status: 'open',
+        type: 'inquiry' // Default type for user-created tickets
+      });
+      
+      // Send confirmation to user
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        `🎫 *Support Ticket Created*\n\n` +
+        `Subject: ${subject}\n` +
+        `Priority: ${priority.toUpperCase()}\n` +
+        `Ticket ID: ${ticket.id}\n\n` +
+        `We've received your support request and will get back to you within 24 hours.\n\n` +
+        `_MiiMii Support Team_`
+      );
+      
+      res.json({
+        success: true,
+        message: 'Support ticket created successfully',
+        ticket: {
+          id: ticket.id,
+          subject: ticket.subject,
+          priority: ticket.priority,
+          status: ticket.status,
+          createdAt: ticket.createdAt
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to create support ticket', { error: error.message });
+      res.status(500).json({ error: 'Failed to create support ticket' });
     }
   }
 );

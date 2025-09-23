@@ -540,6 +540,352 @@
           "body": "{ \n  \"error\": \"Failed to compute revenue stats\" \n}"
         }
       ]
+    },
+    {
+      "name": "Transaction Requery",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/transactions/requery", "host": ["{{baseUrl}}"], "path": ["api","admin","transactions","requery"] },
+        "body": { "mode": "raw", "raw": "{\n  \"reference\": \"TXN1758556925944_08JVJS0B2\"\n}" }
+      },
+      "response": [
+        {
+          "name": "200 OK - Transaction status updated",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Transaction status updated successfully\",\n  \"transaction\": {\n    \"success\": true,\n    \"amount\": \"100.00\",\n    \"bankCode\": \"100004\",\n    \"bankName\": \"OPay\",\n    \"contractReference\": \"20220412FT0000000010\",\n    \"creditAccountNumber\": \"9072874728\",\n    \"debitAccountName\": \"MiiMii User\",\n    \"debitAccountNumber\": \"1000000975\",\n    \"narration\": \"Wallet transfer\",\n    \"paymentReference\": \"TXN1758556925944_08JVJS0B2\",\n    \"responseCode\": \"00\",\n    \"responseMessage\": \"SUCCESSFUL\"\n  }\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"field\",\n      \"msg\": \"Transaction reference is required\",\n      \"path\": \"reference\",\n      \"location\": \"body\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Transaction requery failed\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "User Transactions",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/users/{{userId}}/transactions?limit=20&offset=0", "host": ["{{baseUrl}}"], "path": ["api","admin","users","{{userId}}","transactions"], "query": [{"key":"limit","value":"20"},{"key":"offset","value":"0"}] }
+      },
+      "response": [
+        {
+          "name": "200 OK - User transactions",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"transactions\": [\n    {\n      \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n      \"reference\": \"TXN1758556925944_08JVJS0B2\",\n      \"type\": \"debit\",\n      \"category\": \"bank_transfer\",\n      \"amount\": 100,\n      \"fee\": 15,\n      \"status\": \"completed\",\n      \"description\": \"Bank transfer to John Doe\",\n      \"user\": {\n        \"firstName\": \"John\",\n        \"lastName\": \"Doe\",\n        \"whatsappNumber\": \"+2349072874728\"\n      },\n      \"createdAt\": \"2024-01-01T12:00:00.000Z\"\n    }\n  ],\n  \"total\": 25,\n  \"limit\": 20,\n  \"offset\": 0\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"field\",\n      \"msg\": \"Invalid user ID\",\n      \"path\": \"userId\",\n      \"location\": \"params\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get user transactions\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Transaction Details",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/transactions/{{transactionId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","transactions","{{transactionId}}"] }
+      },
+      "response": [
+        {
+          "name": "200 OK - Transaction details",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"transaction\": {\n    \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n    \"reference\": \"TXN1758556925944_08JVJS0B2\",\n    \"type\": \"debit\",\n    \"category\": \"bank_transfer\",\n    \"amount\": 100,\n    \"fee\": 15,\n    \"status\": \"completed\",\n    \"description\": \"Bank transfer to John Doe\",\n    \"user\": {\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"whatsappNumber\": \"+2349072874728\",\n      \"email\": \"john@example.com\"\n    },\n    \"wallet\": {\n      \"virtualAccountNumber\": \"1000000975\",\n      \"virtualAccountBank\": \"Rubies MFB\"\n    },\n    \"createdAt\": \"2024-01-01T12:00:00.000Z\",\n    \"processedAt\": \"2024-01-01T12:00:10.000Z\"\n  }\n}"
+        },
+        {
+          "name": "404 Not Found - Transaction not found",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Transaction not found\" \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get transaction details\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Dashboard Stats (Updated)",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/dashboard/stats", "host": ["{{baseUrl}}"], "path": ["api","admin","dashboard","stats"] }
+      },
+      "response": [
+        {
+          "name": "200 OK - Enhanced dashboard stats",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"stats\": {\n    \"users\": {\n      \"total\": 120,\n      \"active\": 95,\n      \"kycBreakdown\": [\n        { \"kycStatus\": \"verified\", \"count\": 110 },\n        { \"kycStatus\": \"pending\", \"count\": 2 },\n        { \"kycStatus\": \"incomplete\", \"count\": 5 },\n        { \"kycStatus\": \"rejected\", \"count\": 3 }\n      ]\n    },\n    \"transactions\": {\n      \"total\": 1540,\n      \"volume\": 1250000.5,\n      \"pending\": 7,\n      \"rubiesStats\": [\n        { \"status\": \"completed\", \"count\": 1200, \"totalAmount\": 1000000 },\n        { \"status\": \"pending\", \"count\": 5, \"totalAmount\": 5000 },\n        { \"status\": \"failed\", \"count\": 2, \"totalAmount\": 200 }\n      ]\n    },\n    \"support\": {\n      \"openTickets\": 3\n    }\n  }\n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get dashboard stats\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Push Notification",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/notifications/push", "host": ["{{baseUrl}}"], "path": ["api","admin","notifications","push"] },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"System Maintenance\",\n  \"message\": \"We will be performing scheduled maintenance on our servers from 2:00 AM to 4:00 AM. Some services may be temporarily unavailable.\",\n  \"type\": \"info\"\n}" }
+      },
+      "response": [
+        {
+          "name": "200 OK - Notification sent",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Push notification sent\",\n  \"stats\": {\n    \"total\": 95,\n    \"successful\": 92,\n    \"failed\": 3\n  }\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"field\",\n      \"msg\": \"Notification title is required\",\n      \"path\": \"title\",\n      \"location\": \"body\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to send push notification\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Support Tickets - List",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/support/tickets?status=open&limit=20&offset=0", "host": ["{{baseUrl}}"], "path": ["api","admin","support","tickets"], "query": [{"key":"status","value":"open"},{"key":"limit","value":"20"},{"key":"offset","value":"0"}] }
+      },
+      "response": [
+        {
+          "name": "200 OK - Support tickets",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"tickets\": [\n    {\n      \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n      \"subject\": \"Transfer Failed\",\n      \"description\": \"My transfer to 0803XXXXXXX failed\",\n      \"status\": \"open\",\n      \"priority\": \"medium\",\n      \"user\": {\n        \"firstName\": \"John\",\n        \"lastName\": \"Doe\",\n        \"whatsappNumber\": \"+2349072874728\"\n      },\n      \"createdAt\": \"2024-01-01T12:00:00.000Z\"\n    }\n  ],\n  \"total\": 15,\n  \"limit\": 20,\n  \"offset\": 0\n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get support tickets\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Support Ticket - Update",
+      "request": {
+        "method": "PATCH",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/support/tickets/{{ticketId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","support","tickets","{{ticketId}}"] },
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"resolved\",\n  \"response\": \"Your transfer has been processed successfully. The funds have been credited to the recipient's account.\"\n}" }
+      },
+      "response": [
+        {
+          "name": "200 OK - Ticket updated",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Support ticket updated successfully\",\n  \"ticket\": {\n    \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n    \"subject\": \"Transfer Failed\",\n    \"description\": \"My transfer to 0803XXXXXXX failed\",\n    \"status\": \"resolved\",\n    \"resolution\": \"Your transfer has been processed successfully. The funds have been credited to the recipient's account.\",\n    \"user\": {\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"whatsappNumber\": \"+2349072874728\"\n    },\n    \"createdAt\": \"2024-01-01T12:00:00.000Z\",\n    \"updatedAt\": \"2024-01-01T12:30:00.000Z\"\n  }\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"field\",\n      \"msg\": \"Invalid status\",\n      \"path\": \"status\",\n      \"location\": \"body\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "404 Not Found - Ticket not found",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Support ticket not found\" \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to update support ticket\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Support Ticket - Details",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/support/tickets/{{ticketId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","support","tickets","{{ticketId}}"] }
+      },
+      "response": [
+        {
+          "name": "200 OK - Ticket details",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"ticket\": {\n    \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n    \"subject\": \"Transfer Failed\",\n    \"description\": \"My transfer to 0803XXXXXXX failed\",\n    \"status\": \"resolved\",\n    \"priority\": \"medium\",\n    \"resolution\": \"Your transfer has been processed successfully. The funds have been credited to the recipient's account.\",\n    \"user\": {\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"whatsappNumber\": \"+2349072874728\",\n      \"email\": \"john@example.com\"\n    },\n    \"createdAt\": \"2024-01-01T12:00:00.000Z\",\n    \"updatedAt\": \"2024-01-01T12:30:00.000Z\"\n  }\n}"
+        },
+        {
+          "name": "404 Not Found - Ticket not found",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Support ticket not found\" \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to get support ticket details\" \n}"
+        }
+      ]
+    },
+    {
+      "name": "Support Ticket - Create",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": { "raw": "{{baseUrl}}/api/admin/support/tickets", "host": ["{{baseUrl}}"], "path": ["api","admin","support","tickets"] },
+        "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"subject\": \"Transfer Failed\",\n  \"description\": \"My transfer to 0803XXXXXXX failed. The transaction was deducted from my account but the recipient didn't receive the funds.\",\n  \"priority\": \"high\"\n}" }
+      },
+      "response": [
+        {
+          "name": "200 OK - Ticket created",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Support ticket created successfully\",\n  \"ticket\": {\n    \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n    \"subject\": \"Transfer Failed\",\n    \"priority\": \"high\",\n    \"status\": \"open\",\n    \"createdAt\": \"2024-01-01T12:00:00.000Z\"\n  }\n}"
+        },
+        {
+          "name": "400 Bad Request - Validation error",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"field\",\n      \"msg\": \"Valid user ID is required\",\n      \"path\": \"userId\",\n      \"location\": \"body\"\n    },\n    {\n      \"type\": \"field\",\n      \"msg\": \"Subject is required\",\n      \"path\": \"subject\",\n      \"location\": \"body\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "404 Not Found - User not found",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"User not found\" \n}"
+        },
+        {
+          "name": "401 Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Unauthorized\" \n}"
+        },
+        {
+          "name": "500 Server Error",
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "body": "{ \n  \"error\": \"Failed to create support ticket\" \n}"
+        }
+      ]
     }
   ],
   "variable": [
@@ -548,6 +894,8 @@
     { "key": "ADMIN_PASSWORD", "value": "Musa$2025" },
     { "key": "ADMIN_TOKEN", "value": "" },
     { "key": "userId", "value": "" },
+    { "key": "transactionId", "value": "" },
+    { "key": "ticketId", "value": "" },
     { "key": "startDate", "value": "" },
     { "key": "endDate", "value": "" }
   ]

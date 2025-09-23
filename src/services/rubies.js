@@ -1213,6 +1213,52 @@ class RubiesService {
 
     return null;
   }
+
+  // Transaction Status Query (TSQ)
+  async queryTransactionStatus(reference) {
+    try {
+      const payload = {
+        reference: reference.toString().trim()
+      };
+
+      logger.info('Querying Rubies transaction status', {
+        reference: payload.reference,
+        environment: this.selectedEnvironment
+      });
+
+      // Transaction status query endpoint
+      const response = await this.makeRequest('POST', '/baas-transaction/tsq', payload);
+
+      if (response.responseCode === '00') {
+        return {
+          success: true,
+          amount: response.amount,
+          bankCode: response.bankCode,
+          bankName: response.bankName,
+          contractReference: response.contractReference,
+          creditAccountNumber: response.creditAccountNumber,
+          debitAccountName: response.debitAccountName,
+          debitAccountNumber: response.debitAccountNumber,
+          narration: response.narration,
+          paymentReference: response.paymentReference,
+          responseCode: response.responseCode,
+          responseMessage: response.responseMessage
+        };
+      } else {
+        return {
+          success: false,
+          responseCode: response.responseCode,
+          responseMessage: response.responseMessage || 'Transaction query failed'
+        };
+      }
+    } catch (error) {
+      logger.error('Rubies transaction status query failed', { 
+        error: error.message, 
+        reference 
+      });
+      throw error;
+    }
+  }
 }
 
 module.exports = new RubiesService();
