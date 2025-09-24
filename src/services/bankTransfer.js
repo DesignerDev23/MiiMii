@@ -371,7 +371,7 @@ class BankTransferService {
       '000221': 'Stanbic IBTC',
       '000050': 'Ecobank',
       '000232': 'Sterling Bank',
-      '100004': 'Opay',
+      '100004': 'Opay', // Also covers Moniepoint, Rubies MFB, 9 Payment
       '000090': 'Kuda Bank',
       '000091': 'PalmPay'
     };
