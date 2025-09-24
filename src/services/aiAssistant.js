@@ -235,12 +235,13 @@ EXTRACTION RULES:
 AIRTIME & DATA PURCHASE RULES:
 - Commands: "buy", "purchase", "send", "get", "recharge" + airtime/data
 - Amount formats: "2k" = 2000, "1k" = 1000, "500" = 500
+- Network detection: If user mentions network name (MTN, Airtel, Glo, 9mobile), use that network
 - Examples:
   * "Buy 2k airtime" → airtime purchase for ₦2000
-  * "Send 1k airtime to 08012345678" → airtime for specific number
-  * "Purchase 500 airtime" → airtime purchase for ₦500
+  * "Send 1k airtime to 08012345678 Airtel" → airtime for Airtel network
+  * "Purchase 500 airtime for MTN" → airtime for MTN network
   * "Get 2GB data" → data purchase
-  * "Buy data 1k" → data purchase for ₦1000
+  * "Buy data 1k for Glo" → data purchase for Glo network
 
 ALL TRANSFERS ARE BANK TRANSFERS:
 - ALL transfers use "bank_transfer" intent
@@ -290,9 +291,9 @@ For Airtime Purchase:
   "extractedData": {
     "amount": 2000,
     "phoneNumber": "08012345678",
-    "network": "MTN"
+    "network": "Airtel"
   },
-  "response": "Perfect! ₦2k airtime coming up. PIN please? 🔐",
+  "response": "Perfect! ₦2k airtime for Airtel coming up. PIN please? 🔐",
   "suggestedAction": "Process airtime purchase"
 }
 
@@ -1283,7 +1284,22 @@ Extract intent and data from this message. Consider the user context and any ext
 
     const targetPhone = phoneNumber || user.whatsappNumber;
     const airtimeAmount = this.parseAmount(amount);
-    const detectedNetwork = network || this.detectNetwork(targetPhone);
+    
+    // Use explicitly mentioned network if available, otherwise detect from phone number
+    let detectedNetwork;
+    if (network && network.toLowerCase() !== 'unknown') {
+      detectedNetwork = network;
+      logger.info('Using explicitly mentioned network for airtime', { 
+        network, 
+        phoneNumber: targetPhone 
+      });
+    } else {
+      detectedNetwork = this.detectNetwork(targetPhone);
+      logger.info('Detected network from phone number for airtime', { 
+        detectedNetwork, 
+        phoneNumber: targetPhone 
+      });
+    }
     
     // Store airtime purchase data and request PIN verification
     await user.updateConversationState({
@@ -1323,8 +1339,24 @@ Extract intent and data from this message. Consider the user context and any ext
     // Use bilal service for data purchase
     const bilalService = require('./bilal');
     
+    // Use explicitly mentioned network if available, otherwise detect from phone number
+    let detectedNetwork;
+    if (network && network.toLowerCase() !== 'unknown') {
+      detectedNetwork = network;
+      logger.info('Using explicitly mentioned network for data', { 
+        network, 
+        phoneNumber: targetPhone 
+      });
+    } else {
+      detectedNetwork = this.detectNetwork(targetPhone);
+      logger.info('Detected network from phone number for data', { 
+        detectedNetwork, 
+        phoneNumber: targetPhone 
+      });
+    }
+    
     // Get data plans for the network
-    const dataPlans = await bilalService.getDataPlans(network || this.detectNetwork(targetPhone));
+    const dataPlans = await bilalService.getDataPlans(detectedNetwork);
     
     // Find the appropriate data plan
     let selectedPlan = null;
@@ -1348,7 +1380,7 @@ Extract intent and data from this message. Consider the user context and any ext
       };
     }
     
-    const detectedNetwork = network || this.detectNetwork(targetPhone);
+    // Use the detected network from above
     
     // Use the complete data purchase flow
     const whatsappService = require('./whatsapp');
