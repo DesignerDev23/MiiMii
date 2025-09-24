@@ -297,6 +297,8 @@ For Airtime Purchase:
   "suggestedAction": "Process airtime purchase"
 }
 
+IMPORTANT: For airtime purchases, extract network as "network" field, NOT "bankName"
+
 For Data Purchase:
 {
   "intent": "data",
@@ -1271,7 +1273,10 @@ Extract intent and data from this message. Consider the user context and any ext
   }
 
   async handleAirtimePurchase(user, extractedData, aiResponse) {
-    const { amount, phoneNumber, network } = extractedData;
+    const { amount, phoneNumber, network, bankName } = extractedData;
+    
+    // Handle case where AI extracts network as bankName instead of network
+    const actualNetwork = network || bankName;
     
     if (!amount) {
       return {
@@ -1287,10 +1292,10 @@ Extract intent and data from this message. Consider the user context and any ext
     
     // Use explicitly mentioned network if available, otherwise detect from phone number
     let detectedNetwork;
-    if (network && network.toLowerCase() !== 'unknown') {
-      detectedNetwork = network;
+    if (actualNetwork && actualNetwork.toLowerCase() !== 'unknown') {
+      detectedNetwork = actualNetwork;
       logger.info('Using explicitly mentioned network for airtime', { 
-        network, 
+        network: actualNetwork, 
         phoneNumber: targetPhone 
       });
     } else {

@@ -72,6 +72,14 @@ class MessageProcessor {
             data: message.flowResponse.responseJson
           };
           
+          logger.info('Processing airtime flow completion', {
+            userId: user.id,
+            flowToken: flowCompletionData.flowToken,
+            screen: flowCompletionData.screen,
+            dataKeys: Object.keys(flowCompletionData.data || {}),
+            hasPin: !!flowCompletionData.data?.pin
+          });
+          
           return await this.processFlowCompletion(flowCompletionData);
         }
         // Fall through to Flow completion handling below
@@ -251,9 +259,28 @@ class MessageProcessor {
               }
 
               // Get session data
-              let session = flowToken ? await redisClient.getSession(flowToken) : null;
-              if (!session && flowToken) {
-                session = await redisClient.getSession(`flow:${flowToken}`);
+              let session = null;
+              if (flowToken) {
+                logger.info('Attempting to retrieve session for airtime flow', { 
+                  flowToken, 
+                  userId: user.id,
+                  redisConnected: redisClient.isConnected 
+                });
+                
+                // Try different session key formats
+                session = await redisClient.getSession(flowToken);
+                logger.info('Session retrieval attempt 1', { found: !!session, key: flowToken });
+                
+                if (!session) {
+                  session = await redisClient.getSession(`flow:${flowToken}`);
+                  logger.info('Session retrieval attempt 2', { found: !!session, key: `flow:${flowToken}` });
+                }
+                if (!session) {
+                  // Try without any prefix
+                  const cleanToken = flowToken.replace('flow:', '');
+                  session = await redisClient.getSession(cleanToken);
+                  logger.info('Session retrieval attempt 3', { found: !!session, key: cleanToken });
+                }
               }
 
               if (!session) {
