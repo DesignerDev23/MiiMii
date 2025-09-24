@@ -1011,14 +1011,14 @@ Extract intent and data from this message. Consider the user context and any ext
             
             // Final fallback: use static bank mapping with proper names
             const staticBankMapping = {
-              'opay': { code: '100004', name: 'Opay' },
-              'moniepoint': { code: '100004', name: 'Moniepoint' },
-              'monie': { code: '100004', name: 'Moniepoint' },
               'rubies mfb': { code: '100004', name: 'Rubies MFB' },
               'rubies': { code: '100004', name: 'Rubies MFB' },
               'mfb': { code: '100004', name: 'Rubies MFB' },
               '9 payment': { code: '100004', name: '9 Payment' },
               '9pay': { code: '100004', name: '9 Payment' },
+              'opay': { code: '100004', name: 'Opay' },
+              'moniepoint': { code: '100004', name: 'Moniepoint' },
+              'monie': { code: '100004', name: 'Moniepoint' },
               'gtbank': { code: '000058', name: 'GTBank' },
               'gtb': { code: '000058', name: 'GTBank' },
               'gt bank': { code: '000058', name: 'GTBank' },
@@ -2831,47 +2831,83 @@ Welcome to the future of banking! 🚀`;
           // Try to resolve bank from tokens (supports 3-letter prefixes and full names)
           let detectedBankName = null;
           let detectedBankCode = null;
-          try {
-            const rubiesService = require('./rubies');
-            
-            // First try full bank names (like "rubies mfb", "opay", "gtbank")
-            const bankNamePatterns = [
-              'rubies mfb', 'rubies', 'mfb',
-              'opay', 'moniepoint', 'monie',
-              'gtbank', 'gtb', 'gt bank',
-              'access', 'first bank', 'firstbank',
-              'zenith', 'uba', 'keystone',
-              'stanbic', 'ecobank', 'fidelity',
-              'union', 'wema', 'sterling',
-              'kuda', 'palm pay', 'palmpay'
-            ];
-            
-            // Check for full bank names first
-            for (const pattern of bankNamePatterns) {
-              if (lowerMessage.includes(pattern)) {
-                const code = await rubiesService.resolveInstitutionCode(pattern);
-                if (code) {
-                  detectedBankName = pattern;
-                  detectedBankCode = code;
-                  break;
-                }
+          
+          // First try static mapping (fast and reliable)
+          const staticBankMapping = {
+            'rubies mfb': { code: '100004', name: 'Rubies MFB' },
+            'rubies': { code: '100004', name: 'Rubies MFB' },
+            'mfb': { code: '100004', name: 'Rubies MFB' },
+            '9 payment': { code: '100004', name: '9 Payment' },
+            '9pay': { code: '100004', name: '9 Payment' },
+            'opay': { code: '100004', name: 'Opay' },
+            'moniepoint': { code: '100004', name: 'Moniepoint' },
+            'monie': { code: '100004', name: 'Moniepoint' },
+            'gtbank': { code: '000058', name: 'GTBank' },
+            'gtb': { code: '000058', name: 'GTBank' },
+            'gt bank': { code: '000058', name: 'GTBank' },
+            'access': { code: '000014', name: 'Access Bank' },
+            'first bank': { code: '000016', name: 'First Bank' },
+            'firstbank': { code: '000016', name: 'First Bank' },
+            'zenith': { code: '000057', name: 'Zenith Bank' },
+            'uba': { code: '000033', name: 'UBA' },
+            'keystone': { code: '000082', name: 'Keystone Bank' },
+            'stanbic': { code: '000221', name: 'Stanbic IBTC' },
+            'ecobank': { code: '000050', name: 'Ecobank' },
+            'fidelity': { code: '000070', name: 'Fidelity Bank' },
+            'union': { code: '000032', name: 'Union Bank' },
+            'wema': { code: '000035', name: 'Wema Bank' },
+            'sterling': { code: '000232', name: 'Sterling Bank' },
+            'kuda': { code: '000090', name: 'Kuda Bank' },
+            'palm pay': { code: '000091', name: 'PalmPay' },
+            'palmpay': { code: '000091', name: 'PalmPay' }
+          };
+          
+          // Check for full bank names first (static mapping)
+          const bankNamePatterns = [
+            'rubies mfb', 'rubies', 'mfb',
+            '9 payment', '9pay',
+            'opay', 'moniepoint', 'monie',
+            'gtbank', 'gtb', 'gt bank',
+            'access', 'first bank', 'firstbank',
+            'zenith', 'uba', 'keystone',
+            'stanbic', 'ecobank', 'fidelity',
+            'union', 'wema', 'sterling',
+            'kuda', 'palm pay', 'palmpay'
+          ];
+          
+          // Check for full bank names first
+          for (const pattern of bankNamePatterns) {
+            if (lowerMessage.includes(pattern)) {
+              const mappedBank = staticBankMapping[pattern];
+              if (mappedBank) {
+                detectedBankName = mappedBank.name;
+                detectedBankCode = mappedBank.code;
+                logger.info('Bank name resolved via static mapping', { 
+                  pattern, 
+                  detectedBankName, 
+                  detectedBankCode 
+                });
+                break;
               }
             }
-            
-            // If no full name match, try 3-letter tokens
-            if (!detectedBankName) {
-              const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
-              for (const token of tokens) {
-                const code = await rubiesService.resolveInstitutionCode(token);
-                if (code) {
-                  detectedBankName = token;
-                  detectedBankCode = code;
-                  break;
-                }
+          }
+          
+          // If no full name match, try 3-letter tokens (static mapping)
+          if (!detectedBankName) {
+            const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
+            for (const token of tokens) {
+              const mappedBank = staticBankMapping[token];
+              if (mappedBank) {
+                detectedBankName = mappedBank.name;
+                detectedBankCode = mappedBank.code;
+                logger.info('Bank name resolved via static mapping (token)', { 
+                  token, 
+                  detectedBankName, 
+                  detectedBankCode 
+                });
+                break;
               }
             }
-          } catch (e) {
-            logger.warn('Bank detection during hard override failed', { error: e.message });
           }
 
           return {
