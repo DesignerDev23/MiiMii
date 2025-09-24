@@ -2892,9 +2892,6 @@ class MessageProcessor {
           }
 
           // Fallback to traditional processing if no AI response
-          await whatsappService.sendTextMessage(user.whatsappNumber, 
-            "🔍 Validating account details... Please wait a moment.");
-
           // Validate account via Rubies API
           const validation = await bankTransferService.validateBankAccount(accountNumber, resolvedBankCode);
           
@@ -3053,9 +3050,6 @@ class MessageProcessor {
             `❌ *Insufficient Balance*\n\nYou need ₦${totalAmount.toLocaleString()} for this transfer but only have ₦${walletBalance.toLocaleString()}.\n\n💰 Please fund your wallet with ₦${shortfall.toLocaleString()} more to complete this transfer.`);
           return;
         }
-
-        await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "🔍 Validating account details... Please wait a moment.");
 
         const validation = await bankTransferService.validateBankAccount(accountNumber, bankCode);
         
