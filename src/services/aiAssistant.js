@@ -2832,7 +2832,7 @@ Welcome to the future of banking! 🚀`;
           let detectedBankName = null;
           let detectedBankCode = null;
           
-          // Use dynamic bank resolution from Rubies API
+          // Use dynamic bank resolution from Rubies API with 3-letter matching
           try {
             const rubiesService = require('./rubies');
             const bankListResponse = await rubiesService.getBankList();
@@ -2842,79 +2842,83 @@ Welcome to the future of banking! 🚀`;
                 bankCount: bankListResponse.length 
               });
               
-              // Extract potential bank names from the message
-              const bankNamePatterns = [
-                'rubies mfb', 'rubies', 'mfb',
-                '9 payment', '9pay',
-                'opay', 'moniepoint', 'monie',
-                'gtbank', 'gtb', 'gt bank',
-                'access', 'first bank', 'firstbank',
-                'zenith', 'uba', 'keystone',
-                'stanbic', 'ecobank', 'fidelity',
-                'union', 'wema', 'sterling',
-                'kuda', 'palm pay', 'palmpay',
-                'heritage', 'polaris', 'providus',
-                'suntrust', 'citibank', 'diamond',
-                'fcmb', 'unity', 'jaiz',
-                'standard chartered', 'rand merchant', 'polari'
-              ];
+              // Extract all 3+ letter words from the message that could be bank names
+              const words = lowerMessage.split(/[^a-z0-9]+/).filter(word => 
+                word && word.length >= 3 && /^[a-z]+$/.test(word)
+              );
               
-              // Check for full bank names first
-              for (const pattern of bankNamePatterns) {
-                if (lowerMessage.includes(pattern)) {
-                  // Find matching bank in Rubies API response
-                  const matchingBank = bankListResponse.find(bank => {
-                    const bankName = bank.name.toLowerCase();
-                    const patternLower = pattern.toLowerCase();
-                    
-                    // Direct match or partial match
-                    return bankName.includes(patternLower) || 
-                           patternLower.includes(bankName) ||
-                           bankName.includes(patternLower.replace(/\s+/g, '')) ||
-                           patternLower.replace(/\s+/g, '').includes(bankName);
-                  });
+              logger.info('Extracted potential bank name tokens', { 
+                words,
+                message: lowerMessage 
+              });
+              
+              // Try to match each word against the Rubies API bank list
+              for (const word of words) {
+                const matchingBank = bankListResponse.find(bank => {
+                  const bankName = bank.name.toLowerCase();
+                  const wordLower = word.toLowerCase();
                   
-                  if (matchingBank) {
-                    detectedBankName = matchingBank.name;
-                    detectedBankCode = matchingBank.code;
-                    logger.info('Bank name resolved via Rubies API (full pattern)', { 
-                      pattern, 
-                      detectedBankName, 
-                      detectedBankCode 
-                    });
-                    break;
+                  // Direct match
+                  if (bankName === wordLower) {
+                    return true;
                   }
+                  
+                  // Bank name contains the word
+                  if (bankName.includes(wordLower)) {
+                    return true;
+                  }
+                  
+                  // Word contains bank name (for abbreviations)
+                  if (wordLower.includes(bankName)) {
+                    return true;
+                  }
+                  
+                  // Special cases for common abbreviations
+                  if (wordLower === 'gtb' && bankName.includes('gtbank')) {
+                    return true;
+                  }
+                  if (wordLower === 'fbn' && bankName.includes('firstbank')) {
+                    return true;
+                  }
+                  if (wordLower === 'ibtc' && bankName.includes('stanbic')) {
+                    return true;
+                  }
+                  if (wordLower === 'mfb' && bankName.includes('microfinance')) {
+                    return true;
+                  }
+                  if (wordLower === 'monie' && bankName.includes('moniepoint')) {
+                    return true;
+                  }
+                  if (wordLower === 'rubies' && bankName.includes('rubies')) {
+                    return true;
+                  }
+                  
+                  // Check if the first 3 letters match
+                  if (wordLower.length >= 3 && bankName.startsWith(wordLower.substring(0, 3))) {
+                    return true;
+                  }
+                  
+                  return false;
+                });
+                
+                if (matchingBank) {
+                  detectedBankName = matchingBank.name;
+                  detectedBankCode = matchingBank.code;
+                  logger.info('Bank name resolved via Rubies API (3-letter matching)', { 
+                    word, 
+                    detectedBankName, 
+                    detectedBankCode,
+                    bankListSize: bankListResponse.length
+                  });
+                  break;
                 }
               }
               
-              // If no full name match, try 3-letter tokens
               if (!detectedBankName) {
-                const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
-                for (const token of tokens) {
-                  const matchingBank = bankListResponse.find(bank => {
-                    const bankName = bank.name.toLowerCase();
-                    const tokenLower = token.toLowerCase();
-                    
-                    // Check for token match in bank name
-                    return bankName.includes(tokenLower) || 
-                           tokenLower.includes(bankName) ||
-                           // Special cases for common abbreviations
-                           (tokenLower === 'gtb' && bankName.includes('gtbank')) ||
-                           (tokenLower === 'fbn' && bankName.includes('firstbank')) ||
-                           (tokenLower === 'ibtc' && bankName.includes('stanbic'));
-                  });
-                  
-                  if (matchingBank) {
-                    detectedBankName = matchingBank.name;
-                    detectedBankCode = matchingBank.code;
-                    logger.info('Bank name resolved via Rubies API (token)', { 
-                      token, 
-                      detectedBankName, 
-                      detectedBankCode 
-                    });
-                    break;
-                  }
-                }
+                logger.warn('No bank found in Rubies API bank list', {
+                  words,
+                  availableBanks: bankListResponse.slice(0, 10).map(b => b.name)
+                });
               }
             } else {
               logger.warn('Rubies API bank list is empty, falling back to static mapping');
@@ -3393,20 +3397,45 @@ Response format:
   // Generate AI-powered transfer confirmation message
   async generateTransferConfirmationMessage(transferData) {
     try {
-      const { amount, recipientName, bankName, accountNumber } = transferData;
+      const { amount, recipientName, bankName, accountNumber, bankCode } = transferData;
       
       // Ensure all values are properly defined
       const safeAmount = amount || 0;
       const safeRecipientName = recipientName || 'Recipient';
-      const safeBankName = bankName || 'Unknown Bank';
+      let safeBankName = bankName || 'Unknown Bank';
       const safeAccountNumber = accountNumber || 'Account';
+      
+      // Try to resolve bank name from Rubies API if we have a bank code
+      if (bankCode && (!bankName || bankName === 'Unknown Bank')) {
+        try {
+          const rubiesService = require('./rubies');
+          const bankListResponse = await rubiesService.getBankList();
+          
+          if (bankListResponse && bankListResponse.length > 0) {
+            const matchingBank = bankListResponse.find(bank => bank.code === bankCode);
+            if (matchingBank) {
+              safeBankName = matchingBank.name;
+              logger.info('Bank name resolved from Rubies API for confirmation message', {
+                bankCode,
+                resolvedBankName: safeBankName
+              });
+            }
+          }
+        } catch (error) {
+          logger.warn('Failed to resolve bank name from Rubies API for confirmation', {
+            error: error.message,
+            bankCode
+          });
+        }
+      }
       
       // Log the bank name resolution for debugging
       logger.info('Transfer confirmation message generation', {
         originalBankName: bankName,
         safeBankName,
         recipientName: safeRecipientName,
-        accountNumber: safeAccountNumber
+        accountNumber: safeAccountNumber,
+        bankCode
       });
       
       const prompt = `Generate a simple one-sentence bank transfer confirmation message.

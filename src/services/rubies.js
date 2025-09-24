@@ -1172,6 +1172,22 @@ class RubiesService {
           if (bankNameLower === 'mfb' && institutionName.includes('microfinance')) {
             return true;
           }
+          if (bankNameLower === 'monie' && institutionName.includes('moniepoint')) {
+            return true;
+          }
+          if (bankNameLower === 'rubies' && institutionName.includes('rubies')) {
+            return true;
+          }
+          
+          // 3-letter matching - check if first 3 letters match
+          if (bankNameLower.length >= 3 && institutionName.startsWith(bankNameLower.substring(0, 3))) {
+            return true;
+          }
+          
+          // Reverse 3-letter matching - check if bank name starts with first 3 letters of input
+          if (institutionName.length >= 3 && bankNameLower.startsWith(institutionName.substring(0, 3))) {
+            return true;
+          }
           
           return false;
         });

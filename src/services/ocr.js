@@ -152,16 +152,16 @@ class OCRService {
       );
     }
 
-    // Extract account numbers (typically 10 digits)
+    // Extract account numbers (10 digits for Nigerian banks)
     const accountNumbers = text.match(/\b\d{10}\b/g);
     if (accountNumbers) {
       extractedData.accountNumbers = accountNumbers;
     }
 
-    // Extract bank names (common Nigerian banks)
-    const bankNames = text.match(/\b(GTBank|UBA|Zenith|First Bank|Access|Fidelity|Union|Sterling|Wema|FCMB|Ecobank|Diamond|Heritage|Keystone|Polaris|Providus|Stanbic|Standard Chartered|SunTrust|Citibank|Unity|Globus|Jaiz|TAJ|VFD|Parallex|PremiumTrust|Coronation|Rand Merchant|FBN|FBNQuest|Signature|Nova|Optimus|Bowen|Sparkle|Mutual|NPF|Titan Trust|TCF|Covenant|Moniepoint|Opay|Palmpay|Kuda|Carbon|ALAT|V Bank|Rubies|Fintech|Mintyn|Fairmoney|Branch|Eyowo|Flutterwave|Paystack)\b/gi);
+    // Extract bank names (comprehensive Nigerian banks list)
+    const bankNames = text.match(/\b(GTBank|GTB|UBA|Zenith|First Bank|FirstBank|FBN|Access|Fidelity|Union|Sterling|Wema|FCMB|Ecobank|Diamond|Heritage|Keystone|Polaris|Providus|Stanbic|Standard Chartered|SunTrust|Citibank|Unity|Globus|Jaiz|TAJ|VFD|Parallex|PremiumTrust|Coronation|Rand Merchant|FBNQuest|Signature|Nova|Optimus|Bowen|Sparkle|Mutual|NPF|Titan Trust|TCF|Covenant|Moniepoint|Opay|Palmpay|Kuda|Carbon|ALAT|V Bank|Rubies|Fintech|Mintyn|Fairmoney|Branch|Eyowo|Flutterwave|Paystack|9 Payment|9pay|Monie|Rubies MFB|Rubies|MFB|Microfinance|Micro Finance|GT Bank|Guaranty Trust|First Bank of Nigeria|United Bank for Africa|Zenith Bank|Access Bank|Fidelity Bank|Union Bank|Sterling Bank|Wema Bank|First City Monument Bank|Eco Bank|Heritage Bank|Keystone Bank|Polaris Bank|Providus Bank|Stanbic IBTC|Standard Chartered Bank|SunTrust Bank|Citibank Nigeria|Unity Bank|Jaiz Bank|TAJ Bank|VFD Microfinance|Parallex Bank|PremiumTrust Bank|Coronation Bank|Rand Merchant Bank|FBNQuest Merchant Bank|Signature Bank|Nova Merchant Bank|Optimus Bank|Bowen Microfinance Bank|Sparkle Microfinance Bank|Mutual Trust Microfinance Bank|NPF Microfinance Bank|Titan Trust Bank|TCF Microfinance Bank|Covenant Microfinance Bank|Moniepoint Microfinance Bank|Opay Microfinance Bank|PalmPay Microfinance Bank|Kuda Microfinance Bank|Carbon Microfinance Bank|ALAT by Wema|V Bank Microfinance|Rubies Microfinance Bank|Fintech Microfinance Bank|Mintyn Microfinance Bank|Fairmoney Microfinance Bank|Branch Microfinance Bank|Eyowo Microfinance Bank|Flutterwave Microfinance Bank|Paystack Microfinance Bank)\b/gi);
     if (bankNames) {
-      extractedData.bankNames = [...new Set(bankNames.map(name => name.toLowerCase()))];
+      extractedData.bankNames = [...new Set(bankNames.map(name => name.toLowerCase().trim()))];
     }
 
     // Extract BVN (11 digits)
