@@ -1131,19 +1131,68 @@ class RubiesService {
       .replace(/opay/gi, 'opay')
       .trim();
 
-    // Try to get bank list from Rubies API
+    // Try to get bank list from Rubies API for dynamic resolution
     try {
       const bankList = await this.getBankList();
       if (bankList && bankList.length > 0) {
+        logger.info('Using dynamic bank list for institution code resolution', { 
+          bankCount: bankList.length,
+          input: raw 
+        });
+        
         const bankNameLower = normalized.toLowerCase();
         const matchingBank = bankList.find(bank => {
           const institutionName = bank.name.toLowerCase();
-          return institutionName.includes(bankNameLower) || bankNameLower.includes(institutionName);
+          
+          // Direct match
+          if (institutionName === bankNameLower) {
+            return true;
+          }
+          
+          // Partial match - bank name contains input
+          if (institutionName.includes(bankNameLower)) {
+            return true;
+          }
+          
+          // Partial match - input contains bank name
+          if (bankNameLower.includes(institutionName)) {
+            return true;
+          }
+          
+          // Special cases for common abbreviations
+          if (bankNameLower === 'gtb' && institutionName.includes('gtbank')) {
+            return true;
+          }
+          if (bankNameLower === 'fbn' && institutionName.includes('firstbank')) {
+            return true;
+          }
+          if (bankNameLower === 'ibtc' && institutionName.includes('stanbic')) {
+            return true;
+          }
+          if (bankNameLower === 'mfb' && institutionName.includes('microfinance')) {
+            return true;
+          }
+          
+          return false;
         });
         
         if (matchingBank) {
+          logger.info('Bank resolved via dynamic Rubies API bank list', {
+            input: raw,
+            normalized: bankNameLower,
+            matchedBank: matchingBank.name,
+            matchedCode: matchingBank.code
+          });
           return matchingBank.code;
+        } else {
+          logger.warn('No matching bank found in Rubies API bank list', {
+            input: raw,
+            normalized: bankNameLower,
+            availableBanks: bankList.slice(0, 5).map(b => b.name) // Log first 5 banks for debugging
+          });
         }
+      } else {
+        logger.warn('Rubies API bank list is empty, using static fallback');
       }
     } catch (error) {
       logger.warn('Rubies bank list lookup failed during institution code resolution', { 
@@ -1152,53 +1201,67 @@ class RubiesService {
       });
     }
 
-    // Fallback to static bank mapping
+    // Fallback to static bank mapping - using correct Rubies API bank codes
     const staticBankMapping = {
       'opay': '100004',
       'moniepoint': '100004', 
-      'gtbank': '000058',
-      'gtb': '000058',
-      'guaranty trust': '000058',
+      'gtbank': '000013',
+      'gtb': '000013',
+      'guaranty trust': '000013',
       'access': '000014',
       'access bank': '000014',
       'first bank': '000016',
       'firstbank': '000016',
       'fbn': '000016',
-      'zenith': '000057',
-      'zenith bank': '000057',
-      'uba': '000033',
-      'united bank for africa': '000033',
-      'keystone': '000082',
-      'keystone bank': '000082',
-      'stanbic': '000221',
-      'stanbic ibtc': '000221',
-      'ibtc': '000221',
-      'ecobank': '000050',
-      'eco bank': '000050',
-      'fidelity': '000070',
-      'fidelity bank': '000070',
-      'union': '000032',
-      'union bank': '000032',
-      'wema': '000035',
-      'wema bank': '000035',
-      'sterling': '000232',
-      'sterling bank': '000232',
+      'zenith': '000015',
+      'zenith bank': '000015',
+      'uba': '000004',
+      'united bank for africa': '000004',
+      'keystone': '000002',
+      'keystone bank': '000002',
+      'stanbic': '000012',
+      'stanbic ibtc': '000012',
+      'ibtc': '000012',
+      'ecobank': '000010',
+      'eco bank': '000010',
+      'fidelity': '000007',
+      'fidelity bank': '000007',
+      'union': '000018',
+      'union bank': '000018',
+      'wema': '000017',
+      'wema bank': '000017',
+      'sterling': '000001',
+      'sterling bank': '000001',
       'kuda': '000090',
       'kuda bank': '000090',
       'palm pay': '000091',
       'palmpay': '000091',
       'vfd': '000092',
       'vfd microfinance': '000092',
-      'providus': '000101',
-      'providus bank': '000101',
-      'jaiz': '000103',
-      'jaiz bank': '000103',
+      'providus': '000023',
+      'providus bank': '000023',
+      'jaiz': '000006',
+      'jaiz bank': '000006',
       'taj': '000104',
       'taj bank': '000104',
-      'unity': '000105',
-      'unity bank': '000105',
-      'heritage': '000106',
-      'heritage bank': '000106'
+      'unity': '000011',
+      'unity bank': '000011',
+      'heritage': '000020',
+      'heritage bank': '000020',
+      'rubies mfb': '090175',
+      'rubies': '090175',
+      'mfb': '090175',
+      '9 payment': '100004',
+      '9pay': '100004',
+      'citibank': '000009',
+      'diamond': '000005',
+      'fcmb': '000003',
+      'standard chartered': '000021',
+      'rand merchant': '000024',
+      'polari': '000008',
+      'suntrust': '000022',
+      'polaris': '999991',
+      'polaris bank': '999991'
     };
 
     const mappedCode = staticBankMapping[normalized];

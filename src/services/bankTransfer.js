@@ -345,35 +345,62 @@ class BankTransferService {
       const rubiesService = require('./rubies');
       const bankListResponse = await rubiesService.getBankList();
       
-      if (bankListResponse.success && bankListResponse.banks) {
-        const bank = bankListResponse.banks.find(b => b.institutionCode === bankCode);
+      if (bankListResponse && bankListResponse.length > 0) {
+        logger.info('Using dynamic bank list for bank name resolution', { 
+          bankCode, 
+          bankCount: bankListResponse.length 
+        });
+        
+        const bank = bankListResponse.find(b => b.code === bankCode);
         if (bank) {
-          logger.info('Bank name resolved from Rubies API', { bankCode, bankName: bank.institutionName });
-          return bank.institutionName;
+          logger.info('Bank name resolved from Rubies API', { 
+            bankCode, 
+            bankName: bank.name 
+          });
+          return bank.name;
+        } else {
+          logger.warn('Bank code not found in Rubies API bank list', { 
+            bankCode,
+            availableCodes: bankListResponse.slice(0, 5).map(b => b.code) // Log first 5 codes for debugging
+          });
         }
+      } else {
+        logger.warn('Rubies API bank list is empty, using static fallback');
       }
     } catch (error) {
       logger.warn('Failed to get bank name from Rubies API', { error: error.message, bankCode });
     }
 
-    // Fallback to static mapping
+    // Fallback to static mapping - using correct Rubies API bank codes
     const staticBankMapping = {
-      '999058': 'GTBank',
-      '000058': 'GTBank',
-      '000014': 'Access Bank',
-      '000016': 'First Bank',
-      '000033': 'UBA',
-      '000057': 'Zenith Bank',
-      '000070': 'Fidelity Bank',
-      '000035': 'Wema Bank',
-      '000032': 'Union Bank',
-      '000082': 'Keystone Bank',
-      '000221': 'Stanbic IBTC',
-      '000050': 'Ecobank',
-      '000232': 'Sterling Bank',
-      '100004': 'Opay', // Also covers Moniepoint, Rubies MFB, 9 Payment
-      '000090': 'Kuda Bank',
-      '000091': 'PalmPay'
+      '000013': 'GTBANK',
+      '000014': 'ACCESS',
+      '000016': 'FIRSTBANK',
+      '000004': 'UBA',
+      '000015': 'ZENITH',
+      '000007': 'FIDELITY',
+      '000017': 'WEMA',
+      '000018': 'UNIONBANK',
+      '000002': 'KEYSTONE',
+      '000012': 'STANBICIBT',
+      '000010': 'ECOBANK',
+      '000001': 'STERLING',
+      '100004': 'PAYCOM', // Also covers Moniepoint, Rubies MFB, 9 Payment, Opay
+      '000090': 'KUDA',
+      '000091': 'PALMPAY',
+      '090175': 'RUBIESMICROFINANCEBANK',
+      '000020': 'HERITAGE',
+      '000023': 'PROVIDUS',
+      '000022': 'SUNTRUST',
+      '000009': 'CITIBANK',
+      '000005': 'DIAMOND',
+      '000003': 'FCMB',
+      '000011': 'UNITY',
+      '000006': 'JAIZ',
+      '000021': 'STANDARDCHARTERED',
+      '000024': 'RANDMERCHANTBANK',
+      '000008': 'POLARI',
+      '999991': 'POLARISBANK'
     };
 
     const bankName = staticBankMapping[bankCode] || this.getBankNameByCode(bankCode);

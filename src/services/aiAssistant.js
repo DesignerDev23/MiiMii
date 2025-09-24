@@ -2828,84 +2828,178 @@ Welcome to the future of banking! 🚀`;
             parseInt(amountMatch[1].toLowerCase().replace('k', '')) * 1000 : 
             parseInt(amountMatch[1]);
 
-          // Try to resolve bank from tokens (supports 3-letter prefixes and full names)
+          // Try to resolve bank from tokens using dynamic Rubies API bank list
           let detectedBankName = null;
           let detectedBankCode = null;
           
-          // First try static mapping (fast and reliable)
-          const staticBankMapping = {
-            'rubies mfb': { code: '100004', name: 'Rubies MFB' },
-            'rubies': { code: '100004', name: 'Rubies MFB' },
-            'mfb': { code: '100004', name: 'Rubies MFB' },
-            '9 payment': { code: '100004', name: '9 Payment' },
-            '9pay': { code: '100004', name: '9 Payment' },
-            'opay': { code: '100004', name: 'Opay' },
-            'moniepoint': { code: '100004', name: 'Moniepoint' },
-            'monie': { code: '100004', name: 'Moniepoint' },
-            'gtbank': { code: '000058', name: 'GTBank' },
-            'gtb': { code: '000058', name: 'GTBank' },
-            'gt bank': { code: '000058', name: 'GTBank' },
-            'access': { code: '000014', name: 'Access Bank' },
-            'first bank': { code: '000016', name: 'First Bank' },
-            'firstbank': { code: '000016', name: 'First Bank' },
-            'zenith': { code: '000057', name: 'Zenith Bank' },
-            'uba': { code: '000033', name: 'UBA' },
-            'keystone': { code: '000082', name: 'Keystone Bank' },
-            'stanbic': { code: '000221', name: 'Stanbic IBTC' },
-            'ecobank': { code: '000050', name: 'Ecobank' },
-            'fidelity': { code: '000070', name: 'Fidelity Bank' },
-            'union': { code: '000032', name: 'Union Bank' },
-            'wema': { code: '000035', name: 'Wema Bank' },
-            'sterling': { code: '000232', name: 'Sterling Bank' },
-            'kuda': { code: '000090', name: 'Kuda Bank' },
-            'palm pay': { code: '000091', name: 'PalmPay' },
-            'palmpay': { code: '000091', name: 'PalmPay' }
-          };
-          
-          // Check for full bank names first (static mapping)
-          const bankNamePatterns = [
-            'rubies mfb', 'rubies', 'mfb',
-            '9 payment', '9pay',
-            'opay', 'moniepoint', 'monie',
-            'gtbank', 'gtb', 'gt bank',
-            'access', 'first bank', 'firstbank',
-            'zenith', 'uba', 'keystone',
-            'stanbic', 'ecobank', 'fidelity',
-            'union', 'wema', 'sterling',
-            'kuda', 'palm pay', 'palmpay'
-          ];
-          
-          // Check for full bank names first
-          for (const pattern of bankNamePatterns) {
-            if (lowerMessage.includes(pattern)) {
-              const mappedBank = staticBankMapping[pattern];
-              if (mappedBank) {
-                detectedBankName = mappedBank.name;
-                detectedBankCode = mappedBank.code;
-                logger.info('Bank name resolved via static mapping', { 
-                  pattern, 
-                  detectedBankName, 
-                  detectedBankCode 
-                });
-                break;
+          // Use dynamic bank resolution from Rubies API
+          try {
+            const rubiesService = require('./rubies');
+            const bankListResponse = await rubiesService.getBankList();
+            
+            if (bankListResponse && bankListResponse.length > 0) {
+              logger.info('Fetched bank list from Rubies API for dynamic resolution', { 
+                bankCount: bankListResponse.length 
+              });
+              
+              // Extract potential bank names from the message
+              const bankNamePatterns = [
+                'rubies mfb', 'rubies', 'mfb',
+                '9 payment', '9pay',
+                'opay', 'moniepoint', 'monie',
+                'gtbank', 'gtb', 'gt bank',
+                'access', 'first bank', 'firstbank',
+                'zenith', 'uba', 'keystone',
+                'stanbic', 'ecobank', 'fidelity',
+                'union', 'wema', 'sterling',
+                'kuda', 'palm pay', 'palmpay',
+                'heritage', 'polaris', 'providus',
+                'suntrust', 'citibank', 'diamond',
+                'fcmb', 'unity', 'jaiz',
+                'standard chartered', 'rand merchant', 'polari'
+              ];
+              
+              // Check for full bank names first
+              for (const pattern of bankNamePatterns) {
+                if (lowerMessage.includes(pattern)) {
+                  // Find matching bank in Rubies API response
+                  const matchingBank = bankListResponse.find(bank => {
+                    const bankName = bank.name.toLowerCase();
+                    const patternLower = pattern.toLowerCase();
+                    
+                    // Direct match or partial match
+                    return bankName.includes(patternLower) || 
+                           patternLower.includes(bankName) ||
+                           bankName.includes(patternLower.replace(/\s+/g, '')) ||
+                           patternLower.replace(/\s+/g, '').includes(bankName);
+                  });
+                  
+                  if (matchingBank) {
+                    detectedBankName = matchingBank.name;
+                    detectedBankCode = matchingBank.code;
+                    logger.info('Bank name resolved via Rubies API (full pattern)', { 
+                      pattern, 
+                      detectedBankName, 
+                      detectedBankCode 
+                    });
+                    break;
+                  }
+                }
               }
+              
+              // If no full name match, try 3-letter tokens
+              if (!detectedBankName) {
+                const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
+                for (const token of tokens) {
+                  const matchingBank = bankListResponse.find(bank => {
+                    const bankName = bank.name.toLowerCase();
+                    const tokenLower = token.toLowerCase();
+                    
+                    // Check for token match in bank name
+                    return bankName.includes(tokenLower) || 
+                           tokenLower.includes(bankName) ||
+                           // Special cases for common abbreviations
+                           (tokenLower === 'gtb' && bankName.includes('gtbank')) ||
+                           (tokenLower === 'fbn' && bankName.includes('firstbank')) ||
+                           (tokenLower === 'ibtc' && bankName.includes('stanbic'));
+                  });
+                  
+                  if (matchingBank) {
+                    detectedBankName = matchingBank.name;
+                    detectedBankCode = matchingBank.code;
+                    logger.info('Bank name resolved via Rubies API (token)', { 
+                      token, 
+                      detectedBankName, 
+                      detectedBankCode 
+                    });
+                    break;
+                  }
+                }
+              }
+            } else {
+              logger.warn('Rubies API bank list is empty, falling back to static mapping');
             }
+          } catch (error) {
+            logger.warn('Failed to fetch bank list from Rubies API, using fallback', { 
+              error: error.message 
+            });
           }
           
-          // If no full name match, try 3-letter tokens (static mapping)
+          // Fallback to static mapping if dynamic resolution failed
           if (!detectedBankName) {
-            const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
-            for (const token of tokens) {
-              const mappedBank = staticBankMapping[token];
-              if (mappedBank) {
-                detectedBankName = mappedBank.name;
-                detectedBankCode = mappedBank.code;
-                logger.info('Bank name resolved via static mapping (token)', { 
-                  token, 
-                  detectedBankName, 
-                  detectedBankCode 
-                });
-                break;
+            const staticBankMapping = {
+              'rubies mfb': { code: '090175', name: 'RUBIESMICROFINANCEBANK' },
+              'rubies': { code: '090175', name: 'RUBIESMICROFINANCEBANK' },
+              'mfb': { code: '090175', name: 'RUBIESMICROFINANCEBANK' },
+              '9 payment': { code: '100004', name: 'PAYCOM' },
+              '9pay': { code: '100004', name: 'PAYCOM' },
+              'opay': { code: '100004', name: 'PAYCOM' },
+              'moniepoint': { code: '100004', name: 'PAYCOM' },
+              'monie': { code: '100004', name: 'PAYCOM' },
+              'gtbank': { code: '000013', name: 'GTBANK' },
+              'gtb': { code: '000013', name: 'GTBANK' },
+              'gt bank': { code: '000013', name: 'GTBANK' },
+              'access': { code: '000014', name: 'ACCESS' },
+              'first bank': { code: '000016', name: 'FIRSTBANK' },
+              'firstbank': { code: '000016', name: 'FIRSTBANK' },
+              'zenith': { code: '000015', name: 'ZENITH' },
+              'uba': { code: '000004', name: 'UBA' },
+              'keystone': { code: '000002', name: 'KEYSTONE' },
+              'stanbic': { code: '000012', name: 'STANBICIBT' },
+              'ecobank': { code: '000010', name: 'ECOBANK' },
+              'fidelity': { code: '000007', name: 'FIDELITY' },
+              'union': { code: '000018', name: 'UNIONBANK' },
+              'wema': { code: '000017', name: 'WEMA' },
+              'sterling': { code: '000001', name: 'STERLING' },
+              'kuda': { code: '000090', name: 'KUDA' },
+              'palm pay': { code: '000091', name: 'PALMPAY' },
+              'palmpay': { code: '000091', name: 'PALMPAY' }
+            };
+            
+            const bankNamePatterns = [
+              'rubies mfb', 'rubies', 'mfb',
+              '9 payment', '9pay',
+              'opay', 'moniepoint', 'monie',
+              'gtbank', 'gtb', 'gt bank',
+              'access', 'first bank', 'firstbank',
+              'zenith', 'uba', 'keystone',
+              'stanbic', 'ecobank', 'fidelity',
+              'union', 'wema', 'sterling',
+              'kuda', 'palm pay', 'palmpay'
+            ];
+            
+            // Check for full bank names first
+            for (const pattern of bankNamePatterns) {
+              if (lowerMessage.includes(pattern)) {
+                const mappedBank = staticBankMapping[pattern];
+                if (mappedBank) {
+                  detectedBankName = mappedBank.name;
+                  detectedBankCode = mappedBank.code;
+                  logger.info('Bank name resolved via static fallback', { 
+                    pattern, 
+                    detectedBankName, 
+                    detectedBankCode 
+                  });
+                  break;
+                }
+              }
+            }
+            
+            // If no full name match, try 3-letter tokens
+            if (!detectedBankName) {
+              const tokens = lowerMessage.split(/[^a-z0-9]+/).filter(t => t && t.length >= 3 && /^[a-z]+$/.test(t));
+              for (const token of tokens) {
+                const mappedBank = staticBankMapping[token];
+                if (mappedBank) {
+                  detectedBankName = mappedBank.name;
+                  detectedBankCode = mappedBank.code;
+                  logger.info('Bank name resolved via static fallback (token)', { 
+                    token, 
+                    detectedBankName, 
+                    detectedBankCode 
+                  });
+                  break;
+                }
               }
             }
           }
