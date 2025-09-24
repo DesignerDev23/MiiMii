@@ -876,6 +876,7 @@ class BilalService {
       '0902': { name: 'AIRTEL', id: 2 },
       '0802': { name: 'AIRTEL', id: 2 },
       '0808': { name: 'AIRTEL', id: 2 },
+      '0904': { name: 'AIRTEL', id: 2 }, // Added 0904 for AIRTEL
       '0705': { name: 'GLO', id: 3 },
       '0805': { name: 'GLO', id: 3 },
       '0815': { name: 'GLO', id: 3 },

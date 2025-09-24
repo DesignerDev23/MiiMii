@@ -159,6 +159,8 @@ class AIAssistantService {
 4. Opay is ALWAYS a bank_transfer
 5. For airtime purchases, ALWAYS extract network as "network" field, NEVER as "bankName"
 6. If user says "AIRTEL" for airtime, extract as "network": "Airtel", NOT "bankName": "AIRTEL"
+7. ALWAYS extract the network that the user explicitly mentions in their message
+8. If user says "Buy 100 airtime to 09043339590 AIRTEL", extract "network": "AIRTEL"
 
 CRITICAL RULE: Any message containing "opay" or "opay bank" MUST be classified as "bank_transfer" intent, regardless of the account number format. Opay is a digital bank, not a P2P transfer.
 
@@ -1337,20 +1339,22 @@ Extract intent and data from this message. Consider the user context and any ext
     const targetPhone = phoneNumber || user.whatsappNumber;
     const airtimeAmount = this.parseAmount(amount);
     
-    // Use explicitly mentioned network if available, otherwise detect from phone number
+    // ALWAYS use explicitly mentioned network from user message
     let detectedNetwork;
     if (actualNetwork && actualNetwork.toLowerCase() !== 'unknown') {
       detectedNetwork = actualNetwork;
-      logger.info('Using explicitly mentioned network for airtime', { 
+      logger.info('Using user-mentioned network for airtime', { 
         network: actualNetwork, 
         phoneNumber: targetPhone 
       });
     } else {
-      detectedNetwork = this.detectNetwork(targetPhone);
-      logger.info('Detected network from phone number for airtime', { 
-        detectedNetwork, 
-        phoneNumber: targetPhone 
-      });
+      // If no network mentioned, ask user to specify
+      return {
+        intent: 'airtime',
+        message: "Please specify the network for your airtime purchase.\n\n📝 Example: 'Buy 1000 airtime for 08123456789 MTN'",
+        awaitingInput: 'airtime_network',
+        context: 'airtime_purchase'
+      };
     }
     
     logger.info('Final network decision for airtime', {
@@ -1397,20 +1401,22 @@ Extract intent and data from this message. Consider the user context and any ext
     // Use bilal service for data purchase
     const bilalService = require('./bilal');
     
-    // Use explicitly mentioned network if available, otherwise detect from phone number
+    // ALWAYS use explicitly mentioned network from user message
     let detectedNetwork;
     if (network && network.toLowerCase() !== 'unknown') {
       detectedNetwork = network;
-      logger.info('Using explicitly mentioned network for data', { 
+      logger.info('Using user-mentioned network for data', { 
         network, 
         phoneNumber: targetPhone 
       });
     } else {
-      detectedNetwork = this.detectNetwork(targetPhone);
-      logger.info('Detected network from phone number for data', { 
-        detectedNetwork, 
-        phoneNumber: targetPhone 
-      });
+      // If no network mentioned, ask user to specify
+      return {
+        intent: 'data',
+        message: "Please specify the network for your data purchase.\n\n📝 Example: 'Buy 1GB data for 08123456789 MTN'",
+        awaitingInput: 'data_network',
+        context: 'data_purchase'
+      };
     }
     
     // Get data plans for the network
@@ -2562,10 +2568,10 @@ Extract intent and data from this message. Consider the user context and any ext
     const prefix = number.substring(0, 4);
     
     const networks = {
-      'MTN': ['0803', '0806', '0813', '0816', '0810', '0814', '0903', '0906', '0913', '0916'],
-      'Airtel': ['0802', '0808', '0812', '0701', '0902', '0907', '0901'],
-      'Glo': ['0805', '0807', '0815', '0811', '0905', '0915'],
-      '9mobile': ['0809', '0817', '0818', '0908', '0909']
+      'MTN': ['0803', '0806', '0703', '0706', '0813', '0816', '0810', '0814', '0903', '0906', '0913', '0916'],
+      'AIRTEL': ['0802', '0808', '0708', '0812', '0701', '0902', '0907', '0901', '0904'], // Added 0904 for AIRTEL
+      'GLO': ['0805', '0807', '0705', '0815', '0811', '0905', '0915'],
+      '9MOBILE': ['0809', '0817', '0818', '0908', '0909']
     };
     
     for (const [network, prefixes] of Object.entries(networks)) {
