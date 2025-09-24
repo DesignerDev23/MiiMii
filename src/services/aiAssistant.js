@@ -157,6 +157,7 @@ class AIAssistantService {
 2. If message contains "opay" or "opay bank" → intent MUST be "bank_transfer"
 3. All phone numbers and account numbers are treated as bank accounts
 4. Opay is ALWAYS a bank_transfer
+5. For airtime purchases, ALWAYS extract network as "network" field, NEVER as "bankName"
 
 CRITICAL RULE: Any message containing "opay" or "opay bank" MUST be classified as "bank_transfer" intent, regardless of the account number format. Opay is a digital bank, not a P2P transfer.
 
@@ -236,6 +237,7 @@ AIRTIME & DATA PURCHASE RULES:
 - Commands: "buy", "purchase", "send", "get", "recharge" + airtime/data
 - Amount formats: "2k" = 2000, "1k" = 1000, "500" = 500
 - Network detection: If user mentions network name (MTN, Airtel, Glo, 9mobile), use that network
+- CRITICAL: For airtime, extract network as "network" field, NOT "bankName"
 - Examples:
   * "Buy 2k airtime" → airtime purchase for ₦2000
   * "Send 1k airtime to 08012345678 Airtel" → airtime for Airtel network
@@ -297,7 +299,25 @@ For Airtime Purchase:
   "suggestedAction": "Process airtime purchase"
 }
 
-IMPORTANT: For airtime purchases, extract network as "network" field, NOT "bankName"
+Example: User says "Buy 100 airtime to 09043339590 AIRTEL"
+Response:
+{
+  "intent": "airtime",
+  "confidence": 0.98,
+  "extractedData": {
+    "amount": 100,
+    "phoneNumber": "09043339590",
+    "network": "Airtel"
+  },
+  "response": "Perfect! ₦100 airtime for Airtel coming up. PIN please? 🔐",
+  "suggestedAction": "Process airtime purchase"
+}
+
+CRITICAL: For airtime purchases, ALWAYS extract network as "network" field, NEVER as "bankName"
+- If user says "AIRTEL", extract as: "network": "Airtel"
+- If user says "MTN", extract as: "network": "MTN"  
+- If user says "GLO", extract as: "network": "Glo"
+- If user says "9MOBILE", extract as: "network": "9mobile"
 
 For Data Purchase:
 {
@@ -1278,6 +1298,13 @@ Extract intent and data from this message. Consider the user context and any ext
     // Handle case where AI extracts network as bankName instead of network
     const actualNetwork = network || bankName;
     
+    logger.info('Network extraction debug', {
+      extractedNetwork: network,
+      extractedBankName: bankName,
+      actualNetwork: actualNetwork,
+      extractedData: extractedData
+    });
+    
     if (!amount) {
       return {
         intent: 'airtime',
@@ -1305,6 +1332,12 @@ Extract intent and data from this message. Consider the user context and any ext
         phoneNumber: targetPhone 
       });
     }
+    
+    logger.info('Final network decision for airtime', {
+      actualNetwork,
+      detectedNetwork,
+      targetPhone
+    });
     
     // Store airtime purchase data and request PIN verification
     await user.updateConversationState({
