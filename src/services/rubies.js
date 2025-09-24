@@ -620,7 +620,7 @@ class RubiesService {
       });
       
       // Bank list endpoint - using correct endpoint from documentation
-      const response = await this.makeRequest('POST', '/baas-transaction/bankList', {
+      const response = await this.makeRequest('POST', '/baas-transaction/bank-list', {
         readAll: "YES"
       });
 
@@ -633,11 +633,11 @@ class RubiesService {
         });
 
         return banks.map(bank => ({
-          code: bank.bankCode || bank.code,
-          name: bank.bankName || bank.name,
-          slug: bank.bankCode || bank.code,
-          type: 'commercial',
-          category: 'deposit_money_bank'
+          code: bank.code,
+          name: bank.name,
+          slug: bank.code, // Keeping slug for potential future use
+          type: 'commercial', // Defaulting type
+          category: 'deposit_money_bank' // Defaulting category
         }));
       } else {
         throw new Error(response.responseMessage || 'Failed to fetch bank list');
