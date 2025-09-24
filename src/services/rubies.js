@@ -1152,22 +1152,12 @@ class RubiesService {
         const matchingBank = bankList.find(bank => {
           const institutionName = bank.name.toLowerCase();
           
-          // Direct match (highest priority)
+          // 1. Direct match (highest priority)
           if (institutionName === bankNameLower) {
             return true;
           }
           
-          // Partial match - bank name contains input (high priority)
-          if (institutionName.includes(bankNameLower)) {
-            return true;
-          }
-          
-          // Partial match - input contains bank name
-          if (bankNameLower.includes(institutionName)) {
-            return true;
-          }
-          
-          // Special cases for common abbreviations
+          // 2. Special cases for common abbreviations (high priority)
           if (bankNameLower === 'gtb' && institutionName.includes('gtbank')) {
             return true;
           }
@@ -1177,7 +1167,7 @@ class RubiesService {
           if (bankNameLower === 'ibtc' && institutionName.includes('stanbic')) {
             return true;
           }
-          if (bankNameLower === 'mfb' && institutionName.includes('microfinance')) {
+          if (bankNameLower === 'fcmb' && institutionName.includes('first city monument')) {
             return true;
           }
           if (bankNameLower === 'monie' && institutionName.includes('moniepoint')) {
@@ -1186,14 +1176,30 @@ class RubiesService {
           if (bankNameLower === 'rubies' && institutionName.includes('rubies')) {
             return true;
           }
-          
-          // 3-letter matching - check if first 3 letters match (lower priority)
-          if (bankNameLower.length >= 3 && institutionName.startsWith(bankNameLower.substring(0, 3))) {
+          if (bankNameLower === 'opay' && institutionName.includes('opay')) {
+            return true;
+          }
+          if (bankNameLower === 'keystone' && institutionName.includes('keystone')) {
             return true;
           }
           
-          // Reverse 3-letter matching - check if bank name starts with first 3 letters of input
-          if (institutionName.length >= 3 && bankNameLower.startsWith(institutionName.substring(0, 3))) {
+          // 3. Partial match - bank name contains input (medium priority)
+          if (institutionName.includes(bankNameLower)) {
+            return true;
+          }
+          
+          // 4. Partial match - input contains bank name
+          if (bankNameLower.includes(institutionName)) {
+            return true;
+          }
+          
+          // 5. 5-letter matching - check if first 5 letters match (lower priority)
+          if (bankNameLower.length >= 5 && institutionName.startsWith(bankNameLower.substring(0, 5))) {
+            return true;
+          }
+          
+          // 6. Reverse 5-letter matching - check if bank name starts with first 5 letters of input
+          if (institutionName.length >= 5 && bankNameLower.startsWith(institutionName.substring(0, 5))) {
             return true;
           }
           

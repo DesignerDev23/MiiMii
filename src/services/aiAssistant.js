@@ -2857,32 +2857,24 @@ Welcome to the future of banking! 🚀`;
               const sortedWords = words.sort((a, b) => b.length - a.length);
               
               for (const word of sortedWords) {
+                const wordLower = word.toLowerCase();
+                
+                // Skip common non-bank words
+                const skipWords = ['send', 'naira', 'to', 'from', 'transfer', 'money', 'amount', 'bank', 'account', 'number'];
+                if (skipWords.includes(wordLower)) {
+                  continue;
+                }
+                
+                // First try exact matches and specific abbreviations
                 const matchingBank = bankListResponse.find(bank => {
                   const bankName = bank.name.toLowerCase();
-                  const wordLower = word.toLowerCase();
                   
-                  // Skip common non-bank words
-                  const skipWords = ['send', 'naira', 'to', 'from', 'transfer', 'money', 'amount', 'bank', 'account', 'number'];
-                  if (skipWords.includes(wordLower)) {
-                    return false;
-                  }
-                  
-                  // Direct match (highest priority)
+                  // 1. Direct match (highest priority)
                   if (bankName === wordLower) {
                     return true;
                   }
                   
-                  // Bank name contains the word (high priority)
-                  if (bankName.includes(wordLower)) {
-                    return true;
-                  }
-                  
-                  // Word contains bank name (for abbreviations)
-                  if (wordLower.includes(bankName)) {
-                    return true;
-                  }
-                  
-                  // Special cases for common abbreviations
+                  // 2. Special cases for common abbreviations (high priority)
                   if (wordLower === 'gtb' && bankName.includes('gtbank')) {
                     return true;
                   }
@@ -2892,7 +2884,7 @@ Welcome to the future of banking! 🚀`;
                   if (wordLower === 'ibtc' && bankName.includes('stanbic')) {
                     return true;
                   }
-                  if (wordLower === 'mfb' && bankName.includes('microfinance')) {
+                  if (wordLower === 'fcmb' && bankName.includes('first city monument')) {
                     return true;
                   }
                   if (wordLower === 'monie' && bankName.includes('moniepoint')) {
@@ -2901,9 +2893,25 @@ Welcome to the future of banking! 🚀`;
                   if (wordLower === 'rubies' && bankName.includes('rubies')) {
                     return true;
                   }
+                  if (wordLower === 'opay' && bankName.includes('opay')) {
+                    return true;
+                  }
+                  if (wordLower === 'keystone' && bankName.includes('keystone')) {
+                    return true;
+                  }
                   
-                  // Check if the first 3 letters match (lower priority)
-                  if (wordLower.length >= 3 && bankName.startsWith(wordLower.substring(0, 3))) {
+                  // 3. Bank name contains the word (medium priority)
+                  if (bankName.includes(wordLower)) {
+                    return true;
+                  }
+                  
+                  // 4. Word contains bank name (for abbreviations)
+                  if (wordLower.includes(bankName)) {
+                    return true;
+                  }
+                  
+                  // 5. Check if the first 5 letters match (lower priority)
+                  if (wordLower.length >= 5 && bankName.startsWith(wordLower.substring(0, 5))) {
                     return true;
                   }
                   
@@ -2913,7 +2921,7 @@ Welcome to the future of banking! 🚀`;
                 if (matchingBank) {
                   detectedBankName = matchingBank.name;
                   detectedBankCode = matchingBank.code;
-                  logger.info('Bank name resolved via Rubies API (3-letter matching)', { 
+                  logger.info('Bank name resolved via Rubies API (5-letter matching)', { 
                     word, 
                     detectedBankName, 
                     detectedBankCode,
