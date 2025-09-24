@@ -158,6 +158,7 @@ class AIAssistantService {
 3. All phone numbers and account numbers are treated as bank accounts
 4. Opay is ALWAYS a bank_transfer
 5. For airtime purchases, ALWAYS extract network as "network" field, NEVER as "bankName"
+6. If user says "AIRTEL" for airtime, extract as "network": "Airtel", NOT "bankName": "AIRTEL"
 
 CRITICAL RULE: Any message containing "opay" or "opay bank" MUST be classified as "bank_transfer" intent, regardless of the account number format. Opay is a digital bank, not a P2P transfer.
 
@@ -311,6 +312,16 @@ Response:
   },
   "response": "Perfect! ₦100 airtime for Airtel coming up. PIN please? 🔐",
   "suggestedAction": "Process airtime purchase"
+}
+
+WRONG EXAMPLE (DO NOT DO THIS):
+{
+  "intent": "airtime",
+  "extractedData": {
+    "amount": 100,
+    "phoneNumber": "09043339590",
+    "bankName": "AIRTEL"  // ❌ WRONG - should be "network": "Airtel"
+  }
 }
 
 CRITICAL: For airtime purchases, ALWAYS extract network as "network" field, NEVER as "bankName"
@@ -1296,7 +1307,16 @@ Extract intent and data from this message. Consider the user context and any ext
     const { amount, phoneNumber, network, bankName } = extractedData;
     
     // Handle case where AI extracts network as bankName instead of network
-    const actualNetwork = network || bankName;
+    let actualNetwork = network || bankName;
+    
+    // CRITICAL FIX: If AI extracted bankName as "AIRTEL", "MTN", "GLO", "9MOBILE", use it as network
+    if (bankName && !network && ['AIRTEL', 'MTN', 'GLO', '9MOBILE'].includes(bankName.toUpperCase())) {
+      actualNetwork = bankName;
+      logger.info('CRITICAL FIX: Using bankName as network for airtime', {
+        bankName,
+        actualNetwork
+      });
+    }
     
     logger.info('Network extraction debug', {
       extractedNetwork: network,
@@ -1522,7 +1542,19 @@ Extract intent and data from this message. Consider the user context and any ext
         phoneNumber: user.whatsappNumber,
         ...transactionData
       };
+      
+      logger.info('Storing airtime session in Redis', {
+        flowToken,
+        sessionData: flowSession,
+        userId: user.id
+      });
+      
       await redisClient.setSession(flowToken, flowSession, 900);
+      
+      logger.info('Airtime session stored successfully', {
+        flowToken,
+        sessionKeys: Object.keys(flowSession)
+      });
 
       // Create service-specific messages
       let serviceMessage = '';

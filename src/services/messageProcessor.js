@@ -80,7 +80,78 @@ class MessageProcessor {
             hasPin: !!flowCompletionData.data?.pin
           });
           
-          return await this.processFlowCompletion(flowCompletionData);
+          // Handle airtime flow completion directly instead of using general processFlowCompletion
+          try {
+            const redisClient = require('../utils/redis');
+            const whatsappService = require('./whatsapp');
+            const flowEndpoint = require('../routes/flowEndpoint');
+
+            const flowToken = flowCompletionData.flowToken;
+            const pin = flowCompletionData.data?.pin;
+
+            if (!pin || !/^\d{4}$/.test(pin)) {
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+              return;
+            }
+
+            // Get session data
+            let session = null;
+            if (flowToken) {
+              logger.info('Attempting to retrieve session for airtime flow completion', { 
+                flowToken, 
+                userId: user.id,
+                redisConnected: redisClient.isConnected 
+              });
+              
+              // Try different session key formats
+              session = await redisClient.getSession(flowToken);
+              logger.info('Session retrieval attempt 1', { found: !!session, key: flowToken });
+              
+              if (!session) {
+                session = await redisClient.getSession(`flow:${flowToken}`);
+                logger.info('Session retrieval attempt 2', { found: !!session, key: `flow:${flowToken}` });
+              }
+              if (!session) {
+                // Try without any prefix
+                const cleanToken = flowToken.replace('flow:', '');
+                session = await redisClient.getSession(cleanToken);
+                logger.info('Session retrieval attempt 3', { found: !!session, key: cleanToken });
+              }
+            }
+
+            if (!session) {
+              logger.error('No session found for airtime flow completion', { userId: user.id, flowToken });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction details not found. Please start again.');
+              return;
+            }
+
+            // Process the PIN verification through flow endpoint
+            const tokenData = { sessionData: session };
+            const result = await flowEndpoint.handleServicePinScreen(
+              { pin: pin },
+              user.id,
+              tokenData,
+              flowToken
+            );
+
+            if (Object.keys(result).length === 0) {
+              // Success - transaction completed
+              logger.info('Airtime transaction completed successfully', { userId: user.id });
+            } else {
+              // Error occurred
+              logger.error('Airtime transaction failed', { userId: user.id, error: result.data?.error });
+              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${result.data?.error || 'Transaction failed. Please try again.'}`);
+            }
+
+            // Clean up
+            try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
+            await user.clearConversationState();
+            return;
+          } catch (err) {
+            logger.error('Airtime flow completion processing failed', { error: err.message, userId: user.id });
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction processing failed. Please try again.');
+            return;
+          }
         }
         // Fall through to Flow completion handling below
       }
