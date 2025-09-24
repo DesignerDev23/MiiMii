@@ -260,7 +260,7 @@ Use null for missing fields. Extract the most likely 10-digit account number and
         messages: [
           {
             role: 'system',
-            content: 'You are a banking assistant that extracts bank details from text. Always return valid JSON only.'
+            content: 'You are a banking assistant that extracts bank details from text. Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. The response must be parseable JSON.'
           },
           {
             role: 'user',
@@ -278,15 +278,42 @@ Use null for missing fields. Extract the most likely 10-digit account number and
         fullResponse: aiResponse
       });
 
-      // Parse the JSON response
-      const bankDetails = JSON.parse(aiResponse);
-      logger.info('Parsed bank details from AI', {
-        hasAccountNumber: !!bankDetails.accountNumber,
-        hasBankName: !!bankDetails.bankName,
-        hasAccountHolderName: !!bankDetails.accountHolderName,
-        confidence: bankDetails.confidence,
-        bankDetails: bankDetails
+      // Parse the JSON response - handle markdown code blocks
+      let jsonResponse = aiResponse;
+      
+      // Remove markdown code blocks if present
+      if (jsonResponse.includes('```json')) {
+        jsonResponse = jsonResponse.replace(/```json\s*/, '').replace(/\s*```/, '');
+      } else if (jsonResponse.includes('```')) {
+        jsonResponse = jsonResponse.replace(/```\s*/, '').replace(/\s*```/, '');
+      }
+      
+      // Clean up any remaining markdown formatting
+      jsonResponse = jsonResponse.trim();
+      
+      logger.info('Cleaned AI response for JSON parsing', {
+        originalResponse: aiResponse,
+        cleanedResponse: jsonResponse
       });
+      
+      let bankDetails;
+      try {
+        bankDetails = JSON.parse(jsonResponse);
+        logger.info('Parsed bank details from AI', {
+          hasAccountNumber: !!bankDetails.accountNumber,
+          hasBankName: !!bankDetails.bankName,
+          hasAccountHolderName: !!bankDetails.accountHolderName,
+          confidence: bankDetails.confidence,
+          bankDetails: bankDetails
+        });
+      } catch (parseError) {
+        logger.error('Failed to parse AI response as JSON', {
+          error: parseError.message,
+          originalResponse: aiResponse,
+          cleanedResponse: jsonResponse
+        });
+        throw new Error(`AI response parsing failed: ${parseError.message}`);
+      }
 
       // If AI didn't find anything, try fallback extraction
       if (!bankDetails.accountNumber && !bankDetails.bankName) {
