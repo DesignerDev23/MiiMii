@@ -2111,11 +2111,6 @@ class MessageProcessor {
       if (isTransferContext || captionSuggestsTransfer) {
         // Process the caption as the main message and extract bank details from image
         try {
-          await whatsappService.sendTextMessage(
-            user.whatsappNumber,
-            "📷 I can see you've sent an image with a message. Let me analyze the image for bank details..."
-          );
-
           const bankDetailsResult = await imageProcessingService.processBankDetailsImage(mediaId);
           
           if (bankDetailsResult.success && bankDetailsResult.bankDetails) {

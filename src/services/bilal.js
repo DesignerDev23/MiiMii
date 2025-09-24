@@ -369,7 +369,15 @@ class BilalService {
         };
 
       } else {
-        throw new Error(response.message || 'Airtime purchase failed');
+        // Provide more specific error messages based on Bilal response
+        let errorMessage = response.message || 'Airtime purchase failed';
+        
+        // Check for common failure reasons
+        if (errorMessage.includes('Transaction fail')) {
+          errorMessage = `Airtime purchase failed: ${errorMessage}. This could be due to:\n• Invalid phone number\n• Network mismatch\n• Service temporarily unavailable\n\nPlease verify the phone number and network, then try again.`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
     } catch (error) {
