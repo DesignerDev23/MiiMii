@@ -2853,17 +2853,26 @@ Welcome to the future of banking! 🚀`;
               });
               
               // Try to match each word against the Rubies API bank list
-              for (const word of words) {
+              // Sort words by length (longer words first) to prioritize more specific matches
+              const sortedWords = words.sort((a, b) => b.length - a.length);
+              
+              for (const word of sortedWords) {
                 const matchingBank = bankListResponse.find(bank => {
                   const bankName = bank.name.toLowerCase();
                   const wordLower = word.toLowerCase();
                   
-                  // Direct match
+                  // Skip common non-bank words
+                  const skipWords = ['send', 'naira', 'to', 'from', 'transfer', 'money', 'amount', 'bank', 'account', 'number'];
+                  if (skipWords.includes(wordLower)) {
+                    return false;
+                  }
+                  
+                  // Direct match (highest priority)
                   if (bankName === wordLower) {
                     return true;
                   }
                   
-                  // Bank name contains the word
+                  // Bank name contains the word (high priority)
                   if (bankName.includes(wordLower)) {
                     return true;
                   }
@@ -2893,7 +2902,7 @@ Welcome to the future of banking! 🚀`;
                     return true;
                   }
                   
-                  // Check if the first 3 letters match
+                  // Check if the first 3 letters match (lower priority)
                   if (wordLower.length >= 3 && bankName.startsWith(wordLower.substring(0, 3))) {
                     return true;
                   }

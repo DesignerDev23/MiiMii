@@ -1141,15 +1141,23 @@ class RubiesService {
         });
         
         const bankNameLower = normalized.toLowerCase();
+        
+        // Skip common non-bank words
+        const skipWords = ['send', 'naira', 'to', 'from', 'transfer', 'money', 'amount', 'bank', 'account', 'number'];
+        if (skipWords.includes(bankNameLower)) {
+          logger.warn('Skipping common non-bank word', { input: raw, normalized: bankNameLower });
+          return null;
+        }
+        
         const matchingBank = bankList.find(bank => {
           const institutionName = bank.name.toLowerCase();
           
-          // Direct match
+          // Direct match (highest priority)
           if (institutionName === bankNameLower) {
             return true;
           }
           
-          // Partial match - bank name contains input
+          // Partial match - bank name contains input (high priority)
           if (institutionName.includes(bankNameLower)) {
             return true;
           }
@@ -1179,7 +1187,7 @@ class RubiesService {
             return true;
           }
           
-          // 3-letter matching - check if first 3 letters match
+          // 3-letter matching - check if first 3 letters match (lower priority)
           if (bankNameLower.length >= 3 && institutionName.startsWith(bankNameLower.substring(0, 3))) {
             return true;
           }
