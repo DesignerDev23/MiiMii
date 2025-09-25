@@ -72,83 +72,166 @@ class MessageProcessor {
             data: message.flowResponse.responseJson
           };
           
-          logger.info('Processing airtime flow completion', {
-            userId: user.id,
-            flowToken: flowCompletionData.flowToken,
-            screen: flowCompletionData.screen,
-            dataKeys: Object.keys(flowCompletionData.data || {}),
-            hasPin: !!flowCompletionData.data?.pin
-          });
-          
-          // Handle airtime flow completion directly instead of using general processFlowCompletion
+          // Determine flow type from session data or context
           try {
             const redisClient = require('../utils/redis');
             const whatsappService = require('./whatsapp');
-            const flowEndpoint = require('../routes/flowEndpoint');
-
             const flowToken = flowCompletionData.flowToken;
             const pin = flowCompletionData.data?.pin;
 
-            if (!pin || !/^\d{4}$/.test(pin)) {
-              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
-              return;
-            }
+          if (!pin || !/^\d{4}$/.test(pin)) {
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+            return;
+          }
 
-            // Get session data
-            let session = null;
-            if (flowToken) {
-              logger.info('Attempting to retrieve session for airtime flow completion', { 
-                flowToken, 
-                userId: user.id,
-                redisConnected: redisClient.isConnected 
+          // Get session data to determine flow type
+          let session = null;
+          if (flowToken) {
+            logger.info('Attempting to retrieve session for flow completion', { 
+              flowToken, 
+              userId: user.id,
+              redisConnected: redisClient.isConnected 
+            });
+            
+            // Try different session key formats
+            session = await redisClient.getSession(flowToken);
+            logger.info('Session retrieval attempt 1', { found: !!session, key: flowToken });
+            
+            if (!session) {
+              session = await redisClient.getSession(`flow:${flowToken}`);
+              logger.info('Session retrieval attempt 2', { found: !!session, key: `flow:${flowToken}` });
+            }
+            if (!session) {
+              // Try without any prefix
+              const cleanToken = flowToken.replace('flow:', '');
+              session = await redisClient.getSession(cleanToken);
+              logger.info('Session retrieval attempt 3', { found: !!session, key: cleanToken });
+            }
+          }
+
+          if (!session) {
+            logger.error('No session found for flow completion', { userId: user.id, flowToken });
+            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction details not found. Please start again.');
+            return;
+          }
+
+          // Determine flow type based on session data and user context
+          const isTransferFlow = (
+            session.transferData || 
+            session.context === 'transfer_pin_verification' ||
+            user.conversationState?.context === 'transfer_pin_verification' ||
+            user.conversationState?.intent === 'bank_transfer' ||
+            user.conversationState?.awaitingInput === 'transfer_pin_flow'
+          );
+
+          if (isTransferFlow) {
+            logger.info('Processing transfer flow completion', {
+              userId: user.id,
+              flowToken: flowCompletionData.flowToken,
+              screen: flowCompletionData.screen,
+              dataKeys: Object.keys(flowCompletionData.data || {}),
+              hasPin: !!flowCompletionData.data?.pin,
+              sessionContext: session.context
+            });
+
+            // Handle transfer flow completion
+            try {
+              const bankTransferService = require('./bankTransfer');
+              
+              // Extract transfer data from session or conversation state
+              const sessionTx = session.transferData || {};
+              const stateTx = user.conversationState?.data || {};
+              
+              const transferData = {
+                accountNumber: sessionTx.accountNumber || stateTx.accountNumber,
+                bankCode: sessionTx.bankCode || stateTx.bankCode,
+                amount: parseFloat(sessionTx.amount || stateTx.amount),
+                narration: sessionTx.narration || stateTx.narration || 'Wallet transfer',
+                reference: sessionTx.reference || stateTx.reference
+              };
+
+              if (!transferData.accountNumber || !transferData.bankCode || !transferData.amount) {
+                logger.error('Missing transfer data for flow completion', { 
+                  userId: user.id, 
+                  sessionKeys: Object.keys(sessionTx),
+                  stateKeys: Object.keys(stateTx)
+                });
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Please start again.');
+                return;
+              }
+
+              logger.info('Processing transfer via flow completion', { 
+                userId: user.id, 
+                hasReference: !!transferData.reference 
               });
               
-              // Try different session key formats
-              session = await redisClient.getSession(flowToken);
-              logger.info('Session retrieval attempt 1', { found: !!session, key: flowToken });
-              
-              if (!session) {
-                session = await redisClient.getSession(`flow:${flowToken}`);
-                logger.info('Session retrieval attempt 2', { found: !!session, key: `flow:${flowToken}` });
+              const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
+              if (!result.success) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
               }
-              if (!session) {
-                // Try without any prefix
-                const cleanToken = flowToken.replace('flow:', '');
-                session = await redisClient.getSession(cleanToken);
-                logger.info('Session retrieval attempt 3', { found: !!session, key: cleanToken });
-              }
-            }
 
-            if (!session) {
-              logger.error('No session found for airtime flow completion', { userId: user.id, flowToken });
-              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction details not found. Please start again.');
+              // Clean up
+              try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
+              await user.clearConversationState();
+              return;
+
+            } catch (error) {
+              logger.error('Transfer processing failed via flow completion', {
+                userId: user.id,
+                error: error.message
+              });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer failed. Please try again.');
               return;
             }
 
-            // Process the PIN verification through flow endpoint
-            const tokenData = { sessionData: session };
-            const result = await flowEndpoint.handleServicePinScreen(
-              { pin: pin },
-              user.id,
-              tokenData,
-              flowToken
-            );
+          } else {
+            // Handle airtime/data flow completion
+            logger.info('Processing airtime flow completion', {
+              userId: user.id,
+              flowToken: flowCompletionData.flowToken,
+              screen: flowCompletionData.screen,
+              dataKeys: Object.keys(flowCompletionData.data || {}),
+              hasPin: !!flowCompletionData.data?.pin,
+              sessionContext: session.context
+            });
 
-            if (Object.keys(result).length === 0) {
-              // Success - transaction completed
-              logger.info('Airtime transaction completed successfully', { userId: user.id });
-            } else {
-              // Error occurred
-              logger.error('Airtime transaction failed', { userId: user.id, error: result.data?.error });
-              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${result.data?.error || 'Transaction failed. Please try again.'}`);
+            try {
+              const flowEndpoint = require('../routes/flowEndpoint');
+              
+              // Process the PIN verification through flow endpoint
+              const tokenData = { sessionData: session };
+              const result = await flowEndpoint.handleServicePinScreen(
+                { pin: pin },
+                user.id,
+                tokenData,
+                flowToken
+              );
+
+              if (Object.keys(result).length === 0) {
+                // Success - transaction completed
+                logger.info('Airtime transaction completed successfully', { userId: user.id });
+              } else {
+                // Error occurred
+                logger.error('Airtime transaction failed', { userId: user.id, error: result.data?.error });
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ ${result.data?.error || 'Transaction failed. Please try again.'}`);
+              }
+
+              // Clean up
+              try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
+              await user.clearConversationState();
+              return;
+
+            } catch (error) {
+              logger.error('Airtime processing failed via flow completion', {
+                userId: user.id,
+                error: error.message
+              });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction failed. Please try again.');
+              return;
             }
-
-            // Clean up
-            try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
-            await user.clearConversationState();
-            return;
+          }
           } catch (err) {
-            logger.error('Airtime flow completion processing failed', { error: err.message, userId: user.id });
+            logger.error('Flow completion processing failed', { error: err.message, userId: user.id });
             await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction processing failed. Please try again.');
             return;
           }
