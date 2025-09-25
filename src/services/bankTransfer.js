@@ -19,12 +19,13 @@ class BankTransferService {
       monthlyLimit: 50000000 // 50 million naira
     };
 
-    // Transfer fees structure - Updated for Rubies
+    // Transfer fees structure - Flat fee for all transfers
     this.fees = {
-      sameBankFee: 15, // Rubies fee for same bank transfers
-      otherBankFee: 15, // Rubies fee for other bank transfers
-      percentageFee: 0.005, // 0.5% for amounts above certain threshold
-      freeThreshold: 10000 // No percentage fee below this amount
+      flatFee: 15, // Fixed 15 naira fee for ALL transfers regardless of amount
+      sameBankFee: 15, // Same as flat fee
+      otherBankFee: 15, // Same as flat fee
+      percentageFee: 0, // No percentage fee
+      freeThreshold: 0 // Not applicable with flat fee
     };
 
     // Transfer types
@@ -485,20 +486,14 @@ class BankTransferService {
   // Calculate transfer fees
   calculateTransferFee(amount, transferType, sameBank = false) {
     const numAmount = parseFloat(amount);
-    let baseFee = sameBank ? this.fees.sameBankFee : this.fees.otherBankFee;
-    let percentageFee = 0;
-
-    // Add percentage fee for larger amounts
-    if (numAmount > this.fees.freeThreshold) {
-      percentageFee = Math.ceil(numAmount * this.fees.percentageFee);
-    }
-
-    const totalFee = baseFee + percentageFee;
+    
+    // Flat fee of 15 naira for ALL transfers regardless of amount
+    const totalFee = 15;
     
     return {
-      baseFee,
-      percentageFee,
-      totalFee,
+      baseFee: 15,
+      percentageFee: 0,
+      totalFee: 15,
       amount: numAmount,
       totalAmount: numAmount + totalFee
     };
