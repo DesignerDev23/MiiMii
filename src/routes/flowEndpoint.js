@@ -3076,5 +3076,6 @@ module.exports = {
   getBilalOfficialPlanId,
   getDataPlanPrice,
   handleServicePinScreen,
+  handlePinSetupScreen,
   DATA_PLANS
 };

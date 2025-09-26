@@ -180,29 +180,33 @@ class MessageProcessor {
 
             // Handle onboarding flow completion
             try {
-              const flowEndpoint = require('../routes/flowEndpoint');
+              const onboardingService = require('./onboarding');
               
-              // Process the PIN setup through flow endpoint
-              const tokenData = { sessionData: session };
-              const result = await flowEndpoint.handlePinSetupScreen(
+              // Process the complete onboarding flow data
+              const result = await onboardingService.processOnboardingFlowData(
                 flowCompletionData.data,
-                user.id,
-                tokenData
+                user.whatsappNumber
               );
 
-              if (result.screen === 'COMPLETION_SCREEN' && result.data?.success) {
+              if (result.success) {
                 // Success - onboarding completed
-                logger.info('Onboarding completed successfully', { userId: user.id });
+                logger.info('Onboarding completed successfully', { 
+                  userId: user.id,
+                  hasAccountDetails: !!result.accountDetails
+                });
                 
-                // Send completion message
-                await whatsappService.sendTextMessage(user.whatsappNumber, 
-                  '🎉 Welcome to MiiMii! Your account is now ready. You can start making transfers, buying airtime, and more! 💰✨'
-                );
+                // The onboarding service already sends the welcome message
+                // No need to send additional messages here
               } else {
-                // Error occurred
-                logger.error('Onboarding completion failed', { userId: user.id, error: result.data?.error });
-                await whatsappService.sendTextMessage(user.whatsappNumber, 
-                  `❌ ${result.data?.error || 'Account setup failed. Please try again.'}`
+                // Error in onboarding
+                logger.error('Onboarding completion failed', { 
+                  userId: user.id, 
+                  error: result.error 
+                });
+                
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  `❌ ${result.error || 'Account setup failed. Please try again.'}`
                 );
               }
 
