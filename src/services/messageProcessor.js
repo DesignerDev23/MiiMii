@@ -116,6 +116,17 @@ class MessageProcessor {
           }
 
           // Determine flow type based on session data and user context
+          const isOnboardingFlow = (
+            session.context === 'onboarding' ||
+            session.context === 'pin_setup' ||
+            user.onboardingStep === 'pin_setup' ||
+            user.onboardingStep === 'name_collection' ||
+            user.onboardingStep === 'bvn_verification' ||
+            !user.pin || // User doesn't have a PIN yet
+            user.conversationState?.context === 'onboarding' ||
+            user.conversationState?.awaitingInput === 'onboarding_pin_flow'
+          );
+
           const isTransferFlow = (
             session.transferData || 
             session.context === 'transfer_pin_verification' ||
@@ -124,7 +135,61 @@ class MessageProcessor {
             user.conversationState?.awaitingInput === 'transfer_pin_flow'
           );
 
-          if (isTransferFlow) {
+          if (isOnboardingFlow) {
+            logger.info('Processing onboarding flow completion', {
+              userId: user.id,
+              flowToken: flowCompletionData.flowToken,
+              screen: flowCompletionData.screen,
+              dataKeys: Object.keys(flowCompletionData.data || {}),
+              hasPin: !!flowCompletionData.data?.pin,
+              sessionContext: session.context,
+              userOnboardingStep: user.onboardingStep,
+              userHasPin: !!user.pin
+            });
+
+            // Handle onboarding flow completion
+            try {
+              const flowEndpoint = require('../routes/flowEndpoint');
+              
+              // Process the PIN setup through flow endpoint
+              const tokenData = { sessionData: session };
+              const result = await flowEndpoint.handlePinSetupScreen(
+                flowCompletionData.data,
+                user.id,
+                tokenData
+              );
+
+              if (result.screen === 'COMPLETION_SCREEN' && result.data?.success) {
+                // Success - onboarding completed
+                logger.info('Onboarding completed successfully', { userId: user.id });
+                
+                // Send completion message
+                await whatsappService.sendTextMessage(user.whatsappNumber, 
+                  '🎉 Welcome to MiiMii! Your account is now ready. You can start making transfers, buying airtime, and more! 💰✨'
+                );
+              } else {
+                // Error occurred
+                logger.error('Onboarding completion failed', { userId: user.id, error: result.data?.error });
+                await whatsappService.sendTextMessage(user.whatsappNumber, 
+                  `❌ ${result.data?.error || 'Account setup failed. Please try again.'}`
+                );
+              }
+
+              // Clean up
+              try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
+              await user.clearConversationState();
+              return;
+
+            } catch (error) {
+              logger.error('Onboarding processing failed via flow completion', {
+                userId: user.id,
+                error: error.message
+              });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Account setup failed. Please try again.');
+              return;
+            }
+
+          } else if (isTransferFlow) {
             logger.info('Processing transfer flow completion', {
               userId: user.id,
               flowToken: flowCompletionData.flowToken,
