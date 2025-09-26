@@ -77,7 +77,9 @@ class MessageProcessor {
             const redisClient = require('../utils/redis');
             const whatsappService = require('./whatsapp');
             const flowToken = flowCompletionData.flowToken;
-            const pin = flowCompletionData.data?.pin;
+            
+            // Extract PIN from the correct field for onboarding flows
+            const pin = flowCompletionData.data?.screen_3_4Digit_PIN_0 || flowCompletionData.data?.pin;
 
           if (!pin || !/^\d{4}$/.test(pin)) {
             await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
@@ -110,9 +112,18 @@ class MessageProcessor {
           }
 
           if (!session) {
-            logger.error('No session found for flow completion', { userId: user.id, flowToken });
-            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transaction details not found. Please start again.');
-            return;
+            logger.warn('No session found for flow completion, using user context for detection', { 
+              userId: user.id, 
+              flowToken,
+              userOnboardingStep: user.onboardingStep,
+              userHasPin: !!user.pin,
+              conversationState: user.conversationState
+            });
+            
+            // Create a minimal session object for flow type detection
+            session = {
+              context: user.onboardingStep === 'pin_setup' ? 'onboarding' : 'unknown'
+            };
           }
 
           // Determine flow type based on session data and user context
@@ -127,6 +138,16 @@ class MessageProcessor {
             user.conversationState?.awaitingInput === 'onboarding_pin_flow'
           );
 
+          logger.info('Flow type detection', {
+            userId: user.id,
+            isOnboardingFlow,
+            isTransferFlow: false, // Will be set below
+            sessionContext: session.context,
+            userOnboardingStep: user.onboardingStep,
+            userHasPin: !!user.pin,
+            conversationContext: user.conversationState?.context
+          });
+
           const isTransferFlow = (
             session.transferData || 
             session.context === 'transfer_pin_verification' ||
@@ -134,6 +155,16 @@ class MessageProcessor {
             user.conversationState?.intent === 'bank_transfer' ||
             user.conversationState?.awaitingInput === 'transfer_pin_flow'
           );
+
+          logger.info('Flow type detection complete', {
+            userId: user.id,
+            isOnboardingFlow,
+            isTransferFlow,
+            sessionContext: session.context,
+            userOnboardingStep: user.onboardingStep,
+            userHasPin: !!user.pin,
+            conversationContext: user.conversationState?.context
+          });
 
           if (isOnboardingFlow) {
             logger.info('Processing onboarding flow completion', {
