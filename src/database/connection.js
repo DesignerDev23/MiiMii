@@ -32,6 +32,7 @@ class DatabaseManager {
     this.reconnectDelay = 5000; // Start with 5 seconds
     this.maxReconnectDelay = 60000; // Max 60 seconds
     this.healthCheckInterval = null;
+    this.maintenanceInterval = null;
     this.connectionPromise = null;
     
     this.initialize();
@@ -47,15 +48,38 @@ class DatabaseManager {
           ? (msg) => logger.debug(msg) 
           : false,
         pool: {
-          max: 25,
-          min: 5,
-          acquire: 60000,
-          idle: 30000,
-          evict: 10000,
-          handleDisconnects: true
+          max: 10, // Reduced from 25 to prevent connection exhaustion
+          min: 2, // Reduced from 5 to prevent idle connections
+          acquire: 30000, // Reduced from 60000 to fail faster
+          idle: 10000, // Reduced from 30000 to close idle connections faster
+          evict: 5000, // Reduced from 10000 to evict faster
+          handleDisconnects: true,
+          validate: true, // Add connection validation
+          testOnBorrow: true, // Test connections before use
+          testOnReturn: false, // Don't test on return to avoid overhead
+          testWhileIdle: true, // Test idle connections
+          timeBetweenEvictionRunsMillis: 10000, // Check for eviction every 10 seconds
+          numTestsPerEvictionRun: 3, // Test 3 connections per eviction run
+          softIdleTimeoutMillis: 5000, // Soft idle timeout
+          idleTimeoutMillis: 10000 // Hard idle timeout
         },
         dialectOptions: {
-          ssl: connectionUrl.includes('sslmode=require') ? createDOSSLConfig() : false
+          ssl: connectionUrl.includes('sslmode=require') ? createDOSSLConfig() : false,
+          // Add keep-alive settings
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 0,
+          // Connection timeout settings
+          connectTimeout: 10000, // 10 seconds
+          requestTimeout: 30000, // 30 seconds
+          // Additional PostgreSQL-specific options
+          application_name: 'MiiMii-Fintech-Platform',
+          statement_timeout: 30000, // 30 seconds
+          idle_in_transaction_session_timeout: 60000, // 1 minute
+          // Connection pooling optimizations
+          max: 10,
+          min: 2,
+          acquire: 30000,
+          idle: 10000
         },
         retry: {
           match: [
@@ -115,15 +139,38 @@ class DatabaseManager {
           ? (msg) => logger.debug(msg) 
           : false,
         pool: {
-          max: 25,
-          min: 5,
-          acquire: 60000,
-          idle: 30000,
-          evict: 10000,
-          handleDisconnects: true
+          max: 10, // Reduced from 25 to prevent connection exhaustion
+          min: 2, // Reduced from 5 to prevent idle connections
+          acquire: 30000, // Reduced from 60000 to fail faster
+          idle: 10000, // Reduced from 30000 to close idle connections faster
+          evict: 5000, // Reduced from 10000 to evict faster
+          handleDisconnects: true,
+          validate: true, // Add connection validation
+          testOnBorrow: true, // Test connections before use
+          testOnReturn: false, // Don't test on return to avoid overhead
+          testWhileIdle: true, // Test idle connections
+          timeBetweenEvictionRunsMillis: 10000, // Check for eviction every 10 seconds
+          numTestsPerEvictionRun: 3, // Test 3 connections per eviction run
+          softIdleTimeoutMillis: 5000, // Soft idle timeout
+          idleTimeoutMillis: 10000 // Hard idle timeout
         },
         dialectOptions: {
-          ssl: isDigitalOceanDB ? createDOSSLConfig() : false
+          ssl: isDigitalOceanDB ? createDOSSLConfig() : false,
+          // Add keep-alive settings
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 0,
+          // Connection timeout settings
+          connectTimeout: 10000, // 10 seconds
+          requestTimeout: 30000, // 30 seconds
+          // Additional PostgreSQL-specific options
+          application_name: 'MiiMii-Fintech-Platform',
+          statement_timeout: 30000, // 30 seconds
+          idle_in_transaction_session_timeout: 60000, // 1 minute
+          // Connection pooling optimizations
+          max: 10,
+          min: 2,
+          acquire: 30000,
+          idle: 10000
         },
         retry: {
           match: [
@@ -178,6 +225,7 @@ class DatabaseManager {
     }
 
     this.startHealthCheck();
+    this.startMaintenance();
   }
 
   async connect() {
@@ -252,14 +300,20 @@ class DatabaseManager {
   }
 
   startHealthCheck() {
-    // Check connection health every 30 seconds
+    // Check connection health every 15 seconds (more frequent)
     this.healthCheckInterval = setInterval(async () => {
       if (this.isShuttingDown) {
         return;
       }
 
       try {
-        await this.sequelize.query('SELECT 1');
+        // Use a simple query to test connection
+        await this.sequelize.query('SELECT 1 as health_check', { 
+          type: this.sequelize.QueryTypes.SELECT,
+          raw: true,
+          timeout: 5000 // 5 second timeout for health check
+        });
+        
         if (!this.isConnected) {
           logger.info('Database connection restored');
           this.isConnected = true;
@@ -279,7 +333,22 @@ class DatabaseManager {
           this.scheduleReconnect();
         }
       }
-    }, 30000);
+    }, 15000); // Reduced from 30 seconds to 15 seconds
+  }
+
+  startMaintenance() {
+    // Run connection maintenance every 2 minutes
+    this.maintenanceInterval = setInterval(async () => {
+      if (this.isShuttingDown) {
+        return;
+      }
+
+      try {
+        await this.maintainConnections();
+      } catch (error) {
+        logger.warn('Database maintenance interval failed:', error.message);
+      }
+    }, 120000); // 2 minutes
   }
 
   async executeWithRetry(operation, maxRetries = 3) {
@@ -366,10 +435,15 @@ class DatabaseManager {
     this.isShuttingDown = true;
     logger.info('Initiating graceful database shutdown...');
 
-    // Clear health check interval
+    // Clear health check and maintenance intervals
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
+    }
+    
+    if (this.maintenanceInterval) {
+      clearInterval(this.maintenanceInterval);
+      this.maintenanceInterval = null;
     }
 
     try {
@@ -416,6 +490,67 @@ class DatabaseManager {
       reconnectAttempts: this.reconnectAttempts,
       maxReconnectAttempts: this.maxReconnectAttempts
     };
+  }
+
+  // Add connection monitoring and statistics
+  async getConnectionStats() {
+    try {
+      if (!this.sequelize) {
+        return { error: 'Database not initialized' };
+      }
+
+      const pool = this.sequelize.connectionManager.pool;
+      if (!pool) {
+        return { error: 'Connection pool not available' };
+      }
+
+      return {
+        totalConnections: pool.size,
+        usedConnections: pool.used,
+        idleConnections: pool.pending,
+        waitingRequests: pool.pending,
+        isHealthy: this.isConnected && !this.isShuttingDown,
+        lastHealthCheck: new Date().toISOString()
+      };
+    } catch (error) {
+      return { error: error.message };
+    }
+  }
+
+  // Add proactive connection maintenance
+  async maintainConnections() {
+    try {
+      if (this.isShuttingDown || !this.isConnected) {
+        return;
+      }
+
+      // Test a few connections in the pool
+      const testQueries = [];
+      for (let i = 0; i < Math.min(3, 5); i++) {
+        testQueries.push(
+          this.sequelize.query('SELECT 1 as maintenance_check', { 
+            type: this.sequelize.QueryTypes.SELECT,
+            raw: true,
+            timeout: 3000
+          }).catch(err => ({ error: err.message }))
+        );
+      }
+
+      const results = await Promise.all(testQueries);
+      const failedQueries = results.filter(r => r.error);
+      
+      if (failedQueries.length > 0) {
+        logger.warn(`Database maintenance found ${failedQueries.length} failed connections`);
+        // Force pool refresh if too many connections are bad
+        if (failedQueries.length >= 2) {
+          logger.info('Refreshing connection pool due to multiple failed connections');
+          await this.sequelize.connectionManager.close();
+          await this.sequelize.connectionManager.initPools();
+        }
+      }
+    } catch (error) {
+      logger.warn('Database maintenance failed:', error.message);
+    }
   }
 }
 
