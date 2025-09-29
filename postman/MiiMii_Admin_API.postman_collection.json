@@ -90,7 +90,7 @@
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"pagination\": { \"page\": 1, \"limit\": 20, \"total\": 120, \"pages\": 6 },\n  \"users\": [\n    {\n      \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n      \"name\": \"John Doe\",\n      \"whatsappNumber\": \"0803XXXXXXX\",\n      \"email\": \"john@example.com\",\n      \"kycStatus\": \"verified\",\n      \"isActive\": true,\n      \"isBanned\": false,\n      \"balance\": 1200.5,\n      \"lastSeen\": \"2024-01-01T10:00:00.000Z\",\n      \"createdAt\": \"2023-11-01T10:00:00.000Z\"\n    }\n  ]\n}"
+          "body": "{\n  \"success\": true,\n  \"pagination\": { \"page\": 1, \"limit\": 20, \"total\": 120, \"pages\": 6 },\n  \"users\": [\n    {\n      \"id\": \"f2f1a0b2-1234-4a0c-9d1a-aaaa1111bbbb\",\n      \"name\": \"John Doe\",\n      \"whatsappNumber\": \"0803XXXXXXX\",\n      \"email\": \"john@example.com\",\n      \"kycStatus\": \"verified\",\n      \"bvnVerified\": true,\n      \"bvnVerificationDate\": \"2023-11-01T10:30:00.000Z\",\n      \"onboardingStep\": \"completed\",\n      \"isActive\": true,\n      \"isBanned\": false,\n      \"balance\": 1200.5,\n      \"virtualAccountNumber\": \"1000000123\",\n      \"virtualAccountBank\": \"RUBIES MFB\",\n      \"lastSeen\": \"2024-01-01T10:00:00.000Z\",\n      \"createdAt\": \"2023-11-01T10:00:00.000Z\"\n    }\n  ]\n}"
         },
         {
           "name": "400 Bad Request - Validation error",
