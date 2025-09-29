@@ -266,9 +266,13 @@ class MessageProcessor {
               });
               
               const result = await bankTransferService.processBankTransfer(user.id, transferData, pin);
-              if (!result.success) {
-                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
-              }
+              
+              // Transfer completed successfully
+              logger.info('Transfer completed successfully via flow completion', {
+                userId: user.id,
+                reference: result.transaction?.reference,
+                amount: result.transaction?.amount
+              });
 
               // Clean up
               try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
@@ -280,7 +284,17 @@ class MessageProcessor {
                 userId: user.id,
                 error: error.message
               });
-              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer failed. Please try again.');
+              
+              // Check if this is a notification failure (transfer actually succeeded)
+              if (error.message.includes('Transfer completed successfully, but notification failed')) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, 
+                  '✅ Transfer completed successfully! Please check your transaction history for details.'
+                );
+              } else {
+                await whatsappService.sendTextMessage(user.whatsappNumber, 
+                  `❌ Transfer failed: ${error.message}`
+                );
+              }
               return;
             }
 
