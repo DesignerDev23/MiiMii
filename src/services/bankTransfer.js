@@ -667,51 +667,16 @@ class BankTransferService {
             reference: transaction.reference
           });
 
-          // Generate and send receipt image
+          // Send success notification to user (with fallback handling)
           try {
-            const receiptService = require('./receipt');
-            const whatsappService = require('./whatsapp');
-            // Get proper bank name for receipt using enhanced resolution
-            const bankName = accountValidation.bankName || 
-                           accountValidation.bank || 
-                           await this.getBankNameFromCode(accountValidation.bankCode || transferData.bankCode) || 
-                           'Bank';
-
-            const receiptData = {
-              type: 'Bank Transfer',
-              amount: parseFloat(feeCalculation.amount),
-              fee: parseFloat(feeCalculation.totalFee),
-              totalAmount: parseFloat(feeCalculation.totalAmount),
-              recipientName: accountValidation.accountName,
-              recipientBank: bankName,
-              recipientAccount: accountValidation.accountNumber,
-              reference: transaction.reference,
-              date: new Date().toLocaleString('en-GB'),
-              senderName: `${user.firstName} ${user.lastName}`.trim() || 'MiiMii User'
-            };
-            
-            const receiptBuffer = await receiptService.generateTransferReceipt(receiptData);
-
-            // Send receipt image directly via WhatsApp API
-            try {
-              await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer-receipt.jpg', 'Transfer Receipt');
-              logger.info('Transfer receipt image sent successfully', { userId: user.id, reference: transaction.reference });
-            } catch (sendErr) {
-              logger.warn('Failed to send receipt image, falling back to text', { error: sendErr.message });
-              await whatsappService.sendTextMessage(
-                user.whatsappNumber,
-                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${bankName}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
-              );
-            }
-          } catch (receiptError) {
-            logger.warn('Failed to generate/send transfer receipt image, falling back to text', { error: receiptError.message });
-            try {
-              const whatsappService = require('./whatsapp');
-              await whatsappService.sendTextMessage(
-                user.whatsappNumber,
-                `✅ *Transfer Successful!*\n\n💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n💸 Fee: ₦${feeCalculation.totalFee}\n👤 To: ${accountValidation.accountName}\n🏦 Bank: ${bankName}\n🔢 Account: ${accountValidation.accountNumber}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}`
-              );
-            } catch (_) {}
+            await this.sendTransferSuccessNotification(user, accountValidation, feeCalculation, transaction.reference);
+          } catch (notificationError) {
+            // Don't fail the transfer if notification fails
+            logger.warn('Failed to send transfer success notification', { 
+              error: notificationError.message, 
+              userId: user.id,
+              reference: transaction.reference 
+            });
           }
 
           return {
@@ -747,7 +712,22 @@ class BankTransferService {
       }
     } catch (error) {
       logger.error('Bank transfer failed', { error: error.message, userId, transferData });
-      throw error;
+      
+      // Provide more specific error messages based on error type
+      if (error.message.includes('Insufficient wallet balance')) {
+        throw new Error(error.message);
+      } else if (error.message.includes('Invalid bank account details')) {
+        throw new Error('Invalid bank account details. Please check the account number and bank.');
+      } else if (error.message.includes('User not found')) {
+        throw new Error('Account not found. Please contact support.');
+      } else if (error.message.includes('PIN')) {
+        throw new Error('Invalid PIN. Please try again.');
+      } else if (error.message.includes('Transfer processed')) {
+        // This is a misleading error - the transfer actually succeeded
+        throw new Error('Transfer completed successfully, but notification failed. Please check your transaction history.');
+      } else {
+        throw new Error(`Transfer failed: ${error.message}`);
+      }
     }
   }
 
@@ -787,6 +767,69 @@ class BankTransferService {
         message: error.message || 'Transfer processing failed',
         response: error.response?.data
       };
+    }
+  }
+
+  // Send transfer success notification with fallback handling
+  async sendTransferSuccessNotification(user, accountValidation, feeCalculation, reference) {
+    try {
+      const receiptService = require('./receipt');
+      const whatsappService = require('./whatsapp');
+      
+      // Get proper bank name for receipt using enhanced resolution
+      const bankName = accountValidation.bankName || 
+                     accountValidation.bank || 
+                     await this.getBankNameFromCode(accountValidation.bankCode) || 
+                     'Bank';
+
+      const receiptData = {
+        type: 'Bank Transfer',
+        amount: parseFloat(feeCalculation.amount),
+        fee: parseFloat(feeCalculation.totalFee),
+        totalAmount: parseFloat(feeCalculation.totalAmount),
+        recipientName: accountValidation.accountName,
+        recipientBank: bankName,
+        recipientAccount: accountValidation.accountNumber,
+        reference: reference,
+        date: new Date().toLocaleString('en-GB'),
+        senderName: `${user.firstName} ${user.lastName}`.trim() || 'MiiMii User'
+      };
+      
+      // Try to generate and send receipt image
+      try {
+        const receiptBuffer = await receiptService.generateTransferReceipt(receiptData);
+        await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer-receipt.jpg', 'Transfer Receipt');
+        logger.info('Transfer receipt image sent successfully', { userId: user.id, reference });
+        return;
+      } catch (imageError) {
+        logger.warn('Failed to generate/send receipt image, falling back to text', { 
+          error: imageError.message,
+          userId: user.id,
+          reference 
+        });
+      }
+      
+      // Fallback to text message
+      const textMessage = `✅ *Transfer Successful!*\n\n` +
+                        `💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n` +
+                        `💸 Fee: ₦${feeCalculation.totalFee}\n` +
+                        `👤 To: ${accountValidation.accountName}\n` +
+                        `🏦 Bank: ${bankName}\n` +
+                        `🔢 Account: ${accountValidation.accountNumber}\n` +
+                        `📋 Reference: ${reference}\n` +
+                        `📅 Date: ${new Date().toLocaleString('en-GB')}\n\n` +
+                        `Your transfer has been completed successfully! 🎉`;
+      
+      await whatsappService.sendTextMessage(user.whatsappNumber, textMessage);
+      logger.info('Transfer success text message sent', { userId: user.id, reference });
+      
+    } catch (error) {
+      logger.error('Failed to send transfer success notification', { 
+        error: error.message, 
+        userId: user.id, 
+        reference 
+      });
+      throw error;
     }
   }
 
