@@ -1,0 +1,255 @@
+{
+  "info": {
+    "name": "MiiMii Admin API - New Endpoints",
+    "description": "New data plans endpoints for admin dashboard",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Data Plans",
+      "item": [
+        {
+          "name": "Sync Data Plans from Bilal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/data-plans/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "data-plans", "sync"]
+            },
+            "description": "Manually sync all data plans from Bilal dashboard for all networks (MTN, AIRTEL, GLO, 9MOBILE)"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Data plans synced successfully from Bilal dashboard\",\n  \"data\": {\n    \"networks\": [\"MTN\", \"AIRTEL\", \"GLO\", \"9MOBILE\"],\n    \"totalPlans\": 29,\n    \"plansByNetwork\": {\n      \"MTN\": 11,\n      \"AIRTEL\": 5,\n      \"GLO\": 6,\n      \"9MOBILE\": 3\n    }\n  }\n}"
+            },
+            {
+              "name": "Error Response",
+              "status": "Internal Server Error",
+              "code": 500,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": \"Failed to sync data plans\",\n  \"details\": \"Connection timeout\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get All Data Plans (Cached)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/data-plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "data-plans"]
+            },
+            "description": "Get all cached data plans (1 hour cache)"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"plans\": {\n    \"MTN\": [\n      {\n        \"id\": 1,\n        \"title\": \"500MB\",\n        \"size\": \"500MB\",\n        \"price\": 350,\n        \"validity\": \"30days to 7days\",\n        \"type\": \"SME\",\n        \"network\": \"MTN\"\n      }\n    ],\n    \"AIRTEL\": [...],\n    \"GLO\": [...],\n    \"9MOBILE\": [...]\n  },\n  \"networks\": [\"MTN\", \"AIRTEL\", \"GLO\", \"9MOBILE\"],\n  \"totalPlans\": 29\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get MTN Plans Only",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/data-plans?network=MTN",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "data-plans"],
+              "query": [
+                {
+                  "key": "network",
+                  "value": "MTN",
+                  "description": "Filter by network: MTN, AIRTEL, GLO, or 9MOBILE"
+                }
+              ]
+            },
+            "description": "Get only MTN data plans from cache"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"plans\": {\n    \"MTN\": [\n      {\n        \"id\": 1,\n        \"title\": \"500MB\",\n        \"size\": \"500MB\",\n        \"price\": 350,\n        \"validity\": \"30days to 7days\",\n        \"type\": \"SME\",\n        \"network\": \"MTN\"\n      },\n      {\n        \"id\": 2,\n        \"title\": \"1GB\",\n        \"size\": \"1GB\",\n        \"price\": 550,\n        \"validity\": \"30 days\",\n        \"type\": \"SME\",\n        \"network\": \"MTN\"\n      }\n    ]\n  },\n  \"networks\": [\"MTN\"],\n  \"totalPlans\": 11\n}"
+            }
+          ]
+        },
+        {
+          "name": "Refresh All Plans (Force Fetch)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/data-plans?refresh=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "data-plans"],
+              "query": [
+                {
+                  "key": "refresh",
+                  "value": "true",
+                  "description": "Force fetch fresh plans from Bilal API"
+                }
+              ]
+            },
+            "description": "Force fetch fresh plans from Bilal API, bypassing cache"
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"plans\": {...},\n  \"networks\": [\"MTN\", \"AIRTEL\", \"GLO\", \"9MOBILE\"],\n  \"totalPlans\": 29\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Fresh MTN Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/data-plans?network=MTN&refresh=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "data-plans"],
+              "query": [
+                {
+                  "key": "network",
+                  "value": "MTN"
+                },
+                {
+                  "key": "refresh",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Get fresh MTN plans directly from Bilal API"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users (Enhanced)",
+      "item": [
+        {
+          "name": "Get Users with BVN & Virtual Account Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Search by name or phone"
+                },
+                {
+                  "key": "kycStatus",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Filter: incomplete, pending, verified, rejected"
+                }
+              ]
+            },
+            "description": "Get users list with enhanced fields: bvnVerified, bvnVerificationDate, onboardingStep, virtualAccountNumber, virtualAccountBank"
+          },
+          "response": [
+            {
+              "name": "Success Response (Enhanced)",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"pagination\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 21,\n    \"pages\": 2\n  },\n  \"users\": [\n    {\n      \"id\": \"ee4442e9-e9d3-4312-a208-9da4b9f8449b\",\n      \"name\": \"Sadiq Maikaba\",\n      \"whatsappNumber\": \"+2349071102959\",\n      \"email\": null,\n      \"kycStatus\": \"not_required\",\n      \"bvnVerified\": false,\n      \"bvnVerificationDate\": null,\n      \"onboardingStep\": \"completed\",\n      \"isActive\": true,\n      \"isBanned\": false,\n      \"balance\": 0.00,\n      \"virtualAccountNumber\": \"1000000981\",\n      \"virtualAccountBank\": \"RUBIES MFB\",\n      \"lastSeen\": \"2025-09-29T18:28:12.714Z\",\n      \"createdAt\": \"2025-09-23T17:18:05.633Z\"\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://chatmiimii.com",
+      "type": "string"
+    },
+    {
+      "key": "ADMIN_TOKEN",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
+

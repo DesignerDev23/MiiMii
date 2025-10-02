@@ -420,19 +420,26 @@ class BilalService {
         // Filter only plans that are available on user dashboard
         const availablePlans = response.plans
           .filter(plan => plan.status === 'available' || plan.available === true || !plan.status)
-          .map(plan => ({
-            id: plan.plan_id || plan.id,
-            title: plan.plan_name || plan.name || `${plan.size}`,
-            size: plan.size || plan.data_size,
-            price: parseFloat(plan.amount || plan.price || 0),
-            validity: plan.validity || plan.duration || 'N/A',
-            type: plan.plan_type || plan.type || 'DATA',
-            network: network.toUpperCase()
-          }));
+          .map(plan => {
+            // Try multiple field combinations for title/size
+            const size = plan.size || plan.data_size || plan.dataplan || plan.plan_size || '';
+            const name = plan.plan_name || plan.name || plan.dataplan || size;
+            
+            return {
+              id: plan.plan_id || plan.id,
+              title: name,
+              size: size,
+              price: parseFloat(plan.amount || plan.price || 0),
+              validity: plan.validity || plan.duration || plan.plan_validity || 'N/A',
+              type: plan.plan_type || plan.type || plan.category || 'DATA',
+              network: network.toUpperCase()
+            };
+          });
         
         logger.info('Successfully fetched data plans from Bilal', {
           network,
-          plansCount: availablePlans.length
+          plansCount: availablePlans.length,
+          samplePlan: availablePlans[0] || null
         });
         
         return availablePlans;
