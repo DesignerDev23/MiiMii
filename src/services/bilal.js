@@ -449,28 +449,40 @@ class BilalService {
   }
 
   getDefaultDataPlans(network) {
+    // Default plans with retail prices - admin can add selling prices later
     const defaultPlans = {
       'MTN': [
-        { id: 1, title: '500MB - ₦380 (30 days)', data_size: '500MB', price: 380, validity: '30 days' },
-        { id: 2, title: '1GB - ₦620 (30 days)', data_size: '1GB', price: 620, validity: '30 days' },
-        { id: 3, title: '2GB - ₦1,240 (30 days)', data_size: '2GB', price: 1240, validity: '30 days' },
-        { id: 4, title: '3GB - ₦2,200 (30 days)', data_size: '3GB', price: 2200, validity: '30 days' },
-        { id: 5, title: '5GB - ₦4,500 (30 days)', data_size: '5GB', price: 4500, validity: '30 days' }
+        { id: 1, title: '500MB', size: '500MB', price: 350, validity: '30days to 7days', type: 'SME', network: 'MTN' },
+        { id: 2, title: '1GB', size: '1GB', price: 550, validity: '30 days', type: 'SME', network: 'MTN' },
+        { id: 3, title: '2GB', size: '2GB', price: 1100, validity: 'Monthly', type: 'SME', network: 'MTN' },
+        { id: 4, title: '3GB', size: '3GB', price: 1650, validity: '30days', type: 'SME', network: 'MTN' },
+        { id: 5, title: '5GB', size: '5GB', price: 2750, validity: '30days', type: 'SME', network: 'MTN' },
+        { id: 6, title: '10GB', size: '10GB', price: 5500, validity: '30days', type: 'SME', network: 'MTN' },
+        { id: 19, title: '500MB', size: '500MB', price: 420, validity: '30 days', type: 'COOPERATE GIFTING', network: 'MTN' },
+        { id: 20, title: '1GB', size: '1GB', price: 820, validity: '30days', type: 'COOPERATE GIFTING', network: 'MTN' },
+        { id: 21, title: '2GB', size: '2GB', price: 1660, validity: '30days', type: 'COOPERATE GIFTING', network: 'MTN' },
+        { id: 23, title: '5GB', size: '5GB', price: 4150, validity: '30days', type: 'COOPERATE GIFTING', network: 'MTN' },
+        { id: 24, title: '10GB', size: '10GB', price: 8300, validity: '30days', type: 'COOPERATE GIFTING', network: 'MTN' }
       ],
       'AIRTEL': [
-        { id: 1, title: '500MB - ₦400 (30 days)', data_size: '500MB', price: 400, validity: '30 days' },
-        { id: 2, title: '1GB - ₦650 (30 days)', data_size: '1GB', price: 650, validity: '30 days' },
-        { id: 3, title: '2GB - ₦1,300 (30 days)', data_size: '2GB', price: 1300, validity: '30 days' }
+        { id: 7, title: '500MB', size: '500MB', price: 493, validity: '7days', type: 'SME', network: 'AIRTEL' },
+        { id: 8, title: '1GB', size: '1GB', price: 784, validity: '7days', type: 'SME', network: 'AIRTEL' },
+        { id: 9, title: '2GB', size: '2GB', price: 1500, validity: '30days', type: 'SME', network: 'AIRTEL' },
+        { id: 10, title: '4GB', size: '4GB', price: 2525, validity: '30days', type: 'SME', network: 'AIRTEL' },
+        { id: 26, title: '10GB', size: '10GB', price: 4000, validity: '30days', type: 'SME', network: 'AIRTEL' }
       ],
       'GLO': [
-        { id: 1, title: '500MB - ₦350 (30 days)', data_size: '500MB', price: 350, validity: '30 days' },
-        { id: 2, title: '1GB - ₦600 (30 days)', data_size: '1GB', price: 600, validity: '30 days' },
-        { id: 3, title: '2GB - ₦1,200 (30 days)', data_size: '2GB', price: 1200, validity: '30 days' }
+        { id: 11, title: '1.5GB', size: '1.5GB', price: 460, validity: '30days', type: 'GIFTING', network: 'GLO' },
+        { id: 12, title: '2.9GB', size: '2.9GB', price: 940, validity: '30days', type: 'GIFTING', network: 'GLO' },
+        { id: 13, title: '4.1GB', size: '4.1GB', price: 1290, validity: '30days', type: 'GIFTING', network: 'GLO' },
+        { id: 14, title: '5.8GB', size: '5.8GB', price: 1850, validity: '30days', type: 'GIFTING', network: 'GLO' },
+        { id: 15, title: '10GB', size: '10GB', price: 3030, validity: '30days', type: 'GIFTING', network: 'GLO' },
+        { id: 29, title: '200MB', size: '200MB', price: 110, validity: '30days', type: 'COOPERATE GIFTING', network: 'GLO' }
       ],
       '9MOBILE': [
-        { id: 1, title: '500MB - ₦400 (30 days)', data_size: '500MB', price: 400, validity: '30 days' },
-        { id: 2, title: '1GB - ₦650 (30 days)', data_size: '1GB', price: 650, validity: '30 days' },
-        { id: 3, title: '2GB - ₦1,300 (30 days)', data_size: '2GB', price: 1300, validity: '30 days' }
+        { id: 25, title: '1.1GB', size: '1.1GB', price: 400, validity: '30days', type: 'SME', network: '9MOBILE' },
+        { id: 27, title: '1.5GB', size: '1.5GB', price: 880, validity: '30days', type: 'GIFTING', network: '9MOBILE' },
+        { id: 28, title: '500MB', size: '500MB', price: 450, validity: '30 days', type: 'GIFTING', network: '9MOBILE' }
       ]
     };
     
