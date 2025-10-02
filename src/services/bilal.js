@@ -64,7 +64,7 @@ class BilalService {
       // Use Basic Authentication as per Bilal documentation
       const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
       
-      const response = await axios.post(`${this.baseURL}/user`, {}, {
+      const response = await axios.post(`${this.baseURL}/user/`, {}, {
         ...axiosConfig,
         headers: {
           ...axiosConfig.headers,
@@ -270,7 +270,7 @@ class BilalService {
         fullPayload: JSON.stringify(payload)
       });
 
-      const response = await this.makeRequest('POST', '/topup', payload, tokenData.token);
+      const response = await this.makeRequest('POST', '/topup/', payload, tokenData.token);
 
       logger.info('Bilal API airtime response received', {
         status: response.status,
@@ -406,7 +406,7 @@ class BilalService {
       
       // Fetch data plans from Bilal API user dashboard
       // API endpoint: GET /dataplans?network={networkId}
-      const response = await this.makeRequest('GET', `/dataplans?network=${networkId}`, null, tokenData.token);
+      const response = await this.makeRequest('GET', `/dataplans/?network=${networkId}`, null, tokenData.token);
       
       logger.info('Bilal data plans response', { 
         network, 
@@ -599,7 +599,7 @@ class BilalService {
         fullPayload: JSON.stringify(payload)
       });
 
-      const response = await this.makeRequest('POST', '/data', payload, tokenData.token);
+      const response = await this.makeRequest('POST', '/data/', payload, tokenData.token);
 
       logger.info('Bilal API response received', {
         status: response.status,
@@ -788,7 +788,7 @@ class BilalService {
         'request-id': simpleRequestId
       };
 
-      const response = await this.makeRequest('POST', '/bill', payload, tokenData.token);
+      const response = await this.makeRequest('POST', '/bill/', payload, tokenData.token);
 
       if (response.status === 'success') {
         // Debit user wallet with actual amount
@@ -1101,6 +1101,17 @@ class BilalService {
       baseDelay: 1500,
       operationName: `bilal_${method.toLowerCase()}_${endpoint.replace(/\//g, '_')}`,
       shouldRetry: (error, attempt) => {
+        // Log the actual error response from Bilal API
+        if (error.response) {
+          logger.error('Bilal API error response details', {
+            status: error.response.status,
+            statusText: error.response.statusText,
+            data: error.response.data,
+            endpoint: endpoint,
+            method: method
+          });
+        }
+        
         // Don't retry authentication errors
         if (error.response && [401, 403].includes(error.response.status)) {
           return false;
