@@ -11,7 +11,7 @@ const receiptService = require('./receipt');
 
 class BilalService {
   constructor() {
-    this.baseURL = process.env.BILAL_BASE_URL || 'https://bilalsadasub.com/api';
+    this.baseURL = process.env.BILAL_BASE_URL || 'https://legitdataway.com/api';
     this.username = process.env.PROVIDER_USERNAME;
     this.password = process.env.PROVIDER_PASSWORD;
     this.token = null;
@@ -398,25 +398,51 @@ class BilalService {
   async getDataPlans(network) {
     try {
       const tokenData = await this.generateToken();
+      const networkId = this.networkMapping[network.toUpperCase()];
       
-      // Fetch data plans from Bilal API
-      const response = await this.makeRequest('GET', `/data/plans?network=${this.networkMapping[network.toUpperCase()]}`, null, tokenData.token);
+      if (!networkId) {
+        throw new Error(`Unsupported network: ${network}`);
+      }
       
-      if (response.status === 'success' && response.data) {
-        return response.data.map(plan => ({
-          id: plan.id,
-          title: `${plan.data_size} - ₦${plan.price} (${plan.validity})`,
-          data_size: plan.data_size,
-          price: parseFloat(plan.price),
-          validity: plan.validity,
-          network: network
-        }));
+      // Fetch data plans from Bilal API user dashboard
+      // API endpoint: GET /dataplans?network={networkId}
+      const response = await this.makeRequest('GET', `/dataplans?network=${networkId}`, null, tokenData.token);
+      
+      logger.info('Bilal data plans response', { 
+        network, 
+        networkId,
+        status: response?.status,
+        hasPlans: !!response?.plans,
+        plansCount: response?.plans?.length || 0
+      });
+      
+      if (response.status === 'success' && response.plans && Array.isArray(response.plans)) {
+        // Filter only plans that are available on user dashboard
+        const availablePlans = response.plans
+          .filter(plan => plan.status === 'available' || plan.available === true || !plan.status)
+          .map(plan => ({
+            id: plan.plan_id || plan.id,
+            title: plan.plan_name || plan.name || `${plan.size}`,
+            size: plan.size || plan.data_size,
+            price: parseFloat(plan.amount || plan.price || 0),
+            validity: plan.validity || plan.duration || 'N/A',
+            type: plan.plan_type || plan.type || 'DATA',
+            network: network.toUpperCase()
+          }));
+        
+        logger.info('Successfully fetched data plans from Bilal', {
+          network,
+          plansCount: availablePlans.length
+        });
+        
+        return availablePlans;
       } else {
         // Return default plans if API fails
+        logger.warn('Bilal API returned no plans, using defaults', { network, response: JSON.stringify(response) });
         return this.getDefaultDataPlans(network);
       }
     } catch (error) {
-      logger.error('Failed to fetch data plans from Bilal', { error: error.message, network });
+      logger.error('Failed to fetch data plans from Bilal', { error: error.message, network, stack: error.stack });
       // Return default plans as fallback
       return this.getDefaultDataPlans(network);
     }
@@ -1119,6 +1145,83 @@ class BilalService {
       };
     } catch (error) {
       logger.error('Bilal connection test failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch and sync all data plans from Bilal API dashboard
+   * This will get the current plans available on the user's dashboard
+   */
+  async syncDataPlansFromDashboard() {
+    try {
+      logger.info('Syncing data plans from Bilal dashboard...');
+      
+      const networks = ['MTN', 'AIRTEL', 'GLO', '9MOBILE'];
+      const allPlans = {};
+      
+      for (const network of networks) {
+        try {
+          const plans = await this.getDataPlans(network);
+          allPlans[network] = plans;
+          logger.info(`Fetched ${plans.length} plans for ${network}`);
+        } catch (error) {
+          logger.error(`Failed to fetch plans for ${network}`, { error: error.message });
+          allPlans[network] = [];
+        }
+      }
+      
+      // Store in KVStore for caching
+      try {
+        const KVStore = require('../models/KVStore');
+        await KVStore.upsert({
+          key: 'bilal_data_plans_cache',
+          value: {
+            plans: allPlans,
+            lastSync: new Date().toISOString()
+          }
+        });
+        
+        logger.info('Data plans synced and cached successfully');
+      } catch (cacheError) {
+        logger.warn('Failed to cache data plans', { error: cacheError.message });
+      }
+      
+      return {
+        success: true,
+        plans: allPlans,
+        networks: networks,
+        totalPlans: Object.values(allPlans).reduce((sum, plans) => sum + plans.length, 0)
+      };
+    } catch (error) {
+      logger.error('Failed to sync data plans from dashboard', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Get cached data plans or fetch fresh ones
+   */
+  async getCachedDataPlans(maxAge = 3600000) { // 1 hour default
+    try {
+      const KVStore = require('../models/KVStore');
+      const cached = await KVStore.findByPk('bilal_data_plans_cache');
+      
+      if (cached && cached.value && cached.value.lastSync) {
+        const age = Date.now() - new Date(cached.value.lastSync).getTime();
+        
+        if (age < maxAge) {
+          logger.info('Using cached data plans', { age: Math.round(age / 1000) + 's' });
+          return cached.value.plans;
+        }
+      }
+      
+      // Cache expired or doesn't exist, sync fresh plans
+      logger.info('Cache expired or missing, fetching fresh plans');
+      const result = await this.syncDataPlansFromDashboard();
+      return result.plans;
+    } catch (error) {
+      logger.error('Failed to get cached data plans', { error: error.message });
       throw error;
     }
   }

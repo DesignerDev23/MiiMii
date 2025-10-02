@@ -1608,4 +1608,76 @@ router.post('/support/tickets',
   }
 );
 
+// Sync data plans from Bilal dashboard
+router.post('/data-plans/sync',
+  async (req, res) => {
+    try {
+      const bilalService = require('../services/bilal');
+      
+      logger.info('Admin initiated data plans sync');
+      
+      const result = await bilalService.syncDataPlansFromDashboard();
+      
+      res.json({
+        success: true,
+        message: 'Data plans synced successfully from Bilal dashboard',
+        data: {
+          networks: result.networks,
+          totalPlans: result.totalPlans,
+          plansByNetwork: Object.keys(result.plans).reduce((acc, network) => {
+            acc[network] = result.plans[network].length;
+            return acc;
+          }, {})
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to sync data plans', { error: error.message });
+      res.status(500).json({ 
+        error: 'Failed to sync data plans',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// Get current data plans (cached or fresh)
+router.get('/data-plans',
+  query('network').optional().isIn(['MTN', 'AIRTEL', 'GLO', '9MOBILE']),
+  query('refresh').optional().isBoolean(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { network, refresh } = req.query;
+      const bilalService = require('../services/bilal');
+      
+      let plans;
+      if (refresh === 'true') {
+        logger.info('Admin requested fresh data plans');
+        const result = await bilalService.syncDataPlansFromDashboard();
+        plans = result.plans;
+      } else {
+        plans = await bilalService.getCachedDataPlans();
+      }
+      
+      // If specific network requested, filter
+      if (network) {
+        plans = { [network]: plans[network] || [] };
+      }
+      
+      res.json({
+        success: true,
+        plans: plans,
+        networks: Object.keys(plans),
+        totalPlans: Object.values(plans).reduce((sum, networkPlans) => sum + networkPlans.length, 0)
+      });
+    } catch (error) {
+      logger.error('Failed to get data plans', { error: error.message });
+      res.status(500).json({ 
+        error: 'Failed to get data plans',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
 module.exports = router;

@@ -91,9 +91,21 @@ class DataService {
   // Get data plans for a specific network (with admin-set selling prices)
   async getDataPlans(network) {
     try {
-      // Use the DATA_PLANS from flowEndpoint which has the current plan structure
-      const { DATA_PLANS } = require('../routes/flowEndpoint');
-      const networkPlans = DATA_PLANS[network.toUpperCase()] || [];
+      // First, try to get plans from Bilal API cache (from user dashboard)
+      const bilalService = require('./bilal');
+      let networkPlans = [];
+      
+      try {
+        const cachedPlans = await bilalService.getCachedDataPlans();
+        networkPlans = cachedPlans[network.toUpperCase()] || [];
+        logger.info('Using Bilal cached data plans', { network, plansCount: networkPlans.length });
+      } catch (bilalError) {
+        logger.warn('Failed to get Bilal cached plans, falling back to static plans', { error: bilalError.message });
+        
+        // Fallback to static DATA_PLANS from flowEndpoint
+        const { DATA_PLANS } = require('../routes/flowEndpoint');
+        networkPlans = DATA_PLANS[network.toUpperCase()] || [];
+      }
       
       if (networkPlans.length === 0) {
         throw new Error('Unsupported network or no plans available');
