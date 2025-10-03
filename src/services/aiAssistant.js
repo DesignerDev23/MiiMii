@@ -952,8 +952,22 @@ Extract intent and data from this message. Consider the user context and any ext
       aiResponse
     });
     
+    // Check if accountNumber looks like a nickname (not a valid account number)
+    const isAccountNumberValid = accountNumber && /^\d{8,11}$/.test(accountNumber.toString().trim());
+    
+    // Extract beneficiary nickname from message if not already extracted
+    if (!beneficiaryNickname && accountNumber && !isAccountNumberValid) {
+      // AI might have extracted nickname as accountNumber
+      beneficiaryNickname = accountNumber;
+      extractedData.beneficiaryNickname = accountNumber;
+      logger.info('Detected nickname in accountNumber field', {
+        accountNumber,
+        beneficiaryNickname
+      });
+    }
+    
     // Check if user mentioned a beneficiary nickname
-    if (beneficiaryNickname && !accountNumber) {
+    if (beneficiaryNickname && (!accountNumber || !isAccountNumberValid)) {
       const beneficiaryService = require('./beneficiary');
       const beneficiary = await beneficiaryService.findBeneficiaryByNickname(user.id, beneficiaryNickname);
       
@@ -962,7 +976,8 @@ Extract intent and data from this message. Consider the user context and any ext
           userId: user.id,
           nickname: beneficiaryNickname,
           beneficiaryId: beneficiary.id,
-          accountNumber: beneficiary.accountNumber
+          accountNumber: beneficiary.accountNumber,
+          bankName: beneficiary.bankName
         });
         
         // Use saved beneficiary details
@@ -977,7 +992,7 @@ Extract intent and data from this message. Consider the user context and any ext
           accountNumber: beneficiary.accountNumber,
           bankName: beneficiary.bankName
         });
-      } else if (!amount) {
+      } else {
         return {
           intent: 'bank_transfer',
           message: `I don't have a saved beneficiary named "${beneficiaryNickname}" yet.\n\nPlease provide the full details:\n\n📝 Example: 'Send 10k to my ${beneficiaryNickname} 9072874728 Opay'`,
