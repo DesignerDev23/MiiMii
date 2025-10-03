@@ -3024,6 +3024,28 @@ Welcome to the future of banking! 🚀`;
           const amount = amountMatch[1].toLowerCase().includes('k') ? 
             parseInt(amountMatch[1].toLowerCase().replace('k', '')) * 1000 : 
             parseInt(amountMatch[1]);
+          
+          // Extract beneficiary nickname from message
+          // Patterns: "to my [nickname]" or "to [nickname]"
+          let beneficiaryNickname = null;
+          const nicknamePatterns = [
+            /to\s+my\s+([a-zA-Z\s]+?)\s+\d{10,11}/i,  // "to my opay 9072874728"
+            /to\s+my\s+([a-zA-Z\s]+?)\s*$/i,            // "to my mom" (at end)
+            /to\s+(mom|dad|brother|sister|wife|husband|son|daughter|friend|boss|uncle|aunt|cousin|grandma|grandpa)\s/i  // "to mom 9072..."
+          ];
+          
+          for (const pattern of nicknamePatterns) {
+            const match = message.match(pattern);
+            if (match && match[1]) {
+              beneficiaryNickname = match[1].trim();
+              logger.info('Extracted beneficiary nickname via hard override', {
+                message,
+                nickname: beneficiaryNickname,
+                pattern: pattern.toString()
+              });
+              break;
+            }
+          }
 
           // Try to resolve bank from tokens using dynamic Rubies API bank list
           let detectedBankName = null;
@@ -3230,7 +3252,8 @@ Welcome to the future of banking! 🚀`;
               accountNumber: accountMatch[1],
               bankName: detectedBankName || (lowerMessage.includes('opay') ? 'opay' : 'unknown'),
               bankCode: detectedBankCode || undefined,
-              recipientName: null
+              recipientName: null,
+              beneficiaryNickname: beneficiaryNickname || null  // Include extracted nickname
             },
             response: `Perfect! I can see you want to send money. Let me verify the account details and get the recipient name for you. 🔍`,
             suggestedAction: 'Process bank transfer',

@@ -670,17 +670,35 @@ class BankTransferService {
           // Auto-save beneficiary after successful transfer
           try {
             const beneficiaryService = require('./beneficiary');
-            await beneficiaryService.autoSaveBeneficiary(userId, {
+            
+            logger.info('Attempting to auto-save beneficiary', {
+              userId,
+              accountNumber: accountValidation.accountNumber,
+              bankName: accountValidation.bank,
+              beneficiaryNickname: transferData.beneficiaryNickname,
+              hasBeneficiaryNickname: !!transferData.beneficiaryNickname
+            });
+            
+            const savedBeneficiary = await beneficiaryService.autoSaveBeneficiary(userId, {
               accountNumber: accountValidation.accountNumber,
               bankCode: transferData.bankCode,
               bankName: accountValidation.bank,
               recipientName: accountValidation.accountName,
               amount: feeCalculation.amount
             }, transferData.beneficiaryNickname || null);
+            
+            if (savedBeneficiary) {
+              logger.info('Beneficiary auto-saved successfully', {
+                beneficiaryId: savedBeneficiary.id,
+                nickname: savedBeneficiary.nickname,
+                accountNumber: savedBeneficiary.accountNumber
+              });
+            }
           } catch (beneficiaryError) {
             // Don't fail transfer if beneficiary save fails
             logger.warn('Failed to auto-save beneficiary', { 
-              error: beneficiaryError.message, 
+              error: beneficiaryError.message,
+              stack: beneficiaryError.stack,
               userId 
             });
           }
