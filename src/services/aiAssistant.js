@@ -281,9 +281,25 @@ For Bank Transfer (including Opay):
     "amount": 5000,
     "accountNumber": "6035745691",
     "bankName": "keystone",
-    "recipientName": null
+    "recipientName": null,
+    "beneficiaryNickname": null
   },
   "response": "Perfect! Sending ₦5k to Keystone Bank. Just need your PIN 🔐",
+  "suggestedAction": "Process bank transfer"
+}
+
+For Bank Transfer WITH NICKNAME:
+{
+  "intent": "bank_transfer",
+  "confidence": 0.95,
+  "extractedData": {
+    "amount": 10000,
+    "accountNumber": "9072874728",
+    "bankName": "opay",
+    "recipientName": null,
+    "beneficiaryNickname": "my opay"
+  },
+  "response": "Perfect! Sending ₦10k to your Opay account. Just need your PIN 🔐",
   "suggestedAction": "Process bank transfer"
 }
 
@@ -295,11 +311,35 @@ For ALL Transfers (Bank Transfers Only):
     "amount": 5000,
     "accountNumber": "08123456789",
     "bankName": "unknown",
-    "recipientName": "John"
+    "recipientName": "John",
+    "beneficiaryNickname": null
   },
   "response": "Got it! Sending ₦5k to John. Just need your PIN 🔐",
   "suggestedAction": "Process bank transfer"
 }
+
+CRITICAL BENEFICIARY NICKNAME EXTRACTION EXAMPLES:
+{
+  Message: "Send 100 to my Opay 9072874728"
+  Extract: "beneficiaryNickname": "my opay"
+}
+
+{
+  Message: "Send 10k to my mom 9072874728 opay"
+  Extract: "beneficiaryNickname": "mom"
+}
+
+{
+  Message: "Transfer 5k to sister 1234567890 gtbank"
+  Extract: "beneficiaryNickname": "sister"
+}
+
+{
+  Message: "Send 2k to my gtbank account 1234567890"
+  Extract: "beneficiaryNickname": "my gtbank account"
+}
+
+ALWAYS extract beneficiaryNickname if message contains "to my [word]" or "to [relationship word]"
 
 For Airtime Purchase:
 {

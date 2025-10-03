@@ -770,12 +770,26 @@ class BankTransferService {
       // Use Rubies service for actual transfer
       const result = await rubiesService.initiateTransfer(transferData);
       
+      // Rubies API returns responseCode '00' for success
+      const isSuccess = result.success === true || 
+                        result.responseCode === '00' || 
+                        result.status === 'success';
+      
+      logger.info('Rubies transfer result', {
+        isSuccess,
+        responseCode: result.responseCode,
+        responseMessage: result.responseMessage,
+        hasSuccess: result.success,
+        reference: result.reference
+      });
+      
       return {
-        success: result.success || result.status === 'success',
+        success: isSuccess,
         reference: result.reference || result.transaction_id,
         sessionId: result.session_id || result.sessionId,
-        message: result.message || 'Transfer processed',
-        response: result.response || result
+        message: result.responseMessage || result.message || 'Transfer processed',
+        response: result.response || result,
+        responseCode: result.responseCode
       };
     } catch (error) {
       logger.error('Rubies transfer failed', { error: error.message, transferData });
