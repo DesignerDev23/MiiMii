@@ -935,7 +935,7 @@ Extract intent and data from this message. Consider the user context and any ext
   }
 
   async handleBankTransfer(user, extractedData, aiResponse, originalMessage = '') {
-    const { amount, accountNumber, bankName, bankCode, beneficiaryNickname } = extractedData;
+    let { amount, accountNumber, bankName, bankCode, beneficiaryNickname } = extractedData;
     
     // Check if bank details were extracted from image
     const imageBankDetails = extractedData.bankDetails;
