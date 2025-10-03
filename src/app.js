@@ -37,6 +37,7 @@ const utilityRoutes = require('./routes/utility');
 const userRoutes = require('./routes/user');
 const bankTransferRoutes = require('./routes/bankTransfer');
 const virtualCardRoutes = require('./routes/virtualCard');
+const beneficiaryRoutes = require('./routes/beneficiary');
 const testRoutes = require('./routes/test');
 const testWhatsAppRoutes = require('./routes/testWhatsApp');
 
@@ -289,6 +290,7 @@ app.use('/api/utility', utilityRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/bank-transfer', bankTransferRoutes);
 app.use('/api/virtual-cards', virtualCardRoutes);
+app.use('/api/beneficiaries', beneficiaryRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/test-whatsapp', testWhatsAppRoutes);
 

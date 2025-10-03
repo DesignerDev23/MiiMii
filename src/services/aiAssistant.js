@@ -207,6 +207,18 @@ TRANSFER INTENT RULES:
   * "Transfer 5k to GTBank 1234567890" → "bank_transfer" (bank account)
   * "Send 5k to John 08123456789" → "bank_transfer" (bank account)
   * "Send 1000 to 9072874728 opay" → "bank_transfer" (Opay account)
+
+BENEFICIARY/NICKNAME EXTRACTION RULES:
+- If message contains "to my [nickname]" or "to [nickname]", extract the nickname
+- Common nicknames: mom, dad, brother, sister, friend, wife, husband, son, daughter, boss, etc.
+- Also extract account-based nicknames: "my opay", "my gtbank", "my access", etc.
+- Store nickname in "beneficiaryNickname" field for auto-saving
+- Examples:
+  * "Send 10k to my mom 9072874728 opay" → beneficiaryNickname: "mom"
+  * "Transfer 5k to my sister 1234567890 gtbank" → beneficiaryNickname: "sister"
+  * "Send 2k to my opay 9072874728" → beneficiaryNickname: "my opay"
+  * "Send 1k to my access account 1234567890" → beneficiaryNickname: "my access account"
+  * "Send 500 to boss 9072874728" → beneficiaryNickname: "boss"
   * "Transfer 2k to 9072874728 opay bank" → "bank_transfer" (Opay account)
   * "Send 500 to 9072874728 opay" → "bank_transfer" (Opay account)
   * "Transfer 1k to 9072874728 opay bank" → "bank_transfer" (Opay account)
@@ -883,7 +895,7 @@ Extract intent and data from this message. Consider the user context and any ext
   }
 
   async handleBankTransfer(user, extractedData, aiResponse, originalMessage = '') {
-    const { amount, accountNumber, bankName, bankCode } = extractedData;
+    const { amount, accountNumber, bankName, bankCode, beneficiaryNickname } = extractedData;
     
     // Check if bank details were extracted from image
     const imageBankDetails = extractedData.bankDetails;
@@ -895,9 +907,45 @@ Extract intent and data from this message. Consider the user context and any ext
       accountNumber,
       bankName,
       bankCode,
+      beneficiaryNickname,
       hasImageBankDetails: !!imageBankDetails,
       aiResponse
     });
+    
+    // Check if user mentioned a beneficiary nickname
+    if (beneficiaryNickname && !accountNumber) {
+      const beneficiaryService = require('./beneficiary');
+      const beneficiary = await beneficiaryService.findBeneficiaryByNickname(user.id, beneficiaryNickname);
+      
+      if (beneficiary) {
+        logger.info('Found saved beneficiary', {
+          userId: user.id,
+          nickname: beneficiaryNickname,
+          beneficiaryId: beneficiary.id,
+          accountNumber: beneficiary.accountNumber
+        });
+        
+        // Use saved beneficiary details
+        extractedData.accountNumber = beneficiary.accountNumber;
+        extractedData.bankCode = beneficiary.bankCode;
+        extractedData.bankName = beneficiary.bankName;
+        extractedData.recipientName = beneficiary.name;
+        extractedData.beneficiaryId = beneficiary.id;
+        
+        logger.info('Using saved beneficiary for transfer', {
+          nickname: beneficiaryNickname,
+          accountNumber: beneficiary.accountNumber,
+          bankName: beneficiary.bankName
+        });
+      } else if (!amount) {
+        return {
+          intent: 'bank_transfer',
+          message: `I don't have a saved beneficiary named "${beneficiaryNickname}" yet.\n\nPlease provide the full details:\n\n📝 Example: 'Send 10k to my ${beneficiaryNickname} 9072874728 Opay'`,
+          awaitingInput: 'bank_transfer_details',
+          context: 'bank_transfer'
+        };
+      }
+    }
     
     // If we have bank details from image, use them
     const finalAccountNumber = accountNumber || (imageBankDetails && imageBankDetails.accountNumber);
@@ -925,7 +973,7 @@ Extract intent and data from this message. Consider the user context and any ext
       });
       return {
         intent: 'bank_transfer',
-        message: "To transfer to a bank account, I need the amount, bank name, and account number.\n\n📝 Example: 'Transfer 10000 to GTBank 0123456789' or 'Send 4k to 9072874728 Opay Bank'",
+        message: "To transfer to a bank account, I need the amount, bank name, and account number.\n\n📝 Example: 'Transfer 10000 to GTBank 0123456789' or 'Send 4k to 9072874728 Opay Bank'\n\n💡 Tip: You can save beneficiaries! Try: 'Send 10k to my mom 9072874728 Opay'",
         awaitingInput: 'bank_transfer_details',
         context: 'bank_transfer'
       };
@@ -1188,7 +1236,8 @@ Extract intent and data from this message. Consider the user context and any ext
           totalAmount: feeInfo.totalAmount,
           narration: 'Wallet transfer',
           reference: this.generateReference(),
-          recipientName: validation.accountName
+          recipientName: validation.accountName,
+          beneficiaryNickname: beneficiaryNickname || null // Save nickname for auto-save
         }
       });
 
