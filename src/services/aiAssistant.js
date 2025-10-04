@@ -208,15 +208,16 @@ TRANSFER INTENT RULES:
   * "Send 5k to John 08123456789" → "bank_transfer" (bank account)
   * "Send 1000 to 9072874728 opay" → "bank_transfer" (Opay account)
 
-BENEFICIARY NAME LOOKUP RULES:
-- If user says "Send [amount] to [Name]" without account number, search beneficiaries by that name
-- Match against saved beneficiary names (recipient names from previous transfers)
+BENEFICIARY NAME LOOKUP RULES (CRITICAL):
+- If user says "Send [amount] to [Name]" WITHOUT digits (no account number), PUT THE NAME IN accountNumber field
+- The system will search beneficiaries by that name
+- DO NOT put name in recipientName if there's no account number - put it in accountNumber instead!
 - Examples:
-  * "Send 1k to Musa Abdulkadir" → Search beneficiaries for "Musa Abdulkadir"
-  * "Transfer 500 to Sadiq Maikaba" → Search beneficiaries for "Sadiq Maikaba"
-  * "Send 2k to John Doe" → Search beneficiaries for "John Doe"
-- If found, use saved account details (accountNumber, bankCode, bankName)
-- If not found, ask user to provide full details
+  * "Send 1k to Musa Abdulkadir" → {"accountNumber": "Musa Abdulkadir", "recipientName": null}
+  * "Transfer 500 to Sadiq Maikaba" → {"accountNumber": "Sadiq Maikaba", "recipientName": null}
+  * "Send 2k to John Doe" → {"accountNumber": "John Doe", "recipientName": null}
+  * "Send 500 to 9072874728 opay" → {"accountNumber": "9072874728", "recipientName": null}
+- ONLY use recipientName when BOTH name AND account number are provided
 
 Response Style Examples:
 ❌ DON'T SAY: "I understand you want to transfer funds. Please provide your PIN to authorize this transaction."
@@ -296,19 +297,23 @@ For ALL Transfers (Bank Transfers Only):
   "suggestedAction": "Process bank transfer"
 }
 
-For Transfer Using Saved Beneficiary Name:
+For Transfer Using Saved Beneficiary Name (CRITICAL FORMAT):
 {
-  Message: "Send 1k to Musa Abdulkadir"
-  Extract: {
-    "intent": "bank_transfer",
-    "extractedData": {
-      "amount": 1000,
-      "accountNumber": "Musa Abdulkadir",  (System will search beneficiaries for this name)
-      "bankName": null,
-      "recipientName": null
-    }
-  }
+  "intent": "bank_transfer",
+  "confidence": 0.95,
+  "extractedData": {
+    "amount": 1000,
+    "accountNumber": "Musa Abdulkadir",
+    "bankName": null,
+    "recipientName": null
+  },
+  "response": "Let me check if you have Musa Abdulkadir saved...",
+  "suggestedAction": "Search saved beneficiaries"
 }
+
+IMPORTANT: When user provides ONLY a name (no digits), put the name in accountNumber field!
+Message: "Send 500 to Sadiq Maikaba" → accountNumber: "Sadiq Maikaba" (NOT recipientName!)
+Message: "Transfer 2k to John Doe" → accountNumber: "John Doe" (NOT recipientName!)
 
 For Airtime Purchase:
 {
