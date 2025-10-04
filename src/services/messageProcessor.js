@@ -274,9 +274,29 @@ class MessageProcessor {
                 amount: result.transaction?.amount
               });
 
-              // Clean up
+              // Clean up Redis session
               try { if (flowToken) await redisClient.deleteSession(flowToken); } catch (_) {}
-              await user.clearConversationState();
+              
+              // Reload user to check if a new conversation state was set (e.g., for beneficiary prompt)
+              await user.reload();
+              
+              // Only clear conversation state if it's still the old transfer state
+              // Don't clear if a new state was set (like save_beneficiary_confirmation)
+              if (user.conversationState?.intent === 'bank_transfer' || 
+                  user.conversationState?.context === 'transfer_pin_verification') {
+                logger.info('Clearing old transfer conversation state', {
+                  userId: user.id,
+                  oldState: user.conversationState
+                });
+                await user.clearConversationState();
+              } else if (user.conversationState) {
+                logger.info('Preserving new conversation state after transfer', {
+                  userId: user.id,
+                  newState: user.conversationState,
+                  intent: user.conversationState.intent
+                });
+              }
+              
               return;
 
             } catch (error) {
