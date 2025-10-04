@@ -667,38 +667,48 @@ class BankTransferService {
             reference: transaction.reference
           });
 
-          // Auto-save beneficiary after successful transfer
+          // Check if recipient is already a beneficiary, if not, ask to save
           try {
             const beneficiaryService = require('./beneficiary');
             
-            logger.info('Attempting to auto-save beneficiary', {
-              userId,
+            const existingBeneficiary = await beneficiaryService.findBeneficiary(userId, {
               accountNumber: accountValidation.accountNumber,
-              bankName: accountValidation.bank,
-              beneficiaryNickname: transferData.beneficiaryNickname,
-              hasBeneficiaryNickname: !!transferData.beneficiaryNickname
+              bankCode: transferData.bankCode
             });
             
-            const savedBeneficiary = await beneficiaryService.autoSaveBeneficiary(userId, {
-              accountNumber: accountValidation.accountNumber,
-              bankCode: transferData.bankCode,
-              bankName: accountValidation.bank,
-              recipientName: accountValidation.accountName,
-              amount: feeCalculation.amount
-            }, transferData.beneficiaryNickname || null);
-            
-            if (savedBeneficiary) {
-              logger.info('Beneficiary auto-saved successfully', {
-                beneficiaryId: savedBeneficiary.id,
-                nickname: savedBeneficiary.nickname,
-                accountNumber: savedBeneficiary.accountNumber
+            if (!existingBeneficiary) {
+              // Ask user if they want to save this recipient as beneficiary
+              logger.info('New recipient detected, will ask to save as beneficiary', {
+                userId,
+                recipientName: accountValidation.accountName,
+                accountNumber: accountValidation.accountNumber
+              });
+              
+              // Store pending beneficiary data in user's conversation state
+              await user.updateConversationState({
+                intent: 'save_beneficiary_prompt',
+                awaitingInput: 'save_beneficiary_confirmation',
+                context: 'post_transfer',
+                pendingBeneficiary: {
+                  accountNumber: accountValidation.accountNumber,
+                  bankCode: transferData.bankCode,
+                  bankName: accountValidation.bank,
+                  recipientName: accountValidation.accountName,
+                  amount: feeCalculation.amount
+                }
+              });
+            } else {
+              // Update existing beneficiary usage
+              await existingBeneficiary.updateUsage(feeCalculation.amount);
+              logger.info('Updated existing beneficiary usage', {
+                beneficiaryId: existingBeneficiary.id,
+                totalTransactions: existingBeneficiary.totalTransactions
               });
             }
           } catch (beneficiaryError) {
-            // Don't fail transfer if beneficiary save fails
-            logger.warn('Failed to auto-save beneficiary', { 
+            // Don't fail transfer if beneficiary check fails
+            logger.warn('Failed to check/save beneficiary', { 
               error: beneficiaryError.message,
-              stack: beneficiaryError.stack,
               userId 
             });
           }
@@ -850,28 +860,50 @@ class BankTransferService {
         const receiptBuffer = await receiptService.generateTransferReceipt(receiptData);
         await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'transfer-receipt.jpg', 'Transfer Receipt');
         logger.info('Transfer receipt image sent successfully', { userId: user.id, reference });
-        return;
       } catch (imageError) {
         logger.warn('Failed to generate/send receipt image, falling back to text', { 
           error: imageError.message,
           userId: user.id,
           reference 
         });
+        
+        // Fallback to text message
+        const textMessage = `✅ *Transfer Successful!*\n\n` +
+                          `💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n` +
+                          `💸 Fee: ₦${feeCalculation.totalFee}\n` +
+                          `👤 To: ${accountValidation.accountName}\n` +
+                          `🏦 Bank: ${bankName}\n` +
+                          `🔢 Account: ${accountValidation.accountNumber}\n` +
+                          `📋 Reference: ${reference}\n` +
+                          `📅 Date: ${new Date().toLocaleString('en-GB')}\n\n` +
+                          `Your transfer has been completed successfully! 🎉`;
+        
+        await whatsappService.sendTextMessage(user.whatsappNumber, textMessage);
+        logger.info('Transfer success text message sent', { userId: user.id, reference });
       }
       
-      // Fallback to text message
-      const textMessage = `✅ *Transfer Successful!*\n\n` +
-                        `💰 Amount: ₦${feeCalculation.amount.toLocaleString()}\n` +
-                        `💸 Fee: ₦${feeCalculation.totalFee}\n` +
-                        `👤 To: ${accountValidation.accountName}\n` +
-                        `🏦 Bank: ${bankName}\n` +
-                        `🔢 Account: ${accountValidation.accountNumber}\n` +
-                        `📋 Reference: ${reference}\n` +
-                        `📅 Date: ${new Date().toLocaleString('en-GB')}\n\n` +
-                        `Your transfer has been completed successfully! 🎉`;
+      // Check if this is a new beneficiary and ask to save
+      const beneficiaryService = require('./beneficiary');
+      const existingBeneficiary = await beneficiaryService.findBeneficiary(user.id, {
+        accountNumber: accountValidation.accountNumber,
+        bankCode: accountValidation.bankCode
+      });
       
-      await whatsappService.sendTextMessage(user.whatsappNumber, textMessage);
-      logger.info('Transfer success text message sent', { userId: user.id, reference });
+      if (!existingBeneficiary) {
+        // Ask user if they want to save this beneficiary
+        const savePrompt = `💡 *Save Beneficiary?*\n\n` +
+                          `Would you like to save *${accountValidation.accountName}* as a beneficiary?\n\n` +
+                          `Next time, you can simply say:\n` +
+                          `"Send 1k to ${accountValidation.accountName}"\n\n` +
+                          `Reply *YES* to save or *NO* to skip.`;
+        
+        await whatsappService.sendTextMessage(user.whatsappNumber, savePrompt);
+        
+        logger.info('Sent save beneficiary prompt', {
+          userId: user.id,
+          recipientName: accountValidation.accountName
+        });
+      }
       
     } catch (error) {
       logger.error('Failed to send transfer success notification', { 

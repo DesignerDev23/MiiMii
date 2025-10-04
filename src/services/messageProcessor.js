@@ -1029,6 +1029,57 @@ class MessageProcessor {
           await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Something went wrong. Please try your transfer again.');
           return;
         }
+        
+        // Handle save beneficiary confirmation
+        if (state.awaitingInput === 'save_beneficiary_confirmation' && state.pendingBeneficiary) {
+          const lower = messageContent.toLowerCase().trim();
+          
+          if (/(^|\b)(yes|y|yeah|yep|sure|ok|okay)(\b|$)/.test(lower)) {
+            try {
+              const beneficiaryService = require('./beneficiary');
+              const { pendingBeneficiary } = state;
+              
+              const beneficiary = await beneficiaryService.autoSaveBeneficiary(user.id, {
+                accountNumber: pendingBeneficiary.accountNumber,
+                bankCode: pendingBeneficiary.bankCode,
+                bankName: pendingBeneficiary.bankName,
+                recipientName: pendingBeneficiary.recipientName,
+                amount: pendingBeneficiary.amount
+              }, null);
+              
+              if (beneficiary) {
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  `✅ *Beneficiary Saved!*\n\n` +
+                  `I've saved *${pendingBeneficiary.recipientName}* to your beneficiaries.\n\n` +
+                  `Next time, just say:\n` +
+                  `"Send 1k to ${pendingBeneficiary.recipientName}" 😊`
+                );
+                
+                logger.info('Beneficiary saved via user confirmation', {
+                  userId: user.id,
+                  beneficiaryId: beneficiary.id,
+                  recipientName: pendingBeneficiary.recipientName
+                });
+              }
+            } catch (error) {
+              logger.error('Failed to save beneficiary', { error: error.message, userId: user.id });
+              await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Failed to save beneficiary. Please try again later.');
+            }
+            
+            await user.clearConversationState();
+            return;
+          }
+          
+          if (/(^|\b)(no|n|nope|cancel)(\b|$)/.test(lower)) {
+            await whatsappService.sendTextMessage(user.whatsappNumber, '👍 No problem! You can always save beneficiaries later.');
+            await user.clearConversationState();
+            return;
+          }
+          
+          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply *YES* to save or *NO* to skip.');
+          return;
+        }
       }
       
       // Log the incoming message

@@ -208,20 +208,15 @@ TRANSFER INTENT RULES:
   * "Send 5k to John 08123456789" → "bank_transfer" (bank account)
   * "Send 1000 to 9072874728 opay" → "bank_transfer" (Opay account)
 
-BENEFICIARY/NICKNAME EXTRACTION RULES:
-- If message contains "to my [nickname]" or "to [nickname]", extract the nickname
-- Common nicknames: mom, dad, brother, sister, friend, wife, husband, son, daughter, boss, etc.
-- Also extract account-based nicknames: "my opay", "my gtbank", "my access", etc.
-- Store nickname in "beneficiaryNickname" field for auto-saving
+BENEFICIARY NAME LOOKUP RULES:
+- If user says "Send [amount] to [Name]" without account number, search beneficiaries by that name
+- Match against saved beneficiary names (recipient names from previous transfers)
 - Examples:
-  * "Send 10k to my mom 9072874728 opay" → beneficiaryNickname: "mom"
-  * "Transfer 5k to my sister 1234567890 gtbank" → beneficiaryNickname: "sister"
-  * "Send 2k to my opay 9072874728" → beneficiaryNickname: "my opay"
-  * "Send 1k to my access account 1234567890" → beneficiaryNickname: "my access account"
-  * "Send 500 to boss 9072874728" → beneficiaryNickname: "boss"
-  * "Transfer 2k to 9072874728 opay bank" → "bank_transfer" (Opay account)
-  * "Send 500 to 9072874728 opay" → "bank_transfer" (Opay account)
-  * "Transfer 1k to 9072874728 opay bank" → "bank_transfer" (Opay account)
+  * "Send 1k to Musa Abdulkadir" → Search beneficiaries for "Musa Abdulkadir"
+  * "Transfer 500 to Sadiq Maikaba" → Search beneficiaries for "Sadiq Maikaba"
+  * "Send 2k to John Doe" → Search beneficiaries for "John Doe"
+- If found, use saved account details (accountNumber, bankCode, bankName)
+- If not found, ask user to provide full details
 
 Response Style Examples:
 ❌ DON'T SAY: "I understand you want to transfer funds. Please provide your PIN to authorize this transaction."
@@ -281,25 +276,9 @@ For Bank Transfer (including Opay):
     "amount": 5000,
     "accountNumber": "6035745691",
     "bankName": "keystone",
-    "recipientName": null,
-    "beneficiaryNickname": null
+    "recipientName": null
   },
   "response": "Perfect! Sending ₦5k to Keystone Bank. Just need your PIN 🔐",
-  "suggestedAction": "Process bank transfer"
-}
-
-For Bank Transfer WITH NICKNAME:
-{
-  "intent": "bank_transfer",
-  "confidence": 0.95,
-  "extractedData": {
-    "amount": 10000,
-    "accountNumber": "9072874728",
-    "bankName": "opay",
-    "recipientName": null,
-    "beneficiaryNickname": "my opay"
-  },
-  "response": "Perfect! Sending ₦10k to your Opay account. Just need your PIN 🔐",
   "suggestedAction": "Process bank transfer"
 }
 
@@ -311,35 +290,25 @@ For ALL Transfers (Bank Transfers Only):
     "amount": 5000,
     "accountNumber": "08123456789",
     "bankName": "unknown",
-    "recipientName": "John",
-    "beneficiaryNickname": null
+    "recipientName": "John"
   },
   "response": "Got it! Sending ₦5k to John. Just need your PIN 🔐",
   "suggestedAction": "Process bank transfer"
 }
 
-CRITICAL BENEFICIARY NICKNAME EXTRACTION EXAMPLES:
+For Transfer Using Saved Beneficiary Name:
 {
-  Message: "Send 100 to my Opay 9072874728"
-  Extract: "beneficiaryNickname": "my opay"
+  Message: "Send 1k to Musa Abdulkadir"
+  Extract: {
+    "intent": "bank_transfer",
+    "extractedData": {
+      "amount": 1000,
+      "accountNumber": "Musa Abdulkadir",  (System will search beneficiaries for this name)
+      "bankName": null,
+      "recipientName": null
+    }
+  }
 }
-
-{
-  Message: "Send 10k to my mom 9072874728 opay"
-  Extract: "beneficiaryNickname": "mom"
-}
-
-{
-  Message: "Transfer 5k to sister 1234567890 gtbank"
-  Extract: "beneficiaryNickname": "sister"
-}
-
-{
-  Message: "Send 2k to my gtbank account 1234567890"
-  Extract: "beneficiaryNickname": "my gtbank account"
-}
-
-ALWAYS extract beneficiaryNickname if message contains "to my [word]" or "to [relationship word]"
 
 For Airtime Purchase:
 {
@@ -952,50 +921,54 @@ Extract intent and data from this message. Consider the user context and any ext
       aiResponse
     });
     
-    // Check if accountNumber looks like a nickname (not a valid account number)
+    // Check if accountNumber looks like a name (not a valid account number)
     const isAccountNumberValid = accountNumber && /^\d{8,11}$/.test(accountNumber.toString().trim());
     
-    // Extract beneficiary nickname from message if not already extracted
-    if (!beneficiaryNickname && accountNumber && !isAccountNumberValid) {
-      // AI might have extracted nickname as accountNumber
-      beneficiaryNickname = accountNumber;
-      extractedData.beneficiaryNickname = accountNumber;
-      logger.info('Detected nickname in accountNumber field', {
-        accountNumber,
-        beneficiaryNickname
-      });
-    }
-    
-    // Check if user mentioned a beneficiary nickname
-    if (beneficiaryNickname && (!accountNumber || !isAccountNumberValid)) {
+    // If accountNumber is not valid digits, it might be a beneficiary name
+    if (accountNumber && !isAccountNumberValid) {
       const beneficiaryService = require('./beneficiary');
-      const beneficiary = await beneficiaryService.findBeneficiaryByNickname(user.id, beneficiaryNickname);
       
-      if (beneficiary) {
-        logger.info('Found saved beneficiary', {
+      logger.info('Searching for beneficiary by name', {
+        userId: user.id,
+        searchTerm: accountNumber
+      });
+      
+      // Search beneficiaries by name
+      const beneficiary = await beneficiaryService.searchBeneficiaries(user.id, accountNumber);
+      
+      if (beneficiary && beneficiary.length > 0) {
+        const match = beneficiary[0]; // Use first/best match
+        
+        logger.info('Found saved beneficiary by name', {
           userId: user.id,
-          nickname: beneficiaryNickname,
-          beneficiaryId: beneficiary.id,
-          accountNumber: beneficiary.accountNumber,
-          bankName: beneficiary.bankName
+          searchTerm: accountNumber,
+          beneficiaryId: match.id,
+          beneficiaryName: match.name,
+          accountNumber: match.accountNumber,
+          bankName: match.bankName
         });
         
         // Use saved beneficiary details
-        extractedData.accountNumber = beneficiary.accountNumber;
-        extractedData.bankCode = beneficiary.bankCode;
-        extractedData.bankName = beneficiary.bankName;
-        extractedData.recipientName = beneficiary.name;
-        extractedData.beneficiaryId = beneficiary.id;
+        extractedData.accountNumber = match.accountNumber;
+        extractedData.bankCode = match.bankCode;
+        extractedData.bankName = match.bankName;
+        extractedData.recipientName = match.name;
+        extractedData.beneficiaryId = match.id;
+        
+        // Update variables for continued processing
+        accountNumber = match.accountNumber;
+        bankCode = match.bankCode;
+        bankName = match.bankName;
         
         logger.info('Using saved beneficiary for transfer', {
-          nickname: beneficiaryNickname,
-          accountNumber: beneficiary.accountNumber,
-          bankName: beneficiary.bankName
+          beneficiaryName: match.name,
+          accountNumber: match.accountNumber,
+          bankName: match.bankName
         });
       } else {
         return {
           intent: 'bank_transfer',
-          message: `I don't have a saved beneficiary named "${beneficiaryNickname}" yet.\n\nPlease provide the full details:\n\n📝 Example: 'Send 10k to my ${beneficiaryNickname} 9072874728 Opay'`,
+          message: `I couldn't find "${accountNumber}" in your saved beneficiaries.\n\nPlease provide the full details:\n\n📝 Example: 'Send 10k to ${accountNumber} 9072874728 Opay'`,
           awaitingInput: 'bank_transfer_details',
           context: 'bank_transfer'
         };
@@ -3039,28 +3012,6 @@ Welcome to the future of banking! 🚀`;
           const amount = amountMatch[1].toLowerCase().includes('k') ? 
             parseInt(amountMatch[1].toLowerCase().replace('k', '')) * 1000 : 
             parseInt(amountMatch[1]);
-          
-          // Extract beneficiary nickname from message
-          // Patterns: "to my [nickname]" or "to [nickname]"
-          let beneficiaryNickname = null;
-          const nicknamePatterns = [
-            /to\s+my\s+([a-zA-Z\s]+?)\s+\d{10,11}/i,  // "to my opay 9072874728"
-            /to\s+my\s+([a-zA-Z\s]+?)\s*$/i,            // "to my mom" (at end)
-            /to\s+(mom|dad|brother|sister|wife|husband|son|daughter|friend|boss|uncle|aunt|cousin|grandma|grandpa)\s/i  // "to mom 9072..."
-          ];
-          
-          for (const pattern of nicknamePatterns) {
-            const match = message.match(pattern);
-            if (match && match[1]) {
-              beneficiaryNickname = match[1].trim();
-              logger.info('Extracted beneficiary nickname via hard override', {
-                message,
-                nickname: beneficiaryNickname,
-                pattern: pattern.toString()
-              });
-              break;
-            }
-          }
 
           // Try to resolve bank from tokens using dynamic Rubies API bank list
           let detectedBankName = null;
@@ -3267,8 +3218,7 @@ Welcome to the future of banking! 🚀`;
               accountNumber: accountMatch[1],
               bankName: detectedBankName || (lowerMessage.includes('opay') ? 'opay' : 'unknown'),
               bankCode: detectedBankCode || undefined,
-              recipientName: null,
-              beneficiaryNickname: beneficiaryNickname || null  // Include extracted nickname
+              recipientName: null
             },
             response: `Perfect! I can see you want to send money. Let me verify the account details and get the recipient name for you. 🔍`,
             suggestedAction: 'Process bank transfer',
