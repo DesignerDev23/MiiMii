@@ -1286,19 +1286,24 @@ Extract intent and data from this message. Consider the user context and any ext
         }
       });
 
-      // Generate AI confirmation message
-      const confirmationMessage = await this.generateTransferConfirmationMessage({
-        amount: transferAmount,
-        fee: feeInfo.totalFee,
-        totalAmount: feeInfo.totalAmount,
-        recipientName: validation.accountName,
-        bankName: resolvedBankName,
-        accountNumber: finalAccountNumber
-      });
+      // Generate transfer confirmation with interactive buttons
+      const confirmationText = `💰 *Transfer Confirmation*\n\n` +
+        `Amount: ₦${transferAmount.toLocaleString()}\n` +
+        `Fee: ₦${feeInfo.totalFee}\n` +
+        `Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
+        `To: *${validation.accountName}*\n` +
+        `Bank: *${resolvedBankName}*\n` +
+        `Account: ${finalAccountNumber}\n\n` +
+        `Confirm this transfer?`;
 
       return {
         intent: 'bank_transfer',
-        message: confirmationMessage,
+        message: confirmationText,
+        messageType: 'buttons',  // Signal to use interactive buttons
+        buttons: [
+          { id: 'confirm_transfer_yes', title: '✅ Yes, Send' },
+          { id: 'confirm_transfer_no', title: '❌ No, Cancel' }
+        ],
         awaitingInput: 'confirm_transfer',
         context: 'bank_transfer_confirmation',
         transactionDetails: {

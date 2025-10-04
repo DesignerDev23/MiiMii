@@ -28,6 +28,9 @@ class MessageProcessor {
       // Extract message content for text, button replies, list selections, and image captions
       let messageContent = message?.text || message?.buttonReply?.title || message?.listReply?.title || message?.caption || '';
       
+      // Extract button ID if this is a button reply
+      const buttonId = message?.buttonReply?.id || null;
+      
       // Get user's WhatsApp profile name
       const userName = contact?.profile?.name || 'there';
       
@@ -897,49 +900,65 @@ class MessageProcessor {
         if (state.awaitingInput === 'confirm_transfer') {
           const lower = (messageContent || '').toLowerCase();
           
+          // Check for button reply IDs first
+          const isConfirmed = buttonId === 'confirm_transfer_yes' || /(^|\b)(yes|y|confirm|ok|sure)(\b|$)/.test(lower);
+          const isCancelled = buttonId === 'confirm_transfer_no' || /(^|\b)(no|n|cancel|stop)(\b|$)/.test(lower);
+          
+          logger.info('Checking for service switch', {
+            messageContent,
+            messageLower: lower,
+            currentIntent: state.intent,
+            awaitingInput: state.awaitingInput,
+            buttonId,
+            isConfirmed,
+            isCancelled
+          });
+          
           // Check if user wants to switch to a different service instead of confirming
-          try {
-            const aiAssistant = require('./aiAssistant');
-            const switchIntent = await aiAssistant.checkForServiceSwitch(messageContent, user, state);
-            if (switchIntent) {
-              logger.info('User wants to switch from transfer confirmation to another service', {
-                userId: user.id,
-                currentIntent: state.intent,
-                newIntent: switchIntent.intent,
-                currentStep: state.awaitingInput
-              });
-              
-              // Clear transfer conversation state
-              await user.clearConversationState();
-              
-              // Process the new service request
-              const whatsappService = require('./whatsapp');
-              const naturalMessage = await aiAssistant.makeResponseNatural(
-                `Got it! Let me help you with ${switchIntent.intent === 'airtime' ? 'airtime' : switchIntent.intent === 'data' ? 'data' : switchIntent.intent} instead.`,
-                { service: switchIntent.intent, switching: true }
-              );
-              await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage);
-              
-              // Handle the new intent and send response
-              const intentResult = await aiAssistant.processIntent(switchIntent, user, messageContent);
-              if (intentResult && intentResult.message) {
-                const finalMessage = await aiAssistant.makeResponseNatural(intentResult.message, { 
-                  service: switchIntent.intent, 
-                  context: 'service_result' 
+          if (!isConfirmed && !isCancelled) {
+            try {
+              const aiAssistant = require('./aiAssistant');
+              const switchIntent = await aiAssistant.checkForServiceSwitch(messageContent, user, state);
+              if (switchIntent) {
+                logger.info('User wants to switch from transfer confirmation to another service', {
+                  userId: user.id,
+                  currentIntent: state.intent,
+                  newIntent: switchIntent.intent,
+                  currentStep: state.awaitingInput
                 });
-                await whatsappService.sendTextMessage(user.whatsappNumber, finalMessage);
+                
+                // Clear transfer conversation state
+                await user.clearConversationState();
+                
+                // Process the new service request
+                const whatsappService = require('./whatsapp');
+                const naturalMessage = await aiAssistant.makeResponseNatural(
+                  `Got it! Let me help you with ${switchIntent.intent === 'airtime' ? 'airtime' : switchIntent.intent === 'data' ? 'data' : switchIntent.intent} instead.`,
+                  { service: switchIntent.intent, switching: true }
+                );
+                await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage);
+                
+                // Handle the new intent and send response
+                const intentResult = await aiAssistant.processIntent(switchIntent, user, messageContent);
+                if (intentResult && intentResult.message) {
+                  const finalMessage = await aiAssistant.makeResponseNatural(intentResult.message, { 
+                    service: switchIntent.intent, 
+                    context: 'service_result' 
+                  });
+                  await whatsappService.sendTextMessage(user.whatsappNumber, finalMessage);
+                }
+                
+                return;
               }
-              
-              return;
+            } catch (switchError) {
+              logger.error('Error checking for service switch in transfer confirmation', { 
+                error: switchError.message, 
+                userId: user.id 
+              });
             }
-          } catch (switchError) {
-            logger.error('Error checking for service switch in transfer confirmation', { 
-              error: switchError.message, 
-              userId: user.id 
-            });
           }
           
-          if (/(^|\b)(yes|y|confirm|ok|sure)(\b|$)/.test(lower)) {
+          if (isConfirmed) {
             // Preserve existing data and only update awaitingInput
             const updatedState = { 
               ...state,
@@ -1090,12 +1109,21 @@ class MessageProcessor {
             });
             return;
           }
-          if (/(^|\b)(no|n|cancel|stop)(\b|$)/.test(lower)) {
-            await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Cancelled! Try again: "Send 5k to 00308267834627 bellbank"');
+          if (isCancelled) {
+            await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Transfer cancelled! You can start a new transfer anytime.');
             await user.clearConversationState();
             return;
           }
-          await whatsappService.sendTextMessage(user.whatsappNumber, 'Just reply YES or NO');
+          
+          // If neither confirmed nor cancelled, ask again
+          await whatsappService.sendButtonMessage(
+            user.whatsappNumber,
+            'Please confirm or cancel the transfer:',
+            [
+              { id: 'confirm_transfer_yes', title: '✅ Yes, Send' },
+              { id: 'confirm_transfer_no', title: '❌ No, Cancel' }
+            ]
+          );
           return;
         }
 
@@ -1227,7 +1255,17 @@ class MessageProcessor {
           if (aiResult && aiResult.message) {
             // Send the AI response to the user
             const whatsappService = require('./whatsapp');
-            await whatsappService.sendTextMessage(user.whatsappNumber, aiResult.message);
+            
+            // Check if this is a button message (transfer confirmation)
+            if (aiResult.messageType === 'buttons' && aiResult.buttons) {
+              logger.info('Sending interactive button message for transfer confirmation', {
+                userId: user.id,
+                buttonsCount: aiResult.buttons.length
+              });
+              await whatsappService.sendButtonMessage(user.whatsappNumber, aiResult.message, aiResult.buttons);
+            } else {
+              await whatsappService.sendTextMessage(user.whatsappNumber, aiResult.message);
+            }
           } else {
             // Handle AI processing error
             const whatsappService = require('./whatsapp');
