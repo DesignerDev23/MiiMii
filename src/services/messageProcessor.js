@@ -53,15 +53,33 @@ class MessageProcessor {
           userId: user.id,
           hasFlowResponse: !!message?.flowResponse,
           hasResponseJson: !!message?.flowResponse?.responseJson,
-          flowResponse: message?.flowResponse
+          hasButtonReply: !!message?.buttonReply,
+          buttonId: buttonId,
+          flowResponse: message?.flowResponse,
+          conversationState: user.conversationState
         });
         
-        if (!message?.flowResponse?.responseJson) {
+        // If this is a button reply for an ongoing conversation (like transfer confirmation), 
+        // DON'T route to handleCompletedUserMessage - let it continue to conversation state handling
+        const isButtonReplyForConversation = !message?.flowResponse?.responseJson && 
+                                              message?.buttonReply && 
+                                              user.conversationState?.awaitingInput;
+        
+        if (!message?.flowResponse?.responseJson && !isButtonReplyForConversation) {
           return await this.handleCompletedUserMessage(user, message, 'interactive');
         }
         
-        // Handle Flow completion
-        if (message?.flowResponse?.responseJson) {
+        // If button reply for conversation, continue to conversation state handling below
+        if (isButtonReplyForConversation) {
+          logger.info('Button reply for ongoing conversation detected, will check conversation state', {
+            userId: user.id,
+            buttonId,
+            awaitingInput: user.conversationState?.awaitingInput,
+            intent: user.conversationState?.intent
+          });
+          // Don't return - fall through to conversation state checks below
+        } else if (message?.flowResponse?.responseJson) {
+          // Handle Flow completion only if NOT a button reply
           logger.info('Processing Flow completion from interactive message', {
             userId: user.id,
             flowToken: message.flowResponse.flowToken,
@@ -1120,8 +1138,8 @@ class MessageProcessor {
             user.whatsappNumber,
             'Please confirm or cancel the transfer:',
             [
-              { id: 'confirm_transfer_yes', title: '✅ Yes, Send' },
-              { id: 'confirm_transfer_no', title: '❌ No, Cancel' }
+              { id: 'confirm_transfer_yes', title: 'Confirm' },
+              { id: 'confirm_transfer_no', title: 'Cancel' }
             ]
           );
           return;

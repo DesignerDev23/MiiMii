@@ -1286,23 +1286,23 @@ Extract intent and data from this message. Consider the user context and any ext
         }
       });
 
-      // Generate transfer confirmation with interactive buttons
-      const confirmationText = `💰 *Transfer Confirmation*\n\n` +
-        `Amount: ₦${transferAmount.toLocaleString()}\n` +
-        `Fee: ₦${feeInfo.totalFee}\n` +
-        `Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
-        `To: *${validation.accountName}*\n` +
-        `Bank: *${resolvedBankName}*\n` +
-        `Account: ${finalAccountNumber}\n\n` +
-        `Confirm this transfer?`;
+      // Generate AI confirmation message
+      const confirmationMessage = await this.generateTransferConfirmationMessage({
+        amount: transferAmount,
+        fee: feeInfo.totalFee,
+        totalAmount: feeInfo.totalAmount,
+        recipientName: validation.accountName,
+        bankName: resolvedBankName,
+        accountNumber: finalAccountNumber
+      });
 
       return {
         intent: 'bank_transfer',
-        message: confirmationText,
+        message: confirmationMessage,
         messageType: 'buttons',  // Signal to use interactive buttons
         buttons: [
-          { id: 'confirm_transfer_yes', title: '✅ Yes, Send' },
-          { id: 'confirm_transfer_no', title: '❌ No, Cancel' }
+          { id: 'confirm_transfer_yes', title: 'Confirm' },
+          { id: 'confirm_transfer_no', title: 'Cancel' }
         ],
         awaitingInput: 'confirm_transfer',
         context: 'bank_transfer_confirmation',
@@ -3662,24 +3662,27 @@ Response format:
         bankCode
       });
       
-      const prompt = `Generate a simple one-sentence bank transfer confirmation message.
+      const prompt = `Generate a simple bank transfer confirmation message in one or two sentences.
 
 Transfer details:
 - Amount: ₦${safeAmount.toLocaleString()}
+- Fee: ₦${transferData.fee || 15}
+- Total: ₦${(safeAmount + (transferData.fee || 15)).toLocaleString()}
 - Recipient: ${safeRecipientName}
 - Bank: ${safeBankName}
-- Account: (${safeAccountNumber})
+- Account: ${safeAccountNumber}
 
 Requirements:
-- Use EXACTLY this format: "Ready to send ₦[AMOUNT] to [NAME] at [BANK] ([ACCOUNT])? Just reply YES or NO!"
-- Keep it casual and friendly
+- Keep it natural and conversational (like talking to a friend)
 - Use proper English (not Nigerian pidgin)
 - Make recipient name and bank name BOLD using *text*
-- Include account number in brackets
-- Always end with "Just reply YES or NO!"
+- Include amount, fee, total, recipient name, bank, and account number
+- DO NOT use emojis (no 💰, ✅, ❌, etc.)
+- DO NOT end with "reply YES or NO" (buttons will be shown)
+- Keep it brief and clear
 
 Example:
-"Ready to send ₦150 to *MUSA ABDULKADIR* at *opay* (9072874728)? Just reply YES or NO!"`;
+"You're about to send ₦150 (₦15 fee, total ₦165) to *MUSA ABDULKADIR* at *Opay* account 9072874728. Please confirm to proceed."`;
 
       const response = await axios.post(`${this.openaiBaseUrl}/chat/completions`, {
         model: this.model,
