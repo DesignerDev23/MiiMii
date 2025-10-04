@@ -807,6 +807,14 @@ class MessageProcessor {
       messageContent = message?.text || message?.buttonReply?.title || '';
 
       // Handle save beneficiary confirmation (MUST be before bank_transfer check)
+      logger.info('Checking for save beneficiary confirmation', {
+        userId: user.id,
+        hasConversationState: !!user.conversationState,
+        awaitingInput: user.conversationState?.awaitingInput,
+        hasPendingBeneficiary: !!user.conversationState?.pendingBeneficiary,
+        fullConversationState: user.conversationState
+      });
+      
       if (user.conversationState?.awaitingInput === 'save_beneficiary_confirmation' && user.conversationState?.pendingBeneficiary) {
         const state = user.conversationState;
         const whatsappService = require('./whatsapp');

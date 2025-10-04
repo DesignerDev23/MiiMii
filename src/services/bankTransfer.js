@@ -892,11 +892,16 @@ class BankTransferService {
         
         await whatsappService.sendTextMessage(user.whatsappNumber, savePrompt);
         
+        // Reload user to verify state was saved
+        await user.reload();
+        
         logger.info('Sent save beneficiary prompt and stored pending data', {
           userId: user.id,
           recipientName: accountValidation.accountName,
           accountNumber: accountValidation.accountNumber,
-          bankCode: bankCode || accountValidation.bankCode
+          bankCode: bankCode || accountValidation.bankCode,
+          conversationStateAfterSave: user.conversationState,
+          stateWasSaved: !!user.conversationState
         });
       }
       
