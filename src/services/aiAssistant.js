@@ -909,10 +909,21 @@ Extract intent and data from this message. Consider the user context and any ext
   }
 
   async handleBankTransfer(user, extractedData, aiResponse, originalMessage = '') {
-    let { amount, accountNumber, bankName, bankCode, beneficiaryNickname } = extractedData;
+    let { amount, accountNumber, bankName, bankCode, beneficiaryNickname, recipientName } = extractedData;
     
     // Check if bank details were extracted from image
     const imageBankDetails = extractedData.bankDetails;
+    
+    // FIX: AI often puts the name in recipientName instead of accountNumber
+    // If accountNumber is missing but recipientName is provided, it's likely a beneficiary lookup
+    if ((!accountNumber || accountNumber === null) && recipientName) {
+      logger.info('AI extracted name in recipientName field, moving to accountNumber for beneficiary lookup', {
+        recipientName,
+        originalAccountNumber: accountNumber
+      });
+      accountNumber = recipientName;
+      recipientName = null; // Clear recipientName since we're searching by name
+    }
     
     // Debug: Log the extracted data
     logger.info('handleBankTransfer called with extracted data', {
@@ -922,6 +933,7 @@ Extract intent and data from this message. Consider the user context and any ext
       bankName,
       bankCode,
       beneficiaryNickname,
+      recipientName,
       hasImageBankDetails: !!imageBankDetails,
       aiResponse
     });
