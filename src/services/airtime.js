@@ -144,7 +144,7 @@ class AirtimeService {
         if (purchaseResult.success) {
           // Debit wallet
           await walletService.debitWallet(userId, totalAmount, `Airtime purchase: ₦${validAmount}`, {
-            category: 'airtime',
+            category: 'airtime_purchase',
             transactionId: transaction.id
           });
 
@@ -284,7 +284,7 @@ class AirtimeService {
       const transactions = await Transaction.findAndCountAll({
         where: {
           userId,
-          category: 'airtime',
+          category: 'airtime_purchase',
           type: 'debit'
         },
         order: [['createdAt', 'DESC']],

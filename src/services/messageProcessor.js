@@ -339,6 +339,58 @@ class MessageProcessor {
               return;
             }
 
+          } else if (session.service === 'enable_pin' || session.service === 'disable_pin' || 
+                     user.conversationState?.context === 'enable_pin_verification' || 
+                     user.conversationState?.context === 'disable_pin_verification') {
+            // Handle PIN enable/disable flow completion
+            logger.info('Processing PIN enable/disable flow completion', {
+              userId: user.id,
+              flowToken: flowCompletionData.flowToken,
+              screen: flowCompletionData.screen,
+              dataKeys: Object.keys(flowCompletionData.data || {}),
+              hasPin: !!flowCompletionData.data?.pin,
+              sessionContext: session.context,
+              sessionService: session.service,
+              conversationContext: user.conversationState?.context
+            });
+
+            try {
+              const userService = require('./user');
+              const pin = flowCompletionData.data?.pin;
+              const context = user.conversationState?.context;
+
+              if (!pin || !/^\d{4}$/.test(pin)) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please enter a valid 4-digit PIN.');
+                return;
+              }
+
+              if (session.service === 'enable_pin' || context === 'enable_pin_verification') {
+                const result = await userService.enableUserPin(user.id, pin);
+                if (result.success) {
+                  await whatsappService.sendTextMessage(user.whatsappNumber, '✅ PIN enabled successfully! All transactions will now require PIN verification.');
+                } else {
+                  await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Failed to enable PIN: ${result.message}`);
+                }
+              } else if (session.service === 'disable_pin' || context === 'disable_pin_verification') {
+                const result = await userService.disableUserPin(user.id, pin);
+                if (result.success) {
+                  await whatsappService.sendTextMessage(user.whatsappNumber, '✅ PIN disabled successfully! All transactions will now be processed without PIN verification.');
+                } else {
+                  await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Failed to disable PIN: ${result.message}`);
+                }
+              }
+
+              // Clear conversation state
+              await user.clearConversationState();
+              return;
+
+            } catch (error) {
+              logger.error('PIN enable/disable flow completion failed', { userId: user.id, error: error.message });
+              await whatsappService.sendTextMessage(user.whatsappNumber, `❌ PIN operation failed: ${error.message || 'Please try again later.'}`);
+              await user.clearConversationState();
+              return;
+            }
+
           } else {
             // Handle airtime/data flow completion
             logger.info('Processing airtime flow completion', {

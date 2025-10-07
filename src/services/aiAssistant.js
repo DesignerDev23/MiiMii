@@ -4059,6 +4059,23 @@ Example:
         data: { flowToken }
       });
       
+      // Store session in Redis for flow completion
+      const redisClient = require('../config/redis');
+      const flowSession = {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        service: 'disable_pin',
+        action: 'disable_pin'
+      };
+      
+      logger.info('Storing PIN disable session in Redis', {
+        flowToken,
+        sessionData: flowSession,
+        userId: user.id
+      });
+      
+      await redisClient.storeSession(flowToken, flowSession);
+
       // Send WhatsApp Flow for PIN verification
       const flowData = {
         flowId: flowId,
@@ -4080,7 +4097,7 @@ Example:
           }
         }
       };
-      
+
       await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       logger.info('PIN disable flow sent to user', {
@@ -4169,6 +4186,23 @@ Example:
         data: { flowToken }
       });
       
+      // Store session in Redis for flow completion
+      const redisClient = require('../config/redis');
+      const flowSession = {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        service: 'enable_pin',
+        action: 'enable_pin'
+      };
+      
+      logger.info('Storing PIN enable session in Redis', {
+        flowToken,
+        sessionData: flowSession,
+        userId: user.id
+      });
+      
+      await redisClient.storeSession(flowToken, flowSession);
+
       // Send WhatsApp Flow for PIN verification
       const flowData = {
         flowId: flowId,
@@ -4190,7 +4224,7 @@ Example:
           }
         }
       };
-      
+
       await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       logger.info('PIN enable flow sent to user', {
