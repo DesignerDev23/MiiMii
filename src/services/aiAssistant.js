@@ -202,6 +202,7 @@ Available Services:
 - Bill payments (Electricity, Cable TV)
 - Balance inquiries
 - Transaction history
+- PIN settings (disable/enable PIN for transactions)
 
 IMPORTANT: Use these exact intent names:
 - "transfer" for P2P money transfers (to phone numbers only)
@@ -213,6 +214,8 @@ IMPORTANT: Use these exact intent names:
 - "help" for help requests
 - "menu" for service menu
 - "greeting" for greetings
+- "disable_pin" for PIN disable requests
+- "enable_pin" for PIN enable requests
 
 TRANSFER INTENT RULES:
 - ALL transfers are "bank_transfer" - NO P2P transfers
@@ -263,6 +266,17 @@ EXTRACTION RULES:
 2. Account Number: Look for 8-11 digit numbers (for ALL transfers)
 3. Bank Name: Look for bank names in the message (GTBank, Access, Opay, etc.)
 4. Recipient Name: Look for names before account numbers or bank names
+
+PIN SETTINGS RULES:
+- "disable_pin" intent for: "disable pin", "turn off pin", "disable my pin", "pin off", "no pin", "remove pin"
+- "enable_pin" intent for: "enable pin", "turn on pin", "enable my pin", "pin on", "require pin", "add pin"
+- Examples:
+  * "Disable my pin" → intent: "disable_pin"
+  * "Turn off pin" → intent: "disable_pin"
+  * "Pin off" → intent: "disable_pin"
+  * "Enable my pin" → intent: "enable_pin"
+  * "Turn on pin" → intent: "enable_pin"
+  * "Pin on" → intent: "enable_pin"
 
 AIRTIME & DATA PURCHASE RULES:
 - Commands: "buy", "purchase", "send", "get", "recharge" + airtime/data
@@ -2789,6 +2803,30 @@ Extract intent and data from this message. Consider the user context and any ext
   fallbackProcessing(message, user) {
     const lowerMessage = message.toLowerCase().trim();
     
+    // Handle PIN disable/enable commands
+    const disablePinCommands = ['disable pin', 'turn off pin', 'disable my pin', 'pin off', 'no pin', 'remove pin'];
+    const enablePinCommands = ['enable pin', 'turn on pin', 'enable my pin', 'pin on', 'require pin', 'add pin'];
+    
+    if (disablePinCommands.some(cmd => lowerMessage.includes(cmd))) {
+      return { 
+        success: true, 
+        intent: 'disable_pin', 
+        extractedData: {}, 
+        confidence: 0.9,
+        message: `I understand you want to disable your PIN. Let me help you with that!`
+      };
+    }
+    
+    if (enablePinCommands.some(cmd => lowerMessage.includes(cmd))) {
+      return { 
+        success: true, 
+        intent: 'enable_pin', 
+        extractedData: {}, 
+        confidence: 0.9,
+        message: `I understand you want to enable your PIN. Let me help you with that!`
+      };
+    }
+
     // Handle greetings and welcome messages
     const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'start', 'begin'];
     if (greetings.some(greeting => lowerMessage.includes(greeting)) || lowerMessage.length < 10) {
@@ -2797,7 +2835,7 @@ Extract intent and data from this message. Consider the user context and any ext
         intent: 'greeting', 
         extractedData: {}, 
         confidence: 0.9,
-        message: `Hey ${user.fullName || 'there'}! 👋\n\nWhat's up? I can help you with:\n\n💰 Check balance\n💸 Send money\n📱 Buy airtime/data\n💳 Pay bills\n\nWhat do you need?`
+        message: `Hey ${user.fullName || 'there'}! 👋\n\nWhat's up? I can help you with:\n\n💰 Check balance\n💸 Send money\n📱 Buy airtime/data\n💳 Pay bills\n🔐 PIN settings\n\nWhat do you need?`
       };
     }
     
@@ -2807,7 +2845,7 @@ Extract intent and data from this message. Consider the user context and any ext
       intent: 'unknown', 
         extractedData: {}, 
       confidence: 0.5,
-      message: `Hmm, not sure what you mean. Try:\n\n💰 "Check my balance"\n💸 "Send 5k to John"\n📱 "Buy 1GB data"\n💳 "Pay electricity"\n\nOr just say "help" for options!`
+      message: `Hmm, not sure what you mean. Try:\n\n💰 "Check my balance"\n💸 "Send 5k to John"\n📱 "Buy 1GB data"\n💳 "Pay electricity"\n🔐 "Disable my pin"\n\nOr just say "help" for options!`
     };
   }
 
