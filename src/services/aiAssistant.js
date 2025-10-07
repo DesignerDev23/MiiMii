@@ -4060,12 +4060,23 @@ Example:
       });
       
       // Send WhatsApp Flow for PIN verification
-      const sessionData = {
-        flow_token: flowToken,
-        flow_id: flowId,
-        flow_cta: "Disable PIN",
-        flow_action_payload: {
-          screen: "PIN_VERIFICATION",
+      const flowData = {
+        flowId: flowId,
+        flowToken: flowToken,
+        flowCta: "Disable PIN",
+        header: {
+          type: 'text',
+          text: '🔓 Disable PIN Verification'
+        },
+        body: {
+          text: 'Please enter your 4-digit PIN to disable PIN verification for all transactions.'
+        },
+        footer: {
+          text: 'Secure PIN verification'
+        },
+        flowAction: 'navigate',
+        flowActionPayload: {
+          screen: "PIN_VERIFICATION_SCREEN",
           data: {
             user_id: user.id,
             phone_number: user.whatsappNumber,
@@ -4074,7 +4085,7 @@ Example:
         }
       };
       
-      await whatsappService.sendFlowMessage(user.whatsappNumber, sessionData);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       logger.info('PIN disable flow sent to user', {
         userId: user.id,
@@ -4163,12 +4174,23 @@ Example:
       });
       
       // Send WhatsApp Flow for PIN verification
-      const sessionData = {
-        flow_token: flowToken,
-        flow_id: flowId,
-        flow_cta: "Enable PIN",
-        flow_action_payload: {
-          screen: "PIN_VERIFICATION",
+      const flowData = {
+        flowId: flowId,
+        flowToken: flowToken,
+        flowCta: "Enable PIN",
+        header: {
+          type: 'text',
+          text: '🔒 Enable PIN Verification'
+        },
+        body: {
+          text: 'Please enter your 4-digit PIN to enable PIN verification for all transactions.'
+        },
+        footer: {
+          text: 'Secure PIN verification'
+        },
+        flowAction: 'navigate',
+        flowActionPayload: {
+          screen: "PIN_VERIFICATION_SCREEN",
           data: {
             user_id: user.id,
             phone_number: user.whatsappNumber,
@@ -4177,7 +4199,7 @@ Example:
         }
       };
       
-      await whatsappService.sendFlowMessage(user.whatsappNumber, sessionData);
+      await whatsappService.sendFlowMessage(user.whatsappNumber, flowData);
       
       logger.info('PIN enable flow sent to user', {
         userId: user.id,
