@@ -40,6 +40,7 @@ const bankTransferRoutes = require('./routes/bankTransfer');
 const virtualCardRoutes = require('./routes/virtualCard');
 const beneficiaryRoutes = require('./routes/beneficiary');
 const dataPlanRoutes = require('./routes/dataPlans');
+const debugDataPlansRoutes = require('./routes/debug-data-plans');
 const testRoutes = require('./routes/test');
 const testWhatsAppRoutes = require('./routes/testWhatsApp');
 
@@ -294,6 +295,7 @@ app.use('/api/bank-transfer', bankTransferRoutes);
 app.use('/api/virtual-cards', virtualCardRoutes);
 app.use('/api/beneficiaries', beneficiaryRoutes);
 app.use('/api/data-plans', dataPlanRoutes);
+app.use('/api/debug', debugDataPlansRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/test-whatsapp', testWhatsAppRoutes);
 
