@@ -1,0 +1,123 @@
+{
+  "version": 3,
+  "screens": [
+    {
+      "id": "PIN_VERIFICATION_SCREEN",
+      "title": "PIN Verification",
+      "data": {
+        "pin": "",
+        "action": "",
+        "user_id": "",
+        "phone_number": ""
+      },
+      "conditional_navigation": [
+        {
+          "condition": {
+            "expression": "data.pin.length == 4 && data.pin.match(/^[0-9]{4}$/)"
+          },
+          "next_screen_id": "PROCESSING_SCREEN"
+        }
+      ],
+      "components": [
+        {
+          "type": "header",
+          "text": "🔐 PIN Verification",
+          "style": {
+            "bold": true,
+            "size": "large"
+          }
+        },
+        {
+          "type": "body",
+          "text": "Enter your 4-digit PIN to authorize this action",
+          "style": {
+            "size": "medium"
+          }
+        },
+        {
+          "type": "footer",
+          "text": "This action requires PIN verification for security"
+        },
+        {
+          "type": "form",
+          "name": "pin_verification_form",
+          "components": [
+            {
+              "type": "input",
+              "name": "pin",
+              "label": "Transaction PIN",
+              "placeholder": "Enter 4-digit PIN",
+              "required": true,
+              "input_type": "number",
+              "max_length": 4,
+              "min_length": 4,
+              "validation": {
+                "pattern": "^[0-9]{4}$",
+                "error_message": "Please enter a valid 4-digit PIN"
+              },
+              "style": {
+                "border": "solid",
+                "border_color": "#007bff"
+              }
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "Verify & Continue",
+          "style": "primary",
+          "next_screen_id": "PROCESSING_SCREEN"
+        },
+        {
+          "type": "button",
+          "text": "Cancel",
+          "style": "secondary",
+          "action": "close_flow"
+        }
+      ]
+    },
+    {
+      "id": "PROCESSING_SCREEN",
+      "title": "Processing",
+      "data": {
+        "pin": "",
+        "action": "",
+        "user_id": "",
+        "phone_number": ""
+      },
+      "components": [
+        {
+          "type": "header",
+          "text": "⏳ Processing",
+          "style": {
+            "bold": true,
+            "size": "large"
+          }
+        },
+        {
+          "type": "body",
+          "text": "Verifying your PIN and processing your request...",
+          "style": {
+            "size": "medium"
+          }
+        },
+        {
+          "type": "footer",
+          "text": "Please wait while we process your request"
+        },
+        {
+          "type": "spinner",
+          "text": "Processing..."
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "flow_name": "PIN Management Flow",
+    "flow_category": "security",
+    "flow_version": "1.0.0",
+    "description": "Secure PIN verification for enabling/disabling transaction PIN",
+    "supported_actions": ["enable_pin", "disable_pin"],
+    "flow_type": "security_verification"
+  }
+}

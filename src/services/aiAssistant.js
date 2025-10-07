@@ -4068,12 +4068,8 @@ Example:
           type: 'text',
           text: '🔓 Disable PIN Verification'
         },
-        body: {
-          text: 'Please enter your 4-digit PIN to disable PIN verification for all transactions.'
-        },
-        footer: {
-          text: 'Secure PIN verification'
-        },
+        body: 'Please enter your 4-digit PIN to disable PIN verification for all transactions.',
+        footer: 'Secure PIN verification',
         flowAction: 'navigate',
         flowActionPayload: {
           screen: "PIN_VERIFICATION_SCREEN",
@@ -4182,12 +4178,8 @@ Example:
           type: 'text',
           text: '🔒 Enable PIN Verification'
         },
-        body: {
-          text: 'Please enter your 4-digit PIN to enable PIN verification for all transactions.'
-        },
-        footer: {
-          text: 'Secure PIN verification'
-        },
+        body: 'Please enter your 4-digit PIN to enable PIN verification for all transactions.',
+        footer: 'Secure PIN verification',
         flowAction: 'navigate',
         flowActionPayload: {
           screen: "PIN_VERIFICATION_SCREEN",

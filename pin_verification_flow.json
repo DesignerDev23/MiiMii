@@ -1,0 +1,116 @@
+{
+  "version": 3,
+  "screens": [
+    {
+      "id": "PIN_VERIFICATION_SCREEN",
+      "title": "PIN Verification",
+      "data": {
+        "pin": "",
+        "action": ""
+      },
+      "conditional_navigation": [
+        {
+          "condition": {
+            "expression": "data.pin.length == 4"
+          },
+          "next_screen_id": "PIN_CONFIRMATION_SCREEN"
+        }
+      ],
+      "components": [
+        {
+          "type": "header",
+          "text": "🔐 PIN Verification",
+          "style": {
+            "bold": true,
+            "size": "large"
+          }
+        },
+        {
+          "type": "body",
+          "text": "Enter your 4-digit PIN to continue",
+          "style": {
+            "size": "medium"
+          }
+        },
+        {
+          "type": "footer",
+          "text": "Secure verification required"
+        },
+        {
+          "type": "form",
+          "name": "pin_form",
+          "components": [
+            {
+              "type": "input",
+              "name": "pin",
+              "label": "PIN",
+              "placeholder": "Enter 4-digit PIN",
+              "required": true,
+              "input_type": "number",
+              "max_length": 4,
+              "min_length": 4,
+              "validation": {
+                "pattern": "^[0-9]{4}$",
+                "error_message": "Please enter a valid 4-digit PIN"
+              }
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "Verify PIN",
+          "style": "primary",
+          "next_screen_id": "PIN_CONFIRMATION_SCREEN"
+        },
+        {
+          "type": "button",
+          "text": "Cancel",
+          "style": "secondary",
+          "action": "close_flow"
+        }
+      ]
+    },
+    {
+      "id": "PIN_CONFIRMATION_SCREEN",
+      "title": "PIN Confirmation",
+      "data": {
+        "pin": "",
+        "action": ""
+      },
+      "components": [
+        {
+          "type": "header",
+          "text": "✅ PIN Verified",
+          "style": {
+            "bold": true,
+            "size": "large"
+          }
+        },
+        {
+          "type": "body",
+          "text": "Your PIN has been verified successfully. Processing your request...",
+          "style": {
+            "size": "medium"
+          }
+        },
+        {
+          "type": "footer",
+          "text": "Secure verification completed"
+        },
+        {
+          "type": "button",
+          "text": "Continue",
+          "style": "primary",
+          "action": "submit_flow"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "flow_name": "PIN Verification Flow",
+    "flow_category": "security",
+    "flow_version": "1.0.0",
+    "description": "Secure PIN verification for transaction authorization",
+    "supported_actions": ["enable_pin", "disable_pin", "transaction_auth"]
+  }
+}

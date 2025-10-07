@@ -1,0 +1,54 @@
+{
+  "version": 3,
+  "screens": [
+    {
+      "id": "PIN_VERIFICATION_SCREEN",
+      "title": "PIN Verification",
+      "components": [
+        {
+          "type": "header",
+          "text": "🔐 PIN Verification",
+          "style": {
+            "bold": true
+          }
+        },
+        {
+          "type": "body",
+          "text": "Enter your 4-digit PIN to continue"
+        },
+        {
+          "type": "footer",
+          "text": "Secure verification required"
+        },
+        {
+          "type": "form",
+          "name": "pin_form",
+          "components": [
+            {
+              "type": "input",
+              "name": "pin",
+              "label": "PIN",
+              "placeholder": "Enter 4-digit PIN",
+              "required": true,
+              "input_type": "number",
+              "max_length": 4,
+              "min_length": 4
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": "Verify PIN",
+          "style": "primary",
+          "action": "submit_flow"
+        },
+        {
+          "type": "button",
+          "text": "Cancel",
+          "style": "secondary",
+          "action": "close_flow"
+        }
+      ]
+    }
+  ]
+}

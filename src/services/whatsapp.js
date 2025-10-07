@@ -302,9 +302,15 @@ class WhatsAppService {
         text: 'Welcome to MiiMii!'
       },
       body: { 
-        text: flowData.body || 'Let\'s complete your account setup securely. This will only take a few minutes.'
+        text: typeof flowData.body === 'string' ? flowData.body : 
+              (flowData.body && flowData.body.text) ? flowData.body.text :
+              'Let\'s complete your account setup securely. This will only take a few minutes.'
       },
-      footer: flowData.footer ? { text: flowData.footer } : undefined,
+      footer: flowData.footer ? { 
+        text: typeof flowData.footer === 'string' ? flowData.footer : 
+              (flowData.footer && flowData.footer.text) ? flowData.footer.text :
+              flowData.footer
+      } : undefined,
       action: {
         name: 'flow',
         parameters: {
