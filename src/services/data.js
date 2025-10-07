@@ -88,95 +88,91 @@ class DataService {
     }
   }
 
-  // Get data plans for a specific network (with admin-set selling prices)
+  // Get data plans for a specific network from database
   async getDataPlans(network) {
     try {
-      // First, try to get plans from Bilal API cache (from user dashboard)
-      const bilalService = require('./bilal');
-      let networkPlans = [];
+      logger.info('Fetching data plans from database', { network });
       
-      try {
-        const cachedPlans = await bilalService.getCachedDataPlans();
-        networkPlans = cachedPlans[network.toUpperCase()] || [];
-        logger.info('Using Bilal cached data plans', { network, plansCount: networkPlans.length });
-      } catch (bilalError) {
-        logger.warn('Failed to get Bilal cached plans, falling back to static plans', { error: bilalError.message });
-        
-        // Fallback to static DATA_PLANS from flowEndpoint
-        const { DATA_PLANS } = require('../routes/flowEndpoint');
-        networkPlans = DATA_PLANS[network.toUpperCase()] || [];
-      }
+      // Get plans from database using DataPlanService
+      const dataPlanService = require('./dataPlanService');
+      const plans = await dataPlanService.getDataPlansByNetwork(network);
       
-      if (networkPlans.length === 0) {
-        throw new Error('Unsupported network or no plans available');
+      if (plans.length === 0) {
+        throw new Error('No data plans available for this network');
       }
 
-      // Fetch admin-set selling prices from KVStore
-      let overrides = {};
-      try {
-        const KVStore = require('../models/KVStore');
-        const record = await KVStore.findByPk('data_pricing_overrides');
-        overrides = record?.value || {};
-      } catch (_) {}
+      // Format plans for WhatsApp display
+      const formattedPlans = plans.map(plan => ({
+        id: plan.apiPlanId || plan.id,
+        title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
+        validity: plan.validity,
+        type: plan.planType,
+        price: plan.sellingPrice, // Admin-set selling price (what users see)
+        retailPrice: plan.retailPrice, // Provider's retail price
+        network: plan.network,
+        margin: plan.sellingPrice - plan.retailPrice,
+        dataSize: plan.dataSize,
+        planType: plan.planType,
+        networkCode: plan.networkCode
+      }));
 
-      // Return plans with admin-set selling prices (what users see)
-      return networkPlans.map(plan => {
-        const adminSellingPrice = overrides?.[network.toUpperCase()]?.[plan.id];
-        const sellingPrice = typeof adminSellingPrice === 'number' ? adminSellingPrice : plan.price;
-        
-        return {
-          id: plan.id,
-          title: plan.title,
-          validity: plan.validity,
-          type: plan.type,
-          price: sellingPrice, // This is what users see (admin-set selling price)
-          retailPrice: plan.price, // Provider's retail price (for internal use)
-          network: network.toUpperCase(),
-          margin: sellingPrice - plan.price
-        };
+      logger.info(`Retrieved ${formattedPlans.length} data plans for ${network}`, {
+        network,
+        plansCount: formattedPlans.length
       });
+
+      return formattedPlans;
     } catch (error) {
-      logger.error('Failed to get data plans', { error: error.message, network });
+      logger.error('Failed to get data plans from database', { error: error.message, network });
       throw error;
     }
   }
 
-  // Get all data plans for all networks
+  // Get all data plans for all networks from database
   async getAllDataPlans() {
     try {
-      const { DATA_PLANS } = require('../routes/flowEndpoint');
+      logger.info('Fetching all data plans from database');
       
-      // Fetch admin-set selling prices from KVStore
-      let overrides = {};
-      try {
-        const KVStore = require('../models/KVStore');
-        const record = await KVStore.findByPk('data_pricing_overrides');
-        overrides = record?.value || {};
-      } catch (_) {}
+      // Get all plans from database using DataPlanService
+      const dataPlanService = require('./dataPlanService');
+      const result = await dataPlanService.getAllDataPlans({
+        isActive: true,
+        orderBy: 'sellingPrice',
+        orderDirection: 'ASC'
+      });
       
-      // Return all plans with admin-set selling prices
+      // Group plans by network
       const allPlans = {};
-      for (const [networkName, plans] of Object.entries(DATA_PLANS)) {
-        allPlans[networkName] = plans.map(plan => {
-          const adminSellingPrice = overrides?.[networkName]?.[plan.id];
-          const sellingPrice = typeof adminSellingPrice === 'number' ? adminSellingPrice : plan.price;
-          
-          return {
-            id: plan.id,
-            title: plan.title,
-            validity: plan.validity,
-            type: plan.type,
-            price: sellingPrice, // Admin-set selling price (what users see)
-            retailPrice: plan.price, // Provider's retail price
-            network: networkName,
-            margin: sellingPrice - plan.price
-          };
-        });
+      const networks = ['MTN', 'AIRTEL', 'GLO', '9MOBILE'];
+      
+      for (const network of networks) {
+        const networkPlans = result.plans.filter(plan => plan.network === network);
+        allPlans[network] = networkPlans.map(plan => ({
+          id: plan.apiPlanId || plan.id,
+          title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
+          validity: plan.validity,
+          type: plan.planType,
+          price: plan.sellingPrice, // Admin-set selling price (what users see)
+          retailPrice: plan.retailPrice, // Provider's retail price
+          network: plan.network,
+          margin: plan.sellingPrice - plan.retailPrice,
+          dataSize: plan.dataSize,
+          planType: plan.planType,
+          networkCode: plan.networkCode
+        }));
       }
+
+      logger.info(`Retrieved data plans for all networks`, {
+        totalPlans: result.total,
+        networks: Object.keys(allPlans).map(network => ({
+          network,
+          count: allPlans[network].length
+        }))
+      });
 
       return allPlans;
     } catch (error) {
-      logger.error('Failed to get all data plans', { error: error.message });
+      logger.error('Failed to get all data plans from database', { error: error.message });
       throw error;
     }
   }
