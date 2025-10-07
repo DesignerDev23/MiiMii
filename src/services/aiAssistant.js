@@ -1973,30 +1973,32 @@ Extract intent and data from this message. Consider the user context and any ext
 
             // Get plans with admin-set pricing from database
             const dataService = require('./data');
-            const plans = await dataService.getDataPlans(network);
+            const allPlans = await dataService.getDataPlans(network);
 
-            if (!plans.length) {
+            if (!allPlans.length) {
               await whatsappService.sendTextMessage(user.whatsappNumber, 'No plans available for the selected network. Please try another network.');
               return;
             }
 
-            const sections = [
-              {
-                title: `${network} Plans`,
-                rows: plans.slice(0, 20).map(p => ({
-                  id: `plan_${network}_${p.id}`,
-                  title: `${p.title} - ₦${p.price}`,
-                  description: p.validity || ''
-                }))
-              }
-            ];
+            // Sort plans by price (cheapest first) - no limit needed for text messages
+            const sortedPlans = allPlans.sort((a, b) => a.price - b.price);
 
-            await whatsappService.sendListMessage(
-              user.whatsappNumber,
-              `Select a data plan for ${network}:`,
-              'Select Plan',
-              sections
-            );
+            // Create text message with all plans
+            let plansText = `📶 *${network} Data Plans*\n\n`;
+            
+            sortedPlans.forEach((plan, index) => {
+              plansText += `${index + 1}. *${plan.title}* - ₦${plan.price.toLocaleString()}\n`;
+              if (plan.validity) {
+                plansText += `   📅 ${plan.validity}\n`;
+              }
+              plansText += `\n`;
+            });
+
+            plansText += `💡 *How to select:*\n`;
+            plansText += `Just reply with the plan number (e.g., "1" for the first plan)\n\n`;
+            plansText += `Or type the plan name (e.g., "500MB" or "1GB")`;
+
+            await whatsappService.sendTextMessage(user.whatsappNumber, plansText);
             return;
           }
 
@@ -2114,33 +2116,59 @@ Extract intent and data from this message. Consider the user context and any ext
           return;
         }
 
-        // Try to parse plan selection from free text (fallback)
+        // Try to parse plan selection from free text
         const input = (message || '').trim();
         const dataService = require('./data');
         const plans = await dataService.getDataPlans(network);
-        let planId = null;
+        let selectedPlan = null;
+        
+        // Handle numeric selection (1, 2, 3, etc.)
         if (/^\d+$/.test(input)) {
-          const numeric = parseInt(input, 10);
-          if (plans.some(p => p.id === numeric)) planId = numeric;
+          const planIndex = parseInt(input, 10) - 1; // Convert to 0-based index
+          if (planIndex >= 0 && planIndex < plans.length) {
+            selectedPlan = plans[planIndex];
+          }
         } else {
-          const match = plans.find(p => p.title.toLowerCase().includes(input.toLowerCase()));
-          if (match) planId = match.id;
+          // Handle text-based selection (e.g., "500MB", "1GB", "2GB")
+          const inputLower = input.toLowerCase();
+          selectedPlan = plans.find(plan => {
+            const titleLower = plan.title.toLowerCase();
+            const dataSizeLower = (plan.dataSize || '').toLowerCase();
+            return titleLower.includes(inputLower) || 
+                   dataSizeLower.includes(inputLower) ||
+                   inputLower.includes(dataSizeLower);
+          });
         }
 
-        if (!planId) {
-          await whatsappService.sendTextMessage(user.whatsappNumber, 'Please select a valid plan from the list.');
+        if (!selectedPlan) {
+          // Show available plans again if selection is invalid
+          let plansText = `❌ *Invalid selection. Please choose from these ${network} plans:*\n\n`;
+          
+          plans.forEach((plan, index) => {
+            plansText += `${index + 1}. *${plan.title}* - ₦${plan.price.toLocaleString()}\n`;
+            if (plan.validity) {
+              plansText += `   📅 ${plan.validity}\n`;
+            }
+            plansText += `\n`;
+          });
+
+          plansText += `💡 *How to select:*\n`;
+          plansText += `• Reply with the plan number (e.g., "1")\n`;
+          plansText += `• Or type the plan name (e.g., "500MB" or "1GB")`;
+
+          await whatsappService.sendTextMessage(user.whatsappNumber, plansText);
           return;
         }
 
         const sessionId = conversationState?.data?.sessionId || null;
-        const nextState = { intent: 'data', awaitingInput: 'data_phone', context: 'data_purchase', step: 3, data: { network, planId, sessionId } };
+        const nextState = { intent: 'data', awaitingInput: 'data_phone', context: 'data_purchase', step: 3, data: { network, planId: selectedPlan.id, sessionId } };
         await user.updateConversationState(nextState);
         if (sessionId) {
           const session = await redisClient.getSession(sessionId);
           if (session) {
             session.state = 'enter_phone';
             session.data.network = network;
-            session.data.planId = planId;
+            session.data.planId = selectedPlan.id;
             await redisClient.setSession(sessionId, session, 900);
           }
         }

@@ -3676,7 +3676,7 @@ class MessageProcessor {
       });
     }
 
-    // Start normal-message interactive data purchase flow with session
+    // Start regular conversation flow for data purchase
     try {
       const whatsappService = require('./whatsapp');
       const redisClient = require('../utils/redis');
@@ -3718,13 +3718,13 @@ class MessageProcessor {
       const prompt = 'Which network would you like to buy data for?';
       await whatsappService.sendListMessage(user.whatsappNumber, prompt, 'Select Network', sections);
 
-      logger.info('Started normal data purchase conversation', {
+      logger.info('Started regular data purchase conversation', {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
         sessionId
       });
     } catch (error) {
-      logger.error('Failed to start normal data purchase conversation', { error: error.message, userId: user.id });
+      logger.error('Failed to start regular data purchase conversation', { error: error.message, userId: user.id });
       
       const whatsappService = require('./whatsapp');
       await whatsappService.sendTextMessage(
