@@ -1347,6 +1347,30 @@ class MessageProcessor {
             return;
           }
           
+          // Check if user is awaiting bank details for PIN-disabled transfer
+          if (user.conversationState?.awaitingInput === 'bank_details') {
+            logger.info('Bank details input detected for PIN-disabled transfer', {
+              userId: user.id,
+              conversationState: user.conversationState,
+              intent: user.conversationState?.intent,
+              context: user.conversationState?.context
+            });
+            
+            return await this.handleBankDetailsInput(user, message, messageType);
+          }
+
+          // Check if user is awaiting PIN disable/enable confirmation
+          if (user.conversationState?.awaitingInput === 'pin_confirmation') {
+            logger.info('PIN disable/enable confirmation detected', {
+              userId: user.id,
+              conversationState: user.conversationState,
+              intent: user.conversationState?.intent,
+              context: user.conversationState?.context
+            });
+            
+            return await this.handlePinDisableEnableConfirmation(user, message, messageType);
+          }
+
           // Check if user is awaiting PIN verification
           if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
             logger.info('PIN verification detected in main switch', {
@@ -4122,6 +4146,198 @@ class MessageProcessor {
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
         `Let's get started! Please provide your full name (First Name Last Name).`
+      );
+    }
+  }
+
+  async handlePinDisableEnableConfirmation(user, message, messageType) {
+    try {
+      const whatsappService = require('./whatsapp');
+      const userService = require('./user');
+      
+      // Extract PIN from message
+      const pin = message?.text || message?.buttonReply?.title || '';
+      
+      // Validate PIN format
+      if (!/^\d{4}$/.test(pin)) {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          '❌ Please enter your 4-digit PIN (numbers only).'
+        );
+        return;
+      }
+
+      const conversationState = user.conversationState;
+      
+      if (conversationState?.intent === 'DISABLE_PIN') {
+        try {
+          // Disable PIN
+          const result = await userService.disableUserPin(user.id, pin);
+          
+          // Clear conversation state
+          await user.clearConversationState();
+          
+          // Send success message
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `✅ ${result.message}\n\n🔓 All future transactions will be processed without PIN verification.`
+          );
+          
+          logger.info('PIN disabled successfully', { userId: user.id });
+          
+        } catch (error) {
+          logger.error('Failed to disable PIN', { error: error.message, userId: user.id });
+          
+          if (error.message.includes('Invalid PIN')) {
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              '❌ Invalid PIN provided. Please try again or type "cancel" to cancel the operation.'
+            );
+          } else {
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              '❌ Failed to disable PIN. Please try again later.'
+            );
+          }
+        }
+        
+      } else if (conversationState?.intent === 'ENABLE_PIN') {
+        try {
+          // Enable PIN
+          const result = await userService.enableUserPin(user.id, pin);
+          
+          // Clear conversation state
+          await user.clearConversationState();
+          
+          // Send success message
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `✅ ${result.message}\n\n🔒 All future transactions will require PIN verification for security.`
+          );
+          
+          logger.info('PIN enabled successfully', { userId: user.id });
+          
+        } catch (error) {
+          logger.error('Failed to enable PIN', { error: error.message, userId: user.id });
+          
+          if (error.message.includes('Invalid PIN')) {
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              '❌ Invalid PIN provided. Please try again or type "cancel" to cancel the operation.'
+            );
+          } else {
+            await whatsappService.sendTextMessage(
+              user.whatsappNumber,
+              '❌ Failed to enable PIN. Please try again later.'
+            );
+          }
+        }
+      } else {
+        // Invalid conversation state
+        await user.clearConversationState();
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          '❌ Invalid operation. Please try again.'
+        );
+      }
+      
+    } catch (error) {
+      logger.error('PIN disable/enable confirmation failed', { 
+        error: error.message, 
+        userId: user.id 
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        '❌ An error occurred. Please try again later.'
+      );
+    }
+  }
+
+  async handleBankDetailsInput(user, message, messageType) {
+    try {
+      const whatsappService = require('./whatsapp');
+      const bankTransferService = require('./bankTransfer');
+      const aiAssistantService = require('./aiAssistant');
+      
+      const messageContent = message?.text || message?.buttonReply?.title || '';
+      
+      // Parse bank details from the message
+      const bankDetails = await aiAssistantService.parseBankDetails(messageContent);
+      
+      if (!bankDetails.valid) {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `❌ ${bankDetails.message}\n\nPlease provide bank details in this format:\n• Account number (10 digits)\n• Bank name\n\nExample: *1234567890 GTBank*`
+        );
+        return;
+      }
+
+      // Get transaction details from conversation state
+      const transactionDetails = user.conversationState?.transactionDetails || {};
+      
+      // Prepare bank transfer data
+      const bankTransferData = {
+        accountNumber: bankDetails.accountNumber,
+        bankCode: bankDetails.bankCode,
+        amount: transactionDetails.amount,
+        narration: `Transfer to ${transactionDetails.recipient}`,
+        reference: `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+      };
+
+      // Show processing message
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        "🔓 Processing transfer (PIN disabled)... Please wait a moment."
+      );
+
+      // Process the transfer with a dummy PIN since validation will be skipped
+      const result = await bankTransferService.processBankTransfer(user.id, bankTransferData, '0000');
+
+      if (result.success) {
+        // Clear conversation state
+        await user.clearConversationState();
+        
+        // Send success message
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `✅ *Transfer Successful!*\n\n` +
+          `💰 Amount: ₦${transactionDetails.amount?.toLocaleString()}\n` +
+          `👤 To: ${transactionDetails.recipient}\n` +
+          `🏦 Bank: ${bankDetails.bankName}\n` +
+          `💳 Account: ${bankDetails.accountNumber}\n` +
+          `💵 Fee: ₦${transactionDetails.fee?.toLocaleString() || '15'}\n` +
+          `📋 Reference: ${result.reference}\n\n` +
+          `🔓 Transfer completed (PIN disabled)`
+        );
+        
+        logger.info('PIN-disabled transfer completed successfully', { 
+          userId: user.id,
+          amount: transactionDetails.amount,
+          recipient: transactionDetails.recipient
+        });
+      } else {
+        // Clear conversation state on error
+        await user.clearConversationState();
+        
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `❌ Transfer failed: ${result.message || 'Please try again later.'}`
+        );
+      }
+      
+    } catch (error) {
+      logger.error('Bank details input handling failed', { 
+        error: error.message, 
+        userId: user.id 
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await user.clearConversationState();
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        '❌ An error occurred processing your transfer. Please try again later.'
       );
     }
   }

@@ -352,6 +352,12 @@ class UserService {
         throw new Error('PIN not set');
       }
 
+      // Check if PIN is disabled - no validation required
+      if (!user.pinEnabled) {
+        logger.info('PIN validation skipped - PIN is disabled', { userId });
+        return true;
+      }
+
       // Check if PIN is locked
       if (user.pinLockedUntil && user.pinLockedUntil > new Date()) {
         const lockMinutes = Math.ceil((user.pinLockedUntil - new Date()) / 60000);
@@ -384,6 +390,94 @@ class UserService {
       }
     } catch (error) {
       logger.error('PIN validation failed', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async disableUserPin(userId, confirmationPin) {
+    try {
+      const user = await User.findByPk(userId);
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (!user.pin) {
+        throw new Error('PIN not set');
+      }
+
+      // Validate the confirmation PIN
+      const isValidPin = await user.validatePin(confirmationPin);
+      if (!isValidPin) {
+        throw new Error('Invalid PIN provided for confirmation');
+      }
+
+      // Disable PIN
+      await user.update({ pinEnabled: false });
+
+      logger.info('PIN disabled for user', { userId, pinEnabled: false });
+      
+      return {
+        success: true,
+        message: 'PIN has been successfully disabled. Transactions will no longer require PIN verification.',
+        pinEnabled: false
+      };
+    } catch (error) {
+      logger.error('Failed to disable PIN', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async enableUserPin(userId, confirmationPin) {
+    try {
+      const user = await User.findByPk(userId);
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (!user.pin) {
+        throw new Error('PIN not set');
+      }
+
+      // Validate the confirmation PIN
+      const isValidPin = await user.validatePin(confirmationPin);
+      if (!isValidPin) {
+        throw new Error('Invalid PIN provided for confirmation');
+      }
+
+      // Enable PIN
+      await user.update({ pinEnabled: true });
+
+      logger.info('PIN enabled for user', { userId, pinEnabled: true });
+      
+      return {
+        success: true,
+        message: 'PIN has been successfully enabled. Transactions will now require PIN verification.',
+        pinEnabled: true
+      };
+    } catch (error) {
+      logger.error('Failed to enable PIN', { error: error.message, userId });
+      throw error;
+    }
+  }
+
+  async getPinStatus(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      return {
+        hasPin: !!user.pin,
+        pinEnabled: user.pinEnabled,
+        pinLocked: user.pinLockedUntil && user.pinLockedUntil > new Date(),
+        pinLockedUntil: user.pinLockedUntil
+      };
+    } catch (error) {
+      logger.error('Failed to get PIN status', { error: error.message, userId });
       throw error;
     }
   }

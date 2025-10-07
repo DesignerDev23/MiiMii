@@ -3,6 +3,51 @@ const { DataPlan } = require('../models');
 const logger = require('../utils/logger');
 
 /**
+ * Self-healing column addition for production
+ * This will add the pinEnabled column to users table if it doesn't exist
+ */
+async function addPinEnabledColumn() {
+  try {
+    logger.info('🔧 Checking pinEnabled column in users table...');
+
+    // Check if column exists
+    const [results] = await sequelize.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'users'
+        AND column_name = 'pinEnabled'
+      );
+    `);
+
+    const columnExists = results[0].exists;
+
+    if (!columnExists) {
+      logger.info('📋 Adding pinEnabled column to users table...');
+      
+      await sequelize.query(`
+        ALTER TABLE users 
+        ADD COLUMN "pinEnabled" BOOLEAN DEFAULT true NOT NULL;
+      `);
+
+      // Add comment to the column
+      await sequelize.query(`
+        COMMENT ON COLUMN users."pinEnabled" IS 'Whether PIN is required for transactions (true) or disabled (false)';
+      `);
+
+      logger.info('✅ pinEnabled column added successfully');
+    } else {
+      logger.info('✅ pinEnabled column already exists');
+    }
+
+    return true;
+  } catch (error) {
+    logger.error('❌ Error adding pinEnabled column:', { error: error.message });
+    throw error;
+  }
+}
+
+/**
  * Self-healing table creation for production
  * This will create tables if they don't exist when the app starts
  */
@@ -132,6 +177,7 @@ async function initializeDataPlans() {
   try {
     logger.info('🚀 Initializing data plans system...');
     
+    await addPinEnabledColumn();
     await createDataPlansTable();
     await seedInitialDataPlans();
     
@@ -167,6 +213,7 @@ async function initializeDataPlans() {
 }
 
 module.exports = {
+  addPinEnabledColumn,
   createDataPlansTable,
   seedInitialDataPlans,
   initializeDataPlans

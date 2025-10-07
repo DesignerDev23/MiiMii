@@ -146,6 +146,26 @@ class AIAssistantService {
           /^(help|support|assist|guide)/i,
           /what\s+can\s+you\s+do/i
         ]
+      },
+      DISABLE_PIN: {
+        keywords: ['disable pin', 'turn off pin', 'disable my pin', 'pin off', 'no pin', 'remove pin verification'],
+        patterns: [
+          /disable\s+(?:my\s+)?pin/i,
+          /turn\s+off\s+(?:my\s+)?pin/i,
+          /pin\s+off/i,
+          /no\s+pin/i,
+          /remove\s+pin/i
+        ]
+      },
+      ENABLE_PIN: {
+        keywords: ['enable pin', 'turn on pin', 'enable my pin', 'pin on', 'require pin', 'add pin verification'],
+        patterns: [
+          /enable\s+(?:my\s+)?pin/i,
+          /turn\s+on\s+(?:my\s+)?pin/i,
+          /pin\s+on/i,
+          /require\s+pin/i,
+          /add\s+pin/i
+        ]
       }
     };
 
@@ -818,10 +838,16 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'help':
           return this.handleHelp(user);
           
+        case 'disable_pin':
+          return await this.handleDisablePin(user);
+          
+        case 'enable_pin':
+          return await this.handleEnablePin(user);
+          
         case 'menu':
           return {
             intent: 'menu',
-            message: aiResponse.message || "📱 *Available Services*\n\n💰 Check Balance\n💸 Send Money\n🏦 Bank Transfer\n📱 Buy Airtime\n🌐 Buy Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do?",
+            message: aiResponse.message || "📱 *Available Services*\n\n💰 Check Balance\n💸 Send Money\n🏦 Bank Transfer\n📱 Buy Airtime\n🌐 Buy Data\n💳 Pay Bills\n📊 Transaction History\n🔐 PIN Settings\n\nWhat would you like to do?",
             requiresAction: 'NONE'
           };
           
@@ -876,7 +902,52 @@ Extract intent and data from this message. Consider the user context and any ext
       };
     }
 
-    // Store transaction details and request PIN
+    // Check if PIN is disabled
+    if (!user.pinEnabled) {
+      // PIN is disabled, proceed directly with transfer using the same flow as normal transfers
+      // but skip PIN validation by using a dummy PIN
+      try {
+        // For P2P transfers, we need bank details - ask user for them
+        await user.updateConversationState({
+          intent: 'TRANSFER_MONEY',
+          awaitingInput: 'bank_details',
+          context: 'p2p_transfer_no_pin',
+          transactionDetails: {
+            amount: transferAmount,
+            fee: this.calculateTransferFee(transferAmount),
+            recipient: recipient || phoneNumber,
+            phoneNumber,
+            pinDisabled: true
+          }
+        });
+
+        return {
+          intent: 'transfer',
+          message: `💸 *Transfer Confirmation (PIN Disabled)*\n\n` +
+                   `💰 Amount: ₦${transferAmount.toLocaleString()}\n` +
+                   `👤 To: ${recipient || phoneNumber}\n` +
+                   `📱 Phone: ${phoneNumber}\n` +
+                   `💳 Fee: ₦${this.calculateTransferFee(transferAmount)}\n` +
+                   `💵 Total: ₦${(transferAmount + this.calculateTransferFee(transferAmount)).toLocaleString()}\n\n` +
+                   `🔓 PIN is disabled - transfer will be processed automatically.\n\n` +
+                   `Please provide the recipient's bank details:\n` +
+                   `• Account number (10 digits)\n` +
+                   `• Bank name\n\n` +
+                   `Example: *1234567890 GTBank*`,
+          awaitingInput: 'bank_details',
+          context: 'p2p_transfer_no_pin'
+        };
+      } catch (error) {
+        logger.error('Transfer setup failed for PIN-disabled user', { error: error.message, userId: user.id });
+        return {
+          intent: 'transfer',
+          message: `❌ Transfer setup failed: ${error.message || 'Please try again.'}`,
+          requiresAction: 'NONE'
+        };
+      }
+    }
+
+    // PIN is enabled, request PIN confirmation
     await user.updateConversationState({
       intent: 'TRANSFER_MONEY',
       awaitingInput: 'pin',
@@ -3749,6 +3820,153 @@ Example:
   // Generate reference for transactions
   generateReference() {
     return `TXN${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+  }
+
+  async parseBankDetails(message) {
+    try {
+      const bankTransferService = require('./bankTransfer');
+      
+      // Simple regex patterns to extract account number and bank name
+      const accountNumberPattern = /(\d{8,11})/;
+      const accountMatch = message.match(accountNumberPattern);
+      
+      if (!accountMatch) {
+        return {
+          valid: false,
+          message: 'Account number not found. Please provide a valid account number (8-11 digits).'
+        };
+      }
+
+      const accountNumber = accountMatch[1];
+      
+      // Extract bank name (everything after the account number)
+      const bankNameMatch = message.replace(accountNumber, '').trim();
+      
+      if (!bankNameMatch) {
+        return {
+          valid: false,
+          message: 'Bank name not found. Please provide the bank name after the account number.'
+        };
+      }
+
+      // Get bank code from bank name
+      const bankCode = await bankTransferService.getInstitutionCode(bankNameMatch);
+      
+      if (!bankCode) {
+        return {
+          valid: false,
+          message: `Could not identify bank "${bankNameMatch}". Please use a valid bank name like GTBank, Access, UBA, etc.`
+        };
+      }
+
+      return {
+        valid: true,
+        accountNumber,
+        bankName: bankNameMatch,
+        bankCode
+      };
+      
+    } catch (error) {
+      logger.error('Failed to parse bank details', { error: error.message, message });
+      return {
+        valid: false,
+        message: 'Failed to parse bank details. Please try again.'
+      };
+    }
+  }
+
+  async handleDisablePin(user) {
+    try {
+      const whatsappService = require('./whatsapp');
+      
+      // Check if user has PIN set
+      if (!user.pin) {
+        return {
+          intent: 'disable_pin',
+          message: "❌ You don't have a PIN set up yet. Please set up your PIN first before trying to disable it.",
+          requiresAction: 'NONE'
+        };
+      }
+
+      // Check current PIN status
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (!pinStatus.pinEnabled) {
+        return {
+          intent: 'disable_pin',
+          message: "🔓 Your PIN is already disabled. Transactions will not require PIN verification.",
+          requiresAction: 'NONE'
+        };
+      }
+
+      // Set conversation state to wait for PIN confirmation
+      await user.updateConversationState({
+        intent: 'DISABLE_PIN',
+        awaitingInput: 'pin_confirmation',
+        context: 'disable_pin_verification'
+      });
+
+      return {
+        intent: 'disable_pin',
+        message: "🔐 To disable your PIN, please enter your current 4-digit PIN for confirmation.\n\n⚠️ *Warning*: Once disabled, all transactions will be processed without PIN verification.",
+        awaitingInput: 'pin_confirmation',
+        context: 'disable_pin_verification'
+      };
+    } catch (error) {
+      logger.error('Failed to handle disable PIN request', { error: error.message, userId: user.id });
+      return {
+        intent: 'disable_pin',
+        message: "❌ Failed to process your request. Please try again later.",
+        requiresAction: 'NONE'
+      };
+    }
+  }
+
+  async handleEnablePin(user) {
+    try {
+      const whatsappService = require('./whatsapp');
+      
+      // Check if user has PIN set
+      if (!user.pin) {
+        return {
+          intent: 'enable_pin',
+          message: "❌ You don't have a PIN set up yet. Please set up your PIN first before trying to enable it.",
+          requiresAction: 'NONE'
+        };
+      }
+
+      // Check current PIN status
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (pinStatus.pinEnabled) {
+        return {
+          intent: 'enable_pin',
+          message: "🔒 Your PIN is already enabled. Transactions will require PIN verification.",
+          requiresAction: 'NONE'
+        };
+      }
+
+      // Set conversation state to wait for PIN confirmation
+      await user.updateConversationState({
+        intent: 'ENABLE_PIN',
+        awaitingInput: 'pin_confirmation',
+        context: 'enable_pin_verification'
+      });
+
+      return {
+        intent: 'enable_pin',
+        message: "🔐 To enable your PIN, please enter your current 4-digit PIN for confirmation.\n\n✅ Once enabled, all transactions will require PIN verification for security.",
+        awaitingInput: 'pin_confirmation',
+        context: 'enable_pin_verification'
+      };
+    } catch (error) {
+      logger.error('Failed to handle enable PIN request', { error: error.message, userId: user.id });
+      return {
+        intent: 'enable_pin',
+        message: "❌ Failed to process your request. Please try again later.",
+        requiresAction: 'NONE'
+      };
+    }
   }
 }
 

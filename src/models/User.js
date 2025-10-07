@@ -194,6 +194,12 @@ const User = sequelize.define('User', {
     type: DataTypes.DATE,
     allowNull: true
   },
+  pinEnabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+    comment: 'Whether PIN is required for transactions (true) or disabled (false)'
+  },
   referralCode: {
     type: DataTypes.STRING,
     unique: true,
@@ -279,6 +285,10 @@ User.prototype.canPerformTransactions = function() {
          this.onboardingStep === 'completed' &&
          this.pin &&
          (!this.pinLockedUntil || this.pinLockedUntil < new Date());
+};
+
+User.prototype.requiresPinForTransactions = function() {
+  return this.pinEnabled && this.pin;
 };
 
 User.prototype.updateConversationState = async function(state) {
