@@ -3963,17 +3963,73 @@ Example:
         };
       }
 
-      // Set conversation state to wait for PIN confirmation
+      // Try to use WhatsApp Flow for PIN verification (more secure)
+      const config = require('../config');
+      const whatsappFlowService = require('./whatsappFlowService');
+      
+      // Generate a secure flow token for PIN verification
+      const flowToken = whatsappFlowService.generateFlowToken(user.id, 'disable_pin_verification');
+      
+      // Get the transfer PIN flow ID (reuse existing PIN flow)
+      const flowId = config.getWhatsappConfig().transferPinFlowId;
+      
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        logger.warn('WhatsApp Flow ID not configured for PIN verification, falling back to text-based confirmation', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        
+        // Fallback to text-based confirmation
+        await user.updateConversationState({
+          intent: 'DISABLE_PIN',
+          awaitingInput: 'pin_confirmation',
+          context: 'disable_pin_verification'
+        });
+
+        return {
+          intent: 'disable_pin',
+          message: "🔐 To disable your PIN, please enter your current 4-digit PIN for confirmation.\n\n⚠️ *Warning*: Once disabled, all transactions will be processed without PIN verification.",
+          awaitingInput: 'pin_confirmation',
+          context: 'disable_pin_verification'
+        };
+      }
+      
+      // Store the flow token and context in conversation state
       await user.updateConversationState({
         intent: 'DISABLE_PIN',
-        awaitingInput: 'pin_confirmation',
-        context: 'disable_pin_verification'
+        awaitingInput: 'disable_pin_flow',
+        context: 'disable_pin_verification',
+        data: { flowToken }
       });
-
+      
+      // Send WhatsApp Flow for PIN verification
+      const sessionData = {
+        flow_token: flowToken,
+        flow_id: flowId,
+        flow_cta: "Disable PIN",
+        flow_action_payload: {
+          screen: "PIN_VERIFICATION",
+          data: {
+            user_id: user.id,
+            phone_number: user.whatsappNumber,
+            action: 'disable_pin'
+          }
+        }
+      };
+      
+      await whatsappService.sendFlowMessage(user.whatsappNumber, sessionData);
+      
+      logger.info('PIN disable flow sent to user', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        flowId: flowId,
+        flowToken: flowToken
+      });
+      
       return {
         intent: 'disable_pin',
-        message: "🔐 To disable your PIN, please enter your current 4-digit PIN for confirmation.\n\n⚠️ *Warning*: Once disabled, all transactions will be processed without PIN verification.",
-        awaitingInput: 'pin_confirmation',
+        message: "🔒 PIN verification flow sent. Please complete the authorization to disable your PIN.\n\n⚠️ *Warning*: Once disabled, all transactions will be processed without PIN verification.",
+        awaitingInput: 'disable_pin_flow',
         context: 'disable_pin_verification'
       };
     } catch (error) {
@@ -4010,17 +4066,73 @@ Example:
         };
       }
 
-      // Set conversation state to wait for PIN confirmation
+      // Try to use WhatsApp Flow for PIN verification (more secure)
+      const config = require('../config');
+      const whatsappFlowService = require('./whatsappFlowService');
+      
+      // Generate a secure flow token for PIN verification
+      const flowToken = whatsappFlowService.generateFlowToken(user.id, 'enable_pin_verification');
+      
+      // Get the transfer PIN flow ID (reuse existing PIN flow)
+      const flowId = config.getWhatsappConfig().transferPinFlowId;
+      
+      if (!flowId || flowId === 'SET_THIS_IN_DO_UI' || flowId === 'DISABLED_FOR_LOCAL_DEV') {
+        logger.warn('WhatsApp Flow ID not configured for PIN verification, falling back to text-based confirmation', {
+          userId: user.id,
+          configuredFlowId: flowId
+        });
+        
+        // Fallback to text-based confirmation
+        await user.updateConversationState({
+          intent: 'ENABLE_PIN',
+          awaitingInput: 'pin_confirmation',
+          context: 'enable_pin_verification'
+        });
+
+        return {
+          intent: 'enable_pin',
+          message: "🔐 To enable your PIN, please enter your current 4-digit PIN for confirmation.\n\n✅ Once enabled, all transactions will require PIN verification for security.",
+          awaitingInput: 'pin_confirmation',
+          context: 'enable_pin_verification'
+        };
+      }
+      
+      // Store the flow token and context in conversation state
       await user.updateConversationState({
         intent: 'ENABLE_PIN',
-        awaitingInput: 'pin_confirmation',
-        context: 'enable_pin_verification'
+        awaitingInput: 'enable_pin_flow',
+        context: 'enable_pin_verification',
+        data: { flowToken }
       });
-
+      
+      // Send WhatsApp Flow for PIN verification
+      const sessionData = {
+        flow_token: flowToken,
+        flow_id: flowId,
+        flow_cta: "Enable PIN",
+        flow_action_payload: {
+          screen: "PIN_VERIFICATION",
+          data: {
+            user_id: user.id,
+            phone_number: user.whatsappNumber,
+            action: 'enable_pin'
+          }
+        }
+      };
+      
+      await whatsappService.sendFlowMessage(user.whatsappNumber, sessionData);
+      
+      logger.info('PIN enable flow sent to user', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        flowId: flowId,
+        flowToken: flowToken
+      });
+      
       return {
         intent: 'enable_pin',
-        message: "🔐 To enable your PIN, please enter your current 4-digit PIN for confirmation.\n\n✅ Once enabled, all transactions will require PIN verification for security.",
-        awaitingInput: 'pin_confirmation',
+        message: "🔒 PIN verification flow sent. Please complete the authorization to enable your PIN.\n\n✅ Once enabled, all transactions will require PIN verification for security.",
+        awaitingInput: 'enable_pin_flow',
         context: 'enable_pin_verification'
       };
     } catch (error) {

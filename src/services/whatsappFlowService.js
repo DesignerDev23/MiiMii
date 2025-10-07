@@ -109,14 +109,15 @@ class WhatsAppFlowService {
   /**
    * Generate a Flow token for a user
    * @param {string} userId - The user ID
+   * @param {string} flowType - The type of flow (optional)
    * @returns {string} - The generated token
    */
-  generateFlowToken(userId) {
+  generateFlowToken(userId, flowType = 'default') {
     try {
       const timestamp = Date.now().toString();
-      const signature = this.generateSignature(userId, timestamp);
+      const signature = this.generateSignature(userId, timestamp, flowType);
       
-      return `${userId}.${timestamp}.${signature}`;
+      return `${userId}.${timestamp}.${flowType}.${signature}`;
     } catch (error) {
       logger.error('Flow token generation failed', { error: error.message });
       throw new Error('Failed to generate flow token');
@@ -127,10 +128,11 @@ class WhatsAppFlowService {
    * Generate signature for token verification
    * @param {string} userId - The user ID
    * @param {string} timestamp - The timestamp
+   * @param {string} flowType - The type of flow (optional)
    * @returns {string} - The signature
    */
-  generateSignature(userId, timestamp) {
-    const data = `${userId}.${timestamp}`;
+  generateSignature(userId, timestamp, flowType = 'default') {
+    const data = `${userId}.${timestamp}.${flowType}`;
     return crypto
       .createHmac('sha256', this.secretKey)
       .update(data)
@@ -501,6 +503,17 @@ class WhatsAppFlowService {
         const sessionKey = flowData.flow_token; // Use the same format as storage
         const sessionData = await redisClient.getSession(sessionKey);
         
+        // Also try to extract flow type from the token itself
+        let flowTypeFromToken = null;
+        try {
+          const tokenParts = flowData.flow_token.split('.');
+          if (tokenParts.length >= 3) {
+            flowTypeFromToken = tokenParts[2]; // Third part should be the flow type
+          }
+        } catch (error) {
+          logger.warn('Failed to extract flow type from token', { error: error.message, token: flowData.flow_token });
+        }
+        
         if (sessionData) {
           logger.info('Retrieved session data', {
             phoneNumber,
@@ -539,6 +552,25 @@ class WhatsAppFlowService {
             return { ...result, flowType: 'data_purchase' };
           }
           
+          // Check if this is a PIN disable/enable flow
+          if (sessionData.context === 'disable_pin_verification') {
+            logger.info('Detected PIN disable flow completion', {
+              phoneNumber,
+              context: sessionData.context
+            });
+            
+            return { success: true, flowType: 'disable_pin_verification' };
+          }
+          
+          if (sessionData.context === 'enable_pin_verification') {
+            logger.info('Detected PIN enable flow completion', {
+              phoneNumber,
+              context: sessionData.context
+            });
+            
+            return { success: true, flowType: 'enable_pin_verification' };
+          }
+          
           // Check if this is an airtime, bills, or data PIN flow
           if (sessionData.service && (sessionData.service === 'airtime' || sessionData.service === 'bills' || sessionData.service === 'data')) {
             logger.info('Retrieved airtime/bills/data session data', {
@@ -551,6 +583,28 @@ class WhatsAppFlowService {
             // We just need to return success here as the actual processing happens in flowEndpoint.js
             return { success: true, flowType: `${sessionData.service}_pin` };
           }
+        }
+        
+        // If no session data found, try to determine flow type from token
+        if (flowTypeFromToken) {
+          logger.info('Using flow type from token as fallback', {
+            phoneNumber,
+            flowTypeFromToken,
+            sessionKey,
+            hasSessionData: !!sessionData
+          });
+          
+          // Handle PIN disable/enable flows based on token
+          if (flowTypeFromToken === 'disable_pin_verification') {
+            return { success: true, flowType: 'disable_pin_verification' };
+          }
+          
+          if (flowTypeFromToken === 'enable_pin_verification') {
+            return { success: true, flowType: 'enable_pin_verification' };
+          }
+          
+          // For other flow types, return the type from token
+          return { success: true, flowType: flowTypeFromToken };
         }
         
         // If no session data found, check if this might be a data purchase flow that was processed in the background

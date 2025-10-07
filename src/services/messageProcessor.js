@@ -552,6 +552,90 @@ class MessageProcessor {
             } catch (err) {
               logger.error('Transfer PIN flow immediate processing failed', { error: err.message, userId: user.id });
             }
+          } else if (result.flowType === 'disable_pin_verification') {
+            // Handle PIN disable flow completion
+            try {
+              const whatsappService = require('./whatsapp');
+              const userService = require('./user');
+              
+              const pin = flowData.pin || flowData.pin_number || flowData.pin_code;
+              
+              if (!pin || !/^\d{4}$/.test(pin)) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+                return;
+              }
+              
+              // Validate PIN and disable it
+              const success = await userService.disableUserPin(user.id, pin);
+              
+              if (success) {
+                // Clear conversation state
+                await user.clearConversationState();
+                
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  '✅ *PIN Successfully Disabled!*\n\n🔓 Your transaction PIN has been disabled. All future transactions will be processed without PIN verification.\n\n⚠️ *Security Note*: This reduces security for your account. You can re-enable PIN verification anytime by saying "Enable my pin".'
+                );
+                
+                logger.info('PIN disabled successfully via flow', { userId: user.id });
+              } else {
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  '❌ PIN verification failed. Please check your PIN and try again.'
+                );
+              }
+              
+            } catch (error) {
+              logger.error('PIN disable flow processing failed', { error: error.message, userId: user.id });
+              const whatsappService = require('./whatsapp');
+              await user.clearConversationState();
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                '❌ An error occurred while disabling your PIN. Please try again later.'
+              );
+            }
+          } else if (result.flowType === 'enable_pin_verification') {
+            // Handle PIN enable flow completion
+            try {
+              const whatsappService = require('./whatsapp');
+              const userService = require('./user');
+              
+              const pin = flowData.pin || flowData.pin_number || flowData.pin_code;
+              
+              if (!pin || !/^\d{4}$/.test(pin)) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please try again.');
+                return;
+              }
+              
+              // Validate PIN and enable it
+              const success = await userService.enableUserPin(user.id, pin);
+              
+              if (success) {
+                // Clear conversation state
+                await user.clearConversationState();
+                
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  '✅ *PIN Successfully Enabled!*\n\n🔒 Your transaction PIN has been enabled. All future transactions will require PIN verification for security.\n\n✅ *Security Enhanced*: Your account is now more secure with PIN verification.'
+                );
+                
+                logger.info('PIN enabled successfully via flow', { userId: user.id });
+              } else {
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  '❌ PIN verification failed. Please check your PIN and try again.'
+                );
+              }
+              
+            } catch (error) {
+              logger.error('PIN enable flow processing failed', { error: error.message, userId: user.id });
+              const whatsappService = require('./whatsapp');
+              await user.clearConversationState();
+              await whatsappService.sendTextMessage(
+                user.whatsappNumber,
+                '❌ An error occurred while enabling your PIN. Please try again later.'
+              );
+            }
           } else if (result.flowType === 'airtime_pin' || result.flowType === 'bills_pin' || result.flowType === 'data_pin') {
             // Handle airtime/bills/data PIN flow completion
             try {
@@ -1186,6 +1270,29 @@ class MessageProcessor {
         return;
       }
 
+      // Check conversation state first - handle ongoing conversations before AI analysis
+      if (user.conversationState?.awaitingInput === 'pin_confirmation') {
+        logger.info('PIN disable/enable confirmation detected - handling before AI analysis', {
+          userId: user.id,
+          conversationState: user.conversationState,
+          intent: user.conversationState?.intent,
+          context: user.conversationState?.context
+        });
+        
+        return await this.handlePinDisableEnableConfirmation(user, message, messageType);
+      }
+
+      if (user.conversationState?.awaitingInput === 'bank_details') {
+        logger.info('Bank details input detected for PIN-disabled transfer - handling before AI analysis', {
+          userId: user.id,
+          conversationState: user.conversationState,
+          intent: user.conversationState?.intent,
+          context: user.conversationState?.context
+        });
+        
+        return await this.handleBankDetailsInput(user, message, messageType);
+      }
+
       // Analyze user message with AI to determine intent
       const aiAssistant = require('./aiAssistant');
       const intentAnalysis = await aiAssistant.analyzeUserIntent(messageContent, user);
@@ -1353,29 +1460,6 @@ class MessageProcessor {
             return;
           }
           
-          // Check if user is awaiting bank details for PIN-disabled transfer
-          if (user.conversationState?.awaitingInput === 'bank_details') {
-            logger.info('Bank details input detected for PIN-disabled transfer', {
-              userId: user.id,
-              conversationState: user.conversationState,
-              intent: user.conversationState?.intent,
-              context: user.conversationState?.context
-            });
-            
-            return await this.handleBankDetailsInput(user, message, messageType);
-          }
-
-          // Check if user is awaiting PIN disable/enable confirmation
-          if (user.conversationState?.awaitingInput === 'pin_confirmation') {
-            logger.info('PIN disable/enable confirmation detected', {
-              userId: user.id,
-              conversationState: user.conversationState,
-              intent: user.conversationState?.intent,
-              context: user.conversationState?.context
-            });
-            
-            return await this.handlePinDisableEnableConfirmation(user, message, messageType);
-          }
 
           // Check if user is awaiting PIN verification
           if (user.conversationState?.awaitingInput === 'pin_verification' || user.conversationState?.awaitingInput === 'pin_for_transfer') {
