@@ -4074,7 +4074,7 @@ Example:
         userId: user.id
       });
       
-      await redisClient.storeSession(flowToken, flowSession);
+      await redisClient.setSession(flowToken, flowSession);
 
       // Send WhatsApp Flow for PIN verification
       const flowData = {
@@ -4201,7 +4201,7 @@ Example:
         userId: user.id
       });
       
-      await redisClient.storeSession(flowToken, flowSession);
+      await redisClient.setSession(flowToken, flowSession);
 
       // Send WhatsApp Flow for PIN verification
       const flowData = {
