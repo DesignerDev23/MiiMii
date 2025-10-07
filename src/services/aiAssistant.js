@@ -1719,6 +1719,21 @@ Extract intent and data from this message. Consider the user context and any ext
 
   async sendPinVerificationFlow(user, transactionData) {
     try {
+      // Check if user's PIN is disabled - if so, skip PIN verification
+      const userService = require('./user');
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (!pinStatus.pinEnabled) {
+        logger.info('PIN is disabled for user, skipping PIN verification flow', {
+          userId: user.id,
+          service: transactionData.service,
+          pinEnabled: pinStatus.pinEnabled
+        });
+        
+        // Process the transaction directly without PIN verification
+        return await this.processTransactionWithoutPin(user, transactionData);
+      }
+
       const whatsappFlowService = require('./whatsappFlowService');
       const whatsappService = require('./whatsapp');
       const redisClient = require('../utils/redis');
@@ -4141,6 +4156,122 @@ Example:
         intent: 'enable_pin',
         message: "❌ Failed to process your request. Please try again later.",
         requiresAction: 'NONE'
+      };
+    }
+  }
+
+  async processTransactionWithoutPin(user, transactionData) {
+    try {
+      const whatsappService = require('./whatsapp');
+      
+      logger.info('Processing transaction without PIN verification', {
+        userId: user.id,
+        service: transactionData.service,
+        transactionData
+      });
+
+      // Clear conversation state since we're processing immediately
+      await user.clearConversationState();
+
+      let result;
+      let successMessage;
+
+      switch (transactionData.service) {
+        case 'airtime':
+          const airtimeService = require('./airtime');
+          result = await airtimeService.purchaseAirtime(
+            user.id,
+            transactionData.phoneNumber,
+            transactionData.network,
+            transactionData.amount,
+            '0000' // Dummy PIN since PIN validation will be skipped
+          );
+          
+          if (result.success) {
+            successMessage = `✅ *Airtime Purchase Successful!*\n\n💰 Amount: ₦${transactionData.amount}\n📱 Phone: ${transactionData.phoneNumber}\n📶 Network: ${transactionData.network}\n📋 Reference: ${result.reference}\n\n🔓 Transaction completed (PIN disabled)`;
+          }
+          break;
+
+        case 'data':
+          const dataService = require('./data');
+          result = await dataService.purchaseData(
+            user.id,
+            transactionData.phoneNumber,
+            transactionData.network,
+            transactionData.dataSize || transactionData.amount,
+            '0000' // Dummy PIN since PIN validation will be skipped
+          );
+          
+          if (result.success) {
+            successMessage = `✅ *Data Purchase Successful!*\n\n💰 Amount: ₦${transactionData.amount}\n📱 Phone: ${transactionData.phoneNumber}\n📶 Network: ${transactionData.network}\n📋 Reference: ${result.reference}\n\n🔓 Transaction completed (PIN disabled)`;
+          }
+          break;
+
+        case 'bills':
+          const utilityService = require('./utility');
+          result = await utilityService.payBill(
+            user.id,
+            transactionData.provider,
+            transactionData.meterNumber,
+            transactionData.amount,
+            transactionData.billType,
+            '0000' // Dummy PIN since PIN validation will be skipped
+          );
+          
+          if (result.success) {
+            successMessage = `✅ *Bill Payment Successful!*\n\n💰 Amount: ₦${transactionData.amount}\n🏢 Provider: ${transactionData.provider}\n📋 Account: ${transactionData.meterNumber}\n📋 Reference: ${result.reference}\n\n🔓 Transaction completed (PIN disabled)`;
+          }
+          break;
+
+        default:
+          throw new Error(`Unsupported service: ${transactionData.service}`);
+      }
+
+      if (result && result.success) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+        
+        logger.info('Transaction processed successfully without PIN', {
+          userId: user.id,
+          service: transactionData.service,
+          success: true
+        });
+        
+        return {
+          intent: transactionData.service,
+          message: successMessage,
+          awaitingInput: null,
+          context: 'completed'
+        };
+      } else {
+        const errorMessage = `❌ Transaction failed: ${result?.message || 'Please try again later.'}`;
+        await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+        
+        return {
+          intent: transactionData.service,
+          message: errorMessage,
+          awaitingInput: null,
+          context: 'failed'
+        };
+      }
+
+    } catch (error) {
+      logger.error('Failed to process transaction without PIN', {
+        error: error.message,
+        userId: user.id,
+        service: transactionData.service
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await user.clearConversationState();
+      
+      const errorMessage = `❌ Transaction failed: ${error.message || 'Please try again later.'}`;
+      await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+      
+      return {
+        intent: transactionData.service,
+        message: errorMessage,
+        awaitingInput: null,
+        context: 'failed'
       };
     }
   }

@@ -167,15 +167,23 @@ class BilalService {
     try {
       const { phoneNumber, network, amount, pin } = airtimeData;
 
-      // Require and validate 4-digit transaction PIN for ANY wallet debit
-      if (!pin || !/^\d{4}$/.test(String(pin))) {
-        throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
-      }
-      try {
-        const userService = require('./user');
-        await userService.validateUserPin(user.id, pin);
-      } catch (pinErr) {
-        throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+      // Check PIN status first - if disabled, skip PIN validation entirely
+      const userService = require('./user');
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (pinStatus.pinEnabled) {
+        // PIN is enabled - require and validate 4-digit transaction PIN
+        if (!pin || !/^\d{4}$/.test(String(pin))) {
+          throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
+        }
+        try {
+          await userService.validateUserPin(user.id, pin);
+        } catch (pinErr) {
+          throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+        }
+      } else {
+        // PIN is disabled - skip PIN validation
+        logger.info('PIN validation skipped - PIN is disabled for airtime purchase', { userId: user.id });
       }
       
       // Validate network
@@ -513,15 +521,23 @@ class BilalService {
       
       const { phoneNumber, network, dataPlan, pin } = dataData;
 
-      // Require and validate 4-digit transaction PIN for ANY wallet debit
-      if (!pin || !/^\d{4}$/.test(String(pin))) {
-        throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
-      }
-      try {
-        const userService = require('./user');
-        await userService.validateUserPin(user.id, pin);
-      } catch (pinErr) {
-        throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+      // Check PIN status first - if disabled, skip PIN validation entirely
+      const userService = require('./user');
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (pinStatus.pinEnabled) {
+        // PIN is enabled - require and validate 4-digit transaction PIN
+        if (!pin || !/^\d{4}$/.test(String(pin))) {
+          throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
+        }
+        try {
+          await userService.validateUserPin(user.id, pin);
+        } catch (pinErr) {
+          throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+        }
+      } else {
+        // PIN is disabled - skip PIN validation
+        logger.info('PIN validation skipped - PIN is disabled for data purchase', { userId: user.id });
       }
       
       // Validate network
@@ -738,15 +754,23 @@ class BilalService {
     try {
       const { disco, meterType, meterNumber, amount, pin } = billData;
 
-      // Require and validate 4-digit transaction PIN for ANY wallet debit
-      if (!pin || !/^\d{4}$/.test(String(pin))) {
-        throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
-      }
-      try {
-        const userService = require('./user');
-        await userService.validateUserPin(user.id, pin);
-      } catch (pinErr) {
-        throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+      // Check PIN status first - if disabled, skip PIN validation entirely
+      const userService = require('./user');
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (pinStatus.pinEnabled) {
+        // PIN is enabled - require and validate 4-digit transaction PIN
+        if (!pin || !/^\d{4}$/.test(String(pin))) {
+          throw new Error('Transaction PIN required. Please enter a valid 4-digit PIN.');
+        }
+        try {
+          await userService.validateUserPin(user.id, pin);
+        } catch (pinErr) {
+          throw new Error(pinErr.message || 'Invalid PIN. Please try again.');
+        }
+      } else {
+        // PIN is disabled - skip PIN validation
+        logger.info('PIN validation skipped - PIN is disabled for electricity bill payment', { userId: user.id });
       }
       
       // Validate disco
