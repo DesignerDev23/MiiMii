@@ -119,7 +119,7 @@ class AirtimeService {
       // Create transaction record
       const transaction = await transactionService.createTransaction(userId, {
         type: 'debit',
-        category: 'airtime_purchase',
+        category: 'airtime',
         amount: validAmount,
         fee: fee,
         totalAmount: totalAmount,
@@ -139,12 +139,12 @@ class AirtimeService {
 
       try {
         // Process airtime purchase through Bilal API
-        const purchaseResult = await this.processBilalAirtimePurchase(validation.cleanNumber, validation.network, validAmount);
+        const purchaseResult = await this.processBilalAirtimePurchase(user, validation.cleanNumber, validation.network, validAmount);
         
         if (purchaseResult.success) {
           // Debit wallet
           await walletService.debitWallet(userId, totalAmount, `Airtime purchase: ₦${validAmount}`, {
-            category: 'airtime_purchase',
+            category: 'airtime',
             transactionId: transaction.id
           });
 
@@ -199,79 +199,38 @@ class AirtimeService {
   }
 
   // Process airtime purchase through Bilal API
-  async processBilalAirtimePurchase(phoneNumber, network, amount) {
+  async processBilalAirtimePurchase(user, phoneNumber, network, amount) {
     try {
-      // TEMPORARY: Use mock response since Bilal API doesn't have airtime endpoint
-      // TODO: Implement proper airtime provider or use different endpoint
-      logger.warn('Using mock airtime response - Bilal API airtime endpoint not available');
-      return {
-        success: true,
-        reference: `MOCK_AIRTIME_${Date.now()}`,
-        message: 'Airtime purchase successful (mock)',
-        response: {
-          status: 'success',
-          phoneNumber,
-          network,
-          amount
-        }
-      };
+      const bilalService = require('./bilal');
       
-      if (!this.baseURL || !this.apiKey) {
-        // Mock response for testing when API credentials are not configured
-        logger.warn('Bilal API credentials not configured, using mock response');
-        return {
-          success: true,
-          reference: `MOCK_AIRTIME_${Date.now()}`,
-          message: 'Airtime purchase successful (mock)',
-          response: {
-            status: 'success',
-            phoneNumber,
-            network,
-            amount
-          }
-        };
-      }
-
-      const payload = {
-        phone: phoneNumber,
-        network: network,
-        amount: amount
-      };
-
-      const response = await axios.post(`${this.baseURL}/api/airtime`, payload, {
-        ...axiosConfig,
-        headers: {
-          ...axiosConfig.headers,
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        }
+      logger.info('Processing airtime purchase through Bilal API', {
+        userId: user.id,
+        phoneNumber,
+        network,
+        amount
       });
 
-      if (response.data.success || response.data.status === 'success') {
-        return {
-          success: true,
-          reference: response.data.reference || response.data.transaction_id,
-          message: response.data.message || 'Airtime purchase successful',
-          response: response.data
-        };
-      } else {
-        return {
-          success: false,
-          message: response.data.message || 'Airtime purchase failed',
-          response: response.data
-        };
-      }
+      const airtimeData = {
+        phoneNumber,
+        network,
+        amount,
+        pin: '0000' // Dummy PIN - validation will be handled by the calling method
+      };
+
+      const result = await bilalService.purchaseAirtime(user, airtimeData, phoneNumber);
+      
+      logger.info('Bilal airtime purchase completed', {
+        success: result.success,
+        userId: user.id,
+        phoneNumber,
+        network,
+        amount,
+        reference: result.reference
+      });
+
+      return result;
     } catch (error) {
-      logger.error('Bilal API airtime purchase failed', { error: error.message, phoneNumber, network, amount });
-      
-      if (error.response) {
-        return {
-          success: false,
-          message: error.response.data.message || 'API request failed',
-          response: error.response.data
-        };
-      }
-      
+      logger.error('Airtime purchase failed', { error: error.message, userId: user.id, phoneNumber, network, amount });
       throw error;
     }
   }
@@ -284,7 +243,7 @@ class AirtimeService {
       const transactions = await Transaction.findAndCountAll({
         where: {
           userId,
-          category: 'airtime_purchase',
+          category: 'airtime',
           type: 'debit'
         },
         order: [['createdAt', 'DESC']],

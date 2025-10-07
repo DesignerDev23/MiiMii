@@ -4060,7 +4060,7 @@ Example:
       });
       
       // Store session in Redis for flow completion
-      const redisClient = require('../config/redis');
+      const redisClient = require('../utils/redis');
       const flowSession = {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
@@ -4187,7 +4187,7 @@ Example:
       });
       
       // Store session in Redis for flow completion
-      const redisClient = require('../config/redis');
+      const redisClient = require('../utils/redis');
       const flowSession = {
         userId: user.id,
         phoneNumber: user.whatsappNumber,
