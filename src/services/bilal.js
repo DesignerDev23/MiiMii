@@ -234,8 +234,21 @@ class BilalService {
       }
 
       // Purchase airtime via BILALSADASUB API
-      // Remove country code from phone number but keep the leading 0 (Bilal expects 11 digits with leading 0)
-      const cleanPhoneNumber = phoneNumber.replace(/^\+234/, '').replace(/^234/, '');
+      // Convert to Nigerian phone number format (11 digits starting with 0)
+      let cleanPhoneNumber = phoneNumber;
+      
+      // If it starts with +234, remove it and add 0
+      if (phoneNumber.startsWith('+234')) {
+        cleanPhoneNumber = '0' + phoneNumber.substring(4);
+      }
+      // If it starts with 234, remove it and add 0
+      else if (phoneNumber.startsWith('234')) {
+        cleanPhoneNumber = '0' + phoneNumber.substring(3);
+      }
+      // If it doesn't start with 0, add 0 (in case it's already without country code)
+      else if (!phoneNumber.startsWith('0')) {
+        cleanPhoneNumber = '0' + phoneNumber;
+      }
       
       // Validate phone number format
       if (!/^0[789][01][0-9]{8}$/.test(cleanPhoneNumber)) {
@@ -589,8 +602,21 @@ class BilalService {
       }
 
       // Purchase data via BILALSADASUB API
-      // Remove country code from phone number but keep the leading 0 (Bilal expects 11 digits with leading 0)
-      const cleanPhoneNumber = phoneNumber.replace(/^\+234/, '').replace(/^234/, '');
+      // Convert to Nigerian phone number format (11 digits starting with 0)
+      let cleanPhoneNumber = phoneNumber;
+      
+      // If it starts with +234, remove it and add 0
+      if (phoneNumber.startsWith('+234')) {
+        cleanPhoneNumber = '0' + phoneNumber.substring(4);
+      }
+      // If it starts with 234, remove it and add 0
+      else if (phoneNumber.startsWith('234')) {
+        cleanPhoneNumber = '0' + phoneNumber.substring(3);
+      }
+      // If it doesn't start with 0, add 0 (in case it's already without country code)
+      else if (!phoneNumber.startsWith('0')) {
+        cleanPhoneNumber = '0' + phoneNumber;
+      }
       
       // Generate simple request ID as per documentation format
       const simpleRequestId = `Data_${Date.now()}`;
