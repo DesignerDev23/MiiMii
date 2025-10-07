@@ -139,7 +139,7 @@ class AirtimeService {
 
       try {
         // Process airtime purchase through Bilal API
-        const purchaseResult = await this.processBilalAirtimePurchase(user, validation.cleanNumber, validation.network, validAmount);
+        const purchaseResult = await this.processBilalAirtimePurchase(user, validation.cleanNumber, network, validAmount);
         
         if (purchaseResult.success) {
           // Debit wallet
