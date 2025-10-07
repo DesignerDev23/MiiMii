@@ -102,7 +102,7 @@ class DataPlanService {
         page = 1,
         limit = 50,
         network = null,
-        isActive = true,
+        isActive = null, // Changed from true to null to get all plans by default
         orderBy = 'createdAt',
         orderDirection = 'DESC'
       } = options;
@@ -111,12 +111,16 @@ class DataPlanService {
       if (network) where.network = network.toUpperCase();
       if (isActive !== null) where.isActive = isActive;
 
+      logger.info('Fetching all data plans with options:', { options, where });
+
       const { count, rows } = await DataPlan.findAndCountAll({
         where,
         order: [[orderBy, orderDirection]],
         limit: parseInt(limit),
         offset: (parseInt(page) - 1) * parseInt(limit)
       });
+
+      logger.info('Data plans query result:', { count, rowsCount: rows.length });
 
       return {
         plans: rows,

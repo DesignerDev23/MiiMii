@@ -15,13 +15,27 @@ router.get('/', async (req, res) => {
       orderDirection = 'DESC'
     } = req.query;
 
+    logger.info('API request for data plans:', { page, limit, network, isActive, orderBy, orderDirection });
+
     const result = await dataPlanService.getAllDataPlans({
       page: parseInt(page),
       limit: parseInt(limit),
       network,
-      isActive: isActive === 'true',
+      isActive: isActive === 'true' ? true : isActive === 'false' ? false : null,
       orderBy,
       orderDirection
+    });
+
+    logger.info('API response for data plans:', { 
+      success: true, 
+      dataCount: result.plans.length, 
+      total: result.total,
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: result.totalPages
+      }
     });
 
     res.json({
