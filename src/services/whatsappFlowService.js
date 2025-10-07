@@ -217,20 +217,35 @@ class WhatsAppFlowService {
         return { success: false, error: 'User not found', requiresOnboarding: true };
       }
 
-      try {
-        const isValid = await userService.validateUserPin(user.id, flowData.pin);
-        
-        if (isValid) {
-          await whatsappService.sendTextMessage(
-            phoneNumber,
-            `✅ Login Successful!\n\nWelcome back, ${user.firstName || 'there'}!`
-          );
+      // Check PIN status first - if disabled, skip PIN validation entirely
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (pinStatus.pinEnabled) {
+        // PIN is enabled - validate user PIN
+        try {
+          const isValid = await userService.validateUserPin(user.id, flowData.pin);
+          
+          if (isValid) {
+            await whatsappService.sendTextMessage(
+              phoneNumber,
+              `✅ Login Successful!\n\nWelcome back, ${user.firstName || 'there'}!`
+            );
 
-          return { success: true, userId: user.id, message: 'Login successful' };
+            return { success: true, userId: user.id, message: 'Login successful' };
+          }
+        } catch (pinError) {
+          await whatsappService.sendTextMessage(phoneNumber, pinError.message || 'Invalid PIN. Please try again.');
+          return { success: false, error: pinError.message, requiresRetry: true };
         }
-      } catch (pinError) {
-        await whatsappService.sendTextMessage(phoneNumber, pinError.message || 'Invalid PIN. Please try again.');
-        return { success: false, error: pinError.message, requiresRetry: true };
+      } else {
+        // PIN is disabled - allow login without PIN validation
+        logger.info('PIN validation skipped - PIN is disabled for login flow', { userId: user.id });
+        await whatsappService.sendTextMessage(
+          phoneNumber,
+          `✅ Login Successful!\n\nWelcome back, ${user.firstName || 'there'}! (PIN disabled)`
+        );
+
+        return { success: true, userId: user.id, message: 'Login successful' };
       }
 
     } catch (error) {
@@ -399,12 +414,20 @@ class WhatsAppFlowService {
         return { success: false, error: 'Invalid PIN format. Please enter exactly 4 digits.' };
       }
 
-      // Validate user PIN
-      try {
-        await userService.validateUserPin(user.id, pin);
-      } catch (error) {
-        logger.error('PIN validation failed in data purchase flow', { userId: user.id, phoneNumber, error: error.message });
-        return { success: false, error: 'Invalid PIN. Please try again.' };
+      // Check PIN status first - if disabled, skip PIN validation entirely
+      const pinStatus = await userService.getPinStatus(user.id);
+      
+      if (pinStatus.pinEnabled) {
+        // PIN is enabled - validate user PIN
+        try {
+          await userService.validateUserPin(user.id, pin);
+        } catch (error) {
+          logger.error('PIN validation failed in data purchase flow', { userId: user.id, phoneNumber, error: error.message });
+          return { success: false, error: 'Invalid PIN. Please try again.' };
+        }
+      } else {
+        // PIN is disabled - skip PIN validation
+        logger.info('PIN validation skipped - PIN is disabled for data purchase flow', { userId: user.id });
       }
 
       // Process the data purchase

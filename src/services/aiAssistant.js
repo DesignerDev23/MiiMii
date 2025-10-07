@@ -2360,7 +2360,49 @@ Extract intent and data from this message. Consider the user context and any ext
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Cancelled ✅');
           return;
         }
-        // Send PIN verification Flow (navigate to PIN_VERIFICATION_SCREEN)
+        
+        // Check PIN status first - if disabled, process transaction directly
+        const userService = require('./user');
+        const pinStatus = await userService.getPinStatus(user.id);
+        
+        if (!pinStatus.pinEnabled) {
+          // PIN is disabled - process transaction directly without PIN verification
+          logger.info('PIN is disabled for user, processing data purchase directly', {
+            userId: user.id,
+            pinEnabled: pinStatus.pinEnabled
+          });
+          
+          const sessionId = conversationState?.data?.sessionId || null;
+          const { network, planId, phone } = conversationState.data || {};
+          
+          // Process data purchase directly
+          const bilalService = require('./bilal');
+          const { getBilalOfficialPlanId } = require('../routes/flowEndpoint');
+          const bilalPlanId = getBilalOfficialPlanId(planId, network);
+          
+          const dataPurchaseData = {
+            phoneNumber: phone,
+            network: network,
+            dataPlan: { id: bilalPlanId, price: await whatsappFlowService.getDataPlanPrice(planId, network) },
+            pin: '0000' // Dummy PIN since PIN validation will be skipped
+          };
+          
+          const result = await bilalService.purchaseData(user, dataPurchaseData, user.whatsappNumber);
+          
+          if (result.success) {
+            const successMessage = `✅ *Data Purchase Successful!*\n\n📱 Network: ${network}\n📞 Phone: ${phone}\n📦 Plan: ${planId}\n💰 Amount: ₦${dataPurchaseData.dataPlan.price.toLocaleString()}\n📋 Reference: ${result.data?.['request-id']}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n\n🔓 Transaction completed (PIN disabled)`;
+            await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+          } else {
+            await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Data purchase failed: ${result.message || 'Please try again later.'}`);
+          }
+          
+          // Clean up
+          if (sessionId) await redisClient.deleteSession(sessionId);
+          await user.clearConversationState();
+          return;
+        }
+        
+        // PIN is enabled - send PIN verification Flow (navigate to PIN_VERIFICATION_SCREEN)
         const sessionId = conversationState?.data?.sessionId || null;
         const { network, planId, phone } = conversationState.data || {};
         try {

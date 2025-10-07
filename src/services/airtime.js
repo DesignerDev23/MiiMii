@@ -58,34 +58,13 @@ class AirtimeService {
     }
   }
 
-  // Validate phone number for specific network
-  async validatePhoneNumber(phoneNumber, network) {
+  // Clean phone number for processing (removed network validation - let provider API handle it)
+  async cleanPhoneNumber(phoneNumber) {
     try {
       const cleanNumber = userService.cleanPhoneNumber(phoneNumber);
-      const networkCode = this.networks[network.toUpperCase()];
-      
-      if (!networkCode) {
-        throw new Error('Unsupported network');
-      }
-
-      // Nigerian network prefixes
-      const prefixes = {
-        mtn: ['0803', '0806', '0703', '0706', '0813', '0816', '0810', '0814', '0903', '0906'],
-        airtel: ['0802', '0808', '0708', '0812', '0701', '0902', '0907', '0901', '0904'], // Added 0904 for AIRTEL
-        glo: ['0805', '0807', '0705', '0815', '0811', '0905'],
-        '9mobile': ['0809', '0818', '0817', '0909', '0908']
-      };
-
-      const prefix = cleanNumber.substring(0, 4);
-      const isValid = prefixes[networkCode].includes(prefix);
-
-      if (!isValid) {
-        throw new Error(`Phone number ${phoneNumber} does not belong to ${network} network`);
-      }
-
-      return { valid: true, cleanNumber, network: networkCode };
+      return { valid: true, cleanNumber };
     } catch (error) {
-      logger.error('Phone number validation failed', { error: error.message, phoneNumber, network });
+      logger.error('Phone number cleaning failed', { error: error.message, phoneNumber });
       throw error;
     }
   }
@@ -124,8 +103,8 @@ class AirtimeService {
       // Validate amount
       const validAmount = this.validateAmount(amount);
 
-      // Validate phone number and network
-      const validation = await this.validatePhoneNumber(phoneNumber, network);
+      // Clean phone number for processing
+      const validation = await this.cleanPhoneNumber(phoneNumber);
       
       // Calculate fee (typically 0-2% for airtime)
       const fee = Math.ceil(validAmount * 0.01); // 1% fee
@@ -359,7 +338,7 @@ class AirtimeService {
   // Check airtime balance (if supported by network)
   async checkAirtimeBalance(phoneNumber, network) {
     try {
-      const validation = await this.validatePhoneNumber(phoneNumber, network);
+      const validation = await this.cleanPhoneNumber(phoneNumber);
       
       // Most Nigerian networks don't provide balance check APIs
       // Users typically dial network-specific codes
