@@ -435,7 +435,7 @@ class WhatsAppFlowService {
       
       // Get the correct Bilal plan ID according to official documentation
       const { getBilalOfficialPlanId } = require('../routes/flowEndpoint');
-      const bilalPlanId = getBilalOfficialPlanId(flowData.dataPlan, flowData.network);
+      const bilalPlanId = await getBilalOfficialPlanId(flowData.dataPlan, flowData.network);
       
       const dataPurchaseData = {
         phoneNumber: flowData.phoneNumber,

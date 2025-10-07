@@ -2378,7 +2378,7 @@ Extract intent and data from this message. Consider the user context and any ext
           // Process data purchase directly
           const bilalService = require('./bilal');
           const { getBilalOfficialPlanId } = require('../routes/flowEndpoint');
-          const bilalPlanId = getBilalOfficialPlanId(planId, network);
+          const bilalPlanId = await getBilalOfficialPlanId(planId, network);
           
           const dataPurchaseData = {
             phoneNumber: phone,

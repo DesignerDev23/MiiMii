@@ -1521,7 +1521,7 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       dataPurchaseData: {
       phoneNumber,
       network,
-        dataPlan: { id: getBilalOfficialPlanId(dataPlan, network), price: await getDataPlanPrice(dataPlan, network) }
+        dataPlan: { id: await getBilalOfficialPlanId(dataPlan, network), price: await getDataPlanPrice(dataPlan, network) }
       },
       flowToken: flowToken,
       timestamp: Date.now()
@@ -1847,47 +1847,97 @@ function getBilalPlanId(planId) {
  * Get the actual plan ID from DATA_PLANS for Bilal API
  * We use the exact plan ID from our DATA_PLANS table, not a mapped ID
  */
-function getBilalOfficialPlanId(planId, network) {
+async function getBilalOfficialPlanId(planId, network) {
   logger.info('Getting plan ID for Bilal API', { 
     originalPlanId: planId, 
     network,
     planIdType: typeof planId
   });
   
-  // First, get the plan details from our DATA_PLANS
-  let planDetails = null;
-  
-  // If planId is numeric, find the plan in DATA_PLANS
-  if (/^\d+$/.test(planId)) {
-    const numericId = parseInt(planId);
-    const networkPlans = DATA_PLANS[network] || [];
-    planDetails = networkPlans.find(p => p.id === numericId);
-  } else {
-    // If planId is a title, find it in DATA_PLANS
-    for (const networkPlans of Object.values(DATA_PLANS)) {
-      planDetails = networkPlans.find(p => p.title === planId);
-      if (planDetails) break;
+  try {
+    // First, try to get plan from database data plans
+    const dataService = require('../services/data');
+    const dbPlans = await dataService.getDataPlans(network);
+    
+    let planDetails = null;
+    
+    // If planId is numeric, find the plan in database
+    if (/^\d+$/.test(planId)) {
+      const numericId = parseInt(planId);
+      planDetails = dbPlans.find(p => p.id === numericId);
+      
+      if (planDetails) {
+        logger.info('Found plan in database', { 
+          originalPlanId: planId,
+          planTitle: planDetails.title,
+          network,
+          actualPlanId: planDetails.id,
+          planPrice: planDetails.price
+        });
+        return planDetails.id; // Return the database plan ID
+      }
+    } else {
+      // If planId is a title, find it in database
+      planDetails = dbPlans.find(p => p.title === planId);
+      
+      if (planDetails) {
+        logger.info('Found plan by title in database', { 
+          originalPlanId: planId,
+          planTitle: planDetails.title,
+          network,
+          actualPlanId: planDetails.id,
+          planPrice: planDetails.price
+        });
+        return planDetails.id; // Return the database plan ID
+      }
     }
-  }
-  
-  if (!planDetails) {
-    logger.warn('Plan not found in DATA_PLANS, using default', { planId, network });
+    
+    // Fallback to hardcoded DATA_PLANS if not found in database
+    if (/^\d+$/.test(planId)) {
+      const numericId = parseInt(planId);
+      const networkPlans = DATA_PLANS[network] || [];
+      planDetails = networkPlans.find(p => p.id === numericId);
+    } else {
+      // If planId is a title, find it in DATA_PLANS
+      for (const networkPlans of Object.values(DATA_PLANS)) {
+        planDetails = networkPlans.find(p => p.title === planId);
+        if (planDetails) break;
+      }
+    }
+    
+    if (planDetails) {
+      logger.info('Found plan in hardcoded DATA_PLANS', { 
+        originalPlanId: planId,
+        planTitle: planDetails.title,
+        network,
+        actualPlanId: planDetails.id,
+        planPrice: planDetails.price
+      });
+      return planDetails.id;
+    }
+    
+    logger.warn('Plan not found in database or DATA_PLANS, using default', { planId, network });
     return 1; // Default to plan 1
+    
+  } catch (error) {
+    logger.error('Error getting plan ID for Bilal API', { 
+      error: error.message, 
+      planId, 
+      network 
+    });
+    
+    // Fallback to hardcoded DATA_PLANS on error
+    if (/^\d+$/.test(planId)) {
+      const numericId = parseInt(planId);
+      const networkPlans = DATA_PLANS[network] || [];
+      const planDetails = networkPlans.find(p => p.id === numericId);
+      if (planDetails) {
+        return planDetails.id;
+      }
+    }
+    
+    return 1; // Default fallback
   }
-  
-  // Return the actual plan ID from our DATA_PLANS table
-  // This is the ID that should be sent to Bilal API
-  const actualPlanId = planDetails.id;
-  
-  logger.info('Using actual plan ID from DATA_PLANS', { 
-    originalPlanId: planId,
-    planTitle: planDetails.title,
-    network,
-    actualPlanId,
-    planPrice: planDetails.price
-  });
-  
-  return actualPlanId;
 }
 
 async function getDataPlansForNetwork(network) {
