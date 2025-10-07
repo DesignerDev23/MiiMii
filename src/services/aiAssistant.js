@@ -3392,19 +3392,21 @@ User Context:
 
 IMPORTANT: Use these exact intent names:
 1. "bank_transfer" - User wants to transfer money to a bank account (ALL transfers)
-3. "balance" - User wants to check account balance (NOT balance_inquiry)
-4. "airtime" - User wants to buy airtime
-5. "data" - User wants to buy data
-6. "bills" - User wants to pay bills
-7. "help" - User needs help or support
-8. "menu" - User wants to see available services
-9. "account_details" - User wants account information
-10. "wallet_details" - User wants to see wallet information, account details, balance, and transaction limits
-11. "transaction_history" - User wants to see transaction history, past transactions, or financial records
-12. "account_info" - User wants to see account information, account number, account name, or account details
-13. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
-14. "greeting" - General greeting or hello
-15. "unknown" - Cannot determine intent
+2. "balance" - User wants to check account balance (NOT balance_inquiry)
+3. "airtime" - User wants to buy airtime
+4. "data" - User wants to buy data
+5. "bills" - User wants to pay bills
+6. "help" - User needs help or support
+7. "menu" - User wants to see available services
+8. "account_details" - User wants account information
+9. "wallet_details" - User wants to see wallet information, account details, balance, and transaction limits
+10. "transaction_history" - User wants to see transaction history, past transactions, or financial records
+11. "account_info" - User wants to see account information, account number, account name, or account details
+12. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
+13. "disable_pin" - User wants to disable PIN for transactions
+14. "enable_pin" - User wants to enable PIN for transactions
+15. "greeting" - General greeting or hello
+16. "unknown" - Cannot determine intent
 
 NATURAL LANGUAGE UNDERSTANDING:
 - "what's my current balance" → balance
@@ -3428,6 +3430,14 @@ NATURAL LANGUAGE UNDERSTANDING:
 - "my history" → transaction_history
 - "account details" → account_details
 - "my account" → account_details
+- "disable my pin" → disable_pin
+- "turn off pin" → disable_pin
+- "pin off" → disable_pin
+- "no pin" → disable_pin
+- "enable my pin" → enable_pin
+- "turn on pin" → enable_pin
+- "pin on" → enable_pin
+- "require pin" → enable_pin
 
 For bank transfers, look for:
 - Amount (e.g., "5k", "5000", "10k", "2k", "4k")
@@ -3510,6 +3520,22 @@ Should extract:
 
 And respond with something like:
 "Great! I can see you want to send ₦5,000 to the test account. Perfect for testing! Just provide your PIN to authorize this transfer. 🔐"
+
+Example: "Disable my pin"
+Should extract:
+- intent: disable_pin
+- extractedData: {}
+
+And respond with something like:
+"I understand you want to disable your PIN. Let me help you with that! To disable your PIN, please enter your current 4-digit PIN for confirmation."
+
+Example: "Enable my pin"
+Should extract:
+- intent: enable_pin
+- extractedData: {}
+
+And respond with something like:
+"I understand you want to enable your PIN. Let me help you with that! To enable your PIN, please enter your current 4-digit PIN for confirmation."
 
 Instructions:
 - Analyze the message content and context
