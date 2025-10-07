@@ -1338,6 +1338,12 @@ class MessageProcessor {
         case 'history':
           return await this.handleTransactionHistoryIntent(user, message, messageType, messageId);
           
+        case 'disable_pin':
+          return await this.handleDisablePinIntent(user, message, messageType, messageId);
+          
+        case 'enable_pin':
+          return await this.handleEnablePinIntent(user, message, messageType, messageId);
+          
         default:
           // Handle unknown intent with helpful response
           if (intentAnalysis.intent === 'unknown') {
@@ -4338,6 +4344,98 @@ class MessageProcessor {
       await whatsappService.sendTextMessage(
         user.whatsappNumber,
         '❌ An error occurred processing your transfer. Please try again later.'
+      );
+    }
+  }
+
+  /**
+   * Handle PIN disable intent
+   */
+  async handleDisablePinIntent(user, message, messageType, messageId = null) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "I'd love to help you with PIN settings! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for PIN disable intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
+      return;
+    }
+
+    try {
+      const aiAssistant = require('./aiAssistant');
+      const result = await aiAssistant.handleDisablePin(user);
+      
+      if (result && result.message) {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
+      }
+      
+      logger.info('PIN disable intent handled successfully', { userId: user.id });
+    } catch (error) {
+      logger.error('Failed to handle PIN disable intent', { 
+        error: error.message, 
+        userId: user.id 
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        '❌ An error occurred while processing your PIN disable request. Please try again later.'
+      );
+    }
+  }
+
+  /**
+   * Handle PIN enable intent
+   */
+  async handleEnablePinIntent(user, message, messageType, messageId = null) {
+    if (user.onboardingStep !== 'completed') {
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "I'd love to help you with PIN settings! Let me get your account set up first - it's quick and easy.");
+      
+      // Start onboarding flow immediately
+      try {
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        logger.info('Started onboarding flow for PIN enable intent', { userId: user.id });
+      } catch (onboardingError) {
+        logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+      }
+      return;
+    }
+
+    try {
+      const aiAssistant = require('./aiAssistant');
+      const result = await aiAssistant.handleEnablePin(user);
+      
+      if (result && result.message) {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
+      }
+      
+      logger.info('PIN enable intent handled successfully', { userId: user.id });
+    } catch (error) {
+      logger.error('Failed to handle PIN enable intent', { 
+        error: error.message, 
+        userId: user.id 
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(
+        user.whatsappNumber,
+        '❌ An error occurred while processing your PIN enable request. Please try again later.'
       );
     }
   }
