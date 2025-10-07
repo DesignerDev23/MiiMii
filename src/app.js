@@ -17,6 +17,7 @@ const { sequelize, databaseManager } = require('./database/connection');
 const redisClient = require('./utils/redis');
 const errorHandler = require('./middleware/errorHandler');
 const { testSSLConnections } = require('./utils/sslTest');
+const { initializeDataPlans } = require('./database/self-healing-tables');
 
 // Import models to ensure they are registered with Sequelize
 require('./models');
@@ -38,6 +39,7 @@ const userRoutes = require('./routes/user');
 const bankTransferRoutes = require('./routes/bankTransfer');
 const virtualCardRoutes = require('./routes/virtualCard');
 const beneficiaryRoutes = require('./routes/beneficiary');
+const dataPlanRoutes = require('./routes/dataPlans');
 const testRoutes = require('./routes/test');
 const testWhatsAppRoutes = require('./routes/testWhatsApp');
 
@@ -291,6 +293,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/bank-transfer', bankTransferRoutes);
 app.use('/api/virtual-cards', virtualCardRoutes);
 app.use('/api/beneficiaries', beneficiaryRoutes);
+app.use('/api/data-plans', dataPlanRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/test-whatsapp', testWhatsAppRoutes);
 
@@ -412,6 +415,13 @@ async function initializeDatabaseConnection() {
     // Sync database models only after successful connection
     await sequelize.sync({ force: false, alter: false });
     logger.info('✅ Database models synchronized');
+    
+    // Initialize data plans system
+    try {
+      await initializeDataPlans();
+    } catch (error) {
+      logger.error('❌ Failed to initialize data plans system:', { error: error.message });
+    }
     
     // Self-healing: attempt to add missing columns if they don't exist (async, non-blocking)
     setTimeout(async () => {

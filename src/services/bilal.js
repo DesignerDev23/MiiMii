@@ -8,6 +8,7 @@ const feesService = require('./fees');
 const RetryHelper = require('../utils/retryHelper');
 const { ActivityLog } = require('../models');
 const receiptService = require('./receipt');
+const dataPlanService = require('./dataPlanService');
 
 class BilalService {
   constructor() {
@@ -969,45 +970,35 @@ class BilalService {
     return cableMap[provider.toUpperCase()] || null;
   }
 
-  // Get data plans for a specific network
+  // Get data plans for a specific network from database
   async getDataPlans(networkName) {
     try {
-      // For now, return common plans as per BILALSADASUB documentation
-      // In a real implementation, this would be fetched from their API
-      const commonPlans = {
-        'MTN': [
-          { id: 1, dataplan: '500MB', amount: '420', validity: '30days to 7days' },
-          { id: 2, dataplan: '1GB', amount: '620', validity: '30 days' },
-          { id: 3, dataplan: '2GB', amount: '1400', validity: 'Monthly' },
-          { id: 4, dataplan: '3GB', amount: '2200', validity: '30days' },
-          { id: 5, dataplan: '5GB', amount: '4500', validity: '30days' }
-        ],
-        'GLO': [
-          { id: 1, dataplan: '500MB', amount: '400', validity: '30 days' },
-          { id: 2, dataplan: '1GB', amount: '600', validity: '30 days' },
-          { id: 3, dataplan: '2GB', amount: '1200', validity: '30 days' },
-          { id: 4, dataplan: '3GB', amount: '1800', validity: '30 days' },
-          { id: 5, dataplan: '5GB', amount: '3000', validity: '30 days' }
-        ],
-        'AIRTEL': [
-          { id: 1, dataplan: '500MB', amount: '450', validity: '30 days' },
-          { id: 2, dataplan: '1GB', amount: '650', validity: '30 days' },
-          { id: 3, dataplan: '2GB', amount: '1300', validity: '30 days' },
-          { id: 4, dataplan: '3GB', amount: '1950', validity: '30 days' },
-          { id: 5, dataplan: '5GB', amount: '3250', validity: '30 days' }
-        ],
-        '9MOBILE': [
-          { id: 1, dataplan: '500MB', amount: '500', validity: '30 days' },
-          { id: 2, dataplan: '1GB', amount: '700', validity: '30 days' },
-          { id: 3, dataplan: '2GB', amount: '1400', validity: '30 days' },
-          { id: 4, dataplan: '3GB', amount: '2100', validity: '30 days' },
-          { id: 5, dataplan: '5GB', amount: '3500', validity: '30 days' }
-        ]
-      };
+      logger.info('Fetching data plans from database', { network: networkName });
+      
+      // Get plans from database
+      const plans = await dataPlanService.getDataPlansByNetwork(networkName);
+      
+      // Format plans for WhatsApp display
+      const formattedPlans = plans.map(plan => ({
+        id: plan.apiPlanId || plan.id,
+        dataplan: plan.dataSize,
+        amount: plan.sellingPrice.toString(),
+        validity: plan.validity,
+        title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
+        description: plan.validity,
+        retailPrice: plan.retailPrice,
+        sellingPrice: plan.sellingPrice,
+        planType: plan.planType
+      }));
 
-      return commonPlans[networkName.toUpperCase()] || commonPlans['MTN'];
+      logger.info(`Retrieved ${formattedPlans.length} data plans for ${networkName}`, {
+        network: networkName,
+        plansCount: formattedPlans.length
+      });
+
+      return formattedPlans;
     } catch (error) {
-      logger.error('Failed to get data plans', { error: error.message, networkName });
+      logger.error('Failed to get data plans from database', { error: error.message, networkName });
       throw error;
     }
   }

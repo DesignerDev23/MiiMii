@@ -11,6 +11,7 @@ const SupportTicket = require('./SupportTicket');
 const KVStore = require('./KVStore');
 const WebhookLog = require('./WebhookLog');
 const ActivityLog = require('./ActivityLog');
+const DataPlan = require('./DataPlan');
 
 // Define relationships
 // User relationships
@@ -145,5 +146,6 @@ module.exports = {
   SupportTicket,
   WebhookLog,
   ActivityLog,
-  KVStore
+  KVStore,
+  DataPlan
 };
