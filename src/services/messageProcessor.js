@@ -1061,6 +1061,45 @@ class MessageProcessor {
           }
           
           if (isConfirmed) {
+            // Check PIN status first - if disabled, process transfer directly
+            const userService = require('./user');
+            const pinStatus = await userService.getPinStatus(user.id);
+            
+            if (!pinStatus.pinEnabled) {
+              // PIN is disabled - process transfer directly without PIN verification
+              logger.info('PIN is disabled for user, processing transfer directly', {
+                userId: user.id,
+                pinEnabled: pinStatus.pinEnabled
+              });
+              
+              try {
+                const bankTransferService = require('./bankTransfer');
+                const transferData = {
+                  accountNumber: state.data.accountNumber,
+                  bankCode: state.data.bankCode,
+                  amount: state.data.amount,
+                  narration: state.data.narration || 'Wallet transfer',
+                  reference: state.data.reference
+                };
+                
+                const result = await bankTransferService.processBankTransfer(user.id, transferData, '0000'); // Dummy PIN
+                
+                if (result.success) {
+                  const successMessage = `✅ *Transfer Successful!*\n\n💰 Amount: ₦${state.data.amount}\n👤 Recipient: ${state.data.recipientName}\n🏦 Bank: ${state.data.bankName}\n📋 Account: ${state.data.accountNumber}\n📋 Reference: ${result.transaction?.reference}\n\n🔓 Transaction completed (PIN disabled)`;
+                  await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+                } else {
+                  await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Please try again later.'}`);
+                }
+              } catch (error) {
+                logger.error('Transfer failed when PIN disabled', { error: error.message, userId: user.id });
+                await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${error.message || 'Please try again later.'}`);
+              }
+              
+              await user.clearConversationState();
+              return;
+            }
+            
+            // PIN is enabled - proceed with PIN verification flow
             // Preserve existing data and only update awaitingInput
             const updatedState = { 
               ...state,
