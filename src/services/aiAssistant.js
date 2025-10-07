@@ -1971,18 +1971,9 @@ Extract intent and data from this message. Consider the user context and any ext
               }
             }
 
-            // Allowed plans (provider IDs) per network as requested
-            const ALLOWED_PLAN_IDS = {
-              MTN: [1, 2, 3, 4, 5, 6],
-              AIRTEL: [7, 8, 9, 10],
-              GLO: [11, 12, 13, 14, 15],
-              '9MOBILE': [25, 27, 28, 46, 47, 48, 49, 50, 51, 52]
-            };
-
-            // Get plans with admin-set pricing
+            // Get plans with admin-set pricing from database
             const dataService = require('./data');
-            const allPlans = await dataService.getDataPlans(network);
-            const plans = allPlans.filter(p => ALLOWED_PLAN_IDS[network]?.includes(p.id));
+            const plans = await dataService.getDataPlans(network);
 
             if (!plans.length) {
               await whatsappService.sendTextMessage(user.whatsappNumber, 'No plans available for the selected network. Please try another network.');
