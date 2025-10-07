@@ -2514,17 +2514,44 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
       };
     }
 
-    // If no data plan selected yet, just return to the same screen
+    // If no data plan selected yet, get available plans and return to the same screen
     if (!dataPlan) {
-      logger.info('No data plan selected yet, staying on DATA_PLAN_SELECTION_SCREEN', {
+      logger.info('No data plan selected yet, getting available plans for DATA_PLAN_SELECTION_SCREEN', {
         userId: userId || 'unknown',
         network
       });
 
-      return {
-        screen: 'DATA_PLAN_SELECTION_SCREEN',
-        data: {}
-      };
+      try {
+        // Get available data plans for the network
+        const availablePlans = await getDataPlansForNetwork(network);
+        
+        if (availablePlans.length === 0) {
+          return {
+            screen: 'NETWORK_SELECTION_SCREEN',
+            data: {
+              error: 'No data plans available for this network.',
+              message: 'Please try a different network'
+            }
+          };
+        }
+
+        return {
+          screen: 'DATA_PLAN_SELECTION_SCREEN',
+          data: {
+            plans: availablePlans,
+            network: network
+          }
+        };
+      } catch (error) {
+        logger.error('Failed to get data plans for network', { error: error.message, network });
+        return {
+          screen: 'NETWORK_SELECTION_SCREEN',
+          data: {
+            error: 'Failed to load data plans. Please try again.',
+            message: 'Please select a network again'
+          }
+        };
+      }
     }
 
     // Validate data plan
