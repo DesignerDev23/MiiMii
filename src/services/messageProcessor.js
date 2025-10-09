@@ -2031,6 +2031,19 @@ class MessageProcessor {
 
   async handleCompletedUserMessage(user, message, messageType) {
     try {
+      // Check if user needs onboarding FIRST - before processing any message
+      if (user.onboardingStep !== 'completed') {
+        logger.info('New user detected - routing to onboarding flow', {
+          userId: user.id,
+          whatsappNumber: user.whatsappNumber,
+          onboardingStep: user.onboardingStep,
+          messageType
+        });
+        
+        const userName = user.firstName || user.lastName || user.fullName || 'there';
+        return await this.sendOnboardingFlow(user, userName);
+      }
+      
       // Get user's name for personalization
       const userName = user.firstName || user.lastName || 'there';
       
