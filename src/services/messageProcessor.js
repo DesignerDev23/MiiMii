@@ -117,7 +117,6 @@ class MessageProcessor {
             });
             
             // Try to get session using session manager with feature isolation
-            const sessionManager = require('../utils/sessionManager');
             
             // Try onboarding feature first (most likely for PIN completion)
             session = await sessionManager.getSession('onboarding', flowToken, 'flow');
@@ -256,7 +255,6 @@ class MessageProcessor {
               // Clean up using session manager
               try { 
                 if (flowToken) {
-                  const sessionManager = require('../utils/sessionManager');
                   await sessionManager.deleteSession('onboarding', flowToken, 'flow');
                   // Also try fallback cleanup
                   await redisClient.deleteSession(flowToken);
@@ -327,7 +325,6 @@ class MessageProcessor {
               // Clean up Redis session using session manager
               try { 
                 if (flowToken) {
-                  const sessionManager = require('../utils/sessionManager');
                   await sessionManager.deleteSession('transfer', flowToken, 'flow');
                   // Also try fallback cleanup
                   await redisClient.deleteSession(flowToken);
@@ -462,7 +459,6 @@ class MessageProcessor {
               // Clean up using session manager
               try { 
                 if (flowToken) {
-                  const sessionManager = require('../utils/sessionManager');
                   await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
                   // Also try fallback cleanup
                   await redisClient.deleteSession(flowToken);
@@ -614,7 +610,6 @@ class MessageProcessor {
               // Try to get session using session manager first
               let session = null;
               if (flowToken) {
-                const sessionManager = require('../utils/sessionManager');
                 session = await sessionManager.getSession('transfer', flowToken, 'flow');
                 if (!session) {
                   session = await sessionManager.getSession('data_purchase', flowToken, 'flow');
@@ -655,7 +650,6 @@ class MessageProcessor {
 
               try { 
                 if (flowToken) {
-                  const sessionManager = require('../utils/sessionManager');
                   await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
                   await redisClient.deleteSession(flowToken);
                 }
@@ -816,7 +810,6 @@ class MessageProcessor {
               // Clean up using session manager
               try { 
                 if (flowToken) {
-                  const sessionManager = require('../utils/sessionManager');
                   await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
                   // Also try fallback cleanup
                   await redisClient.deleteSession(flowToken);
@@ -1035,12 +1028,10 @@ class MessageProcessor {
             const sessionId = user.conversationState?.data?.sessionId;
             const flowToken = user.conversationState?.data?.flowToken;
             if (sessionId) {
-              const sessionManager = require('../utils/sessionManager');
               await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
               await redisClient.deleteSession(sessionId);
             }
             if (flowToken) {
-              const sessionManager = require('../utils/sessionManager');
               await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
               await redisClient.deleteSession(flowToken);
             }
@@ -1277,7 +1268,6 @@ class MessageProcessor {
             const sessionKey = flowToken;
             
             try {
-              const sessionManager = require('../utils/sessionManager');
               const feature = sessionData.context === 'transfer_pin_verification' ? 'transfer' : 'data_purchase';
               const stored = await sessionManager.setSession(feature, sessionKey, sessionData, 1800, 'flow');
               logger.info('Flow session stored in Redis with feature isolation', { 
@@ -2199,7 +2189,6 @@ class MessageProcessor {
                 try {
                   const redisClient = require('../utils/redis');
                   const sessionId = `data:${user.id}:${Date.now()}`;
-                  const sessionManager = require('../utils/sessionManager');
                   await sessionManager.setSession('data_purchase', sessionId, {
                     id: sessionId,
                     userId: user.id,
@@ -2489,7 +2478,6 @@ class MessageProcessor {
         // First try transfer PIN flow using stored session
         try {
           const redisClient = require('../utils/redis');
-          const sessionManager = require('../utils/sessionManager');
           let transferSession = await sessionManager.getSession('transfer', flowToken, 'flow');
           if (!transferSession) {
             // Fallback to direct Redis lookup
@@ -2518,7 +2506,6 @@ class MessageProcessor {
                 hasTransferData: !!transferSession.transferData
               });
               await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer details not found. Please start the transfer again.');
-              const sessionManager = require('../utils/sessionManager');
               await sessionManager.deleteSession('transfer', flowToken, 'flow');
               await redisClient.deleteSession(flowToken);
               return;
@@ -2536,7 +2523,6 @@ class MessageProcessor {
               await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Transfer failed. Please try again.');
             } finally {
               try { 
-                const sessionManager = require('../utils/sessionManager');
                 await sessionManager.deleteSession('transfer', flowToken, 'flow');
                 await redisClient.deleteSession(flowToken);
               } catch (_) {}
@@ -2551,7 +2537,6 @@ class MessageProcessor {
         // Check if this is a data purchase flow by looking at session data
         try {
           const redisClient = require('../utils/redis');
-          const sessionManager = require('../utils/sessionManager');
           let session = await sessionManager.getSession('data_purchase', flowToken, 'flow');
           if (!session) {
             // Fallback to direct Redis lookup
@@ -4001,7 +3986,6 @@ class MessageProcessor {
         data: {},
         createdAt: Date.now()
       };
-      const sessionManager = require('../utils/sessionManager');
       await sessionManager.setSession('data_purchase', sessionId, session, 900, 'flow'); // 15 mins TTL
 
       // Store conversation state to expect network selection next and tie to session

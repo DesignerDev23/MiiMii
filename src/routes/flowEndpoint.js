@@ -649,7 +649,6 @@ async function handleNavigateAction(screen, data, tokenData, flowToken = null) {
         const redisClient = require('../utils/redis');
         
         // Get existing session data using session manager
-        const sessionManager = require('../utils/sessionManager');
         let sessionData = await sessionManager.getSession('transfer', sessionKey, 'flow') || {};
         
         // Merge new data with existing session data
@@ -670,7 +669,6 @@ async function handleNavigateAction(screen, data, tokenData, flowToken = null) {
         }
         
         // Store updated session data with feature isolation
-        const sessionManager = require('../utils/sessionManager');
         await sessionManager.setSession('transfer', sessionKey, sessionData, 1800, 'flow');
         
         logger.info('Navigation data stored in session with feature isolation', {
@@ -844,7 +842,6 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
             // Try redis lookup with flow token using session manager for feature isolation
         if (!userId && flowToken) {
           try {
-            const sessionManager = require('../utils/sessionManager');
             
             // Try to determine feature type from token or context
             let feature = 'onboarding'; // Default to onboarding for flow endpoint
@@ -1550,7 +1547,6 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
     };
     
     // Store in Redis for background processing with feature isolation (5 minute TTL)
-    const sessionManager = require('../utils/sessionManager');
     const processingKey = `data_purchase_processing:${user.id}:${Date.now()}`;
     await sessionManager.setSession('data_purchase', processingKey, processingData, 300, 'processing');
     
@@ -1567,7 +1563,6 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       // Clean up flow session
       if (flowToken) {
         try {
-          const sessionManager = require('../utils/sessionManager');
           await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken); // Use the same format as storage
           logger.info('Flow session cleaned up successfully', { flowToken });
@@ -1692,7 +1687,6 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
     
     // Clean up processing data
     const redisClient = require('../utils/redis');
-    const sessionManager = require('../utils/sessionManager');
     await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
     await redisClient.deleteSession(processingKey);
     
@@ -1725,7 +1719,6 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
     // Clean up processing data
     try {
       const redisClient = require('../utils/redis');
-      const sessionManager = require('../utils/sessionManager');
     await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
     await redisClient.deleteSession(processingKey);
     } catch (cleanupError) {
@@ -2214,7 +2207,6 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     };
     
     // Store in Redis for background processing with feature isolation (5 minute TTL)
-    const sessionManager = require('../utils/sessionManager');
     const processingKey = `transfer_processing:${user.id}:${Date.now()}`;
     await sessionManager.setSession('transfer', processingKey, processingData, 300, 'processing');
     
@@ -2231,7 +2223,6 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     // Clean up flow session
         if (flowToken) {
           try {
-            const sessionManager = require('../utils/sessionManager');
             await sessionManager.deleteSession('transfer', flowToken, 'flow');
             await redisClient.deleteSession(flowToken);
             logger.info('Flow session cleaned up successfully', { flowToken });
@@ -2368,7 +2359,6 @@ async function processTransferInBackground(processingKey, processingData) {
     
     // Clean up processing data
     const redisClient = require('../utils/redis');
-    const sessionManager = require('../utils/sessionManager');
     await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
     await redisClient.deleteSession(processingKey);
     
@@ -2401,7 +2391,6 @@ async function processTransferInBackground(processingKey, processingData) {
     // Clean up processing data
     try {
       const redisClient = require('../utils/redis');
-      const sessionManager = require('../utils/sessionManager');
     await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
     await redisClient.deleteSession(processingKey);
     } catch (cleanupError) {
@@ -2442,7 +2431,6 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
         const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with using session manager
-        const sessionManager = require('../utils/sessionManager');
         const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new network data
@@ -2451,7 +2439,6 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
           network 
         };
         
-        const sessionManager = require('../utils/sessionManager');
         await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
         logger.info('Network selection stored in session with feature isolation', { 
           flowToken, 
@@ -2529,7 +2516,6 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
         const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with using session manager
-        const sessionManager = require('../utils/sessionManager');
         const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new phone data
@@ -2539,7 +2525,6 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
           phoneNumber 
         };
         
-        const sessionManager = require('../utils/sessionManager');
         await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
         logger.info('Phone number stored in session with feature isolation', { 
           flowToken, 
@@ -2676,7 +2661,6 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
         const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with using session manager
-        const sessionManager = require('../utils/sessionManager');
         const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new data plan data
@@ -2687,7 +2671,6 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
           dataPlan: selectedPlan.id 
         };
         
-        const sessionManager = require('../utils/sessionManager');
         await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
         logger.info('Data plan selection stored in session with feature isolation', { 
           flowToken, 
@@ -2833,7 +2816,6 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
         const sessionKey = flowToken; // Use the same format as storage
         
         // Get existing session data to merge with using session manager
-        const sessionManager = require('../utils/sessionManager');
         const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new confirmation data
@@ -2845,7 +2827,6 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
           confirm: 'yes' 
         };
         
-        const sessionManager = require('../utils/sessionManager');
         await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
         logger.info('Purchase confirmation stored in session with feature isolation', { 
           flowToken, 
@@ -3010,7 +2991,6 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
         if (result.success) {
           logger.info('Airtime purchase successful via PIN flow', { userId, amount: sessionData.amount });
           // Clear session and conversation state
-          const sessionManager = require('../utils/sessionManager');
           await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken);
           await user.clearConversationState();
@@ -3034,7 +3014,6 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
         if (result.success) {
           logger.info('Data purchase successful via PIN flow', { userId, plan: sessionData.dataPlan?.dataplan, network: sessionData.network });
           // Clear session and conversation state
-          const sessionManager = require('../utils/sessionManager');
           await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken);
           await user.clearConversationState();
@@ -3070,7 +3049,6 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
         if (result.success) {
           logger.info('Bill payment successful via PIN flow', { userId, amount: sessionData.amount, provider: sessionData.provider });
           // Clear session and conversation state
-          const sessionManager = require('../utils/sessionManager');
           await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken);
           await user.clearConversationState();
