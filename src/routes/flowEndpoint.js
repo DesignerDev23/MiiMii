@@ -768,9 +768,63 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
 
       try {
         const onboardingService = require('../services/onboarding');
-        const result = await onboardingService.processOnboardingFlowData(data, tokenData.sessionData.phoneNumber);
+        const userService = require('../services/user');
+        const walletService = require('../services/wallet');
         
-        if (result.success) {
+        // Get user
+        const user = await userService.getUserByWhatsappNumber(tokenData.sessionData.phoneNumber);
+        if (!user) {
+          return {
+            screen: 'ERROR_SCREEN',
+            data: {
+              error: 'User not found. Please try again.',
+              code: 'USER_NOT_FOUND'
+            }
+          };
+        }
+
+        // Extract PIN from data
+        const pin = data.screen_3_4Digit_PIN_0 || data.pin;
+        if (!pin || !/^\d{4}$/.test(pin)) {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: 'Please enter a valid 4-digit PIN.',
+              message: 'PIN must be exactly 4 digits'
+            }
+          };
+        }
+
+        // Check if user has all required data from session
+        const sessionUserData = tokenData.sessionData.userData || {};
+        const hasRequiredData = sessionUserData.firstName && sessionUserData.lastName && sessionUserData.bvn && 
+                               sessionUserData.gender && sessionUserData.dateOfBirth;
+
+        if (!hasRequiredData) {
+          // Update user with session data if missing
+          if (sessionUserData.firstName || sessionUserData.lastName || sessionUserData.bvn || 
+              sessionUserData.gender || sessionUserData.dateOfBirth) {
+            await user.update({
+              firstName: sessionUserData.firstName || user.firstName,
+              lastName: sessionUserData.lastName || user.lastName,
+              middleName: sessionUserData.middleName || user.middleName,
+              address: sessionUserData.address || user.address,
+              gender: sessionUserData.gender || user.gender,
+              dateOfBirth: sessionUserData.dateOfBirth || user.dateOfBirth,
+              bvn: sessionUserData.bvn || user.bvn,
+              bvnVerified: sessionUserData.bvnVerified || user.bvnVerified
+            });
+          }
+        }
+
+        // Set PIN and complete onboarding
+        await userService.setUserPin(user.id, pin);
+        await user.update({ onboardingStep: 'completed' });
+
+        // Create virtual account
+        const virtualAccountResult = await walletService.createVirtualAccountForWallet(user.id);
+        
+        if (virtualAccountResult.success) {
           // Clear the session
           await sessionManager.deleteSession('onboarding', flowToken, 'flow');
           
@@ -778,16 +832,21 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
             screen: 'COMPLETION_SCREEN',
             data: {
               success: true,
-              message: '🎉 Welcome to MiiMii! Your account has been set up successfully. You can now enjoy all our services!',
-              onboarding_completed: true
+              message: `🎉 Welcome to MiiMii! Your account has been set up successfully!\n\n💳 Account Number: ${virtualAccountResult.accountNumber}\n🏦 Bank: ${virtualAccountResult.bankName || 'Rubies MFB'}\n👤 Account Name: ${virtualAccountResult.accountName}\n\nYou can now enjoy all our services!`,
+              onboarding_completed: true,
+              accountDetails: {
+                accountNumber: virtualAccountResult.accountNumber,
+                accountName: virtualAccountResult.accountName,
+                bankName: virtualAccountResult.bankName || 'Rubies MFB'
+              }
             }
           };
         } else {
           return {
-            screen: 'PIN_VERIFICATION_SCREEN',
+            screen: 'ERROR_SCREEN',
             data: {
-              error: result.error || 'PIN setup failed. Please try again.',
-              message: result.error || 'PIN setup failed. Please try again.'
+              error: 'Failed to create virtual account. Please contact support.',
+              code: 'ACCOUNT_CREATION_FAILED'
             }
           };
         }
@@ -1262,6 +1321,36 @@ async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
       logger.warn('Failed to persist personal details from flow', { error: persistErr.message });
     }
 
+    // Store session data for onboarding flow completion
+    try {
+      const flowToken = tokenData.token || tokenData.flowToken;
+      if (flowToken && (userId || phoneNumber)) {
+        const sessionData = {
+          userId: userId || null,
+          phoneNumber: phoneNumber || null,
+          context: 'onboarding',
+          step: 'personal_details',
+          userData: {
+            firstName,
+            lastName,
+            middleName: middleName || null,
+            address,
+            gender: parsedGender === 'female' ? 'female' : 'male',
+            dateOfBirth: parsedDate
+          }
+        };
+        
+        await sessionManager.setSession('onboarding', flowToken, sessionData, 1800, 'flow');
+        logger.info('Personal details session stored for onboarding flow', { 
+          flowToken: flowToken.substring(0, 20) + '...',
+          userId: userId || 'unknown',
+          phoneNumber: phoneNumber || 'unknown'
+        });
+      }
+    } catch (sessionErr) {
+      logger.warn('Failed to store personal details session', { error: sessionErr.message });
+    }
+
     logger.info('Personal details received from Flow', {
       userId: userId || 'unknown',
       flowId: tokenData.flowId || 'unknown',
@@ -1375,6 +1464,32 @@ async function handleBvnVerificationScreen(data, userId, tokenData = {}) {
           bvnMasked: `***${bvn.slice(-4)}`,
           responseCode: bvnValidationResult.responseCode
         });
+
+        // Update session data with BVN information
+        try {
+          const flowToken = tokenData.token || tokenData.flowToken;
+          if (flowToken) {
+            const existingSession = await sessionManager.getSession('onboarding', flowToken, 'flow') || {};
+            const updatedSession = {
+              ...existingSession,
+              step: 'bvn_verification',
+              userData: {
+                ...existingSession.userData,
+                bvn: bvn,
+                bvnVerified: true,
+                bvnVerificationDate: new Date()
+              }
+            };
+            
+            await sessionManager.setSession('onboarding', flowToken, updatedSession, 1800, 'flow');
+            logger.info('BVN verification session updated for onboarding flow', { 
+              flowToken: flowToken.substring(0, 20) + '...',
+              userId: userId || 'unknown'
+            });
+          }
+        } catch (sessionErr) {
+          logger.warn('Failed to update BVN verification session', { error: sessionErr.message });
+        }
 
         return {
           screen: 'screen_wkunnj',
