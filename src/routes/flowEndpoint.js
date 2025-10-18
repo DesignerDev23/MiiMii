@@ -938,10 +938,23 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
       userId = userId.toString ? userId.toString() : JSON.stringify(userId);
     }
     
+    // If userId is still null, try to extract it from the flow token
+    if (!userId && flowToken && flowToken.includes('.')) {
+      const parts = flowToken.split('.');
+      if (parts.length >= 1) {
+        const extractedUserId = parts[0];
+        if (extractedUserId && extractedUserId.length > 10) { // Basic UUID validation
+          userId = extractedUserId;
+          logger.info('Extracted userId from flow token', { userId });
+        }
+      }
+    }
+    
     logger.info('Processed userId for data exchange', {
       userId,
       userIdType: typeof userId,
-      originalUserId: tokenData.userId
+      originalUserId: tokenData.userId,
+      extractedFromToken: !tokenData.userId && userId
     });
     
             // Try redis lookup with flow token using session manager for feature isolation

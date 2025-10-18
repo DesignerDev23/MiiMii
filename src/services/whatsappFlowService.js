@@ -37,10 +37,22 @@ class WhatsAppFlowService {
         };
       }
 
-      // Support our own signed token format: userId.timestamp.signature
+      // Support our own signed token format: userId.timestamp.default.signature
       if (token.includes('.')) {
         const parts = token.split('.');
-        if (parts.length === 3) {
+        if (parts.length === 4) {
+          const [userId, timestamp, defaultPart, signature] = parts;
+          const expectedSignature = this.generateSignature(userId, timestamp);
+          if (signature === expectedSignature) {
+            return {
+              valid: true,
+              token,
+              source: 'miimii_signed_token',
+              userId,
+              issuedAt: Number(timestamp)
+            };
+          }
+        } else if (parts.length === 3) {
           const [userId, timestamp, signature] = parts;
           const expectedSignature = this.generateSignature(userId, timestamp);
           if (signature === expectedSignature) {

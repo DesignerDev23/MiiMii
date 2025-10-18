@@ -221,35 +221,79 @@ class MessageProcessor {
               userHasPin: !!user.pin
             });
 
-            // Handle onboarding flow completion
+            // Handle onboarding flow completion using session data
             try {
-              const onboardingService = require('./onboarding');
+              const userService = require('./user');
+              const walletService = require('./wallet');
               
-              // Process the complete onboarding flow data
-              const result = await onboardingService.processOnboardingFlowData(
-                flowCompletionData.data,
-                user.whatsappNumber
-              );
+              // Extract PIN from data
+              const pin = flowCompletionData.data.screen_3_4Digit_PIN_0 || flowCompletionData.data.pin;
+              if (!pin || !/^\d{4}$/.test(pin)) {
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  '❌ Please enter a valid 4-digit PIN.'
+                );
+                return;
+              }
 
-              if (result.success) {
-                // Success - onboarding completed
-                logger.info('Onboarding completed successfully', { 
-                  userId: user.id,
-                  hasAccountDetails: !!result.accountDetails
+              // Get session data for user information
+              const sessionUserData = session.userData || {};
+              logger.info('Processing onboarding with session data', {
+                userId: user.id,
+                hasSessionData: !!sessionUserData,
+                sessionDataKeys: Object.keys(sessionUserData),
+                hasFirstName: !!sessionUserData.firstName,
+                hasLastName: !!sessionUserData.lastName,
+                hasBvn: !!sessionUserData.bvn
+              });
+
+              // Update user with session data if missing
+              if (sessionUserData.firstName || sessionUserData.lastName || sessionUserData.bvn || 
+                  sessionUserData.gender || sessionUserData.dateOfBirth) {
+                await user.update({
+                  firstName: sessionUserData.firstName || user.firstName,
+                  lastName: sessionUserData.lastName || user.lastName,
+                  middleName: sessionUserData.middleName || user.middleName,
+                  address: sessionUserData.address || user.address,
+                  gender: sessionUserData.gender || user.gender,
+                  dateOfBirth: sessionUserData.dateOfBirth || user.dateOfBirth,
+                  bvn: sessionUserData.bvn || user.bvn,
+                  bvnVerified: sessionUserData.bvnVerified || user.bvnVerified
                 });
                 
-                // The onboarding service already sends the welcome message
-                // No need to send additional messages here
+                logger.info('User updated with session data', {
+                  userId: user.id,
+                  updatedFields: Object.keys(sessionUserData)
+                });
+              }
+
+              // Set PIN and complete onboarding
+              await userService.setUserPin(user.id, pin);
+              await user.update({ onboardingStep: 'completed' });
+
+              // Create virtual account
+              const virtualAccountResult = await walletService.createVirtualAccountForWallet(user.id);
+              
+              if (virtualAccountResult.success) {
+                logger.info('Onboarding completed successfully', { 
+                  userId: user.id,
+                  hasAccountDetails: !!virtualAccountResult.accountNumber
+                });
+                
+                // Send success message with account details
+                await whatsappService.sendTextMessage(
+                  user.whatsappNumber,
+                  `🎉 Welcome to MiiMii! Your account has been set up successfully!\n\n💳 Account Number: ${virtualAccountResult.accountNumber}\n🏦 Bank: ${virtualAccountResult.bankName || 'Rubies MFB'}\n👤 Account Name: ${virtualAccountResult.accountName}\n\nYou can now enjoy all our services!`
+                );
               } else {
-                // Error in onboarding
-                logger.error('Onboarding completion failed', { 
-                  userId: user.id, 
-                  error: result.error 
+                logger.error('Virtual account creation failed', { 
+                  userId: user.id,
+                  error: virtualAccountResult.error
                 });
                 
                 await whatsappService.sendTextMessage(
                   user.whatsappNumber,
-                  `❌ ${result.error || 'Account setup failed. Please try again.'}`
+                  '❌ Account setup completed but virtual account creation failed. Please contact support.'
                 );
               }
 
