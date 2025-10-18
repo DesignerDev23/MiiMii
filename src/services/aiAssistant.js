@@ -1748,15 +1748,16 @@ Extract intent and data from this message. Consider the user context and any ext
         ...transactionData
       };
       
-      logger.info('Storing airtime session in Redis', {
+      logger.info('Storing airtime session with feature isolation', {
         flowToken,
         sessionData: flowSession,
         userId: user.id
       });
       
-      await redisClient.setSession(flowToken, flowSession, 900);
+      const sessionManager = require('../utils/sessionManager');
+      await sessionManager.setSession('airtime', flowToken, flowSession, 900, 'flow');
       
-      logger.info('Airtime session stored successfully', {
+      logger.info('Airtime session stored successfully with feature isolation', {
         flowToken,
         sessionKeys: Object.keys(flowSession)
       });
@@ -2003,9 +2004,13 @@ Extract intent and data from this message. Consider the user context and any ext
       try {
         const redisClient = require('../utils/redis');
         if (conversationState.data?.sessionId) {
+          const sessionManager = require('../utils/sessionManager');
+          await sessionManager.deleteSession('data_purchase', conversationState.data.sessionId, 'flow');
           await redisClient.deleteSession(conversationState.data.sessionId);
         }
         if (conversationState.data?.flowToken) {
+          const sessionManager = require('../utils/sessionManager');
+          await sessionManager.deleteSession('data_purchase', conversationState.data.flowToken, 'flow');
           await redisClient.deleteSession(conversationState.data.flowToken);
         }
       } catch (redisError) {
@@ -2063,11 +2068,13 @@ Extract intent and data from this message. Consider the user context and any ext
             };
             await user.updateConversationState(nextState);
             if (sessionId) {
-              const session = await redisClient.getSession(sessionId);
+              const sessionManager = require('../utils/sessionManager');
+              const session = await sessionManager.getSession('data_purchase', sessionId, 'flow');
               if (session) {
                 session.state = 'select_plan';
                 session.data.network = network;
-                await redisClient.setSession(sessionId, session, 900);
+                const sessionManager = require('../utils/sessionManager');
+                await sessionManager.setSession('data_purchase', sessionId, session, 900, 'flow');
               }
             }
 
@@ -2118,12 +2125,14 @@ Extract intent and data from this message. Consider the user context and any ext
             };
             await user.updateConversationState(nextState2);
             if (sessionId) {
-              const session = await redisClient.getSession(sessionId);
+              const sessionManager = require('../utils/sessionManager');
+              const session = await sessionManager.getSession('data_purchase', sessionId, 'flow');
               if (session) {
                 session.state = 'enter_phone';
                 session.data.network = network;
                 session.data.planId = planId;
-                await redisClient.setSession(sessionId, session, 900);
+                const sessionManager = require('../utils/sessionManager');
+                await sessionManager.setSession('data_purchase', sessionId, session, 900, 'flow');
               }
             }
 
@@ -2151,7 +2160,11 @@ Extract intent and data from this message. Consider the user context and any ext
         // Global CANCEL handling in data flow
         if (/^(cancel|stop|quit|exit|abort|end)$/i.test(raw)) {
           const sessionId = conversationState?.data?.sessionId || null;
-          if (sessionId) await redisClient.deleteSession(sessionId);
+          if (sessionId) {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
+            await redisClient.deleteSession(sessionId);
+          }
           await user.clearConversationState();
           await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
           return;
@@ -2181,11 +2194,13 @@ Extract intent and data from this message. Consider the user context and any ext
         const nextState = { intent: 'data', awaitingInput: 'data_plan', context: 'data_purchase', step: 2, data: { network, sessionId } };
         await user.updateConversationState(nextState);
         if (sessionId) {
-          const session = await redisClient.getSession(sessionId);
+          const sessionManager = require('../utils/sessionManager');
+          const session = await sessionManager.getSession('data_purchase', sessionId, 'flow');
           if (session) {
             session.state = 'select_plan';
             session.data.network = network;
-            await redisClient.setSession(sessionId, session, 900);
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.setSession('data_purchase', sessionId, session, 900, 'flow');
           }
         }
 
@@ -2204,7 +2219,11 @@ Extract intent and data from this message. Consider the user context and any ext
         // Global CANCEL handling in data flow
         if (/^(cancel|stop|quit|exit|abort|end)$/i.test((message || '').trim())) {
           const sessionId = state.sessionId || null;
-          if (sessionId) await redisClient.deleteSession(sessionId);
+          if (sessionId) {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
+            await redisClient.deleteSession(sessionId);
+          }
           await user.clearConversationState();
           await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
           return;
@@ -2264,12 +2283,14 @@ Extract intent and data from this message. Consider the user context and any ext
         const nextState = { intent: 'data', awaitingInput: 'data_phone', context: 'data_purchase', step: 3, data: { network, planId: selectedPlan.id, sessionId } };
         await user.updateConversationState(nextState);
         if (sessionId) {
-          const session = await redisClient.getSession(sessionId);
+          const sessionManager = require('../utils/sessionManager');
+          const session = await sessionManager.getSession('data_purchase', sessionId, 'flow');
           if (session) {
             session.state = 'enter_phone';
             session.data.network = network;
             session.data.planId = selectedPlan.id;
-            await redisClient.setSession(sessionId, session, 900);
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.setSession('data_purchase', sessionId, session, 900, 'flow');
           }
         }
         await whatsappService.sendTextMessage(user.whatsappNumber, 'Enter the recipient phone number (11 digits). Reply "self" to use your WhatsApp number.');
@@ -2284,7 +2305,11 @@ Extract intent and data from this message. Consider the user context and any ext
         // Global CANCEL handling in data flow
         if (/^(cancel|stop|quit|exit|abort|end)$/i.test((message || '').trim())) {
           const sessionId = state.sessionId || null;
-          if (sessionId) await redisClient.deleteSession(sessionId);
+          if (sessionId) {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
+            await redisClient.deleteSession(sessionId);
+          }
           await user.clearConversationState();
           await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
           return;
@@ -2320,11 +2345,13 @@ Extract intent and data from this message. Consider the user context and any ext
         const nextState = { intent: 'data', awaitingInput: 'data_confirm', context: 'data_purchase', step: 4, data: { network, planId, phone, sessionId } };
         await user.updateConversationState(nextState);
         if (sessionId) {
-          const session = await redisClient.getSession(sessionId);
+          const sessionManager = require('../utils/sessionManager');
+          const session = await sessionManager.getSession('data_purchase', sessionId, 'flow');
           if (session) {
             session.state = 'confirm';
             session.data.phone = phone;
-            await redisClient.setSession(sessionId, session, 900);
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.setSession('data_purchase', sessionId, session, 900, 'flow');
           }
         }
 
@@ -2343,7 +2370,11 @@ Extract intent and data from this message. Consider the user context and any ext
         const decisionRaw = (message || '').trim();
         if (/^(cancel|stop|quit|exit|abort|end)$/i.test(decisionRaw)) {
           const sessionId = conversationState?.data?.sessionId || null;
-          if (sessionId) await redisClient.deleteSession(sessionId);
+          if (sessionId) {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
+            await redisClient.deleteSession(sessionId);
+          }
           await user.clearConversationState();
           await whatsappService.sendTextMessage(user.whatsappNumber, '✅ Data purchase cancelled.');
           return;
@@ -2355,7 +2386,11 @@ Extract intent and data from this message. Consider the user context and any ext
         }
         if (decision.startsWith('n')) {
           const sessionId = conversationState?.data?.sessionId || null;
-          if (sessionId) await redisClient.deleteSession(sessionId);
+          if (sessionId) {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
+            await redisClient.deleteSession(sessionId);
+          }
           await user.clearConversationState();
           await whatsappService.sendTextMessage(user.whatsappNumber, 'Cancelled ✅');
           return;
@@ -2397,7 +2432,11 @@ Extract intent and data from this message. Consider the user context and any ext
           }
           
           // Clean up
-          if (sessionId) await redisClient.deleteSession(sessionId);
+          if (sessionId) {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
+            await redisClient.deleteSession(sessionId);
+          }
           await user.clearConversationState();
           return;
         }
@@ -2416,7 +2455,8 @@ Extract intent and data from this message. Consider the user context and any ext
             dataPlan: planId,
             confirm: 'yes'
           };
-          await redisClient.setSession(flowToken, flowSession, 900);
+          const sessionManager = require('../utils/sessionManager');
+          await sessionManager.setSession('data_purchase', flowToken, flowSession, 900, 'flow');
 
           const flowData = {
             flowId: appConfig.getWhatsappConfig().dataPurchaseFlowId,
@@ -2644,7 +2684,11 @@ Extract intent and data from this message. Consider the user context and any ext
           );
           await user.clearConversationState();
           const sessionId = conversationState?.data?.sessionId || null;
-          if (sessionId) await redisClient.deleteSession(sessionId);
+          if (sessionId) {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('data_purchase', sessionId, 'flow');
+            await redisClient.deleteSession(sessionId);
+          }
         } catch (err) {
           await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Data purchase failed: ${err.message}`);
         }
@@ -4068,13 +4112,14 @@ Example:
         action: 'disable_pin'
       };
       
-      logger.info('Storing PIN disable session in Redis', {
+      logger.info('Storing PIN disable session with feature isolation', {
         flowToken,
         sessionData: flowSession,
         userId: user.id
       });
       
-      await redisClient.setSession(flowToken, flowSession);
+      const sessionManager = require('../utils/sessionManager');
+      await sessionManager.setSession('pin_management', flowToken, flowSession, 1800, 'flow');
 
       // Send WhatsApp Flow for PIN verification
       const flowData = {
@@ -4195,13 +4240,14 @@ Example:
         action: 'enable_pin'
       };
       
-      logger.info('Storing PIN enable session in Redis', {
+      logger.info('Storing PIN enable session with feature isolation', {
         flowToken,
         sessionData: flowSession,
         userId: user.id
       });
       
-      await redisClient.setSession(flowToken, flowSession);
+      const sessionManager = require('../utils/sessionManager');
+      await sessionManager.setSession('pin_management', flowToken, flowSession, 1800, 'flow');
 
       // Send WhatsApp Flow for PIN verification
       const flowData = {

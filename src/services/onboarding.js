@@ -137,6 +137,32 @@ class OnboardingService {
         // Send the proper onboarding flow message
         const flowToken = whatsappFlowService.generateFlowToken(user.id);
         
+        // Store session data in Redis with feature isolation
+        try {
+          const sessionManager = require('../utils/sessionManager');
+          const sessionData = {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            context: 'onboarding',
+            step: 'personal_details',
+            flowId: flowId,
+            flowToken: flowToken,
+            userData: {
+              firstName: user.firstName,
+              lastName: user.lastName,
+              whatsappNumber: user.whatsappNumber
+            }
+          };
+          await sessionManager.setSession('onboarding', user.id, sessionData, 1800, 'flow');
+          logger.info('Onboarding session stored with feature isolation', { 
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            flowToken
+          });
+        } catch (error) {
+          logger.warn('Failed to store onboarding session', { error: error.message });
+        }
+        
         const flowData = {
           flowId: flowId,
           flowToken: flowToken,
@@ -194,6 +220,32 @@ class OnboardingService {
         
         // Send the proper onboarding flow message
         const flowToken = whatsappFlowService.generateFlowToken(user.id);
+        
+        // Store session data in Redis with feature isolation
+        try {
+          const sessionManager = require('../utils/sessionManager');
+          const sessionData = {
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            context: 'onboarding',
+            step: 'personal_details',
+            flowId: flowId,
+            flowToken: flowToken,
+            userData: {
+              firstName: user.firstName,
+              lastName: user.lastName,
+              whatsappNumber: user.whatsappNumber
+            }
+          };
+          await sessionManager.setSession('onboarding', user.id, sessionData, 1800, 'flow');
+          logger.info('Onboarding session stored with feature isolation', { 
+            userId: user.id,
+            phoneNumber: user.whatsappNumber,
+            flowToken
+          });
+        } catch (error) {
+          logger.warn('Failed to store onboarding session', { error: error.message });
+        }
         
         const flowData = {
           flowId: flowId,

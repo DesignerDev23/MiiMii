@@ -369,15 +369,15 @@ class WhatsAppService {
       // Generate a secure flow token and persist mapping for this session
       const whatsappFlowService = require('./whatsappFlowService');
       const userService = require('./user');
-      const redisClient = require('../utils/redis');
+      const sessionManager = require('../utils/sessionManager');
       const user = await userService.getUserByWhatsappNumber(to);
       const flowToken = whatsappFlowService.generateFlowToken(user?.id || to);
-      // Store mapping for 30 minutes
+      // Store mapping with feature isolation for 30 minutes
       try {
-        await redisClient.setSession(`flow:${flowToken}`, {
+        await sessionManager.setSession('onboarding', flowToken, {
           userId: user?.id || null,
           phoneNumber: user?.whatsappNumber || to
-        }, 1800);
+        }, 1800, 'flow');
       } catch (_) {}
 
       // Send the welcome flow message

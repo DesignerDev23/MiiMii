@@ -648,8 +648,9 @@ async function handleNavigateAction(screen, data, tokenData, flowToken = null) {
         const sessionKey = flowToken; // Use the same format as other screens
         const redisClient = require('../utils/redis');
         
-        // Get existing session data
-        let sessionData = await redisClient.getSession(sessionKey) || {};
+        // Get existing session data using session manager
+        const sessionManager = require('../utils/sessionManager');
+        let sessionData = await sessionManager.getSession('transfer', sessionKey, 'flow') || {};
         
         // Merge new data with existing session data
         sessionData = { ...sessionData, ...data.data };
@@ -668,10 +669,11 @@ async function handleNavigateAction(screen, data, tokenData, flowToken = null) {
           };
         }
         
-        // Store updated session data
-        await redisClient.setSession(sessionKey, sessionData, 1800);
+        // Store updated session data with feature isolation
+        const sessionManager = require('../utils/sessionManager');
+        await sessionManager.setSession('transfer', sessionKey, sessionData, 1800, 'flow');
         
-        logger.info('Navigation data stored in session', {
+        logger.info('Navigation data stored in session with feature isolation', {
           sessionKey,
           sessionDataKeys: Object.keys(sessionData),
           mergedWithExisting: true
@@ -839,50 +841,70 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
       originalUserId: tokenData.userId
     });
     
-            // Try redis lookup with flow token
+            // Try redis lookup with flow token using session manager for feature isolation
         if (!userId && flowToken) {
           try {
-            const redisClient = require('../utils/redis');
-            const sessionKey = flowToken; // Use the same format as storage
-            logger.info('Looking up session in Redis', { 
-              sessionKey, 
+            const sessionManager = require('../utils/sessionManager');
+            
+            // Try to determine feature type from token or context
+            let feature = 'onboarding'; // Default to onboarding for flow endpoint
+            
+            // Try to extract feature from token if possible
+            if (tokenData.source === 'whatsapp_flow') {
+              // For onboarding flows, use onboarding feature
+              feature = 'onboarding';
+            }
+            
+            logger.info('Looking up session with feature isolation', { 
               flowToken,
-              redisConnected: redisClient.isConnected,
-              redisUseDbFallback: redisClient.useDbFallback
+              feature,
+              tokenDataSource: tokenData.source
             });
-            const session = await redisClient.getSession(sessionKey);
+            
+            // Try to get session using flow token as identifier
+            const session = await sessionManager.getSession(feature, flowToken, 'flow');
             if (session) {
               userId = session.userId || userId;
               phoneNumber = session.phoneNumber || phoneNumber;
               // Store session data for use in screen handlers
               tokenData.sessionData = session;
-              logger.info('Session found in Redis', { 
-                sessionKey, 
+              logger.info('Session found with feature isolation', { 
+                feature,
+                flowToken,
                 hasUserId: !!session.userId, 
                 hasPhoneNumber: !!session.phoneNumber,
-                hasTransferData: !!session.transferData,
-                hasNetwork: !!session.network,
-                hasDataPlan: !!session.dataPlan,
-                sessionKeys: Object.keys(session),
-                sessionData: session
+                sessionKeys: Object.keys(session)
               });
             } else {
-              logger.warn('No session found in Redis', { 
-                sessionKey, 
-                flowToken,
-                sessionKeyLength: sessionKey.length,
-                flowTokenLength: flowToken.length,
-                sessionKeyPrefix: sessionKey.substring(0, 10) + '...',
-                flowTokenPrefix: flowToken.substring(0, 10) + '...'
-              });
-              // Try to get user from token data if available
-              if (tokenData.userId) {
-                userId = tokenData.userId;
-                logger.info('Using userId from token data', { userId });
+              // Fallback to direct Redis lookup for backward compatibility
+              const redisClient = require('../utils/redis');
+              const sessionKey = flowToken;
+              const fallbackSession = await redisClient.getSession(sessionKey);
+              if (fallbackSession) {
+                userId = fallbackSession.userId || userId;
+                phoneNumber = fallbackSession.phoneNumber || phoneNumber;
+                tokenData.sessionData = fallbackSession;
+                logger.info('Session found via fallback Redis lookup', { 
+                  sessionKey,
+                  hasUserId: !!fallbackSession.userId,
+                  hasPhoneNumber: !!fallbackSession.phoneNumber
+                });
+              } else {
+                logger.warn('No session found in Redis with feature isolation', { 
+                  feature,
+                  flowToken,
+                  flowTokenLength: flowToken.length,
+                  flowTokenPrefix: flowToken.substring(0, 10) + '...'
+                });
+                // Try to get user from token data if available
+                if (tokenData.userId) {
+                  userId = tokenData.userId;
+                  logger.info('Using userId from token data', { userId });
+                }
               }
             }
           } catch (error) {
-            logger.error('Error looking up session in Redis', { error: error.message, flowToken });
+            logger.error('Error looking up session with feature isolation', { error: error.message, flowToken });
           }
         }
 
@@ -1527,12 +1549,12 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       timestamp: Date.now()
     };
     
-    // Store in Redis for background processing (5 minute TTL)
-    const redisClient = require('../utils/redis');
+    // Store in Redis for background processing with feature isolation (5 minute TTL)
+    const sessionManager = require('../utils/sessionManager');
     const processingKey = `data_purchase_processing:${user.id}:${Date.now()}`;
-    await redisClient.setSession(processingKey, processingData, 300);
+    await sessionManager.setSession('data_purchase', processingKey, processingData, 300, 'processing');
     
-    logger.info('Data purchase data stored for background processing', {
+    logger.info('Data purchase data stored for background processing with feature isolation', {
         userId: user.id,
       processingKey,
       dataPurchaseData: {
@@ -1545,6 +1567,8 @@ async function handleDataPurchaseScreen(data, userId, tokenData = {}, flowToken 
       // Clean up flow session
       if (flowToken) {
         try {
+          const sessionManager = require('../utils/sessionManager');
+          await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken); // Use the same format as storage
           logger.info('Flow session cleaned up successfully', { flowToken });
         } catch (error) {
@@ -1668,6 +1692,8 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
     
     // Clean up processing data
     const redisClient = require('../utils/redis');
+    const sessionManager = require('../utils/sessionManager');
+    await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
     await redisClient.deleteSession(processingKey);
     
     logger.info('Background data purchase processing completed', {
@@ -1699,7 +1725,9 @@ async function processDataPurchaseInBackground(processingKey, processingData) {
     // Clean up processing data
     try {
       const redisClient = require('../utils/redis');
-      await redisClient.deleteSession(processingKey);
+      const sessionManager = require('../utils/sessionManager');
+    await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
+    await redisClient.deleteSession(processingKey);
     } catch (cleanupError) {
       logger.warn('Failed to cleanup processing data on error', { error: cleanupError.message });
     }
@@ -2185,12 +2213,12 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
       timestamp: Date.now()
     };
     
-    // Store in Redis for background processing (5 minute TTL)
-    const redisClient = require('../utils/redis');
+    // Store in Redis for background processing with feature isolation (5 minute TTL)
+    const sessionManager = require('../utils/sessionManager');
     const processingKey = `transfer_processing:${user.id}:${Date.now()}`;
-    await redisClient.setSession(processingKey, processingData, 300);
+    await sessionManager.setSession('transfer', processingKey, processingData, 300, 'processing');
     
-    logger.info('Transfer data stored for background processing', {
+    logger.info('Transfer data stored for background processing with feature isolation', {
           userId: user.id,
       processingKey,
       transferData: {
@@ -2203,6 +2231,8 @@ async function handleTransferPinScreen(data, userId, tokenData = {}, flowToken =
     // Clean up flow session
         if (flowToken) {
           try {
+            const sessionManager = require('../utils/sessionManager');
+            await sessionManager.deleteSession('transfer', flowToken, 'flow');
             await redisClient.deleteSession(flowToken);
             logger.info('Flow session cleaned up successfully', { flowToken });
           } catch (error) {
@@ -2338,6 +2368,8 @@ async function processTransferInBackground(processingKey, processingData) {
     
     // Clean up processing data
     const redisClient = require('../utils/redis');
+    const sessionManager = require('../utils/sessionManager');
+    await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
     await redisClient.deleteSession(processingKey);
     
     logger.info('Background transfer processing completed', {
@@ -2369,7 +2401,9 @@ async function processTransferInBackground(processingKey, processingData) {
     // Clean up processing data
     try {
       const redisClient = require('../utils/redis');
-      await redisClient.deleteSession(processingKey);
+      const sessionManager = require('../utils/sessionManager');
+    await sessionManager.deleteSession('data_purchase', processingKey, 'processing');
+    await redisClient.deleteSession(processingKey);
     } catch (cleanupError) {
       logger.warn('Failed to cleanup processing data on error', { error: cleanupError.message });
     }
@@ -2407,8 +2441,9 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
         const redisClient = require('../utils/redis');
         const sessionKey = flowToken; // Use the same format as storage
         
-        // Get existing session data to merge with
-        const existingSession = await redisClient.getSession(sessionKey) || {};
+        // Get existing session data to merge with using session manager
+        const sessionManager = require('../utils/sessionManager');
+        const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new network data
         const sessionData = { 
@@ -2416,8 +2451,9 @@ async function handleNetworkSelectionScreen(data, userId, tokenData = {}, flowTo
           network 
         };
         
-        await redisClient.setSession(sessionKey, sessionData, 300);
-        logger.info('Network selection stored in session', { 
+        const sessionManager = require('../utils/sessionManager');
+        await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
+        logger.info('Network selection stored in session with feature isolation', { 
           flowToken, 
           network,
           sessionDataKeys: Object.keys(sessionData),
@@ -2492,8 +2528,9 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
         const redisClient = require('../utils/redis');
         const sessionKey = flowToken; // Use the same format as storage
         
-        // Get existing session data to merge with
-        const existingSession = await redisClient.getSession(sessionKey) || {};
+        // Get existing session data to merge with using session manager
+        const sessionManager = require('../utils/sessionManager');
+        const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new phone data
         const sessionData = { 
@@ -2502,8 +2539,9 @@ async function handlePhoneInputScreen(data, userId, tokenData = {}, flowToken = 
           phoneNumber 
         };
         
-        await redisClient.setSession(sessionKey, sessionData, 300);
-        logger.info('Phone number stored in session', { 
+        const sessionManager = require('../utils/sessionManager');
+        await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
+        logger.info('Phone number stored in session with feature isolation', { 
           flowToken, 
           network,
           sessionDataKeys: Object.keys(sessionData),
@@ -2637,8 +2675,9 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
         const redisClient = require('../utils/redis');
         const sessionKey = flowToken; // Use the same format as storage
         
-        // Get existing session data to merge with
-        const existingSession = await redisClient.getSession(sessionKey) || {};
+        // Get existing session data to merge with using session manager
+        const sessionManager = require('../utils/sessionManager');
+        const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new data plan data
         const sessionData = { 
@@ -2648,8 +2687,9 @@ async function handleDataPlanSelectionScreen(data, userId, tokenData = {}, flowT
           dataPlan: selectedPlan.id 
         };
         
-        await redisClient.setSession(sessionKey, sessionData, 300);
-        logger.info('Data plan selection stored in session', { 
+        const sessionManager = require('../utils/sessionManager');
+        await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
+        logger.info('Data plan selection stored in session with feature isolation', { 
           flowToken, 
           network, 
           dataPlan: selectedPlan.id,
@@ -2792,8 +2832,9 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
         const redisClient = require('../utils/redis');
         const sessionKey = flowToken; // Use the same format as storage
         
-        // Get existing session data to merge with
-        const existingSession = await redisClient.getSession(sessionKey) || {};
+        // Get existing session data to merge with using session manager
+        const sessionManager = require('../utils/sessionManager');
+        const existingSession = await sessionManager.getSession('data_purchase', sessionKey, 'flow') || {};
         
         // Merge with new confirmation data
         const sessionData = { 
@@ -2804,8 +2845,9 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
           confirm: 'yes' 
         };
         
-        await redisClient.setSession(sessionKey, sessionData, 300);
-        logger.info('Purchase confirmation stored in session', { 
+        const sessionManager = require('../utils/sessionManager');
+        await sessionManager.setSession('data_purchase', sessionKey, sessionData, 300, 'flow');
+        logger.info('Purchase confirmation stored in session with feature isolation', { 
           flowToken, 
           network, 
           dataPlan,
@@ -2968,6 +3010,8 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
         if (result.success) {
           logger.info('Airtime purchase successful via PIN flow', { userId, amount: sessionData.amount });
           // Clear session and conversation state
+          const sessionManager = require('../utils/sessionManager');
+          await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken);
           await user.clearConversationState();
           return {}; // Empty response to close flow
@@ -2990,6 +3034,8 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
         if (result.success) {
           logger.info('Data purchase successful via PIN flow', { userId, plan: sessionData.dataPlan?.dataplan, network: sessionData.network });
           // Clear session and conversation state
+          const sessionManager = require('../utils/sessionManager');
+          await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken);
           await user.clearConversationState();
           return {}; // Empty response to close flow
@@ -3024,6 +3070,8 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
         if (result.success) {
           logger.info('Bill payment successful via PIN flow', { userId, amount: sessionData.amount, provider: sessionData.provider });
           // Clear session and conversation state
+          const sessionManager = require('../utils/sessionManager');
+          await sessionManager.deleteSession('data_purchase', flowToken, 'flow');
           await redisClient.deleteSession(flowToken);
           await user.clearConversationState();
           return {}; // Empty response to close flow
