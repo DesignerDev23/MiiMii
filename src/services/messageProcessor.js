@@ -9,6 +9,7 @@ const imageProcessingService = require('./imageProcessing');
 const { ActivityLog } = require('../models');
 const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
+const sessionManager = require('../utils/sessionManager');
 
 class MessageProcessor {
   async processIncomingMessage(parsedMessage) {

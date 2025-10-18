@@ -5,6 +5,7 @@ const userService = require('../services/user');
 const onboardingService = require('../services/onboarding');
 const kycService = require('../services/kyc');
 const whatsappFlowService = require('../services/whatsappFlowService');
+const sessionManager = require('../utils/sessionManager');
 
 const router = express.Router();
 
@@ -756,6 +757,51 @@ async function handleCompleteAction(screen, data, tokenData, flowToken = null) {
       hasTransferData: !!(tokenData.sessionData && tokenData.sessionData.transferData),
       flowToken: flowToken
     });
+
+    // Check if this is an onboarding PIN setup flow
+    if (tokenData.sessionData && tokenData.sessionData.context === 'onboarding') {
+      logger.info('Processing onboarding PIN setup completion', {
+        userId: tokenData.userId,
+        flowToken: flowToken,
+        sessionContext: tokenData.sessionData.context
+      });
+
+      try {
+        const onboardingService = require('../services/onboarding');
+        const result = await onboardingService.processOnboardingFlowData(data, tokenData.sessionData.phoneNumber);
+        
+        if (result.success) {
+          // Clear the session
+          await sessionManager.deleteSession('onboarding', flowToken, 'flow');
+          
+          return {
+            screen: 'COMPLETION_SCREEN',
+            data: {
+              success: true,
+              message: '🎉 Welcome to MiiMii! Your account has been set up successfully. You can now enjoy all our services!',
+              onboarding_completed: true
+            }
+          };
+        } else {
+          return {
+            screen: 'PIN_VERIFICATION_SCREEN',
+            data: {
+              error: result.error || 'PIN setup failed. Please try again.',
+              message: result.error || 'PIN setup failed. Please try again.'
+            }
+          };
+        }
+      } catch (error) {
+        logger.error('Onboarding PIN setup failed', { error: error.message });
+        return {
+          screen: 'ERROR_SCREEN',
+          data: {
+            error: 'PIN setup failed. Please try again.',
+            code: 'ONBOARDING_PIN_ERROR'
+          }
+        };
+      }
+    }
 
     // Data purchase path
     if (data.network && data.phoneNumber && data.dataPlan) {

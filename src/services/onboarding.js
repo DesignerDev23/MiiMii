@@ -4,6 +4,7 @@ const userService = require('./user');
 const rubiesService = require('./rubies');
 const walletService = require('./wallet');
 const { ActivityLog } = require('../models');
+const sessionManager = require('../utils/sessionManager');
 
 class OnboardingService {
   constructor() {
@@ -139,7 +140,6 @@ class OnboardingService {
         
         // Store session data in Redis with feature isolation
         try {
-          const sessionManager = require('../utils/sessionManager');
           const sessionData = {
             userId: user.id,
             phoneNumber: user.whatsappNumber,
@@ -223,7 +223,6 @@ class OnboardingService {
         
         // Store session data in Redis with feature isolation
         try {
-          const sessionManager = require('../utils/sessionManager');
           const sessionData = {
             userId: user.id,
             phoneNumber: user.whatsappNumber,

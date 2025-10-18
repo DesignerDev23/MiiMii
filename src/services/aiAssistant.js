@@ -9,6 +9,7 @@ const airtimeService = require('./airtime');
 const utilityService = require('./utility');
 const transactionService = require('./transaction');
 const { ActivityLog } = require('../models');
+const sessionManager = require('../utils/sessionManager');
 
 class AIAssistantService {
   constructor() {

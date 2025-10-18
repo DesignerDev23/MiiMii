@@ -3,6 +3,7 @@ const FormData = require('form-data');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { axiosConfig } = require('../utils/httpsAgent');
+const sessionManager = require('../utils/sessionManager');
 
 class WhatsAppService {
   constructor() {
@@ -369,7 +370,6 @@ class WhatsAppService {
       // Generate a secure flow token and persist mapping for this session
       const whatsappFlowService = require('./whatsappFlowService');
       const userService = require('./user');
-      const sessionManager = require('../utils/sessionManager');
       const user = await userService.getUserByWhatsappNumber(to);
       const flowToken = whatsappFlowService.generateFlowToken(user?.id || to);
       // Store mapping with feature isolation for 30 minutes
