@@ -1253,9 +1253,12 @@ class MessageProcessor {
               } catch (error) {
                 logger.error('Transfer failed when PIN disabled', { error: error.message, userId: user.id });
                 await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${error.message || 'Please try again later.'}`);
+                await user.clearConversationState();
+                return;
               }
               
-              await user.clearConversationState();
+              // Don't clear conversation state here - bankTransferService handles it
+              // It sends receipt image and beneficiary save prompt, and sets conversation state
               return;
             }
             
@@ -4617,11 +4620,8 @@ class MessageProcessor {
       const result = await bankTransferService.processBankTransfer(user.id, bankTransferData, '0000');
 
       if (result.success) {
-        // Clear conversation state
-        await user.clearConversationState();
-        
-        // Don't send additional success message here - bankTransferService already handles it
-        // It sends receipt image and beneficiary save prompt
+        // Don't clear conversation state here - bankTransferService handles it
+        // It sends receipt image and beneficiary save prompt, and sets conversation state
         
         logger.info('PIN-disabled transfer completed successfully', { 
           userId: user.id,
