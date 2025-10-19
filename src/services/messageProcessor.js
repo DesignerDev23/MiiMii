@@ -4615,18 +4615,8 @@ class MessageProcessor {
         // Clear conversation state
         await user.clearConversationState();
         
-        // Send success message
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          `✅ *Transfer Successful!*\n\n` +
-          `💰 Amount: ₦${transactionDetails.amount?.toLocaleString()}\n` +
-          `👤 To: ${transactionDetails.recipient}\n` +
-          `🏦 Bank: ${bankDetails.bankName}\n` +
-          `💳 Account: ${bankDetails.accountNumber}\n` +
-          `💵 Fee: ₦${transactionDetails.fee?.toLocaleString() || '15'}\n` +
-          `📋 Reference: ${result.reference}\n\n` +
-          `🔓 Transfer completed (PIN disabled)`
-        );
+        // Don't send additional success message here - bankTransferService already handles it
+        // It sends receipt image and beneficiary save prompt
         
         logger.info('PIN-disabled transfer completed successfully', { 
           userId: user.id,

@@ -183,6 +183,7 @@ class AIAssistantService {
 6. If user says "AIRTEL" for airtime, extract as "network": "Airtel", NOT "bankName": "AIRTEL"
 7. ALWAYS extract the network that the user explicitly mentions in their message
 8. If user says "Buy 100 airtime to 09043339590 AIRTEL", extract "network": "AIRTEL"
+9. If message contains "list saved" or "show saved" → intent MUST be "beneficiaries"
 
 CRITICAL RULE: Any message containing "opay" or "opay bank" MUST be classified as "bank_transfer" intent, regardless of the account number format. Opay is a digital bank, not a P2P transfer.
 
@@ -282,15 +283,16 @@ PIN SETTINGS RULES:
   * "Turn on pin" → intent: "enable_pin"
   * "Pin on" → intent: "enable_pin"
 
-BENEFICIARIES LIST RULES:
-- "beneficiaries" intent for: "show beneficiaries", "list beneficiaries", "my beneficiaries", "saved contacts", "show saved", "list saved", "show my beneficiaries", "list my beneficiaries", "my saved contacts", "show saved people", "list saved people", "beneficiaries list", "saved beneficiaries", "my saved beneficiaries"
+BENEFICIARIES LIST RULES (CRITICAL):
+- "beneficiaries" intent for ANY message containing: "show beneficiaries", "list beneficiaries", "my beneficiaries", "saved contacts", "show saved", "list saved", "show my beneficiaries", "list my beneficiaries", "my saved contacts", "show saved people", "list saved people", "beneficiaries list", "saved beneficiaries", "my saved beneficiaries"
+- CRITICAL: If message contains "list saved" or "show saved" → intent MUST be "beneficiaries"
 - Examples:
   * "Show my beneficiaries" → intent: "beneficiaries"
   * "List beneficiaries" → intent: "beneficiaries"
   * "My saved contacts" → intent: "beneficiaries"
   * "Show saved people" → intent: "beneficiaries"
-  * "List saved" → intent: "beneficiaries"
-  * "Show saved" → intent: "beneficiaries"
+  * "List saved" → intent: "beneficiaries" (CRITICAL EXAMPLE)
+  * "Show saved" → intent: "beneficiaries" (CRITICAL EXAMPLE)
   * "My beneficiaries" → intent: "beneficiaries"
   * "Beneficiaries list" → intent: "beneficiaries"
   * "Saved beneficiaries" → intent: "beneficiaries"
