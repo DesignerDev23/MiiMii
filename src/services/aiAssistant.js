@@ -204,6 +204,7 @@ Available Services:
 - Bill payments (Electricity, Cable TV)
 - Balance inquiries
 - Transaction history
+- Beneficiaries list (show saved contacts)
 - PIN settings (disable/enable PIN for transactions)
 
 IMPORTANT: Use these exact intent names:
@@ -282,12 +283,17 @@ PIN SETTINGS RULES:
   * "Pin on" → intent: "enable_pin"
 
 BENEFICIARIES LIST RULES:
-- "beneficiaries" intent for: "show beneficiaries", "list beneficiaries", "my beneficiaries", "saved contacts", "show saved", "list saved"
+- "beneficiaries" intent for: "show beneficiaries", "list beneficiaries", "my beneficiaries", "saved contacts", "show saved", "list saved", "show my beneficiaries", "list my beneficiaries", "my saved contacts", "show saved people", "list saved people", "beneficiaries list", "saved beneficiaries", "my saved beneficiaries"
 - Examples:
   * "Show my beneficiaries" → intent: "beneficiaries"
   * "List beneficiaries" → intent: "beneficiaries"
   * "My saved contacts" → intent: "beneficiaries"
   * "Show saved people" → intent: "beneficiaries"
+  * "List saved" → intent: "beneficiaries"
+  * "Show saved" → intent: "beneficiaries"
+  * "My beneficiaries" → intent: "beneficiaries"
+  * "Beneficiaries list" → intent: "beneficiaries"
+  * "Saved beneficiaries" → intent: "beneficiaries"
 
 AIRTIME & DATA PURCHASE RULES:
 - Commands: "buy", "purchase", "send", "get", "recharge" + airtime/data
@@ -414,6 +420,15 @@ For Data Purchase:
   },
   "response": "Cool! 1GB data bundle for you. Just need your PIN 🔐",
   "suggestedAction": "Process data purchase"
+}
+
+For Beneficiaries List:
+{
+  "intent": "beneficiaries",
+  "confidence": 0.95,
+  "extractedData": {},
+  "response": "Here are your saved beneficiaries!",
+  "suggestedAction": "Show beneficiaries list"
 }
 
 FINAL CHECK: ALL transfers are "bank_transfer" - NO P2P transfers. If the message contains "opay" or "opay bank", the intent MUST be "bank_transfer".
