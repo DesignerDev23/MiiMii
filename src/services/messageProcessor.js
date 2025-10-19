@@ -2414,6 +2414,11 @@ class MessageProcessor {
           case 'menu':
             return await this.handleMenuIntent(user, { text: processedText }, messageType);
             
+          case 'beneficiaries':
+            const beneficiariesResult = await aiAssistant.handleBeneficiariesList(user);
+            await whatsappService.sendTextMessage(user.whatsappNumber, beneficiariesResult.message);
+            break;
+            
           case 'greeting':
             const greetingMessage = `Hello ${user.firstName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`;
             await whatsappService.sendTextMessage(user.whatsappNumber, greetingMessage);
