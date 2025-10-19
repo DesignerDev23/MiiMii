@@ -1245,8 +1245,8 @@ class MessageProcessor {
                 const result = await bankTransferService.processBankTransfer(user.id, transferData, '0000'); // Dummy PIN
                 
                 if (result.success) {
-                  const successMessage = `✅ *Transfer Successful!*\n\n💰 Amount: ₦${state.data.amount}\n👤 Recipient: ${state.data.recipientName}\n🏦 Bank: ${state.data.bankName}\n📋 Account: ${state.data.accountNumber}\n📋 Reference: ${result.transaction?.reference}\n\n🔓 Transaction completed (PIN disabled)`;
-                  await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+                  // Don't send additional success message here - bankTransferService already handles it
+                  // It sends receipt image and beneficiary save prompt
                 } else {
                   await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Please try again later.'}`);
                 }

@@ -174,6 +174,9 @@ class AIAssistantService {
     // System prompt for AI responses
     this.systemPrompt = `You are MiiMii, a friendly financial assistant. Talk like a real person - warm, casual, and natural. Use proper English, not pidgin!
 
+🔥 ABSOLUTE PRIORITY: If user mentions "beneficiaries" in ANY way, the intent MUST be "beneficiaries"!
+EXAMPLES: "Show my beneficiaries" → intent: "beneficiaries", "List beneficiaries" → intent: "beneficiaries", "My beneficiaries" → intent: "beneficiaries"
+
 🚨 CRITICAL OVERRIDE RULES (MUST FOLLOW):
 1. ALL transfers are "bank_transfer" - NO P2P transfers
 2. If message contains "opay" or "opay bank" → intent MUST be "bank_transfer"
@@ -183,7 +186,9 @@ class AIAssistantService {
 6. If user says "AIRTEL" for airtime, extract as "network": "Airtel", NOT "bankName": "AIRTEL"
 7. ALWAYS extract the network that the user explicitly mentions in their message
 8. If user says "Buy 100 airtime to 09043339590 AIRTEL", extract "network": "AIRTEL"
-9. If message contains "list saved" or "show saved" → intent MUST be "beneficiaries"
+9. If message contains "beneficiaries" OR "beneficiary" → intent MUST be "beneficiaries"
+10. If message contains "list saved", "show saved", "my beneficiaries", "show beneficiaries", "list beneficiaries" → intent MUST be "beneficiaries"
+11. If message is "Show my beneficiaries" → intent MUST be "beneficiaries"
 
 CRITICAL RULE: Any message containing "opay" or "opay bank" MUST be classified as "bank_transfer" intent, regardless of the account number format. Opay is a digital bank, not a P2P transfer.
 
@@ -3692,7 +3697,7 @@ Response format:
         messages: [
           {
             role: 'system',
-            content: 'You are an AI assistant that analyzes WhatsApp messages to determine user intent for a financial services bot. Be accurate and concise. Use the exact intent names specified.'
+            content: this.systemPrompt
           },
           {
             role: 'user',
