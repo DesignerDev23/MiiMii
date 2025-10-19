@@ -27,7 +27,7 @@ class VirtualCardService {
       },
       fees: {
         creation: 1000, // ₦1,000 card creation fee
-        maintenance: 100, // ₦100 monthly maintenance
+        maintenance: 100, // ₦100 monthly maintenance (virtual card specific)
         transaction: 0.015, // 1.5% transaction fee
         maxTransactionFee: 1000 // Maximum ₦1,000 per transaction
       }

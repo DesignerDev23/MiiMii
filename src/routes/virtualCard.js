@@ -241,7 +241,7 @@ router.get('/config', async (req, res) => {
       },
       fees: {
         creation: 1000,
-        maintenance: 100,
+        maintenance: 100, // Virtual card specific maintenance fee
         transaction: 1.5, // percentage
         maxTransactionFee: 1000
       }

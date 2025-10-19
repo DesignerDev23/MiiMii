@@ -136,6 +136,39 @@ router.get('/users',
         offset
       });
 
+      // Get maintenance fee status for each user
+      const usersWithMaintenanceStatus = await Promise.all(
+        users.map(async (user) => {
+          const maintenanceStatus = await walletService.getMaintenanceFeeStatus(user.id);
+          return {
+            id: user.id,
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.whatsappNumber,
+            whatsappNumber: user.whatsappNumber,
+            email: user.email,
+            kycStatus: user.kycStatus,
+            bvnVerified: user.bvnVerified,
+            bvnVerificationDate: user.bvnVerificationDate,
+            onboardingStep: user.onboardingStep,
+            isActive: user.isActive,
+            isBanned: user.isBanned,
+            balance: user.wallet ? parseFloat(user.wallet.balance) : 0,
+            virtualAccountNumber: user.wallet ? user.wallet.virtualAccountNumber : null,
+            virtualAccountBank: user.wallet ? user.wallet.virtualAccountBank : null,
+            lastSeen: user.lastSeen,
+            createdAt: user.createdAt,
+            maintenanceFee: {
+              status: maintenanceStatus.status,
+              isDue: maintenanceStatus.isDue,
+              message: maintenanceStatus.message,
+              monthsOverdue: maintenanceStatus.monthsOverdue || 0,
+              totalOverdue: maintenanceStatus.totalOverdue || 0,
+              lastPaidDate: maintenanceStatus.lastPaidDate,
+              nextDueDate: maintenanceStatus.nextDueDate
+            }
+          };
+        })
+      );
+
       res.json({
         success: true,
         pagination: {
@@ -144,23 +177,7 @@ router.get('/users',
           total: count,
           pages: Math.ceil(count / limit)
         },
-        users: users.map(user => ({
-          id: user.id,
-          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.whatsappNumber,
-          whatsappNumber: user.whatsappNumber,
-          email: user.email,
-          kycStatus: user.kycStatus,
-          bvnVerified: user.bvnVerified,
-          bvnVerificationDate: user.bvnVerificationDate,
-          onboardingStep: user.onboardingStep,
-          isActive: user.isActive,
-          isBanned: user.isBanned,
-          balance: user.wallet ? parseFloat(user.wallet.balance) : 0,
-          virtualAccountNumber: user.wallet ? user.wallet.virtualAccountNumber : null,
-          virtualAccountBank: user.wallet ? user.wallet.virtualAccountBank : null,
-          lastSeen: user.lastSeen,
-          createdAt: user.createdAt
-        }))
+        users: usersWithMaintenanceStatus
       });
     } catch (error) {
       logger.error('Failed to get users', { error: error.message });
@@ -225,6 +242,102 @@ router.post('/users/:userId/wallet/credit',
       res.json({ success: true, message: 'Wallet credited', result });
     } catch (error) {
       logger.error('Failed to credit wallet', { error: error.message });
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Debit maintenance fee (admin)
+router.post('/users/:userId/maintenance-fee/debit',
+  param('userId').isUUID(),
+  body('months').optional().isInt({ min: 1, max: 12 }),
+  body('notify').optional().isBoolean(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { months = 1, notify = true } = req.body;
+      const adminEmail = req.admin?.email;
+      
+      // Get current maintenance fee status
+      const maintenanceStatus = await walletService.getMaintenanceFeeStatus(userId);
+      
+      if (!maintenanceStatus.isDue && maintenanceStatus.status === 'paid') {
+        return res.status(400).json({ 
+          error: 'Maintenance fee is already paid for the current month',
+          maintenanceStatus 
+        });
+      }
+
+      // Calculate fee for specified months
+      const maintenanceFee = 50;
+      const totalFee = maintenanceFee * months;
+      
+      // Check if user has sufficient balance
+      const wallet = await walletService.getUserWallet(userId);
+      if (parseFloat(wallet.balance) < totalFee) {
+        return res.status(400).json({ 
+          error: 'Insufficient wallet balance for maintenance fee',
+          required: totalFee,
+          available: parseFloat(wallet.balance)
+        });
+      }
+
+      // Debit maintenance fee
+      const result = await walletService.debitWallet(
+        userId,
+        totalFee,
+        `Manual maintenance fee debit (${months} month${months > 1 ? 's' : ''}) by admin`,
+        { 
+          category: 'maintenance_fee', 
+          feeType: 'maintenance',
+          adminDebit: true,
+          months,
+          debitedBy: adminEmail
+        }
+      );
+
+      // Update last maintenance fee date
+      const now = new Date();
+      await wallet.update({ 
+        lastMaintenanceFee: new Date(now.getFullYear(), now.getMonth() - months + 1, 1)
+      });
+
+      // Send notification if requested
+      if (notify) {
+        const user = await User.findByPk(userId);
+        const whatsappService = require('../services/whatsapp');
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `📋 *Maintenance Fee Charged (Admin)*\n\n` +
+          `Amount: ₦${totalFee.toLocaleString()} (${months} month${months > 1 ? 's' : ''})\n` +
+          `New Balance: ₦${result.newBalance.toLocaleString()}\n\n` +
+          `Your maintenance fee has been manually processed by our admin team.`
+        );
+      }
+
+      logger.info('Manual maintenance fee debit completed', {
+        userId,
+        months,
+        totalFee,
+        adminEmail,
+        newBalance: result.newBalance
+      });
+
+      res.json({ 
+        success: true, 
+        message: `Maintenance fee debited for ${months} month(s)`, 
+        result: {
+          ...result,
+          maintenanceFee: {
+            months,
+            totalFee,
+            debitedBy: adminEmail
+          }
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to debit maintenance fee', { error: error.message });
       res.status(500).json({ error: error.message });
     }
   }

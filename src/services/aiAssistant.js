@@ -218,6 +218,7 @@ IMPORTANT: Use these exact intent names:
 - "greeting" for greetings
 - "disable_pin" for PIN disable requests
 - "enable_pin" for PIN enable requests
+- "beneficiaries" for listing saved beneficiaries
 
 TRANSFER INTENT RULES:
 - ALL transfers are "bank_transfer" - NO P2P transfers
@@ -279,6 +280,14 @@ PIN SETTINGS RULES:
   * "Enable my pin" → intent: "enable_pin"
   * "Turn on pin" → intent: "enable_pin"
   * "Pin on" → intent: "enable_pin"
+
+BENEFICIARIES LIST RULES:
+- "beneficiaries" intent for: "show beneficiaries", "list beneficiaries", "my beneficiaries", "saved contacts", "show saved", "list saved"
+- Examples:
+  * "Show my beneficiaries" → intent: "beneficiaries"
+  * "List beneficiaries" → intent: "beneficiaries"
+  * "My saved contacts" → intent: "beneficiaries"
+  * "Show saved people" → intent: "beneficiaries"
 
 AIRTIME & DATA PURCHASE RULES:
 - Commands: "buy", "purchase", "send", "get", "recharge" + airtime/data
@@ -860,10 +869,13 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'enable_pin':
           return await this.handleEnablePin(user);
           
+        case 'beneficiaries':
+          return await this.handleBeneficiariesList(user);
+          
         case 'menu':
           return {
             intent: 'menu',
-            message: aiResponse.message || "📱 *Available Services*\n\n💰 Check Balance\n💸 Send Money\n🏦 Bank Transfer\n📱 Buy Airtime\n🌐 Buy Data\n💳 Pay Bills\n📊 Transaction History\n🔐 PIN Settings\n\nWhat would you like to do?",
+            message: aiResponse.message || "📱 *Available Services*\n\n💰 Check Balance\n💸 Send Money\n🏦 Bank Transfer\n📱 Buy Airtime\n🌐 Buy Data\n💳 Pay Bills\n📊 Transaction History\n📋 My Beneficiaries\n🔐 PIN Settings\n\nWhat would you like to do?",
             requiresAction: 'NONE'
           };
           
@@ -4387,6 +4399,114 @@ Example:
         message: errorMessage,
         awaitingInput: null,
         context: 'failed'
+      };
+    }
+  }
+
+  async handleBeneficiariesList(user) {
+    try {
+      const beneficiaryService = require('./beneficiary');
+      const whatsappService = require('./whatsapp');
+      
+      // Get all user beneficiaries
+      const beneficiaries = await beneficiaryService.getUserBeneficiaries(user.id, { limit: 20 });
+      
+      if (!beneficiaries || beneficiaries.length === 0) {
+        return {
+          intent: 'beneficiaries',
+          message: "📋 *Your Beneficiaries*\n\nYou don't have any saved beneficiaries yet.\n\n💡 *Tip*: When you send money to someone, you can save them as a beneficiary for faster transfers next time!",
+          requiresAction: 'NONE'
+        };
+      }
+
+      // Group beneficiaries by category
+      const favorites = beneficiaries.filter(b => b.isFavorite);
+      const family = beneficiaries.filter(b => b.category === 'family');
+      const friends = beneficiaries.filter(b => b.category === 'friend');
+      const business = beneficiaries.filter(b => b.category === 'business');
+      const others = beneficiaries.filter(b => b.category === 'other');
+
+      let message = "📋 *Your Saved Beneficiaries*\n\n";
+
+      // Add favorites first
+      if (favorites.length > 0) {
+        message += "⭐ *Favorites*\n";
+        favorites.forEach((ben, index) => {
+          const nickname = ben.nickname ? ` (${ben.nickname})` : '';
+          const bankInfo = ben.bankName ? ` - ${ben.bankName}` : '';
+          const usage = ben.totalTransactions > 0 ? ` (${ben.totalTransactions} transfers)` : '';
+          message += `${index + 1}. ${ben.name}${nickname}${bankInfo}${usage}\n`;
+        });
+        message += "\n";
+      }
+
+      // Add family
+      if (family.length > 0) {
+        message += "👨‍👩‍👧‍👦 *Family*\n";
+        family.forEach((ben, index) => {
+          const nickname = ben.nickname ? ` (${ben.nickname})` : '';
+          const bankInfo = ben.bankName ? ` - ${ben.bankName}` : '';
+          const usage = ben.totalTransactions > 0 ? ` (${ben.totalTransactions} transfers)` : '';
+          message += `${index + 1}. ${ben.name}${nickname}${bankInfo}${usage}\n`;
+        });
+        message += "\n";
+      }
+
+      // Add friends
+      if (friends.length > 0) {
+        message += "👥 *Friends*\n";
+        friends.forEach((ben, index) => {
+          const nickname = ben.nickname ? ` (${ben.nickname})` : '';
+          const bankInfo = ben.bankName ? ` - ${ben.bankName}` : '';
+          const usage = ben.totalTransactions > 0 ? ` (${ben.totalTransactions} transfers)` : '';
+          message += `${index + 1}. ${ben.name}${nickname}${bankInfo}${usage}\n`;
+        });
+        message += "\n";
+      }
+
+      // Add business
+      if (business.length > 0) {
+        message += "💼 *Business*\n";
+        business.forEach((ben, index) => {
+          const nickname = ben.nickname ? ` (${ben.nickname})` : '';
+          const bankInfo = ben.bankName ? ` - ${ben.bankName}` : '';
+          const usage = ben.totalTransactions > 0 ? ` (${ben.totalTransactions} transfers)` : '';
+          message += `${index + 1}. ${ben.name}${nickname}${bankInfo}${usage}\n`;
+        });
+        message += "\n";
+      }
+
+      // Add others
+      if (others.length > 0) {
+        message += "📝 *Others*\n";
+        others.forEach((ben, index) => {
+          const nickname = ben.nickname ? ` (${ben.nickname})` : '';
+          const bankInfo = ben.bankName ? ` - ${ben.bankName}` : '';
+          const usage = ben.totalTransactions > 0 ? ` (${ben.totalTransactions} transfers)` : '';
+          message += `${index + 1}. ${ben.name}${nickname}${bankInfo}${usage}\n`;
+        });
+        message += "\n";
+      }
+
+      message += "💡 *Tip*: To send money to any beneficiary, just say:\n";
+      message += "\"Send [amount] to [name]\"\n\n";
+      message += "Example: \"Send 5k to John\" or \"Transfer 2k to mom\"";
+
+      return {
+        intent: 'beneficiaries',
+        message: message,
+        requiresAction: 'NONE'
+      };
+    } catch (error) {
+      logger.error('Failed to handle beneficiaries list', {
+        error: error.message,
+        userId: user.id
+      });
+      
+      return {
+        intent: 'beneficiaries',
+        message: "❌ Sorry, I couldn't load your beneficiaries list. Please try again later.",
+        requiresAction: 'NONE'
       };
     }
   }

@@ -681,6 +681,72 @@ class WalletService {
     }
   }
 
+  // Check maintenance fee status for admin
+  async getMaintenanceFeeStatus(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      const wallet = await this.getUserWallet(userId);
+
+      if (!user || !user.isActive || user.isBanned) {
+        return {
+          isDue: false,
+          status: 'inactive_user',
+          message: 'User is inactive or banned'
+        };
+      }
+
+      const maintenanceFee = 50; // Fixed ₦50 per requirements
+      const lastCharge = wallet.lastMaintenanceFee || user.createdAt;
+      const now = new Date();
+
+      // Check if current month's fee has been paid
+      const currentMonth = now.getFullYear() * 12 + now.getMonth();
+      const lastChargeMonth = lastCharge.getFullYear() * 12 + lastCharge.getMonth();
+
+      const isCurrentMonthPaid = currentMonth === lastChargeMonth;
+      const monthsOverdue = currentMonth - lastChargeMonth;
+
+      if (isCurrentMonthPaid) {
+        return {
+          isDue: false,
+          status: 'paid',
+          message: 'Current month maintenance fee is paid',
+          lastPaidDate: lastCharge,
+          nextDueDate: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+        };
+      } else if (monthsOverdue > 0) {
+        const totalOverdue = maintenanceFee * monthsOverdue;
+        return {
+          isDue: true,
+          status: 'overdue',
+          message: `${monthsOverdue} month(s) overdue`,
+          monthsOverdue,
+          totalOverdue,
+          lastPaidDate: lastCharge,
+          nextDueDate: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+        };
+      }
+
+      return {
+        isDue: false,
+        status: 'up_to_date',
+        message: 'Maintenance fee is up to date',
+        lastPaidDate: lastCharge,
+        nextDueDate: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    } catch (error) {
+      logger.error('Failed to get maintenance fee status', {
+        error: error.message,
+        userId
+      });
+      return {
+        isDue: false,
+        status: 'error',
+        message: 'Failed to check maintenance fee status'
+      };
+    }
+  }
+
   generateReference() {
     return `MII_${Date.now()}_${uuidv4().slice(0, 8).toUpperCase()}`;
   }

@@ -16,16 +16,16 @@ class FeesService {
         fee: 0
       },
       
-      // BellBank transfers
-      bellBankTransfers: {
-        bellBankFee: 20,
-        platformFee: 5,
-        totalFee: 25 // ₦25 total (₦20 BellBank + ₦5 platform fee)
+      // Bank transfers - Tiered fee structure
+      bankTransfers: {
+        tier1: { min: 0, max: 10000, fee: 15 },      // 0 - 10k = ₦15
+        tier2: { min: 10000, max: 50000, fee: 25 },  // 10k - 50k = ₦25
+        tier3: { min: 50000, max: Infinity, fee: 50 } // 50k+ = ₦50
       },
       
       // Maintenance fee
       maintenance: {
-        monthlyFee: 100, // ₦100/month per user
+        monthlyFee: 50, // ₦50/month per user
         dayOfMonth: 1 // Charge on 1st of every month
       },
       
@@ -103,16 +103,33 @@ class FeesService {
     };
   }
 
-  // Calculate BellBank transfer fee
-  calculateBellBankTransferFee(amount) {
+  // Calculate bank transfer fee (tiered)
+  calculateBankTransferFee(amount) {
+    const numAmount = parseFloat(amount);
+    
+    // Determine fee based on amount tiers
+    let fee = 15; // Default to tier 1
+    let tier = 'tier1';
+    
+    if (numAmount >= this.feeStructure.bankTransfers.tier3.min) {
+      fee = this.feeStructure.bankTransfers.tier3.fee; // 50k+ = ₦50
+      tier = 'tier3';
+    } else if (numAmount >= this.feeStructure.bankTransfers.tier2.min) {
+      fee = this.feeStructure.bankTransfers.tier2.fee; // 10k-50k = ₦25
+      tier = 'tier2';
+    } else {
+      fee = this.feeStructure.bankTransfers.tier1.fee; // 0-10k = ₦15
+      tier = 'tier1';
+    }
+    
     return {
-      fee: this.feeStructure.bellBankTransfers.totalFee,
-      reason: 'Fixed BellBank transfer fee',
+      fee: fee,
+      reason: `Tiered bank transfer fee (${tier})`,
       breakdown: {
-        amount: parseFloat(amount),
-        bellBankFee: this.feeStructure.bellBankTransfers.bellBankFee,
-        platformFee: this.feeStructure.bellBankTransfers.platformFee,
-        totalFee: this.feeStructure.bellBankTransfers.totalFee
+        amount: numAmount,
+        tier: tier,
+        fee: fee,
+        totalFee: fee
       }
     };
   }
@@ -254,8 +271,8 @@ class FeesService {
         feeCalculation = this.calculateInternalTransferFee(amount);
         break;
         
-      case 'bellbank_transfer':
-        feeCalculation = this.calculateBellBankTransferFee(amount);
+      case 'bank_transfer':
+        feeCalculation = this.calculateBankTransferFee(amount);
         break;
         
       case 'data_purchase':
@@ -301,9 +318,13 @@ class FeesService {
         description: 'MiiMii to MiiMii transfers',
         rules: ['Always free']
       },
-      bellBankTransfers: {
-        description: 'Bank transfers via BellBank',
-        rules: ['Fixed ₦25 fee (₦20 BellBank + ₦5 platform)']
+      bankTransfers: {
+        description: 'Bank transfers (tiered pricing)',
+        rules: [
+          '₦0 - ₦10,000: ₦15 fee',
+          '₦10,000 - ₦50,000: ₦25 fee',
+          '₦50,000+: ₦50 fee'
+        ]
       },
       dataPurchases: {
         description: 'Data bundle purchases',
@@ -332,7 +353,7 @@ class FeesService {
       },
       maintenance: {
         description: 'Account maintenance',
-        rules: ['₦100 per month (charged on 1st)']
+        rules: ['₦50 per month (charged on 1st)']
       }
     };
   }

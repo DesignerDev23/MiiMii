@@ -222,9 +222,11 @@ class TransactionService {
     try {
       const { recipientPhone, amount, description, accountNumber, bankCode, accountName } = transferData;
       
-      // Calculate fees - Fixed 25 naira fee for transfers
-      const transferFee = 25;
-      const totalAmount = parseFloat(amount) + transferFee;
+      // Calculate fees - Tiered fee structure for transfers
+      const bankTransferService = require('./bankTransfer');
+      const feeCalculation = bankTransferService.calculateTransferFee(amount);
+      const transferFee = feeCalculation.totalFee;
+      const totalAmount = feeCalculation.totalAmount;
 
       // Check user balance
       const wallet = await walletService.getUserWallet(user.id);
@@ -439,7 +441,7 @@ class TransactionService {
           }),
           status: 'Successful',
           remark: transaction.description || 'Bank transfer',
-          charges: transaction.fee || 25,
+          charges: transaction.fee || feeCalculation.totalFee,
           discount: 0
         };
 
@@ -451,8 +453,8 @@ class TransactionService {
           const transferReceiptData = {
             type: 'Bank Transfer',
             amount: parseFloat(amount),
-            fee: transaction.fee || 25,
-            totalAmount: parseFloat(amount) + (transaction.fee || 25),
+            fee: transaction.fee || feeCalculation.totalFee,
+            totalAmount: feeCalculation.totalAmount,
             recipientName: recipient_account,
             recipientBank: transaction.senderDetails?.bankName || transaction.senderDetails?.bank || 'Bank',
             recipientAccount: transaction.senderDetails?.accountNumber || 'Account',
@@ -475,7 +477,7 @@ class TransactionService {
         if (!receiptSent) {
           await whatsappService.sendTextMessage(
             transaction.user.whatsappNumber,
-            `✅ *Transfer Receipt*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n💸 Fee: ₦${transaction.fee || 25}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
+            `✅ *Transfer Receipt*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n💸 Fee: ₦${transaction.fee || feeCalculation.totalFee}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
           );
         }
         

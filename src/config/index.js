@@ -85,7 +85,7 @@ class Config {
       transferFeePercentage: parseFloat(process.env.TRANSFER_FEE_PERCENTAGE) || 0.5,
       platformFee: parseInt(process.env.PLATFORM_FEE) || 5,
       bellbankFee: parseInt(process.env.BELLBANK_FEE) || 20,
-      maintenanceFee: parseInt(process.env.MAINTENANCE_FEE) || 100,
+      maintenanceFee: parseInt(process.env.MAINTENANCE_FEE) || 50,
       dataPurchaseFee: parseInt(process.env.DATA_PURCHASE_FEE) || 10
     };
 

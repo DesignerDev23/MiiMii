@@ -3349,7 +3349,7 @@ class MessageProcessor {
           // Generate confirmation message using AI for consistent one-sentence format
           const confirmationMessage = await aiAssistant.generateTransferConfirmationMessage({
             amount: transferAmount,
-            fee: 25, // Standard fee
+            fee: 25, // Standard fee (will be calculated dynamically)
             totalAmount: transferAmount + 25,
             recipientName: recipientName || 'Recipient',
             bankName: bankName,

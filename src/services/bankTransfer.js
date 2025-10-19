@@ -19,13 +19,13 @@ class BankTransferService {
       monthlyLimit: 50000000 // 50 million naira
     };
 
-    // Transfer fees structure - Flat fee for all transfers
+    // Transfer fees structure - Tiered fee structure
     this.fees = {
-      flatFee: 15, // Fixed 15 naira fee for ALL transfers regardless of amount
-      sameBankFee: 15, // Same as flat fee
-      otherBankFee: 15, // Same as flat fee
+      tier1: { min: 0, max: 10000, fee: 15 },      // 0 - 10k = ₦15
+      tier2: { min: 10000, max: 50000, fee: 25 },  // 10k - 50k = ₦25
+      tier3: { min: 50000, max: Infinity, fee: 50 }, // 50k+ = ₦50
       percentageFee: 0, // No percentage fee
-      freeThreshold: 0 // Not applicable with flat fee
+      freeThreshold: 0 // Not applicable with tiered fee
     };
 
     // Transfer types
@@ -487,15 +487,25 @@ class BankTransferService {
   calculateTransferFee(amount, transferType, sameBank = false) {
     const numAmount = parseFloat(amount);
     
-    // Flat fee of 15 naira for ALL transfers regardless of amount
-    const totalFee = 15;
+    // Determine fee based on amount tiers
+    let fee = 15; // Default to tier 1
+    
+    if (numAmount >= this.fees.tier3.min) {
+      fee = this.fees.tier3.fee; // 50k+ = ₦50
+    } else if (numAmount >= this.fees.tier2.min) {
+      fee = this.fees.tier2.fee; // 10k-50k = ₦25
+    } else {
+      fee = this.fees.tier1.fee; // 0-10k = ₦15
+    }
     
     return {
-      baseFee: 15,
+      baseFee: fee,
       percentageFee: 0,
-      totalFee: 15,
+      totalFee: fee,
       amount: numAmount,
-      totalAmount: numAmount + totalFee
+      totalAmount: numAmount + fee,
+      feeTier: numAmount >= this.fees.tier3.min ? 'tier3' : 
+               numAmount >= this.fees.tier2.min ? 'tier2' : 'tier1'
     };
   }
 
