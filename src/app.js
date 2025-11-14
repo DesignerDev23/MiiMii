@@ -87,12 +87,25 @@ const prodOrigins = corsEnv
 const devOrigins = ['http://localhost:3000', 'http://localhost:3001'];
 
 const allowedOrigins = (process.env.NODE_ENV === 'production') ? prodOrigins : devOrigins;
+const wildcardOriginPatterns = [
+  /\.chatmiimii\.com$/,
+  /\.lovable\.app$/,
+  /localhost:\d+$/,
+  /^chrome-extension:\/\// // allow browser extensions for admin tooling
+];
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  return wildcardOriginPatterns.some(pattern => pattern.test(origin));
+};
 
 app.use(cors({
-  origin: function(origin, callback) {
-    // Allow non-browser or same-origin requests with no origin header
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+    logger.warn('CORS blocked request', { origin });
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -102,9 +115,11 @@ app.use(cors({
 
 // Explicitly handle preflight
 app.options('*', cors({
-  origin: function(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+    logger.warn('CORS preflight blocked request', { origin });
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
