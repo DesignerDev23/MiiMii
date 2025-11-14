@@ -1,4 +1,13 @@
-const { User, Wallet } = require('../models');
+const { 
+  User, 
+  Wallet,
+  Transaction,
+  Beneficiary,
+  BankAccount,
+  VirtualCard,
+  SupportTicket,
+  ActivityLog
+} = require('../models');
 const logger = require('../utils/logger');
 const databaseService = require('./database');
 const { Op } = require('sequelize');
@@ -153,20 +162,76 @@ class UserService {
     }
   }
 
-  async deleteUser(userId) {
+  async deleteUser(userId, options = {}) {
+    const { force = false, deletedBy = null, reason = null } = options;
+    
     try {
-      const deletedRowsCount = await databaseService.destroyWithRetry(User, {
-        where: { id: userId }
-      }, { operationName: 'delete user' });
+      const result = await databaseService.transaction(async (transaction) => {
+        const user = await User.findByPk(userId, {
+          include: [{ model: Wallet, as: 'wallet' }],
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
 
-      if (deletedRowsCount === 0) {
-        throw new Error('User not found');
-      }
+        if (!user) {
+          throw new Error('User not found');
+        }
 
-      logger.info('User deleted successfully', { userId });
-      return true;
+        const walletBalance = user.wallet ? parseFloat(user.wallet.balance || 0) : 0;
+        const pendingBalance = user.wallet ? parseFloat(user.wallet.pendingBalance || 0) : 0;
+
+        if (!force && (walletBalance !== 0 || pendingBalance !== 0)) {
+          throw new Error('User wallet must have zero balance and no pending funds before deletion');
+        }
+
+        const buildDestroyOptions = () => ({ where: { userId }, transaction, individualHooks: true });
+
+        await Promise.all([
+          VirtualCard.destroy(buildDestroyOptions()),
+          Beneficiary.destroy(buildDestroyOptions()),
+          BankAccount.destroy(buildDestroyOptions()),
+          SupportTicket.destroy(buildDestroyOptions()),
+          ActivityLog.destroy(buildDestroyOptions())
+        ]);
+
+        await Transaction.destroy(buildDestroyOptions());
+
+        if (user.wallet) {
+          await Wallet.destroy({ where: { id: user.wallet.id }, transaction });
+        }
+
+        const snapshot = {
+          id: user.id,
+          whatsappNumber: user.whatsappNumber,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email
+        };
+
+        await User.destroy({ where: { id: userId }, transaction });
+
+        await ActivityLog.create({
+          userId: null,
+          activityType: 'admin_action',
+          action: 'user_deleted',
+          description: reason || 'User account permanently deleted by admin',
+          metadata: {
+            deletedBy,
+            reason,
+            targetUserId: userId,
+            userSnapshot: snapshot
+          },
+          source: 'admin',
+          tags: ['admin', 'user_delete']
+        }, { transaction });
+
+        return snapshot;
+      });
+
+      logger.info('User deleted successfully', { userId, deletedBy, force });
+      return result;
     } catch (error) {
-      logger.error('Failed to delete user', { error: error.message, userId });
+      logger.error('Failed to delete user', { error: error.message, userId, deletedBy, force });
       throw error;
     }
   }

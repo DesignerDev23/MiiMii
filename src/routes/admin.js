@@ -343,6 +343,35 @@ router.post('/users/:userId/maintenance-fee/debit',
   }
 );
 
+// Permanently delete a user account
+router.delete('/users/:userId',
+  param('userId').isUUID(),
+  body('reason').optional().isString().isLength({ min: 3, max: 500 }),
+  body('force').optional().isBoolean(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { reason = null, force = false } = req.body || {};
+      const deletedUser = await userService.deleteUser(userId, {
+        reason,
+        force,
+        deletedBy: req.admin?.id || req.admin?.email || null
+      });
+
+      res.json({
+        success: true,
+        message: 'User account deleted successfully',
+        user: deletedUser
+      });
+    } catch (error) {
+      logger.error('Failed to delete user account', { error: error.message, userId: req.params.userId });
+      const status = /wallet/i.test(error.message) ? 400 : 500;
+      res.status(status).json({ error: error.message });
+    }
+  }
+);
+
 // Data pricing management
 // Get current data plans with retail and selling prices
 router.get('/data-pricing', async (req, res) => {
