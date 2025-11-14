@@ -10,6 +10,7 @@ const utilityService = require('./utility');
 const transactionService = require('./transaction');
 const { ActivityLog } = require('../models');
 const sessionManager = require('../utils/sessionManager');
+const redisClient = require('../utils/redis');
 
 class AIAssistantService {
   constructor() {
@@ -2032,23 +2033,8 @@ Extract intent and data from this message. Consider the user context and any ext
         message: 'Auto-switching without requiring cancel'
       });
       
-      // Clear current conversation state immediately
+      await this.cleanupActiveConversationSessions(conversationState);
       await user.clearConversationState();
-      
-      // Clear any pending sessions in Redis
-      try {
-        const redisClient = require('../utils/redis');
-        if (conversationState.data?.sessionId) {
-          await sessionManager.deleteSession('data_purchase', conversationState.data.sessionId, 'flow');
-          await redisClient.deleteSession(conversationState.data.sessionId);
-        }
-        if (conversationState.data?.flowToken) {
-          await sessionManager.deleteSession('data_purchase', conversationState.data.flowToken, 'flow');
-          await redisClient.deleteSession(conversationState.data.flowToken);
-        }
-      } catch (redisError) {
-        logger.debug('Redis cleanup during service switch', { error: redisError.message });
-      }
       
       // Process the new service request directly
       const whatsappService = require('./whatsapp');
@@ -2905,6 +2891,65 @@ Extract intent and data from this message. Consider the user context and any ext
   calculateTransferFee(amount) {
     // Fee structure: ₦25 for amounts up to ₦5,000, ₦50 for higher amounts
     return amount <= 5000 ? 25 : 50;
+  }
+
+  getSessionNamespacesFromState(conversationState) {
+    const namespaces = new Set();
+    const data = conversationState?.data || {};
+    const context = (conversationState?.context || '').toLowerCase();
+    const intent = (conversationState?.intent || '').toLowerCase();
+
+    if (data.sessionNamespace) namespaces.add(data.sessionNamespace);
+    if (data.flowNamespace) namespaces.add(data.flowNamespace);
+    if (context.includes('data_purchase') || intent === 'data') namespaces.add('data_purchase');
+    if (context.includes('airtime') || intent === 'airtime') namespaces.add('airtime');
+    if (context.includes('bill') || intent === 'bills') namespaces.add('bills');
+    if (intent === 'disable_pin' || intent === 'enable_pin' || context.includes('pin')) {
+      namespaces.add('pin_management');
+    }
+
+    return Array.from(namespaces).filter(Boolean);
+  }
+
+  async cleanupActiveConversationSessions(conversationState) {
+    if (!conversationState) {
+      return;
+    }
+
+    const sessionId = conversationState?.data?.sessionId;
+    const flowToken = conversationState?.data?.flowToken;
+
+    if (!sessionId && !flowToken) {
+      return;
+    }
+
+    const namespaces = this.getSessionNamespacesFromState(conversationState);
+    const fallbackNamespaces = ['data_purchase', 'airtime', 'bills', 'pin_management'];
+    const namespacesToCheck = namespaces.length ? namespaces : fallbackNamespaces;
+
+    try {
+      for (const namespace of namespacesToCheck) {
+        if (sessionId) {
+          await sessionManager.deleteSession(namespace, sessionId, 'flow');
+        }
+        if (flowToken) {
+          await sessionManager.deleteSession(namespace, flowToken, 'flow');
+        }
+      }
+    } catch (error) {
+      logger.debug('Error deleting feature sessions during cleanup', { error: error.message, namespaces: namespacesToCheck });
+    }
+
+    try {
+      if (sessionId) {
+        await redisClient.deleteSession(sessionId);
+      }
+      if (flowToken) {
+        await redisClient.deleteSession(flowToken);
+      }
+    } catch (error) {
+      logger.debug('Error cleaning up Redis keys during conversation reset', { error: error.message });
+    }
   }
 
   isTransactionIntent(intent) {
