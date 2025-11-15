@@ -108,7 +108,16 @@ const defaultAllowedHeaders = [
   'X-Requested-With',
   'x-admin-email',
   'x-admin-role',
-  'x-session-token'
+  'x-admin-id',
+  'x-session-token',
+  'x-device-id',
+  'x-organization-id'
+];
+
+const defaultExposedHeaders = [
+  'x-admin-email',
+  'x-admin-role',
+  'x-admin-id'
 ];
 
 app.use(cors({
@@ -122,7 +131,7 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: defaultAllowedHeaders,
-  exposedHeaders: ['x-admin-email', 'x-admin-role']
+  exposedHeaders: defaultExposedHeaders
 }));
 
 // Explicitly handle preflight
@@ -137,7 +146,7 @@ app.options('*', cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: defaultAllowedHeaders,
-  exposedHeaders: ['x-admin-email', 'x-admin-role']
+  exposedHeaders: defaultExposedHeaders
 }));
 
 // Rate limiting with configuration values
