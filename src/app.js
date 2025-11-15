@@ -102,6 +102,15 @@ const isAllowedOrigin = (origin) => {
   return wildcardOriginPatterns.some(pattern => pattern.test(origin));
 };
 
+const defaultAllowedHeaders = [
+  'Content-Type',
+  'Authorization',
+  'X-Requested-With',
+  'x-admin-email',
+  'x-admin-role',
+  'x-session-token'
+];
+
 app.use(cors({
   origin(origin, callback) {
     if (isAllowedOrigin(origin)) {
@@ -112,7 +121,8 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: defaultAllowedHeaders,
+  exposedHeaders: ['x-admin-email', 'x-admin-role']
 }));
 
 // Explicitly handle preflight
@@ -126,7 +136,8 @@ app.options('*', cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: defaultAllowedHeaders,
+  exposedHeaders: ['x-admin-email', 'x-admin-role']
 }));
 
 // Rate limiting with configuration values
