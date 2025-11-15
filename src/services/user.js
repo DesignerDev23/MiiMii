@@ -168,7 +168,6 @@ class UserService {
     try {
       const result = await databaseService.transaction(async (transaction) => {
         const user = await User.findByPk(userId, {
-          include: [{ model: Wallet, as: 'wallet' }],
           transaction,
           lock: transaction.LOCK.UPDATE
         });
@@ -177,27 +176,34 @@ class UserService {
           throw new Error('User not found');
         }
 
-        const walletBalance = user.wallet ? parseFloat(user.wallet.balance || 0) : 0;
-        const pendingBalance = user.wallet ? parseFloat(user.wallet.pendingBalance || 0) : 0;
+        const wallet = await Wallet.findOne({
+          where: { userId },
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
+
+        const walletBalance = wallet ? parseFloat(wallet.balance || 0) : 0;
+        const pendingBalance = wallet ? parseFloat(wallet.pendingBalance || 0) : 0;
 
         if (!force && (walletBalance !== 0 || pendingBalance !== 0)) {
           throw new Error('User wallet must have zero balance and no pending funds before deletion');
         }
 
-        const buildDestroyOptions = () => ({ where: { userId }, transaction, individualHooks: true });
+        const destroyByUserId = async (model) => {
+          await model.destroy({ where: { userId }, transaction, individualHooks: true });
+        };
 
         await Promise.all([
-          VirtualCard.destroy(buildDestroyOptions()),
-          Beneficiary.destroy(buildDestroyOptions()),
-          BankAccount.destroy(buildDestroyOptions()),
-          SupportTicket.destroy(buildDestroyOptions()),
-          ActivityLog.destroy(buildDestroyOptions())
+          destroyByUserId(VirtualCard),
+          destroyByUserId(Beneficiary),
+          destroyByUserId(BankAccount),
+          destroyByUserId(SupportTicket),
+          destroyByUserId(ActivityLog),
+          destroyByUserId(Transaction)
         ]);
 
-        await Transaction.destroy(buildDestroyOptions());
-
-        if (user.wallet) {
-          await Wallet.destroy({ where: { id: user.wallet.id }, transaction });
+        if (wallet) {
+          await Wallet.destroy({ where: { id: wallet.id }, transaction });
         }
 
         const snapshot = {
