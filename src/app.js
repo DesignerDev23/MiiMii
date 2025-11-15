@@ -86,6 +86,7 @@ const prodOrigins = corsEnv
 
 const devOrigins = ['http://localhost:3000', 'http://localhost:3001'];
 
+const allowAllOrigins = process.env.ALLOW_ALL_ORIGINS === 'true';
 const allowedOrigins = (process.env.NODE_ENV === 'production') ? prodOrigins : devOrigins;
 const wildcardOriginPatterns = [
   /\.chatmiimii\.com$/,
@@ -95,6 +96,7 @@ const wildcardOriginPatterns = [
 ];
 
 const isAllowedOrigin = (origin) => {
+  if (allowAllOrigins) return true;
   if (!origin) return true;
   if (allowedOrigins.includes(origin)) return true;
   return wildcardOriginPatterns.some(pattern => pattern.test(origin));
@@ -105,7 +107,7 @@ app.use(cors({
     if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
-    logger.warn('CORS blocked request', { origin });
+    logger.warn('CORS blocked request', { origin, allowedOrigins, allowAllOrigins });
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -119,7 +121,7 @@ app.options('*', cors({
     if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
-    logger.warn('CORS preflight blocked request', { origin });
+    logger.warn('CORS preflight blocked request', { origin, allowedOrigins, allowAllOrigins });
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
