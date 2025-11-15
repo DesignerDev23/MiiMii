@@ -109,6 +109,7 @@ const defaultAllowedHeaders = [
   'x-admin-email',
   'x-admin-role',
   'x-admin-id',
+  'x-admin-name',
   'x-session-token',
   'x-device-id',
   'x-organization-id'
@@ -117,37 +118,38 @@ const defaultAllowedHeaders = [
 const defaultExposedHeaders = [
   'x-admin-email',
   'x-admin-role',
-  'x-admin-id'
+  'x-admin-id',
+  'x-admin-name'
 ];
 
-app.use(cors({
-  origin(origin, callback) {
-    if (isAllowedOrigin(origin)) {
-      return callback(null, true);
-    }
+const buildCorsOptions = (req, callback) => {
+  const origin = req.header('Origin');
+  if (!isAllowedOrigin(origin)) {
     logger.warn('CORS blocked request', { origin, allowedOrigins, allowAllOrigins });
     return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: defaultAllowedHeaders,
-  exposedHeaders: defaultExposedHeaders
-}));
+  }
+
+  // Merge default headers with whatever the browser requests during preflight
+  const requestedHeaders = (req.header('Access-Control-Request-Headers') || '')
+    .split(',')
+    .map(header => header.trim())
+    .filter(Boolean);
+  const allowedHeaders = Array.from(new Set([...defaultAllowedHeaders, ...requestedHeaders]));
+
+  callback(null, {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders,
+    exposedHeaders: defaultExposedHeaders,
+    preflightContinue: false
+  });
+};
+
+app.use(cors(buildCorsOptions));
 
 // Explicitly handle preflight
-app.options('*', cors({
-  origin(origin, callback) {
-    if (isAllowedOrigin(origin)) {
-      return callback(null, true);
-    }
-    logger.warn('CORS preflight blocked request', { origin, allowedOrigins, allowAllOrigins });
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: defaultAllowedHeaders,
-  exposedHeaders: defaultExposedHeaders
-}));
+app.options('*', cors(buildCorsOptions));
 
 // Rate limiting with configuration values
 const rateLimitConfig = config.getRateLimitConfig();
