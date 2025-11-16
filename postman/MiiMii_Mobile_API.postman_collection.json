@@ -1,0 +1,433 @@
+{
+  "info": {
+    "name": "MiiMii Mobile API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "miimii-mobile-api"
+  },
+  "item": [
+    {
+      "name": "Auth / Signup",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/auth/signup",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "auth", "signup"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Secret123\",\n  \"phoneNumber\": \"+2348012345678\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"MiiMii\"\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "201 Created - Signup success",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Signup successful\",\n  \"token\": \"<jwt>\",\n  \"expiresIn\": \"24h\",\n  \"user\": {\n    \"id\": \"uuid\",\n    \"phoneNumber\": \"08012345678\",\n    \"firstName\": \"Ada\",\n    \"onboardingStep\": \"profile_setup\",\n    \"wallet\": {\n      \"balance\": 0,\n      \"virtualAccount\": {\n        \"accountNumber\": null,\n        \"bank\": null\n      }\n    }\n  },\n  \"onboarding\": {\n    \"currentStep\": \"profile_setup\",\n    \"nextStep\": \"profile_setup\",\n    \"stepsCompleted\": {\n      \"profile\": false,\n      \"kyc\": false,\n      \"virtualAccount\": false,\n      \"pin\": false\n    },\n    \"virtualAccount\": null\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Auth / Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "auth", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Secret123\"\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Login",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"token\": \"<jwt>\",\n  \"expiresIn\": \"24h\",\n  \"user\": {\n    \"phoneNumber\": \"08012345678\",\n    \"kycStatus\": \"pending\",\n    \"wallet\": {\n      \"balance\": 1250.5,\n      \"currency\": \"NGN\"\n    }\n  },\n  \"onboarding\": {\n    \"currentStep\": \"kyc_submission\",\n    \"nextStep\": \"kyc_submission\",\n    \"stepsCompleted\": {\n      \"profile\": true,\n      \"kyc\": false,\n      \"virtualAccount\": false,\n      \"pin\": false\n    },\n    \"virtualAccount\": null\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Auth / Refresh Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/auth/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "auth", "refresh"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Profile / Me",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "me"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Profile",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"user\": {\n    \"id\": \"uuid\",\n    \"firstName\": \"Ada\",\n    \"lastName\": \"MiiMii\",\n    \"kycStatus\": \"verified\",\n    \"wallet\": {\n      \"balance\": 1250.5,\n      \"availableBalance\": 1200.5,\n      \"virtualAccount\": {\n        \"accountNumber\": \"1234567890\",\n        \"bank\": \"Rubies MFB\"\n      },\n      \"limits\": {\n        \"dailyLimit\": 500000,\n        \"dailySpent\": 15000\n      }\n    }\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Onboarding / Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/onboarding/status",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "onboarding", "status"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Onboarding status",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"onboarding\": {\n    \"currentStep\": \"kyc_submission\",\n    \"nextStep\": \"kyc_submission\",\n    \"stepsCompleted\": {\n      \"profile\": true,\n      \"kyc\": false,\n      \"virtualAccount\": false,\n      \"pin\": false\n    },\n    \"virtualAccount\": null\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Onboarding / Profile",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/onboarding/profile",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "onboarding", "profile"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Ada\",\n  \"lastName\": \"MiiMii\",\n  \"address\": \"12 Admiralty Way, Lekki\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Onboarding / KYC",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/onboarding/kyc",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "onboarding", "kyc"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dateOfBirth\": \"1995-05-20\",\n  \"gender\": \"female\",\n  \"address\": \"12 Admiralty Way, Lekki\",\n  \"bvn\": \"12345678901\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Onboarding / Virtual Account",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/onboarding/virtual-account",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "onboarding", "virtual-account"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Onboarding / PIN",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/onboarding/pin",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "onboarding", "pin"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"pin\": \"1234\",\n  \"confirmPin\": \"1234\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Chat / Send Message",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/chat/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "chat", "send"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"Send 5k to 0123456789 GTBank\"\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Chat reply",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"reply\": \"Got it! Sending ₦5,000 to GTBank account 0123456789. Just need your PIN to confirm.\",\n  \"intent\": \"bank_transfer\",\n  \"meta\": {\n    \"userMessageId\": \"...\",\n    \"botMessageId\": \"...\"\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Chat / History",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/chat/history?limit=50",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "chat", "history"],
+          "query": [
+            { "key": "limit", "value": "50" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Chat history",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"messages\": [\n    {\n      \"id\": \"...\",\n      \"role\": \"user\",\n      \"content\": \"Send 5k to 0123456789 GTBank\",\n      \"createdAt\": \"2025-01-10T09:00:00Z\"\n    },\n    {\n      \"id\": \"...\",\n      \"role\": \"assistant\",\n      \"content\": \"Got it! Sending ₦5,000 to GTBank account 0123456789. Just need your PIN to confirm.\",\n      \"createdAt\": \"2025-01-10T09:00:01Z\"\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Wallet / Summary",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/me/wallet",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "me", "wallet"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Transactions / List",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/me/transactions?page=1&limit=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "me", "transactions"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "20" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Transactions",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"pagination\": { \"page\": 1, \"limit\": 20, \"total\": 2, \"pages\": 1 },\n  \"transactions\": [\n    {\n      \"reference\": \"TXN12345\",\n      \"type\": \"debit\",\n      \"category\": \"bank_transfer\",\n      \"amount\": 5000,\n      \"fee\": 25,\n      \"status\": \"completed\",\n      \"createdAt\": \"2025-01-10T09:00:00Z\"\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Transfers / Banks",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/banks",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "banks"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Transfers / Validate Account",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/transfers/validate-account",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "transfers", "validate-account"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accountNumber\": \"0123456789\",\n  \"bankCode\": \"058\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Transfers / Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/transfers",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "transfers"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 5000,\n  \"accountNumber\": \"0123456789\",\n  \"bankCode\": \"058\",\n  \"pin\": \"1234\",\n  \"narration\": \"Savings\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Airtime / Purchase",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/airtime/purchase",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "airtime", "purchase"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+2348012345678\",\n  \"network\": \"MTN\",\n  \"amount\": 1000,\n  \"pin\": \"1234\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Data / Purchase",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/data/purchase",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "data", "purchase"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+2348012345678\",\n  \"network\": \"MTN\",\n  \"planId\": \"mtn-1gb-500\",\n  \"pin\": \"1234\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Bills / Pay",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/bills/pay",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "bills", "pay"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"category\": \"electricity\",\n  \"provider\": \"ikedc\",\n  \"customerNumber\": \"0123456789\",\n  \"amount\": 5000,\n  \"pin\": \"1234\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Beneficiaries / List",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/beneficiaries?limit=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "beneficiaries"],
+          "query": [
+            { "key": "limit", "value": "20" }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.chatmiimii.com" },
+    { "key": "MOBILE_TOKEN", "value": "" }
+  ]
+}
+

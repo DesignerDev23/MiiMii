@@ -54,6 +54,15 @@ class UserService {
     }
   }
 
+  async createUser(data) {
+    try {
+      return await databaseService.createWithRetry(User, data, {}, { operationName: 'create user' });
+    } catch (error) {
+      logger.error('Failed to create user', { error: error.message, data });
+      throw error;
+    }
+  }
+
   async getUserById(userId) {
     try {
       const user = await databaseService.findByPkWithRetry(User, userId, {
@@ -140,6 +149,18 @@ class UserService {
       return user;
     } catch (error) {
       logger.error('Failed to get user by WhatsApp number', { error: error.message, whatsappNumber });
+      throw error;
+    }
+  }
+
+  async findByAppEmail(email) {
+    try {
+      if (!email) return null;
+      return await databaseService.findOneWithRetry(User, {
+        where: { appEmail: email.toLowerCase() }
+      }, { operationName: 'find user by appEmail' });
+    } catch (error) {
+      logger.error('Failed to get user by app email', { error: error.message, email });
       throw error;
     }
   }
@@ -462,6 +483,31 @@ class UserService {
     } catch (error) {
       logger.error('PIN validation failed', { error: error.message, userId });
       throw error;
+    }
+  }
+
+  async incrementAppLoginAttempts(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) return;
+      const attempts = (user.appLoginAttempts || 0) + 1;
+      const updates = { appLoginAttempts: attempts };
+      if (attempts >= 5) {
+        updates.appLockUntil = new Date(Date.now() + 15 * 60 * 1000);
+      }
+      await user.update(updates);
+    } catch (error) {
+      logger.error('Failed to increment app login attempts', { error: error.message, userId });
+    }
+  }
+
+  async resetAppLoginAttempts(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) return;
+      await user.update({ appLoginAttempts: 0, appLockUntil: null });
+    } catch (error) {
+      logger.error('Failed to reset app login attempts', { error: error.message, userId });
     }
   }
 

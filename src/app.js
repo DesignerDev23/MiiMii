@@ -43,6 +43,7 @@ const dataPlanRoutes = require('./routes/dataPlans');
 const debugDataPlansRoutes = require('./routes/debug-data-plans');
 const testRoutes = require('./routes/test');
 const testWhatsAppRoutes = require('./routes/testWhatsApp');
+const mobileRoutes = require('./routes/mobile');
 
 const app = express();
 
@@ -337,6 +338,7 @@ app.use('/api/data-plans', dataPlanRoutes);
 app.use('/api/debug', debugDataPlansRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/test-whatsapp', testWhatsAppRoutes);
+app.use('/api/mobile', mobileRoutes);
 
 // Serve admin dashboard
 app.get('/admin*', (req, res) => {
