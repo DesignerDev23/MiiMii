@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { body, query, param, validationResult } = require('express-validator');
+const multer = require('multer');
 const { Transaction, ChatMessage } = require('../models');
 const bcrypt = require('bcryptjs');
 const userService = require('../services/user');
@@ -13,10 +14,27 @@ const beneficiaryService = require('../services/beneficiary');
 const kycService = require('../services/kyc');
 const rubiesWalletService = require('../services/rubiesWalletService');
 const mobileMessageProcessor = require('../services/mobileMessageProcessor');
+const imageProcessingService = require('../services/imageProcessing');
 const mobileAuth = require('../middleware/mobileAuth');
 const logger = require('../utils/logger');
 
 const router = express.Router();
+
+// Configure multer for image uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB max file size
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only image files
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
 
 const validateRequest = (req, res, next) => {
   const errors = validationResult(req);
@@ -277,7 +295,7 @@ router.post('/auth/refresh', mobileAuth, async (req, res) => {
   }
 });
 
-// ===== Password Reset =====
+// ===== Password Reset (OTP-based) =====
 router.post('/auth/forgot-password',
   body('email').isEmail().normalizeEmail(),
   validateRequest,
@@ -286,18 +304,16 @@ router.post('/auth/forgot-password',
       const { email } = req.body;
       const normalizedEmail = email.toLowerCase();
 
-      const result = await userService.generatePasswordResetToken(normalizedEmail);
+      const result = await userService.generatePasswordResetOTP(normalizedEmail);
 
-      // In production, send email with reset link
-      // For now, return success message (token is in response for testing)
-      // TODO: Integrate with email service to send reset link
-      // Example: await emailService.sendPasswordResetEmail(normalizedEmail, result.resetToken);
+      // TODO: Integrate with email service to send OTP
+      // Example: await emailService.sendPasswordResetOTP(normalizedEmail, result.otp);
 
       return res.json({
         success: true,
         message: result.message
-        // In production, remove resetToken from response
-        // resetToken: result.resetToken // Only for development/testing
+        // In production, remove OTP from response - it should only be sent via email
+        // otp: result.otp // Only for development/testing
       });
     } catch (error) {
       logger.error('Forgot password failed', { error: error.message, email: req.body.email });
@@ -306,39 +322,44 @@ router.post('/auth/forgot-password',
   }
 );
 
-router.post('/auth/verify-reset-token',
-  body('token').isString().trim().notEmpty(),
+router.post('/auth/verify-otp',
+  body('email').isEmail().normalizeEmail(),
+  body('otp').isLength({ min: 6, max: 6 }).isNumeric().withMessage('OTP must be a 6-digit number'),
   validateRequest,
   async (req, res) => {
     try {
-      const { token } = req.body;
-      const verification = await userService.verifyPasswordResetToken(token);
+      const { email, otp } = req.body;
+      const normalizedEmail = email.toLowerCase();
+
+      const verification = await userService.verifyPasswordResetOTP(normalizedEmail, otp);
 
       if (!verification.valid) {
-        return res.status(400).json({ error: verification.error || 'Invalid or expired token' });
+        return res.status(400).json({ error: verification.error || 'Invalid or expired OTP' });
       }
 
       return res.json({
         success: true,
-        message: 'Token is valid',
-        email: verification.user.appEmail // Return masked email for confirmation
+        message: 'OTP verified successfully',
+        email: verification.user.appEmail
       });
     } catch (error) {
-      logger.error('Verify reset token failed', { error: error.message });
-      return res.status(500).json({ error: 'Failed to verify token' });
+      logger.error('Verify OTP failed', { error: error.message });
+      return res.status(500).json({ error: 'Failed to verify OTP' });
     }
   }
 );
 
 router.post('/auth/reset-password',
-  body('token').isString().trim().notEmpty(),
+  body('email').isEmail().normalizeEmail(),
+  body('otp').isLength({ min: 6, max: 6 }).isNumeric().withMessage('OTP must be a 6-digit number'),
   body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   validateRequest,
   async (req, res) => {
     try {
-      const { token, newPassword } = req.body;
+      const { email, otp, newPassword } = req.body;
+      const normalizedEmail = email.toLowerCase();
 
-      const result = await userService.resetPasswordWithToken(token, newPassword);
+      const result = await userService.resetPasswordWithOTP(normalizedEmail, otp, newPassword);
 
       return res.json({
         success: true,
@@ -811,6 +832,98 @@ router.post('/transfers',
         accountNumber: req.body.accountNumber
       });
       return res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+// ===== OCR Transfer (Extract Bank Details from Image) =====
+router.post('/transfers/ocr',
+  mobileAuth,
+  upload.single('image'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'Image file is required' });
+      }
+
+      logger.info('Processing OCR transfer request', {
+        userId: req.user.id,
+        fileSize: req.file.size,
+        mimetype: req.file.mimetype
+      });
+
+      // Preprocess image
+      const processedBuffer = await imageProcessingService.preprocessImage(req.file.buffer);
+
+      // Extract text using OCR
+      const ocrResult = await imageProcessingService.extractTextFromImage(processedBuffer);
+      
+      if (!ocrResult.text || ocrResult.text.trim().length === 0) {
+        return res.status(400).json({
+          error: 'No text found in image. Please ensure the image contains clear bank details.',
+          ocrConfidence: ocrResult.confidence
+        });
+      }
+
+      // Extract bank details using AI
+      const bankDetails = await imageProcessingService.extractBankDetailsFromText(ocrResult.text);
+
+      // Validate extracted bank details
+      const validation = imageProcessingService.validateBankDetails(bankDetails);
+
+      if (!validation.isValid) {
+        return res.status(400).json({
+          error: `Could not extract valid bank details: ${validation.errors.join(', ')}`,
+          extractedData: {
+            accountNumber: bankDetails.accountNumber || null,
+            bankName: bankDetails.bankName || null,
+            accountHolderName: bankDetails.accountHolderName || null
+          },
+          ocrText: ocrResult.text.substring(0, 500), // First 500 chars for debugging
+          ocrConfidence: ocrResult.confidence
+        });
+      }
+
+      // If bank name is found, try to get bank code
+      let bankCode = null;
+      if (bankDetails.bankName) {
+        try {
+          // Get banks list to match bank name to code
+          const banks = await bankTransferService.getSupportedBanks();
+          const matchedBank = banks.find(bank => 
+            bank.name.toLowerCase().includes(bankDetails.bankName.toLowerCase()) ||
+            bankDetails.bankName.toLowerCase().includes(bank.name.toLowerCase())
+          );
+          if (matchedBank) {
+            bankCode = matchedBank.code;
+          }
+        } catch (error) {
+          logger.debug('Failed to match bank code', { error: error.message });
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'Bank details extracted successfully',
+        bankDetails: {
+          accountNumber: bankDetails.accountNumber,
+          bankName: bankDetails.bankName,
+          bankCode: bankCode,
+          accountHolderName: bankDetails.accountHolderName || null
+        },
+        confidence: bankDetails.confidence || ocrResult.confidence,
+        ocrConfidence: ocrResult.confidence
+      });
+    } catch (error) {
+      logger.error('OCR transfer processing failed', {
+        error: error.message,
+        userId: req.user.id,
+        stack: error.stack
+      });
+      return res.status(500).json({
+        error: 'Failed to process image. Please ensure the image is clear and contains bank details.',
+        details: error.message
+      });
     }
   }
 );

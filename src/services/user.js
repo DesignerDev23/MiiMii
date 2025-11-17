@@ -513,65 +513,101 @@ class UserService {
     }
   }
 
-  async generatePasswordResetToken(email) {
+  async generatePasswordResetOTP(email) {
     try {
       const user = await this.findByAppEmail(email);
       if (!user) {
         // Don't reveal if email exists or not for security
-        return { success: true, message: 'If the email exists, a reset link has been sent' };
+        return { success: true, message: 'If the email exists, an OTP has been sent' };
       }
 
-      // Generate secure random token
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
       await user.update({
-        appPasswordResetToken: resetToken,
-        appPasswordResetExpiry: resetExpiry
+        appPasswordResetOTP: otp,
+        appPasswordResetOTPExpiry: otpExpiry,
+        appPasswordResetOTPAttempts: 0
       });
 
-      logger.info('Password reset token generated', { userId: user.id, email });
+      logger.info('Password reset OTP generated', { userId: user.id, email });
 
-      // Return token for email service to send (in production, send via email)
+      // TODO: Integrate with email service to send OTP
+      // Example: await emailService.sendPasswordResetOTP(email, otp);
+
+      // In production, remove OTP from response and send via email only
       return {
         success: true,
-        message: 'If the email exists, a reset link has been sent',
-        resetToken, // In production, remove this and send via email instead
-        resetExpiry
+        message: 'If the email exists, an OTP has been sent',
+        // Remove this in production - OTP should only be sent via email
+        otp // Only for development/testing
       };
     } catch (error) {
-      logger.error('Failed to generate password reset token', { error: error.message, email });
+      logger.error('Failed to generate password reset OTP', { error: error.message, email });
       throw error;
     }
   }
 
-  async verifyPasswordResetToken(token) {
+  async verifyPasswordResetOTP(email, otp) {
     try {
-      const user = await databaseService.findOneWithRetry(User, {
-        where: {
-          appPasswordResetToken: token,
-          appPasswordResetExpiry: {
-            [Op.gt]: new Date()
-          }
-        }
-      }, { operationName: 'verify password reset token' });
-
+      const user = await this.findByAppEmail(email);
       if (!user) {
-        return { valid: false, error: 'Invalid or expired reset token' };
+        return { valid: false, error: 'Invalid email or OTP' };
       }
 
+      // Check if OTP exists and is not expired
+      if (!user.appPasswordResetOTP || !user.appPasswordResetOTPExpiry) {
+        return { valid: false, error: 'No OTP found. Please request a new one.' };
+      }
+
+      if (user.appPasswordResetOTPExpiry < new Date()) {
+        // Clear expired OTP
+        await user.update({
+          appPasswordResetOTP: null,
+          appPasswordResetOTPExpiry: null,
+          appPasswordResetOTPAttempts: 0
+        });
+        return { valid: false, error: 'OTP has expired. Please request a new one.' };
+      }
+
+      // Check attempt limit (max 5 attempts)
+      if (user.appPasswordResetOTPAttempts >= 5) {
+        // Clear OTP after max attempts
+        await user.update({
+          appPasswordResetOTP: null,
+          appPasswordResetOTPExpiry: null,
+          appPasswordResetOTPAttempts: 0
+        });
+        return { valid: false, error: 'Too many failed attempts. Please request a new OTP.' };
+      }
+
+      // Verify OTP
+      if (user.appPasswordResetOTP !== otp) {
+        // Increment attempt counter
+        await user.update({
+          appPasswordResetOTPAttempts: (user.appPasswordResetOTPAttempts || 0) + 1
+        });
+        const remainingAttempts = 5 - (user.appPasswordResetOTPAttempts + 1);
+        return { 
+          valid: false, 
+          error: `Invalid OTP. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : 'Please request a new OTP.'}` 
+        };
+      }
+
+      // OTP is valid
       return { valid: true, user };
     } catch (error) {
-      logger.error('Failed to verify password reset token', { error: error.message });
-      return { valid: false, error: 'Token verification failed' };
+      logger.error('Failed to verify password reset OTP', { error: error.message });
+      return { valid: false, error: 'OTP verification failed' };
     }
   }
 
-  async resetPasswordWithToken(token, newPassword) {
+  async resetPasswordWithOTP(email, otp, newPassword) {
     try {
-      const verification = await this.verifyPasswordResetToken(token);
+      const verification = await this.verifyPasswordResetOTP(email, otp);
       if (!verification.valid) {
-        throw new Error(verification.error || 'Invalid or expired reset token');
+        throw new Error(verification.error || 'Invalid or expired OTP');
       }
 
       const user = verification.user;
@@ -580,20 +616,21 @@ class UserService {
       const saltRounds = 10;
       const passwordHash = await bcrypt.hash(newPassword, saltRounds);
 
-      // Update password and clear reset token
+      // Update password and clear OTP
       await user.update({
         appPasswordHash: passwordHash,
-        appPasswordResetToken: null,
-        appPasswordResetExpiry: null,
+        appPasswordResetOTP: null,
+        appPasswordResetOTPExpiry: null,
+        appPasswordResetOTPAttempts: 0,
         appLoginAttempts: 0,
         appLockUntil: null
       });
 
-      logger.info('Password reset successful', { userId: user.id });
+      logger.info('Password reset successful with OTP', { userId: user.id });
 
       return { success: true, message: 'Password reset successful' };
     } catch (error) {
-      logger.error('Failed to reset password', { error: error.message });
+      logger.error('Failed to reset password with OTP', { error: error.message });
       throw error;
     }
   }

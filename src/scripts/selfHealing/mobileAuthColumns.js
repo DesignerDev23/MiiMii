@@ -66,6 +66,23 @@ async function ensureMobileAuthColumns() {
       allowNull: true
     });
 
+    await addColumnIfMissing('Users', 'appPasswordResetOTP', {
+      type: sequelize.Sequelize.STRING,
+      allowNull: true
+    });
+
+    await addColumnIfMissing('Users', 'appPasswordResetOTPExpiry', {
+      type: sequelize.Sequelize.DATE,
+      allowNull: true
+    });
+
+    await addColumnIfMissing('Users', 'appPasswordResetOTPAttempts', {
+      type: sequelize.Sequelize.INTEGER,
+      allowNull: false,
+      defaultValue: 0
+    });
+
+    // Keep old token columns for backward compatibility (can be removed later)
     await addColumnIfMissing('Users', 'appPasswordResetToken', {
       type: sequelize.Sequelize.STRING,
       allowNull: true
