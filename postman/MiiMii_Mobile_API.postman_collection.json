@@ -75,6 +75,108 @@
       "response": []
     },
     {
+      "name": "Auth / Forgot Password",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/auth/forgot-password",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "auth", "forgot-password"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user@example.com\"\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Reset link sent",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"If the email exists, a reset link has been sent\"\n}"
+        },
+        {
+          "name": "400 Bad Request - Invalid email",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"errors\": [\n    {\n      \"msg\": \"Invalid value\",\n      \"param\": \"email\",\n      \"location\": \"body\"\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Auth / Verify Reset Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/auth/verify-reset-token",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "auth", "verify-reset-token"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"abc123def456...\"\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Token valid",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Token is valid\",\n  \"email\": \"user@example.com\"\n}"
+        },
+        {
+          "name": "400 Bad Request - Invalid/expired token",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Invalid or expired reset token\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Auth / Reset Password",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/auth/reset-password",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "auth", "reset-password"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"abc123def456...\",\n  \"newPassword\": \"NewSecure123\"\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Password reset successful",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Password reset successful\"\n}"
+        },
+        {
+          "name": "400 Bad Request - Invalid token or weak password",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Invalid or expired reset token\"\n}"
+        }
+      ]
+    },
+    {
       "name": "Profile / Me",
       "request": {
         "method": "GET",

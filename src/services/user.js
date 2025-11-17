@@ -11,6 +11,8 @@ const {
 const logger = require('../utils/logger');
 const databaseService = require('./database');
 const { Op } = require('sequelize');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 class UserService {
   async getOrCreateUser(whatsappNumber, displayName = null) {
@@ -508,6 +510,91 @@ class UserService {
       await user.update({ appLoginAttempts: 0, appLockUntil: null });
     } catch (error) {
       logger.error('Failed to reset app login attempts', { error: error.message, userId });
+    }
+  }
+
+  async generatePasswordResetToken(email) {
+    try {
+      const user = await this.findByAppEmail(email);
+      if (!user) {
+        // Don't reveal if email exists or not for security
+        return { success: true, message: 'If the email exists, a reset link has been sent' };
+      }
+
+      // Generate secure random token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+      await user.update({
+        appPasswordResetToken: resetToken,
+        appPasswordResetExpiry: resetExpiry
+      });
+
+      logger.info('Password reset token generated', { userId: user.id, email });
+
+      // Return token for email service to send (in production, send via email)
+      return {
+        success: true,
+        message: 'If the email exists, a reset link has been sent',
+        resetToken, // In production, remove this and send via email instead
+        resetExpiry
+      };
+    } catch (error) {
+      logger.error('Failed to generate password reset token', { error: error.message, email });
+      throw error;
+    }
+  }
+
+  async verifyPasswordResetToken(token) {
+    try {
+      const user = await databaseService.findOneWithRetry(User, {
+        where: {
+          appPasswordResetToken: token,
+          appPasswordResetExpiry: {
+            [Op.gt]: new Date()
+          }
+        }
+      }, { operationName: 'verify password reset token' });
+
+      if (!user) {
+        return { valid: false, error: 'Invalid or expired reset token' };
+      }
+
+      return { valid: true, user };
+    } catch (error) {
+      logger.error('Failed to verify password reset token', { error: error.message });
+      return { valid: false, error: 'Token verification failed' };
+    }
+  }
+
+  async resetPasswordWithToken(token, newPassword) {
+    try {
+      const verification = await this.verifyPasswordResetToken(token);
+      if (!verification.valid) {
+        throw new Error(verification.error || 'Invalid or expired reset token');
+      }
+
+      const user = verification.user;
+
+      // Hash new password
+      const saltRounds = 10;
+      const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+      // Update password and clear reset token
+      await user.update({
+        appPasswordHash: passwordHash,
+        appPasswordResetToken: null,
+        appPasswordResetExpiry: null,
+        appLoginAttempts: 0,
+        appLockUntil: null
+      });
+
+      logger.info('Password reset successful', { userId: user.id });
+
+      return { success: true, message: 'Password reset successful' };
+    } catch (error) {
+      logger.error('Failed to reset password', { error: error.message });
+      throw error;
     }
   }
 

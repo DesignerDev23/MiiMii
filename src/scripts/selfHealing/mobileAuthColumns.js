@@ -66,6 +66,16 @@ async function ensureMobileAuthColumns() {
       allowNull: true
     });
 
+    await addColumnIfMissing('Users', 'appPasswordResetToken', {
+      type: sequelize.Sequelize.STRING,
+      allowNull: true
+    });
+
+    await addColumnIfMissing('Users', 'appPasswordResetExpiry', {
+      type: sequelize.Sequelize.DATE,
+      allowNull: true
+    });
+
     logger.info('🎉 Mobile auth columns check completed');
   } catch (error) {
     logger.error('❌ Failed to ensure mobile auth columns', { error: error.message });

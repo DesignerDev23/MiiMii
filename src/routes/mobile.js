@@ -277,6 +277,80 @@ router.post('/auth/refresh', mobileAuth, async (req, res) => {
   }
 });
 
+// ===== Password Reset =====
+router.post('/auth/forgot-password',
+  body('email').isEmail().normalizeEmail(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { email } = req.body;
+      const normalizedEmail = email.toLowerCase();
+
+      const result = await userService.generatePasswordResetToken(normalizedEmail);
+
+      // In production, send email with reset link
+      // For now, return success message (token is in response for testing)
+      // TODO: Integrate with email service to send reset link
+      // Example: await emailService.sendPasswordResetEmail(normalizedEmail, result.resetToken);
+
+      return res.json({
+        success: true,
+        message: result.message
+        // In production, remove resetToken from response
+        // resetToken: result.resetToken // Only for development/testing
+      });
+    } catch (error) {
+      logger.error('Forgot password failed', { error: error.message, email: req.body.email });
+      return res.status(500).json({ error: 'Failed to process password reset request' });
+    }
+  }
+);
+
+router.post('/auth/verify-reset-token',
+  body('token').isString().trim().notEmpty(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { token } = req.body;
+      const verification = await userService.verifyPasswordResetToken(token);
+
+      if (!verification.valid) {
+        return res.status(400).json({ error: verification.error || 'Invalid or expired token' });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Token is valid',
+        email: verification.user.appEmail // Return masked email for confirmation
+      });
+    } catch (error) {
+      logger.error('Verify reset token failed', { error: error.message });
+      return res.status(500).json({ error: 'Failed to verify token' });
+    }
+  }
+);
+
+router.post('/auth/reset-password',
+  body('token').isString().trim().notEmpty(),
+  body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+
+      const result = await userService.resetPasswordWithToken(token, newPassword);
+
+      return res.json({
+        success: true,
+        message: result.message
+      });
+    } catch (error) {
+      logger.error('Reset password failed', { error: error.message });
+      return res.status(400).json({ error: error.message || 'Failed to reset password' });
+    }
+  }
+);
+
 // ===== Chat (In-App Bot) =====
 router.post('/chat/send',
   mobileAuth,
