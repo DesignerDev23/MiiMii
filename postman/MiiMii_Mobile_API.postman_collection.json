@@ -484,7 +484,162 @@
       ]
     },
     {
-      "name": "Transfers / Create",
+      "name": "Notifications / List",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/notifications?limit=50&offset=0",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "notifications"],
+          "query": [
+            { "key": "limit", "value": "50" },
+            { "key": "offset", "value": "0" },
+            { "key": "isRead", "value": "false", "disabled": true },
+            { "key": "type", "value": "transfer_incoming", "disabled": true },
+            { "key": "priority", "value": "high", "disabled": true }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Notifications",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"notifications\": [\n    {\n      \"id\": \"uuid\",\n      \"type\": \"transfer_incoming\",\n      \"title\": \"💰 Money Received\",\n      \"message\": \"You received ₦5,000 - Transfer from John Doe\",\n      \"data\": {\n        \"transactionId\": \"uuid\",\n        \"reference\": \"TXN-123456\",\n        \"amount\": 5000,\n        \"currency\": \"NGN\",\n        \"category\": \"wallet_funding\",\n        \"status\": \"completed\"\n      },\n      \"isRead\": false,\n      \"readAt\": null,\n      \"priority\": \"normal\",\n      \"actionUrl\": \"/transactions/TXN-123456\",\n      \"imageUrl\": null,\n      \"createdAt\": \"2025-11-15T10:30:00Z\"\n    }\n  ],\n  \"pagination\": {\n    \"total\": 25,\n    \"limit\": 50,\n    \"offset\": 0,\n    \"hasMore\": false\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Notifications / Unread Count",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/notifications/unread-count",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "notifications", "unread-count"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Unread count",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"unreadCount\": 5\n}"
+        }
+      ]
+    },
+    {
+      "name": "Notifications / Mark as Read",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/notifications/:id/read",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "notifications", ":id", "read"],
+          "variable": [
+            { "key": "id", "value": "uuid" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Marked as read",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Notification marked as read\",\n  \"notification\": {\n    \"id\": \"uuid\",\n    \"isRead\": true,\n    \"readAt\": \"2025-11-15T10:35:00Z\"\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Notifications / Mark All as Read",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/notifications/read-all",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "notifications", "read-all"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - All marked as read",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"All notifications marked as read\",\n  \"updatedCount\": 10\n}"
+        }
+      ]
+    },
+    {
+      "name": "Notifications / Delete",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/notifications/:id",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "notifications", ":id"],
+          "variable": [
+            { "key": "id", "value": "uuid" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Deleted",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Notification deleted\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Notifications / Delete All Read",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/notifications/read/all",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "notifications", "read", "all"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Deleted",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"All read notifications deleted\",\n  \"deletedCount\": 15\n}"
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.chatmiimii.com" },
+    { "key": "MOBILE_TOKEN", "value": "" }
+  ]
+}
       "request": {
         "method": "POST",
         "header": [

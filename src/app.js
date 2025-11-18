@@ -18,6 +18,9 @@ const redisClient = require('./utils/redis');
 const errorHandler = require('./middleware/errorHandler');
 const { testSSLConnections } = require('./utils/sslTest');
 const { initializeDataPlans } = require('./database/self-healing-tables');
+const ensureMobileAuthColumns = require('./scripts/selfHealing/mobileAuthColumns');
+const ensureChatMessagesTable = require('./scripts/selfHealing/chatMessagesTable');
+const ensureNotificationsTable = require('./scripts/selfHealing/notificationsTable');
 
 // Import models to ensure they are registered with Sequelize
 require('./models');
@@ -464,6 +467,15 @@ async function initializeDatabaseConnection() {
       await initializeDataPlans();
     } catch (error) {
       logger.error('❌ Failed to initialize data plans system:', { error: error.message });
+    }
+    
+    // Initialize mobile app database structures (self-healing)
+    try {
+      await ensureMobileAuthColumns();
+      await ensureChatMessagesTable();
+      await ensureNotificationsTable();
+    } catch (error) {
+      logger.error('❌ Failed to initialize mobile app database structures:', { error: error.message });
     }
     
     // Self-healing: attempt to add missing columns if they don't exist (async, non-blocking)

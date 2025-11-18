@@ -33,62 +33,62 @@ async function ensureMobileAuthColumns() {
   try {
     logger.info('🚀 Ensuring mobile auth columns exist...');
 
-    await addColumnIfMissing('Users', 'appEmail', {
+    await addColumnIfMissing('users', 'appEmail', {
       type: sequelize.Sequelize.STRING,
       allowNull: true,
       unique: true
     });
 
-    await addColumnIfMissing('Users', 'appEmailVerified', {
+    await addColumnIfMissing('users', 'appEmailVerified', {
       type: sequelize.Sequelize.BOOLEAN,
       allowNull: false,
       defaultValue: false
     });
 
-    await addColumnIfMissing('Users', 'appPasswordHash', {
+    await addColumnIfMissing('users', 'appPasswordHash', {
       type: sequelize.Sequelize.STRING,
       allowNull: true
     });
 
-    await addColumnIfMissing('Users', 'appLoginAttempts', {
+    await addColumnIfMissing('users', 'appLoginAttempts', {
       type: sequelize.Sequelize.INTEGER,
       allowNull: false,
       defaultValue: 0
     });
 
-    await addColumnIfMissing('Users', 'appLockUntil', {
+    await addColumnIfMissing('users', 'appLockUntil', {
       type: sequelize.Sequelize.DATE,
       allowNull: true
     });
 
-    await addColumnIfMissing('Users', 'appLastLoginAt', {
+    await addColumnIfMissing('users', 'appLastLoginAt', {
       type: sequelize.Sequelize.DATE,
       allowNull: true
     });
 
-    await addColumnIfMissing('Users', 'appPasswordResetOTP', {
+    await addColumnIfMissing('users', 'appPasswordResetOTP', {
       type: sequelize.Sequelize.STRING,
       allowNull: true
     });
 
-    await addColumnIfMissing('Users', 'appPasswordResetOTPExpiry', {
+    await addColumnIfMissing('users', 'appPasswordResetOTPExpiry', {
       type: sequelize.Sequelize.DATE,
       allowNull: true
     });
 
-    await addColumnIfMissing('Users', 'appPasswordResetOTPAttempts', {
+    await addColumnIfMissing('users', 'appPasswordResetOTPAttempts', {
       type: sequelize.Sequelize.INTEGER,
       allowNull: false,
       defaultValue: 0
     });
 
     // Keep old token columns for backward compatibility (can be removed later)
-    await addColumnIfMissing('Users', 'appPasswordResetToken', {
+    await addColumnIfMissing('users', 'appPasswordResetToken', {
       type: sequelize.Sequelize.STRING,
       allowNull: true
     });
 
-    await addColumnIfMissing('Users', 'appPasswordResetExpiry', {
+    await addColumnIfMissing('users', 'appPasswordResetExpiry', {
       type: sequelize.Sequelize.DATE,
       allowNull: true
     });

@@ -13,6 +13,7 @@ const WebhookLog = require('./WebhookLog');
 const ActivityLog = require('./ActivityLog');
 const DataPlan = require('./DataPlan');
 const ChatMessage = require('./ChatMessage');
+const Notification = require('./Notification');
 
 // Define relationships
 // User relationships
@@ -54,6 +55,16 @@ User.hasMany(ActivityLog, {
 User.hasMany(ChatMessage, {
   foreignKey: 'userId',
   as: 'chatMessages'
+});
+
+User.hasMany(Notification, {
+  foreignKey: 'userId',
+  as: 'notifications'
+});
+
+Notification.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
 });
 
 // Self-referential relationship for referrals
@@ -159,5 +170,6 @@ module.exports = {
   ActivityLog,
   KVStore,
   DataPlan,
-  ChatMessage
+  ChatMessage,
+  Notification
 };

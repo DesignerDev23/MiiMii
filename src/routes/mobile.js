@@ -15,6 +15,7 @@ const kycService = require('../services/kyc');
 const rubiesWalletService = require('../services/rubiesWalletService');
 const mobileMessageProcessor = require('../services/mobileMessageProcessor');
 const imageProcessingService = require('../services/imageProcessing');
+const notificationService = require('../services/notificationService');
 const mobileAuth = require('../middleware/mobileAuth');
 const logger = require('../utils/logger');
 
@@ -1194,6 +1195,146 @@ router.delete('/beneficiaries/:id',
     } catch (error) {
       logger.error('Failed to remove beneficiary', { error: error.message, userId: req.user.id });
       return res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+// ===== Notifications =====
+router.get('/notifications',
+  mobileAuth,
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  query('offset').optional().isInt({ min: 0 }),
+  query('isRead').optional().isBoolean(),
+  query('type').optional().isString(),
+  query('priority').optional().isIn(['low', 'normal', 'high', 'urgent']),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit, 10) || 50;
+      const offset = parseInt(req.query.offset, 10) || 0;
+      const isRead = req.query.isRead === 'true' ? true : req.query.isRead === 'false' ? false : null;
+      const type = req.query.type || null;
+      const priority = req.query.priority || null;
+
+      const result = await notificationService.getUserNotifications(req.user.id, {
+        limit,
+        offset,
+        isRead,
+        type,
+        priority
+      });
+
+      return res.json({
+        success: true,
+        notifications: result.notifications.map(n => ({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          message: n.message,
+          data: n.data,
+          isRead: n.isRead,
+          readAt: n.readAt,
+          priority: n.priority,
+          actionUrl: n.actionUrl,
+          imageUrl: n.imageUrl,
+          createdAt: n.createdAt
+        })),
+        pagination: result.pagination
+      });
+    } catch (error) {
+      logger.error('Failed to get notifications', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+  }
+);
+
+router.get('/notifications/unread-count',
+  mobileAuth,
+  async (req, res) => {
+    try {
+      const count = await notificationService.getUnreadCount(req.user.id);
+      return res.json({
+        success: true,
+        unreadCount: count
+      });
+    } catch (error) {
+      logger.error('Failed to get unread count', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to fetch unread count' });
+    }
+  }
+);
+
+router.post('/notifications/:id/read',
+  mobileAuth,
+  param('id').isUUID(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const notification = await notificationService.markAsRead(req.params.id, req.user.id);
+      return res.json({
+        success: true,
+        message: 'Notification marked as read',
+        notification: {
+          id: notification.id,
+          isRead: notification.isRead,
+          readAt: notification.readAt
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to mark notification as read', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+router.post('/notifications/read-all',
+  mobileAuth,
+  async (req, res) => {
+    try {
+      const count = await notificationService.markAllAsRead(req.user.id);
+      return res.json({
+        success: true,
+        message: 'All notifications marked as read',
+        updatedCount: count
+      });
+    } catch (error) {
+      logger.error('Failed to mark all as read', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    }
+  }
+);
+
+router.delete('/notifications/:id',
+  mobileAuth,
+  param('id').isUUID(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      await notificationService.deleteNotification(req.params.id, req.user.id);
+      return res.json({
+        success: true,
+        message: 'Notification deleted'
+      });
+    } catch (error) {
+      logger.error('Failed to delete notification', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+router.delete('/notifications/read/all',
+  mobileAuth,
+  async (req, res) => {
+    try {
+      const count = await notificationService.deleteAllRead(req.user.id);
+      return res.json({
+        success: true,
+        message: 'All read notifications deleted',
+        deletedCount: count
+      });
+    } catch (error) {
+      logger.error('Failed to delete all read notifications', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to delete read notifications' });
     }
   }
 );

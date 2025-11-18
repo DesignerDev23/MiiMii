@@ -1152,6 +1152,212 @@ The chat bot provides a conversational interface to the same AI assistant used i
 
 ---
 
+## Notifications
+
+The app includes a comprehensive notification system that alerts users about important events like incoming transfers, completed transactions, failed transfers, and more.
+
+### Notification Types
+
+- **transaction_credit**: Money received (wallet funding, incoming transfers)
+- **transaction_debit**: Money sent (outgoing transfers)
+- **transfer_incoming**: Incoming bank transfer
+- **transfer_outgoing**: Outgoing bank transfer
+- **transfer_failed**: Failed transfer attempt
+- **airtime_purchase**: Airtime purchase completed
+- **data_purchase**: Data purchase completed
+- **bill_payment**: Bill payment completed
+- **wallet_funded**: Wallet credited
+- **account_verified**: Account verification completed
+- **pin_changed**: PIN changed
+- **security_alert**: Security-related alerts
+- **system_announcement**: System-wide announcements
+- **promotion**: Promotional messages
+
+### Get Notifications
+
+**Endpoint**: `GET /api/mobile/notifications`
+
+**Query Parameters**:
+- `limit` (default: 50, max: 100)
+- `offset` (default: 0)
+- `isRead` (optional: true/false)
+- `type` (optional: filter by notification type)
+- `priority` (optional: low, normal, high, urgent)
+
+**Response**:
+```json
+{
+  "success": true,
+  "notifications": [
+    {
+      "id": "uuid",
+      "type": "transfer_incoming",
+      "title": "💰 Money Received",
+      "message": "You received ₦5,000 - Transfer from John Doe",
+      "data": {
+        "transactionId": "uuid",
+        "reference": "TXN-123456",
+        "amount": 5000,
+        "currency": "NGN",
+        "category": "wallet_funding",
+        "status": "completed"
+      },
+      "isRead": false,
+      "readAt": null,
+      "priority": "normal",
+      "actionUrl": "/transactions/TXN-123456",
+      "imageUrl": null,
+      "createdAt": "2025-11-15T10:30:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 25,
+    "limit": 50,
+    "offset": 0,
+    "hasMore": false
+  }
+}
+```
+
+**App Behavior**:
+- Display notifications in reverse chronological order (newest first)
+- Show unread indicator (badge/dot) for unread notifications
+- Group by date (Today, Yesterday, This Week, etc.)
+- Implement pull-to-refresh
+- Show loading skeleton during fetch
+- Filter by read/unread status
+- Filter by type (transactions, transfers, etc.)
+- Tap notification to navigate to `actionUrl` (e.g., transaction details)
+
+---
+
+### Get Unread Count
+
+**Endpoint**: `GET /api/mobile/notifications/unread-count`
+
+**Response**:
+```json
+{
+  "success": true,
+  "unreadCount": 5
+}
+```
+
+**App Behavior**:
+- Display unread count as badge on notification icon
+- Update count in real-time when notifications are marked as read
+- Call this endpoint on app launch and periodically (every 30 seconds when app is active)
+
+---
+
+### Mark Notification as Read
+
+**Endpoint**: `POST /api/mobile/notifications/:id/read`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Notification marked as read",
+  "notification": {
+    "id": "uuid",
+    "isRead": true,
+    "readAt": "2025-11-15T10:35:00Z"
+  }
+}
+```
+
+**App Behavior**:
+- Automatically mark as read when user taps/opens notification
+- Update UI to remove unread indicator
+- Update unread count badge
+
+---
+
+### Mark All as Read
+
+**Endpoint**: `POST /api/mobile/notifications/read-all`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "All notifications marked as read",
+  "updatedCount": 10
+}
+```
+
+**App Behavior**:
+- Show "Mark all as read" button in notifications screen
+- Update all notifications in UI to show as read
+- Reset unread count badge to 0
+
+---
+
+### Delete Notification
+
+**Endpoint**: `DELETE /api/mobile/notifications/:id`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Notification deleted"
+}
+```
+
+**App Behavior**:
+- Allow swipe-to-delete or long-press menu
+- Remove notification from list immediately
+- Update unread count if deleted notification was unread
+
+---
+
+### Delete All Read Notifications
+
+**Endpoint**: `DELETE /api/mobile/notifications/read/all`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "All read notifications deleted",
+  "deletedCount": 15
+}
+```
+
+**App Behavior**:
+- Show "Clear read notifications" option in settings or notifications screen
+- Remove all read notifications from list
+- Keep unread notifications
+
+---
+
+### Notification Best Practices
+
+1. **Real-time Updates**:
+   - Poll `/notifications/unread-count` every 30 seconds when app is active
+   - Refresh notification list when user opens notifications screen
+   - Use WebSocket/push notifications for instant updates (future enhancement)
+
+2. **User Experience**:
+   - Show notification preview in app badge/tab
+   - Play sound/vibration for high-priority notifications
+   - Group similar notifications (e.g., multiple transfers in same day)
+   - Show notification timestamp (relative: "2 minutes ago", absolute for older)
+
+3. **Navigation**:
+   - Use `actionUrl` to deep link to relevant screen
+   - Example: `/transactions/TXN-123456` → Navigate to transaction details
+   - Handle invalid/expired action URLs gracefully
+
+4. **Performance**:
+   - Cache notifications locally for offline viewing
+   - Implement pagination for large notification lists
+   - Lazy load notification images if `imageUrl` is present
+
+---
+
 ## Error Handling
 
 ### Standard Error Response Format
@@ -1291,6 +1497,20 @@ The chat bot provides a conversational interface to the same AI assistant used i
 - [ ] Intent recognition (transfer, airtime, data, bills)
 - [ ] Error handling in chat
 
+### Notifications
+- [ ] Get notifications list (with pagination)
+- [ ] Get unread count
+- [ ] Mark notification as read
+- [ ] Mark all as read
+- [ ] Delete notification
+- [ ] Delete all read notifications
+- [ ] Filter notifications (by type, read status, priority)
+- [ ] Notification appears for incoming transfer
+- [ ] Notification appears for outgoing transfer
+- [ ] Notification appears for failed transfer
+- [ ] Notification appears for wallet funding
+- [ ] Notification deep linking (actionUrl navigation)
+
 ### Error Scenarios
 - [ ] Network offline (show cached data if available)
 - [ ] API timeout
@@ -1312,12 +1532,13 @@ The chat bot provides a conversational interface to the same AI assistant used i
 ### Pre-Launch Checklist
 
 1. **Backend**:
-   - [ ] Run self-healing scripts on production DB
+   - [ ] Run self-healing scripts on production DB (including notifications table)
    - [ ] Set `MOBILE_JWT_SECRET` environment variable
    - [ ] Configure email service for OTP delivery
    - [ ] Enable rate limiting on mobile endpoints
    - [ ] Set up monitoring and alerting
    - [ ] Test all endpoints in production environment
+   - [ ] Verify notification creation on transaction events
 
 2. **Mobile App**:
    - [ ] Remove debug logs and test data
@@ -1438,6 +1659,14 @@ The chat bot provides a conversational interface to the same AI assistant used i
 ### Chat
 - `POST /api/mobile/chat/send` - Send message
 - `GET /api/mobile/chat/history` - Get chat history
+
+### Notifications
+- `GET /api/mobile/notifications` - List notifications
+- `GET /api/mobile/notifications/unread-count` - Get unread count
+- `POST /api/mobile/notifications/:id/read` - Mark as read
+- `POST /api/mobile/notifications/read-all` - Mark all as read
+- `DELETE /api/mobile/notifications/:id` - Delete notification
+- `DELETE /api/mobile/notifications/read/all` - Delete all read notifications
 
 ---
 

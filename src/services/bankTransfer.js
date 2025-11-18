@@ -702,6 +702,21 @@ class BankTransferService {
             });
           }
 
+          // Create mobile app notification for successful transfer
+          try {
+            const notificationService = require('./notificationService');
+            const updatedTransaction = await transactionService.getTransactionByReference(transaction.reference);
+            if (updatedTransaction) {
+              await notificationService.createTransactionNotification(userId, updatedTransaction, 'debit');
+            }
+          } catch (notifyError) {
+            logger.warn('Failed to create transfer notification', {
+              error: notifyError.message,
+              userId,
+              reference: transaction.reference
+            });
+          }
+
           // Send success notification to user (with fallback handling)
           try {
             await this.sendTransferSuccessNotification(user, accountValidation, feeCalculation, transaction.reference, transferData.bankCode);
@@ -735,6 +750,24 @@ class BankTransferService {
             failureReason: transferResult.message || 'Transfer failed'
           });
 
+          // Create mobile app notification for failed transfer
+          try {
+            const notificationService = require('./notificationService');
+            const failedTransaction = await transactionService.getTransactionByReference(transaction.reference);
+            if (failedTransaction) {
+              await notificationService.createTransferFailedNotification(
+                userId,
+                failedTransaction,
+                transferResult.message || 'Transfer failed'
+              );
+            }
+          } catch (notifyError) {
+            logger.warn('Failed to create transfer failed notification', {
+              error: notifyError.message,
+              userId
+            });
+          }
+
           throw new Error(transferResult.message || 'Bank transfer failed');
         }
       } catch (providerError) {
@@ -742,6 +775,24 @@ class BankTransferService {
         await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
           failureReason: providerError.message
         });
+
+        // Create mobile app notification for failed transfer
+        try {
+          const notificationService = require('./notificationService');
+          const failedTransaction = await transactionService.getTransactionByReference(transaction.reference);
+          if (failedTransaction) {
+            await notificationService.createTransferFailedNotification(
+              userId,
+              failedTransaction,
+              providerError.message
+            );
+          }
+        } catch (notifyError) {
+          logger.warn('Failed to create transfer failed notification', {
+            error: notifyError.message,
+            userId
+          });
+        }
 
         throw new Error(`Bank transfer failed: ${providerError.message}`);
       }

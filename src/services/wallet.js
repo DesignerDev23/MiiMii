@@ -153,7 +153,18 @@ class WalletService {
         newBalance: balanceAfter
       });
 
-      // Optional notification (for admin credits or when explicitly requested)
+      // Create mobile app notification for incoming transfers/wallet funding
+      try {
+        const notificationService = require('./notificationService');
+        await notificationService.createTransactionNotification(userId, txnRecord, 'credit');
+      } catch (notifyError) {
+        logger.warn('Failed to create credit notification', {
+          userId,
+          error: notifyError.message
+        });
+      }
+
+      // Optional WhatsApp notification (for admin credits or when explicitly requested)
       try {
         if (metadata && (metadata.notify === true || metadata.adminCredit === true)) {
           const whatsappService = require('./whatsapp');
