@@ -5,6 +5,7 @@ const userService = require('./user');
 const whatsappService = require('./whatsapp');
 const ocrService = require('./ocr');
 const fincraService = require('./fincra');
+const rubiesService = require('./rubies');
 const { ActivityLog, User } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 
@@ -62,12 +63,13 @@ class KYCService {
         }
       });
 
-      // Start BVN verification with Fincra before other verifications
-      const bvnVerification = await this.verifyBVNWithFincra(bvn, {
+      // Start BVN verification with Rubies before other verifications
+      const bvnVerification = await this.verifyBVNWithRubies(bvn, {
         firstName,
         lastName,
         dateOfBirth,
-        phoneNumber
+        phoneNumber,
+        userId: user.id
       });
 
       // Update user with BVN verification result
@@ -95,12 +97,12 @@ class KYCService {
         'kyc_process_started',
         {
           source: 'whatsapp',
-          description: 'Comprehensive KYC verification process initiated with Fincra BVN validation',
+          description: 'Comprehensive KYC verification process initiated with Rubies BVN validation',
           reference,
           verificationSteps: Object.keys(verificationResults),
           hasExtractedData: !!extractedData,
           bvnVerified: bvnVerification.verified,
-          bvnProvider: 'fincra'
+          bvnProvider: 'rubies'
         }
       );
 
@@ -148,11 +150,12 @@ class KYCService {
     try {
       // 1. BVN Verification - Using Fincra instead of Dojah
       if (kycData.bvn) {
-        results.bvnVerification = await this.verifyBVNWithFincra(kycData.bvn, {
+        results.bvnVerification = await this.verifyBVNWithRubies(kycData.bvn, {
           firstName: kycData.firstName,
           lastName: kycData.lastName,
           dateOfBirth: kycData.dateOfBirth,
-          phoneNumber: user.whatsappNumber
+          phoneNumber: user.whatsappNumber,
+          userId: user.id
         });
       }
 
@@ -1060,10 +1063,10 @@ class KYCService {
     }
   }
 
-  // New Fincra BVN verification method
-  async verifyBVNWithFincra(bvn, userData) {
+  // Rubies BVN verification method
+  async verifyBVNWithRubies(bvn, userData) {
     try {
-      logger.info('Starting Fincra BVN verification', {
+      logger.info('Starting Rubies BVN verification', {
         bvnMasked: `***${bvn.slice(-4)}`,
         hasUserData: !!userData
       });
@@ -1073,47 +1076,52 @@ class KYCService {
         firstName: userData.firstName,
         lastName: userData.lastName,
         dateOfBirth: userData.dateOfBirth,
-        phoneNumber: userData.phoneNumber
+        phoneNumber: userData.phoneNumber,
+        userId: userData.userId
       };
 
-      const verification = await fincraService.validateBVN(bvnData);
+      const verification = await rubiesService.validateBVN(bvnData);
 
-      if (verification.verified) {
-        logger.info('Fincra BVN verification successful', {
+      if (verification.success && verification.responseCode === '00') {
+        logger.info('Rubies BVN verification successful', {
           bvnMasked: `***${bvn.slice(-4)}`,
-          matchScore: verification.matchScore,
-          overallMatch: verification.overallMatch
+          responseCode: verification.responseCode,
+          responseMessage: verification.responseMessage
         });
 
+        // Extract BVN data
+        const bvnData = verification.bvn_data || verification.data || {};
+        
         return {
           verified: true,
           status: 'verified',
-          details: verification.data,
-          matchScore: verification.matchScore,
-          validationChecks: verification.validationChecks,
-          overallMatch: verification.overallMatch,
-          provider: 'fincra',
-          verifiedAt: verification.verifiedAt,
-          error: null
+          details: bvnData,
+          provider: 'rubies',
+          verifiedAt: new Date(),
+          error: null,
+          responseCode: verification.responseCode,
+          responseMessage: verification.responseMessage
         };
       } else {
-        logger.warn('Fincra BVN verification failed', {
+        logger.warn('Rubies BVN verification failed', {
           bvnMasked: `***${bvn.slice(-4)}`,
-          error: verification.error
+          responseCode: verification.responseCode,
+          responseMessage: verification.responseMessage
         });
 
         return {
           verified: false,
-          status: verification.status,
+          status: 'failed',
           details: null,
-          error: verification.error,
-          provider: 'fincra',
-          verifiedAt: verification.verifiedAt
+          error: verification.responseMessage || 'BVN verification failed',
+          provider: 'rubies',
+          verifiedAt: new Date(),
+          responseCode: verification.responseCode
         };
       }
 
     } catch (error) {
-      logger.error('Fincra BVN verification error', {
+      logger.error('Rubies BVN verification error', {
         error: error.message,
         bvnMasked: `***${bvn.slice(-4)}`,
         stack: error.stack
@@ -1124,7 +1132,7 @@ class KYCService {
         status: 'error',
         details: null,
         error: error.message,
-        provider: 'fincra',
+        provider: 'rubies',
         verifiedAt: new Date()
       };
     }
@@ -1138,11 +1146,12 @@ class KYCService {
         throw new Error('User not found');
       }
 
-      const verification = await this.verifyBVNWithFincra(bvn, {
+      const verification = await this.verifyBVNWithRubies(bvn, {
         firstName: user.firstName,
         lastName: user.lastName,
         dateOfBirth: user.dateOfBirth,
-        phoneNumber: user.whatsappNumber
+        phoneNumber: user.whatsappNumber,
+        userId: user.id
       });
 
       // Log BVN verification attempt
@@ -1152,10 +1161,10 @@ class KYCService {
         verification.verified ? 'bvn_verified' : 'bvn_verification_failed',
         {
           source: 'api',
-          description: `BVN verification ${verification.verified ? 'successful' : 'failed'} via Fincra`,
-          provider: 'fincra',
+          description: `BVN verification ${verification.verified ? 'successful' : 'failed'} via Rubies`,
+          provider: 'rubies',
           verified: verification.verified,
-          matchScore: verification.matchScore,
+          responseCode: verification.responseCode,
           error: verification.error
         }
       );
@@ -1164,11 +1173,10 @@ class KYCService {
         success: verification.verified,
         verified: verification.verified,
         data: verification.details,
-        matchScore: verification.matchScore,
-        validationChecks: verification.validationChecks,
-        overallMatch: verification.overallMatch,
         error: verification.error,
-        provider: 'fincra'
+        provider: 'rubies',
+        responseCode: verification.responseCode,
+        responseMessage: verification.responseMessage
       };
 
     } catch (error) {

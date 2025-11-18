@@ -521,14 +521,14 @@ class OnboardingService {
           // Log successful BVN verification
           await ActivityLog.logUserActivity(
             user.id,
-            'onboarding',
+            'kyc_verification',
             'bvn_verified',
             {
+              source: 'whatsapp',
               description: 'BVN successfully verified during onboarding',
               bvnMasked: `***${bvn.slice(-4)}`,
               provider: 'rubies',
-              verification_status: bvnValidationResult.verification_status,
-              source: 'onboarding'
+              verification_status: bvnValidationResult.verification_status
             }
           );
 
@@ -546,14 +546,14 @@ class OnboardingService {
           // Log failed BVN verification
           await ActivityLog.logUserActivity(
             user.id,
-            'onboarding',
+            'kyc_verification',
             'bvn_verification_failed',
             {
+              source: 'whatsapp',
               description: 'BVN verification failed during onboarding',
               bvnMasked: `***${bvn.slice(-4)}`,
               provider: 'rubies',
-              error: bvnValidationResult.message,
-              source: 'onboarding'
+              error: bvnValidationResult.message
             }
           );
 

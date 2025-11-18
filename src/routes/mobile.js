@@ -13,9 +13,11 @@ const utilityService = require('../services/utility');
 const beneficiaryService = require('../services/beneficiary');
 const kycService = require('../services/kyc');
 const rubiesWalletService = require('../services/rubiesWalletService');
+const rubiesService = require('../services/rubies');
 const mobileMessageProcessor = require('../services/mobileMessageProcessor');
 const imageProcessingService = require('../services/imageProcessing');
 const notificationService = require('../services/notificationService');
+const { ActivityLog } = require('../models');
 const mobileAuth = require('../middleware/mobileAuth');
 const logger = require('../utils/logger');
 
@@ -718,11 +720,109 @@ router.post('/onboarding/kyc',
         return res.status(400).json({ error: 'Residential address is required for KYC' });
       }
 
-      const reference = await kycService.startKycProcess(
-        user,
-        user.whatsappNumber || user.phoneNumber || user.whatsappNumber,
-        kycPayload
-      );
+      // Validate BVN with Rubies (same as WhatsApp onboarding)
+      let bvnVerified = false;
+      try {
+        const bvnValidationResult = await rubiesService.validateBVN({
+          bvn: bvn,
+          firstName: kycPayload.firstName,
+          lastName: kycPayload.lastName,
+          dateOfBirth: kycPayload.dateOfBirth,
+          phoneNumber: user.whatsappNumber || user.phoneNumber,
+          userId: user.id
+        });
+
+        if (bvnValidationResult.success && bvnValidationResult.responseCode === '00') {
+          bvnVerified = true;
+          
+          // Update user with validated BVN and any additional data from validation
+          const updateData = {
+            bvn: bvn,
+            dateOfBirth: kycPayload.dateOfBirth,
+            gender: kycPayload.gender,
+            address: kycPayload.address,
+            kycStatus: 'verified',
+            bvnVerified: true,
+            bvnVerificationDate: new Date()
+          };
+
+          // If BVN data contains additional info, update user profile
+          const bvnData = bvnValidationResult.bvn_data || bvnValidationResult.data;
+          if (bvnData) {
+            if (bvnData.first_name && !user.firstName) {
+              updateData.firstName = bvnData.first_name;
+            }
+            if (bvnData.last_name && !user.lastName) {
+              updateData.lastName = bvnData.last_name;
+            }
+            if (bvnData.middle_name && !user.middleName) {
+              updateData.middleName = bvnData.middle_name;
+            }
+            if (bvnData.date_of_birth && !user.dateOfBirth) {
+              updateData.dateOfBirth = bvnData.date_of_birth;
+            }
+            if (bvnData.phone_number1 && !user.alternatePhone) {
+              updateData.alternatePhone = bvnData.phone_number1;
+            }
+          }
+
+          // Update user profile fields if provided
+          if (kycPayload.firstName) updateData.firstName = kycPayload.firstName;
+          if (kycPayload.lastName) updateData.lastName = kycPayload.lastName;
+          if (kycPayload.middleName) updateData.middleName = kycPayload.middleName;
+
+          await user.update(updateData);
+
+          // Log successful BVN verification
+          await ActivityLog.logUserActivity(
+            user.id,
+            'kyc_verification',
+            'bvn_verified',
+            {
+              source: 'api',
+              description: 'BVN successfully verified during mobile app onboarding',
+              bvnMasked: `***${bvn.slice(-4)}`,
+              provider: 'rubies',
+              responseCode: bvnValidationResult.responseCode,
+              responseMessage: bvnValidationResult.responseMessage
+            }
+          );
+        } else {
+          throw new Error(bvnValidationResult.responseMessage || 'BVN verification failed');
+        }
+      } catch (bvnError) {
+        logger.error('BVN validation failed (mobile)', {
+          error: bvnError.message,
+          userId: user.id,
+          bvnMasked: `***${bvn.slice(-4)}`
+        });
+
+        // Log failed BVN verification
+        await ActivityLog.logUserActivity(
+          user.id,
+          'kyc_verification',
+          'bvn_verification_failed',
+          {
+            source: 'api',
+            description: 'BVN verification failed during mobile app onboarding',
+            bvnMasked: `***${bvn.slice(-4)}`,
+            provider: 'rubies',
+            error: bvnError.message
+          }
+        );
+
+        return res.status(400).json({
+          error: `BVN validation failed: ${bvnError.message || 'Unable to verify your BVN with the bank. Please check your BVN and try again.'}`
+        });
+      }
+
+      if (!bvnVerified) {
+        return res.status(400).json({
+          error: 'BVN validation failed. Please check your BVN and try again.'
+        });
+      }
+
+      const reference = `KYC_${Date.now()}_${require('uuid').v4().slice(0, 8)}`;
 
       let walletCreated = false;
       const currentWallet = await walletService.getUserWallet(user.id);
@@ -748,7 +848,7 @@ router.post('/onboarding/kyc',
       return res.json({
         success: true,
         message: 'KYC submitted successfully',
-        reference: reference.reference,
+        reference: reference,
         onboarding: overview.status,
         virtualAccount: overview.status.virtualAccount
       });

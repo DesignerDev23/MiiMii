@@ -178,20 +178,22 @@ class RubiesService {
         });
 
         // Log activity
-        await ActivityLog.create({
-          userId: bvnData.userId || null,
-          activityType: 'kyc_verification', // Use valid ENUM value
-          action: 'bvn_verification',
-          details: {
+        await ActivityLog.logUserActivity(
+          bvnData.userId || null,
+          'kyc_verification',
+          'bvn_verified',
+          {
+            source: 'api',
+            description: 'BVN verification successful via Rubies',
             bvnMasked: `***${bvn.slice(-4)}`,
             provider: 'rubies',
             responseCode: response.responseCode,
             responseMessage: response.responseMessage,
-            success: true
-          },
-          ipAddress: bvnData.ipAddress || null,
-          userAgent: bvnData.userAgent || null
-        });
+            success: true,
+            ipAddress: bvnData.ipAddress || null,
+            userAgent: bvnData.userAgent || null
+          }
+        );
 
         return {
           success: true,
@@ -212,20 +214,22 @@ class RubiesService {
       });
 
       // Log activity
-      await ActivityLog.create({
-        userId: bvnData.userId || null,
-        activityType: 'kyc_verification', // Use valid ENUM value
-        action: 'bvn_verification',
-        details: {
+      await ActivityLog.logUserActivity(
+        bvnData.userId || null,
+        'kyc_verification',
+        'bvn_verification_failed',
+        {
+          source: 'api',
+          description: 'BVN verification failed via Rubies',
           bvnMasked: bvnData.bvn ? `***${bvnData.bvn.slice(-4)}` : 'unknown',
           provider: 'rubies',
           success: false,
           error: error.message,
-          errorType: error.name || 'Unknown'
-        },
-        ipAddress: bvnData.ipAddress || null,
-        userAgent: bvnData.userAgent || null
-      });
+          errorType: error.name || 'Unknown',
+          ipAddress: bvnData.ipAddress || null,
+          userAgent: bvnData.userAgent || null
+        }
+      );
 
       // Handle different error types
       const isServerError = error.message && (
