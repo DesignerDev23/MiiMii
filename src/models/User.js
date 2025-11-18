@@ -89,7 +89,8 @@ const User = sequelize.define('User', {
   onboardingStep: {
     type: DataTypes.ENUM(
       'initial', 'greeting', 'name_collection', 
-      'address_collection', 'bvn_collection', 'virtual_account_creation', 'pin_setup', 'flow_onboarding', 'completed'
+      'address_collection', 'bvn_collection', 'virtual_account_creation', 'pin_setup', 'flow_onboarding', 'completed',
+      'profile_setup', 'kyc_submission'
     ),
     defaultValue: 'initial'
   },
