@@ -401,6 +401,29 @@
       ]
     },
     {
+      "name": "Transactions / Get Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/me/transactions/TXN-123456",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "me", "transactions", "TXN-123456"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Transaction Details",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"transaction\": {\n    \"id\": \"uuid\",\n    \"reference\": \"TXN-123456\",\n    \"type\": \"debit\",\n    \"category\": \"bank_transfer\",\n    \"subCategory\": null,\n    \"amount\": 5000,\n    \"fee\": 25,\n    \"platformFee\": 0,\n    \"providerFee\": 0,\n    \"totalAmount\": 5025,\n    \"currency\": \"NGN\",\n    \"status\": \"completed\",\n    \"priority\": \"normal\",\n    \"source\": \"api\",\n    \"approvalStatus\": \"auto_approved\",\n    \"description\": \"Transfer to GTBank - 0123456789\",\n    \"narration\": \"Payment for services\",\n    \"recipientDetails\": {\n      \"accountNumber\": \"0123456789\",\n      \"accountName\": \"John Doe\",\n      \"bankCode\": \"058\",\n      \"bankName\": \"GTBank\"\n    },\n    \"senderDetails\": null,\n    \"providerReference\": \"REF123\",\n    \"providerResponse\": {},\n    \"balanceBefore\": 50000,\n    \"balanceAfter\": 44975,\n    \"metadata\": {},\n    \"retryCount\": 0,\n    \"maxRetries\": 3,\n    \"createdAt\": \"2025-01-19T10:30:00Z\",\n    \"updatedAt\": \"2025-01-19T10:30:05Z\",\n    \"processedAt\": \"2025-01-19T10:30:05Z\",\n    \"nextRetryAt\": null,\n    \"completedAt\": \"2025-01-19T10:30:05Z\",\n    \"failedAt\": null\n  }\n}"
+        }
+      ]
+    },
+    {
       "name": "Transfers / Banks",
       "request": {
         "method": "GET",
@@ -657,6 +680,49 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "Transfers / Save Beneficiary",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/transfers/TXN-123456/save-beneficiary",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "transfers", "TXN-123456", "save-beneficiary"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nickname\": \"Mom\"\n}"
+        },
+        "description": "Save a beneficiary from a completed bank transfer. The nickname is optional. Only works for completed bank transfers."
+      },
+      "response": [
+        {
+          "name": "200 OK - Beneficiary Saved",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Beneficiary saved successfully\",\n  \"beneficiary\": {\n    \"id\": \"uuid\",\n    \"name\": \"John Doe\",\n    \"nickname\": \"Mom\",\n    \"type\": \"bank_account\",\n    \"accountNumber\": \"0123456789\",\n    \"bankName\": \"GTBank\",\n    \"bankCode\": \"058\",\n    \"phoneNumber\": null,\n    \"isVerified\": true,\n    \"isFavorite\": false,\n    \"category\": \"family\",\n    \"totalTransactions\": 1,\n    \"totalAmount\": 5000,\n    \"lastUsedAt\": \"2025-01-19T10:30:00Z\"\n  }\n}"
+        },
+        {
+          "name": "400 Bad Request - Not a bank transfer",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Can only save beneficiaries from bank transfers\"\n}"
+        },
+        {
+          "name": "400 Bad Request - Transfer not completed",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Can only save beneficiaries from completed transfers\"\n}"
+        }
+      ]
     },
     {
       "name": "Airtime / Purchase",

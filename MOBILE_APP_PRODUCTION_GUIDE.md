@@ -597,6 +597,7 @@ The onboarding flow is **mandatory** and must be completed before users can perf
 - Display transaction summary (amount, fee, recipient)
 - Show loading state during processing
 - On success, show receipt screen with transaction details
+- **After successful transfer**: Show option to "Save as Beneficiary" on receipt screen
 - Handle errors:
   - Insufficient balance
   - Invalid PIN
@@ -952,27 +953,116 @@ The onboarding flow is **mandatory** and must be completed before users can perf
   "transaction": {
     "id": "uuid",
     "reference": "TXN-123456",
+    "type": "debit",
+    "category": "bank_transfer",
+    "subCategory": null,
     "amount": 5000,
     "fee": 25,
-    "type": "transfer_out",
+    "platformFee": 0,
+    "providerFee": 0,
+    "totalAmount": 5025,
+    "currency": "NGN",
     "status": "completed",
+    "priority": "normal",
+    "source": "api",
+    "approvalStatus": "auto_approved",
     "description": "Transfer to GTBank - 0123456789",
-    "metadata": {
+    "narration": "Payment for services",
+    "recipientDetails": {
       "accountNumber": "0123456789",
-      "bankName": "GTBank",
-      "recipientName": "John Doe"
+      "accountName": "John Doe",
+      "bankCode": "058",
+      "bankName": "GTBank"
     },
-    "createdAt": "2025-11-15T10:30:00Z",
-    "completedAt": "2025-11-15T10:30:05Z"
+    "senderDetails": null,
+    "providerReference": "REF123",
+    "providerResponse": {},
+    "balanceBefore": 50000,
+    "balanceAfter": 44975,
+    "metadata": {},
+    "retryCount": 0,
+    "maxRetries": 3,
+    "createdAt": "2025-01-19T10:30:00Z",
+    "updatedAt": "2025-01-19T10:30:05Z",
+    "processedAt": "2025-01-19T10:30:05Z",
+    "nextRetryAt": null,
+    "completedAt": "2025-01-19T10:30:05Z",
+    "failedAt": null
   }
 }
 ```
 
 **App Behavior**:
-- Show full transaction details
+- Show full transaction details with all fields
 - Display receipt with all metadata
 - Allow sharing/exporting receipt
 - Show status badge (pending/completed/failed)
+- Display balance before/after for context
+- Show provider references and responses
+- For bank transfers, show option to save as beneficiary
+
+---
+
+#### Save Beneficiary After Transfer
+**Endpoint**: `POST /api/mobile/transfers/:reference/save-beneficiary`
+
+**Description**: Save a recipient as a beneficiary after a successful bank transfer. This allows users to quickly access frequently used recipients.
+
+**Request**:
+```json
+{
+  "nickname": "Mom"  // Optional: Custom nickname for the beneficiary
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Beneficiary saved successfully",
+  "beneficiary": {
+    "id": "uuid",
+    "name": "John Doe",
+    "nickname": "Mom",
+    "type": "bank_account",
+    "accountNumber": "0123456789",
+    "bankName": "GTBank",
+    "bankCode": "058",
+    "phoneNumber": null,
+    "isVerified": true,
+    "isFavorite": false,
+    "category": "family",
+    "totalTransactions": 1,
+    "totalAmount": 5000,
+    "lastUsedAt": "2025-01-19T10:30:00Z"
+  }
+}
+```
+
+**Requirements**:
+- Transaction must exist and belong to the authenticated user
+- Transaction must be a bank transfer (`category: "bank_transfer"`)
+- Transaction must be completed (`status: "completed"`)
+- Transaction must have recipient details (account number or phone number)
+
+**Error Responses**:
+- `404`: Transaction not found
+- `400`: "Can only save beneficiaries from bank transfers"
+- `400`: "Can only save beneficiaries from completed transfers"
+- `400`: "Transaction does not have sufficient recipient details to save as beneficiary"
+
+**App Behavior**:
+- Show "Save as Beneficiary" button on completed transfer receipt screen
+- Allow user to add optional nickname
+- If beneficiary already exists, update it (increment transaction count, update last used)
+- Show success message and update beneficiaries list
+- Navigate to beneficiaries list or stay on receipt screen
+
+**Use Cases**:
+1. User completes a transfer to a new recipient
+2. On the receipt screen, user taps "Save as Beneficiary"
+3. Optionally enters a nickname (e.g., "Mom", "Business Partner")
+4. Beneficiary is saved and can be selected for future transfers
 
 ---
 

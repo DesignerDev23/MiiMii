@@ -637,23 +637,129 @@ router.get('/me/transactions/:reference',
       return res.json({
         success: true,
         transaction: {
+          id: transaction.id,
           reference: transaction.reference,
           type: transaction.type,
           category: transaction.category,
+          subCategory: transaction.subCategory,
           amount: parseFloat(transaction.amount),
           fee: parseFloat(transaction.fee || 0),
+          platformFee: parseFloat(transaction.platformFee || 0),
+          providerFee: parseFloat(transaction.providerFee || 0),
           totalAmount: parseFloat(transaction.totalAmount || transaction.amount),
+          currency: transaction.currency,
           status: transaction.status,
+          priority: transaction.priority,
+          source: transaction.source,
+          approvalStatus: transaction.approvalStatus,
           description: transaction.description,
+          narration: transaction.narration,
           recipientDetails: transaction.recipientDetails,
+          senderDetails: transaction.senderDetails,
+          providerReference: transaction.providerReference,
+          providerResponse: transaction.providerResponse,
+          balanceBefore: transaction.balanceBefore ? parseFloat(transaction.balanceBefore) : null,
+          balanceAfter: transaction.balanceAfter ? parseFloat(transaction.balanceAfter) : null,
           metadata: transaction.metadata,
+          retryCount: transaction.retryCount,
+          maxRetries: transaction.maxRetries,
           createdAt: transaction.createdAt,
-          processedAt: transaction.processedAt
+          updatedAt: transaction.updatedAt,
+          processedAt: transaction.processedAt,
+          nextRetryAt: transaction.nextRetryAt,
+          completedAt: transaction.completedAt,
+          failedAt: transaction.failedAt
         }
       });
     } catch (error) {
       logger.error('Failed to fetch transaction details', { error: error.message, reference: req.params.reference });
       return res.status(500).json({ error: 'Failed to fetch transaction details' });
+    }
+  }
+);
+
+// ===== Save Beneficiary After Transfer =====
+router.post('/transfers/:reference/save-beneficiary',
+  mobileAuth,
+  param('reference').notEmpty(),
+  body('nickname').optional().isString().trim(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { reference } = req.params;
+      const { nickname } = req.body;
+
+      // Find the transaction
+      const transaction = await Transaction.findOne({
+        where: { reference, userId: req.user.id }
+      });
+
+      if (!transaction) {
+        return res.status(404).json({ error: 'Transaction not found' });
+      }
+
+      // Only allow saving beneficiary for successful bank transfers
+      if (transaction.category !== 'bank_transfer') {
+        return res.status(400).json({ error: 'Can only save beneficiaries from bank transfers' });
+      }
+
+      if (transaction.status !== 'completed') {
+        return res.status(400).json({ error: 'Can only save beneficiaries from completed transfers' });
+      }
+
+      // Extract transfer data from transaction
+      const recipientDetails = transaction.recipientDetails || {};
+      const transferData = {
+        accountNumber: recipientDetails.accountNumber || null,
+        bankCode: recipientDetails.bankCode || null,
+        bankName: recipientDetails.bankName || null,
+        recipientName: recipientDetails.accountName || recipientDetails.name || null,
+        phoneNumber: recipientDetails.phoneNumber || null,
+        amount: parseFloat(transaction.amount)
+      };
+
+      if (!transferData.accountNumber && !transferData.phoneNumber) {
+        return res.status(400).json({ error: 'Transaction does not have sufficient recipient details to save as beneficiary' });
+      }
+
+      // Save beneficiary using the beneficiary service
+      const beneficiary = await beneficiaryService.autoSaveBeneficiary(
+        req.user.id,
+        transferData,
+        nickname || null
+      );
+
+      if (!beneficiary) {
+        return res.status(500).json({ error: 'Failed to save beneficiary' });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Beneficiary saved successfully',
+        beneficiary: {
+          id: beneficiary.id,
+          name: beneficiary.name,
+          nickname: beneficiary.nickname,
+          type: beneficiary.type,
+          accountNumber: beneficiary.accountNumber,
+          bankName: beneficiary.bankName,
+          bankCode: beneficiary.bankCode,
+          phoneNumber: beneficiary.phoneNumber,
+          isVerified: beneficiary.isVerified,
+          isFavorite: beneficiary.isFavorite,
+          category: beneficiary.category,
+          totalTransactions: beneficiary.totalTransactions,
+          totalAmount: parseFloat(beneficiary.totalAmount || 0),
+          lastUsedAt: beneficiary.lastUsedAt
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to save beneficiary from transfer', {
+        error: error.message,
+        userId: req.user.id,
+        reference: req.params.reference
+      });
+      return res.status(500).json({ error: 'Failed to save beneficiary' });
     }
   }
 );
