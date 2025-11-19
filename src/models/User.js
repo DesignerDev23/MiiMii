@@ -239,6 +239,59 @@ const User = sequelize.define('User', {
   totalTransactionCount: {
     type: DataTypes.INTEGER,
     defaultValue: 0
+  },
+  // Mobile app authentication fields
+  appEmail: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true,
+    validate: {
+      isEmail: true
+    },
+    comment: 'Email address for mobile app authentication'
+  },
+  appEmailVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    comment: 'Whether the mobile app email has been verified'
+  },
+  appPasswordHash: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Bcrypt hash of the mobile app password'
+  },
+  appPasswordResetOTP: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'OTP for password reset (6 digits)'
+  },
+  appPasswordResetOTPExpiry: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Expiry time for password reset OTP'
+  },
+  appPasswordResetOTPAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    allowNull: false,
+    comment: 'Number of failed OTP verification attempts'
+  },
+  appLoginAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    allowNull: false,
+    comment: 'Number of failed login attempts'
+  },
+  appLockUntil: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Account lock expiry time after too many failed login attempts'
+  },
+  appLastLoginAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Last successful login timestamp for mobile app'
   }
 }, {
   tableName: 'users',
@@ -250,7 +303,8 @@ const User = sequelize.define('User', {
     { fields: ['referralCode'] },
     { fields: ['referredBy'] },
     { fields: ['isActive', 'isBanned'] },
-    { fields: ['lastSeen'] }
+    { fields: ['lastSeen'] },
+    { fields: ['appEmail'] }
   ],
   hooks: {
     beforeSave: async (user) => {

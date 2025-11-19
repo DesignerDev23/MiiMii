@@ -2,7 +2,8 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { body, query, param, validationResult } = require('express-validator');
 const multer = require('multer');
-const { Transaction, ChatMessage } = require('../models');
+const { Transaction, ChatMessage, User } = require('../models');
+const databaseService = require('../services/database');
 const bcrypt = require('bcryptjs');
 const userService = require('../services/user');
 const walletService = require('../services/wallet');
@@ -99,7 +100,7 @@ const buildUserProfile = async (user) => {
     phoneNumber: freshUser.whatsappNumber,
     firstName: freshUser.firstName,
     lastName: freshUser.lastName,
-    email: freshUser.email,
+    email: freshUser.appEmail || freshUser.email, // Use appEmail for mobile app
     kycStatus: freshUser.kycStatus,
     onboardingStep: freshUser.onboardingStep,
     isActive: freshUser.isActive,
@@ -218,28 +219,57 @@ router.post('/auth/signup',
       const { email, password, phoneNumber, firstName, lastName } = req.body;
       const normalizedEmail = email.toLowerCase();
 
-      const existing = await userService.findByAppEmail(normalizedEmail);
-      if (existing) {
+      // Check if email is already registered (check both appEmail and email fields)
+      const existingByAppEmail = await userService.findByAppEmail(normalizedEmail);
+      if (existingByAppEmail) {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+      
+      // Also check the regular email field to avoid conflicts
+      const existingByEmail = await databaseService.findOneWithRetry(User, {
+        where: { email: normalizedEmail }
+      }, { operationName: 'find user by email' });
+      if (existingByEmail) {
         return res.status(409).json({ error: 'Email already registered' });
       }
 
       let user;
       if (phoneNumber) {
-        user = await userService.getOrCreateUser(phoneNumber, null, { registrationSource: 'app' });
+        // Check if user with this phone already exists
+        const existingByPhone = await userService.getUserByWhatsappNumber(phoneNumber);
+        if (existingByPhone) {
+          // If user exists and already has appEmail, reject
+          if (existingByPhone.appEmail) {
+            return res.status(409).json({ error: 'Phone number already registered with a different email' });
+          }
+          // User exists but no appEmail, we can add it
+          user = existingByPhone;
+        } else {
+          // Create new user with phone number
+          user = await userService.getOrCreateUser(phoneNumber, null);
+          // Update registration source if needed
+          if (user.registrationSource !== 'app') {
+            await user.update({ registrationSource: 'app' });
+          }
+        }
       } else {
+        // Create new user without phone number
         user = await userService.createUser({
           whatsappNumber: null,
           registrationSource: 'app'
         });
       }
 
+      // Prepare updates
       const updates = { appEmail: normalizedEmail };
       if (firstName) updates.firstName = firstName;
       if (lastName) updates.lastName = lastName;
 
+      // Hash password
       const passwordHash = await bcrypt.hash(password, 12);
       updates.appPasswordHash = passwordHash;
 
+      // Update user with email and password
       await userService.updateUser(user.id, updates);
 
       const initialStep = (firstName && lastName && updates.address) ? 'kyc_submission' : 'profile_setup';
@@ -279,9 +309,14 @@ router.post('/auth/login',
       }
 
       await userService.resetAppLoginAttempts(user.id);
-      await user.update({ appLastLoginAt: new Date() });
+      
+      // Update last login timestamp
+      await userService.updateUser(user.id, { appLastLoginAt: new Date() });
+      
+      // Reload user to get fresh data
+      const updatedUser = await userService.getUserById(user.id);
 
-      return await respondWithAuthPayload(res, user, 'Login successful');
+      return await respondWithAuthPayload(res, updatedUser, 'Login successful');
     } catch (error) {
       logger.warn('Mobile login failed', { error: error.message, email: req.body.email });
       return res.status(500).json({ error: error.message });
