@@ -152,7 +152,7 @@ const User = sequelize.define('User', {
     comment: 'WhatsApp profile picture URL'
   },
   registrationSource: {
-    type: DataTypes.ENUM('whatsapp', 'api', 'admin'),
+    type: DataTypes.ENUM('whatsapp', 'api', 'admin', 'app'),
     defaultValue: 'whatsapp'
   },
   deviceInfo: {
