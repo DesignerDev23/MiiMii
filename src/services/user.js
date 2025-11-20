@@ -17,47 +17,102 @@ const bcrypt = require('bcryptjs');
 class UserService {
   async getOrCreateUser(whatsappNumber, displayName = null) {
     try {
+      if (!whatsappNumber) {
+        throw new Error('WhatsApp number is required');
+      }
+
       // Clean phone number
-      const cleanNumber = this.cleanPhoneNumber(whatsappNumber);
+      let cleanNumber;
+      try {
+        cleanNumber = this.cleanPhoneNumber(whatsappNumber);
+      } catch (cleanError) {
+        logger.error('Phone number cleaning failed', { 
+          error: cleanError?.message || 'Unknown error',
+          whatsappNumber,
+          errorType: typeof cleanError
+        });
+        throw new Error(`Invalid phone number format: ${whatsappNumber}. ${cleanError?.message || 'Please check the phone number format.'}`);
+      }
       
       // Try to find existing user using retry logic
-      let user = await databaseService.findOneWithRetry(User, {
-        where: { whatsappNumber: cleanNumber },
-        include: [{ model: Wallet, as: 'wallet' }]
-      }, { operationName: 'find user by WhatsApp number' });
+      let user;
+      try {
+        user = await databaseService.findOneWithRetry(User, {
+          where: { whatsappNumber: cleanNumber },
+          include: [{ model: Wallet, as: 'wallet' }]
+        }, { operationName: 'find user by WhatsApp number' });
+      } catch (findError) {
+        logger.error('Database find operation failed', {
+          error: findError?.message || 'Unknown error',
+          cleanNumber,
+          errorType: typeof findError,
+          stack: findError?.stack
+        });
+        throw findError;
+      }
 
       if (!user) {
         // Create new user using retry logic
-        user = await databaseService.createWithRetry(User, {
-          whatsappNumber: cleanNumber,
-          fullName: displayName || null,
-          isActive: true
-        }, {}, { operationName: 'create new user' });
+        try {
+          user = await databaseService.createWithRetry(User, {
+            whatsappNumber: cleanNumber,
+            fullName: displayName || null,
+            isActive: true
+          }, {}, { operationName: 'create new user' });
 
-        // Create wallet for new user
-        const walletService = require('./wallet');
-        await walletService.createWallet(user.id);
+          // Create wallet for new user
+          const walletService = require('./wallet');
+          await walletService.createWallet(user.id);
 
-        logger.info('New user created', { userId: user.id, whatsappNumber: cleanNumber });
+          logger.info('New user created', { userId: user.id, whatsappNumber: cleanNumber });
+        } catch (createError) {
+          logger.error('User creation failed', {
+            error: createError?.message || 'Unknown error',
+            cleanNumber,
+            errorType: typeof createError,
+            stack: createError?.stack
+          });
+          throw createError;
+        }
       } else {
         // Update display name if provided and not already set
         if (displayName && !user.fullName) {
-          await databaseService.executeWithRetry(
-            () => user.update({ fullName: displayName }),
-            { operationName: 'update user display name' }
-          );
+          try {
+            await databaseService.executeWithRetry(
+              () => user.update({ fullName: displayName }),
+              { operationName: 'update user display name' }
+            );
+          } catch (updateError) {
+            // Non-critical error, log but don't fail
+            logger.warn('Failed to update display name', {
+              error: updateError?.message || 'Unknown error',
+              userId: user.id
+            });
+          }
         }
       }
 
       return user;
     } catch (error) {
+      // Ensure we always have an error object
+      const errorMessage = error?.message || (typeof error === 'string' ? error : 'Unknown error');
+      const errorStack = error?.stack || (error instanceof Error ? error.stack : undefined);
+      
       logger.error('Failed to get or create user', { 
-        error: error?.message || 'Unknown error', 
-        stack: error?.stack,
+        error: errorMessage,
+        stack: errorStack,
         whatsappNumber,
-        errorType: typeof error
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
+        isError: error instanceof Error
       });
-      throw error;
+      
+      // Re-throw as Error object if it's not already one
+      if (error instanceof Error) {
+        throw error;
+      } else {
+        throw new Error(errorMessage);
+      }
     }
   }
 
@@ -787,12 +842,22 @@ class UserService {
       throw new Error('Phone number is required');
     }
 
+    // Convert to string if not already
+    const phoneStr = String(phoneNumber).trim();
+    if (!phoneStr) {
+      throw new Error('Phone number cannot be empty');
+    }
+
     // Remove all non-digit characters
-    let cleaned = phoneNumber.replace(/\D/g, '');
+    let cleaned = phoneStr.replace(/\D/g, '');
+    
+    if (!cleaned || cleaned.length === 0) {
+      throw new Error(`Invalid phone number: ${phoneNumber} - no digits found`);
+    }
     
     // Handle different input formats and convert to E.164
     if (cleaned.startsWith('234') && cleaned.length === 13) {
-      // Already in +234 format without the +
+      // Already in +234 format without the + (e.g., 2349072874728)
       return `+${cleaned}`;
     } else if (cleaned.startsWith('0') && cleaned.length === 11) {
       // Nigerian local format (e.g., 08012345678)
@@ -800,12 +865,12 @@ class UserService {
     } else if (cleaned.length === 10 && /^[789]/.test(cleaned)) {
       // 10-digit Nigerian number without leading 0 (e.g., 8012345678)
       return `+234${cleaned}`;
-    } else if (phoneNumber.startsWith('+234') && cleaned.length === 13) {
+    } else if (phoneStr.startsWith('+234') && cleaned.length === 13) {
       // Already properly formatted
-      return phoneNumber;
-    } else if (phoneNumber.startsWith('+') && cleaned.length >= 10 && cleaned.length <= 15) {
+      return phoneStr;
+    } else if (phoneStr.startsWith('+') && cleaned.length >= 10 && cleaned.length <= 15) {
       // Other international numbers already in E.164 format
-      return phoneNumber;
+      return phoneStr;
     }
     
     // If none of the above patterns match, assume it's a Nigerian number without country code
@@ -813,7 +878,12 @@ class UserService {
       return `+234${cleaned}`;
     }
     
-    throw new Error(`Invalid phone number format: ${phoneNumber}. Expected Nigerian format (08012345678) or international E.164 format (+234...)`);
+    // If it's 13 digits starting with 234, add +
+    if (cleaned.length === 13 && cleaned.startsWith('234')) {
+      return `+${cleaned}`;
+    }
+    
+    throw new Error(`Invalid phone number format: ${phoneNumber}. Expected Nigerian format (08012345678) or international E.164 format (+234...). Got: ${cleaned.length} digits`);
   }
 
   formatPhoneNumber(phoneNumber) {

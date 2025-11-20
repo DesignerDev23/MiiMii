@@ -50,7 +50,58 @@ class MessageProcessor {
       const userName = contact?.profile?.name || 'there';
       
       // Get or create user with proper parameters
-      const user = await userService.getOrCreateUser(from, userName);
+      // Ensure phone number is properly formatted (WhatsApp sends without +)
+      let formattedPhone = from;
+      if (!formattedPhone || typeof formattedPhone !== 'string') {
+        throw new Error(`Invalid phone number: ${formattedPhone}`);
+      }
+      
+      if (!formattedPhone.startsWith('+')) {
+        // If it starts with country code (234), add +
+        if (formattedPhone.startsWith('234') && formattedPhone.length === 13) {
+          formattedPhone = `+${formattedPhone}`;
+        } else {
+          // Try to format it properly using userService
+          try {
+            formattedPhone = userService.cleanPhoneNumber(formattedPhone);
+          } catch (formatError) {
+            logger.warn('Phone number formatting failed, trying alternative format', {
+              original: from,
+              error: formatError?.message || 'Unknown formatting error'
+            });
+            // Fallback: if it's 13 digits starting with 234, add +
+            if (formattedPhone.replace(/\D/g, '').startsWith('234') && formattedPhone.replace(/\D/g, '').length === 13) {
+              formattedPhone = `+${formattedPhone.replace(/\D/g, '')}`;
+            } else {
+              // Last resort: try to add +234 if it looks like a Nigerian number
+              const digits = formattedPhone.replace(/\D/g, '');
+              if (digits.length === 10 || (digits.length === 11 && digits.startsWith('0'))) {
+                formattedPhone = `+234${digits.slice(-10)}`;
+              } else {
+                throw new Error(`Unable to format phone number: ${from}`);
+              }
+            }
+          }
+        }
+      }
+      
+      // Get or create user with formatted phone number
+      let user;
+      try {
+        user = await userService.getOrCreateUser(formattedPhone, userName);
+      } catch (userError) {
+        logger.error('getOrCreateUser failed in messageProcessor', {
+          error: userError?.message || 'Unknown error',
+          errorType: typeof userError,
+          errorConstructor: userError?.constructor?.name,
+          formattedPhone,
+          originalPhone: from,
+          stack: userError?.stack,
+          isError: userError instanceof Error
+        });
+        // Re-throw with more context
+        throw new Error(`Failed to get or create user: ${userError?.message || 'Unknown error'}`);
+      }
       
       // Mark as read + typing indicator to improve UX while processing
       try {
