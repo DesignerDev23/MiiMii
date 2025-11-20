@@ -420,18 +420,32 @@ router.post('/chat/send',
       const { message } = req.body;
       const result = await mobileMessageProcessor.sendMessage(req.user, message);
 
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          error: result.error || 'Failed to process message',
+          reply: result.reply || "I'm having trouble understanding that right now. Please try again."
+        });
+      }
+
       return res.json({
         success: true,
-        reply: result.botMessage.content,
+        reply: result.reply,
         intent: result.intent,
+        requiresAction: result.requiresAction,
+        actionData: result.actionData,
         meta: {
-          userMessageId: result.userMessage.id,
-          botMessageId: result.botMessage.id
+          userMessageId: result.userMessage?.id,
+          botMessageId: result.botMessage?.id
         }
       });
     } catch (error) {
       logger.error('Mobile chat send failed', { error: error.message, userId: req.user.id });
-      return res.status(400).json({ error: error.message });
+      return res.status(400).json({ 
+        success: false,
+        error: error.message,
+        reply: "I encountered an error processing your request. Please try again."
+      });
     }
   }
 );

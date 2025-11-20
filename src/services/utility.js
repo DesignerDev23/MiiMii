@@ -12,51 +12,135 @@ class UtilityService {
     this.apiKey = process.env.BILAL_API_KEY;
     this.serviceId = process.env.BILAL_SERVICE_ID;
     
-    // Utility categories and providers
+    // Utility categories and providers with logo URLs
     this.utilities = {
       electricity: {
         name: 'Electricity',
         icon: '⚡',
         providers: {
-          'aedc': { name: 'Abuja Electricity Distribution Company', code: 'aedc' },
-          'ekedc': { name: 'Eko Electricity Distribution Company', code: 'ekedc' },
-          'ikedc': { name: 'Ikeja Electricity Distribution Company', code: 'ikedc' },
-          'kedco': { name: 'Kano Electricity Distribution Company', code: 'kedco' },
-          'phed': { name: 'Port Harcourt Electricity Distribution', code: 'phed' },
-          'iedc': { name: 'Ibadan Electricity Distribution Company', code: 'iedc' },
-          'eedc': { name: 'Enugu Electricity Distribution Company', code: 'eedc' },
-          'kaedco': { name: 'Kaduna Electricity Distribution Company', code: 'kaedco' },
-          'jedc': { name: 'Jos Electricity Distribution Company', code: 'jedc' },
-          'bedc': { name: 'Benin Electricity Distribution Company', code: 'bedc' }
+          'aedc': { 
+            name: 'Abuja Electricity Distribution Company', 
+            code: 'aedc',
+            logo: 'https://via.placeholder.com/120x120/0066CC/FFFFFF?text=AEDC'
+          },
+          'ekedc': { 
+            name: 'Eko Electricity Distribution Company', 
+            code: 'ekedc',
+            logo: 'https://via.placeholder.com/120x120/FF6600/FFFFFF?text=EKEDC'
+          },
+          'ikedc': { 
+            name: 'Ikeja Electricity Distribution Company', 
+            code: 'ikedc',
+            logo: 'https://via.placeholder.com/120x120/00AA00/FFFFFF?text=IKEDC'
+          },
+          'kedco': { 
+            name: 'Kano Electricity Distribution Company', 
+            code: 'kedco',
+            logo: 'https://via.placeholder.com/120x120/CC0000/FFFFFF?text=KEDCO'
+          },
+          'phed': { 
+            name: 'Port Harcourt Electricity Distribution', 
+            code: 'phed',
+            logo: 'https://via.placeholder.com/120x120/006699/FFFFFF?text=PHED'
+          },
+          'iedc': { 
+            name: 'Ibadan Electricity Distribution Company', 
+            code: 'iedc',
+            logo: 'https://via.placeholder.com/120x120/FF9900/FFFFFF?text=IBEDC'
+          },
+          'eedc': { 
+            name: 'Enugu Electricity Distribution Company', 
+            code: 'eedc',
+            logo: 'https://via.placeholder.com/120x120/009900/FFFFFF?text=EEDC'
+          },
+          'kaedco': { 
+            name: 'Kaduna Electricity Distribution Company', 
+            code: 'kaedco',
+            logo: 'https://via.placeholder.com/120x120/9900CC/FFFFFF?text=KAEDCO'
+          },
+          'jedc': { 
+            name: 'Jos Electricity Distribution Company', 
+            code: 'jedc',
+            logo: 'https://via.placeholder.com/120x120/FF3300/FFFFFF?text=JEDC'
+          },
+          'bedc': { 
+            name: 'Benin Electricity Distribution Company', 
+            code: 'bedc',
+            logo: 'https://via.placeholder.com/120x120/0066FF/FFFFFF?text=BEDC'
+          }
         }
       },
       cable: {
         name: 'Cable TV',
         icon: '📺',
         providers: {
-          'dstv': { name: 'DStv', code: 'dstv' },
-          'gotv': { name: 'GOtv', code: 'gotv' },
-          'startimes': { name: 'StarTimes', code: 'startimes' },
-          'strong': { name: 'Strong', code: 'strong'  }
+          'dstv': { 
+            name: 'DStv', 
+            code: 'dstv',
+            logo: 'https://via.placeholder.com/120x120/000000/FFFFFF?text=DSTV'
+          },
+          'gotv': { 
+            name: 'GOtv', 
+            code: 'gotv',
+            logo: 'https://via.placeholder.com/120x120/FF6600/FFFFFF?text=GOTV'
+          },
+          'startimes': { 
+            name: 'StarTimes', 
+            code: 'startimes',
+            logo: 'https://via.placeholder.com/120x120/FF0000/FFFFFF?text=STAR'
+          },
+          'strong': { 
+            name: 'Strong', 
+            code: 'strong',
+            logo: 'https://via.placeholder.com/120x120/0066CC/FFFFFF?text=STRONG'
+          }
         }
       },
       internet: {
         name: 'Internet',
         icon: '🌐',
         providers: {
-          'smile': { name: 'Smile Communications', code: 'smile' },
-          'spectranet': { name: 'Spectranet', code: 'spectranet' },
-          'swift': { name: 'Swift Networks', code: 'swift' },
-          'coollink': { name: 'Coollink', code: 'coollink' }
+          'smile': { 
+            name: 'Smile Communications', 
+            code: 'smile',
+            logo: 'https://via.placeholder.com/120x120/FF0066/FFFFFF?text=SMILE'
+          },
+          'spectranet': { 
+            name: 'Spectranet', 
+            code: 'spectranet',
+            logo: 'https://via.placeholder.com/120x120/0099FF/FFFFFF?text=SPECTRA'
+          },
+          'swift': { 
+            name: 'Swift Networks', 
+            code: 'swift',
+            logo: 'https://via.placeholder.com/120x120/FF6600/FFFFFF?text=SWIFT'
+          },
+          'coollink': { 
+            name: 'Coollink', 
+            code: 'coollink',
+            logo: 'https://via.placeholder.com/120x120/00CCFF/FFFFFF?text=COOL'
+          }
         }
       },
       water: {
         name: 'Water',
         icon: '💧',
         providers: {
-          'lawma': { name: 'Lagos Water Corporation', code: 'lawma' },
-          'kwsc': { name: 'Kaduna Water Service Company', code: 'kwsc' },
-          'fwc': { name: 'Federal Water Corporation', code: 'fwc' }
+          'lawma': { 
+            name: 'Lagos Water Corporation', 
+            code: 'lawma',
+            logo: 'https://via.placeholder.com/120x120/0066CC/FFFFFF?text=LAWMA'
+          },
+          'kwsc': { 
+            name: 'Kaduna Water Service Company', 
+            code: 'kwsc',
+            logo: 'https://via.placeholder.com/120x120/0099FF/FFFFFF?text=KWSC'
+          },
+          'fwc': { 
+            name: 'Federal Water Corporation', 
+            code: 'fwc',
+            logo: 'https://via.placeholder.com/120x120/006699/FFFFFF?text=FWC'
+          }
         }
       }
     };
@@ -126,14 +210,17 @@ class UtilityService {
   // Get cable TV plans for a provider
   async getCablePlans(provider) {
     try {
-      if (!this.cablePlans[provider]) {
+      // Normalize provider to lowercase for case-insensitive matching
+      const normalizedProvider = provider.toLowerCase();
+      if (!this.cablePlans[normalizedProvider]) {
         throw new Error('Cable plans not available for this provider');
       }
 
+      const providerInfo = this.utilities.cable.providers[normalizedProvider];
       return {
-        provider,
-        providerName: this.utilities.cable.providers[provider]?.name || provider,
-        plans: this.cablePlans[provider]
+        provider: providerInfo?.code || normalizedProvider,
+        providerName: providerInfo?.name || provider,
+        plans: this.cablePlans[normalizedProvider]
       };
     } catch (error) {
       logger.error('Failed to get cable plans', { error: error.message, provider });
@@ -148,9 +235,14 @@ class UtilityService {
         throw new Error('Invalid utility category');
       }
 
-      if (!this.utilities[category].providers[provider]) {
+      // Normalize provider to lowercase for case-insensitive matching
+      const normalizedProvider = provider.toLowerCase();
+      if (!this.utilities[category].providers[normalizedProvider]) {
         throw new Error('Invalid provider for this category');
       }
+      
+      // Use the normalized provider code
+      const providerCode = this.utilities[category].providers[normalizedProvider].code;
 
       // For testing purposes, simulate validation
       if (!this.baseURL || !this.apiKey) {
@@ -161,7 +253,7 @@ class UtilityService {
           customerName: 'John Doe (Mock Customer)',
           address: '123 Mock Street, Lagos',
           category,
-          provider,
+          provider: providerCode,
           balance: category === 'electricity' ? Math.floor(Math.random() * 5000) : null
         };
       }
@@ -169,7 +261,7 @@ class UtilityService {
       // Call Bilal API for validation
       const response = await axios.post(`${this.baseURL}/api/validate-customer`, {
         category,
-        provider,
+        provider: providerCode,
         customer_number: customerNumber
       }, {
         ...axiosConfig,
@@ -187,7 +279,7 @@ class UtilityService {
           customerName: response.data.customer.name,
           address: response.data.customer.address,
           category,
-          provider,
+          provider: providerCode,
           balance: response.data.customer.balance || null
         };
       } else {
@@ -222,10 +314,13 @@ class UtilityService {
       // Validate PIN
       await userService.validateUserPin(userId, pin);
 
-      // Validate category and provider
-      if (!this.utilities[category] || !this.utilities[category].providers[provider]) {
+      // Validate category and provider (normalize to lowercase)
+      const normalizedProvider = provider.toLowerCase();
+      if (!this.utilities[category] || !this.utilities[category].providers[normalizedProvider]) {
         throw new Error('Invalid utility provider');
       }
+      
+      const providerCode = this.utilities[category].providers[normalizedProvider].code;
 
       // Validate customer
       const customerValidation = await this.validateCustomer(category, provider, customerNumber);
@@ -238,7 +333,7 @@ class UtilityService {
 
       // For cable TV, validate plan if provided
       if (category === 'cable' && planId) {
-        const plans = this.cablePlans[provider];
+        const plans = this.cablePlans[providerCode];
         if (!plans) {
           throw new Error('Plans not available for this provider');
         }
@@ -282,10 +377,10 @@ class UtilityService {
         amount: billAmount,
         fee: fee,
         totalAmount: totalAmount,
-        description: `${this.utilities[category].name} bill payment - ${this.utilities[category].providers[provider].name}`,
+        description: `${this.utilities[category].name} bill payment - ${this.utilities[category].providers[normalizedProvider].name}`,
         recipientDetails: {
           category,
-          provider,
+          provider: providerCode,
           customerNumber,
           customerName: customerValidation.customerName,
           planId,
@@ -294,7 +389,7 @@ class UtilityService {
         metadata: {
           service: 'utility',
           category,
-          provider,
+          provider: providerCode,
           customerNumber,
           planId,
           customerValidation
@@ -305,7 +400,7 @@ class UtilityService {
         // Process bill payment through Bilal API
         const paymentResult = await this.processBilalBillPayment(
           category, 
-          provider, 
+          providerCode, 
           customerNumber, 
           billAmount, 
           planId
@@ -327,7 +422,7 @@ class UtilityService {
           logger.info('Utility bill payment completed successfully', {
             userId,
             category,
-            provider,
+            provider: providerCode,
             customerNumber,
             amount: billAmount,
             fee,
