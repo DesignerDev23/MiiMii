@@ -35,10 +35,39 @@ class MobileMessageProcessor {
       let intent = null;
       let rawResult = null;
 
-      if (aiResult && aiResult.success && aiResult.result) {
-        rawResult = aiResult.result;
-        replyText = aiResult.result.message || aiResult.result.result?.message || replyText;
-        intent = aiResult.result.intent || aiResult.result.result?.intent || null;
+      // Handle different response structures
+      if (aiResult) {
+        logger.debug('AI result structure', { 
+          hasSuccess: !!aiResult.success,
+          hasResult: !!aiResult.result,
+          hasMessage: !!aiResult.message,
+          hasUserFriendlyResponse: !!aiResult.userFriendlyResponse,
+          hasError: !!aiResult.error,
+          resultKeys: aiResult.result ? Object.keys(aiResult.result) : null
+        });
+
+        // Case 1: Success response with result object (normal flow)
+        if (aiResult.success && aiResult.result) {
+          rawResult = aiResult.result;
+          replyText = aiResult.result.message || replyText;
+          intent = aiResult.result.intent || null;
+        }
+        // Case 2: Direct result (from handleConversationFlow - returns intentResult directly)
+        else if (aiResult.message) {
+          rawResult = aiResult;
+          replyText = aiResult.message;
+          intent = aiResult.intent || null;
+        }
+        // Case 3: Error response with user-friendly message
+        else if (aiResult.userFriendlyResponse) {
+          replyText = aiResult.userFriendlyResponse;
+        }
+        // Case 4: Error response
+        else if (aiResult.error) {
+          replyText = aiResult.error;
+        }
+      } else {
+        logger.warn('AI result is null or undefined', { userId: user.id, message: text });
       }
 
       // Persist assistant reply
