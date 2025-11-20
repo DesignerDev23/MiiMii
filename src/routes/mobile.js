@@ -767,19 +767,25 @@ router.post('/transfers/:reference/save-beneficiary',
 // ===== PIN Management =====
 router.post('/me/pin/change',
   mobileAuth,
-  body('currentPin').isLength({ min: 4, max: 4 }).isNumeric(),
-  body('newPin').isLength({ min: 4, max: 4 }).isNumeric(),
-  body('confirmPin').isLength({ min: 4, max: 4 }).isNumeric(),
+  body('currentPin').matches(/^\d{4}$/).withMessage('Current PIN must be exactly 4 digits'),
+  body('newPin').matches(/^\d{4}$/).withMessage('New PIN must be exactly 4 digits'),
+  body('confirmPin').matches(/^\d{4}$/).withMessage('Confirm PIN must be exactly 4 digits'),
   validateRequest,
   async (req, res) => {
     try {
       const { currentPin, newPin, confirmPin } = req.body;
-      if (newPin !== confirmPin) {
+      
+      // Ensure PINs are strings to preserve leading zeros
+      const currentPinString = String(currentPin).padStart(4, '0');
+      const newPinString = String(newPin).padStart(4, '0');
+      const confirmPinString = String(confirmPin).padStart(4, '0');
+      
+      if (newPinString !== confirmPinString) {
         return res.status(400).json({ error: 'New PIN and confirm PIN do not match' });
       }
 
-      await userService.validateUserPin(req.user.id, currentPin);
-      await userService.setUserPin(req.user.id, newPin);
+      await userService.validateUserPin(req.user.id, currentPinString);
+      await userService.setUserPin(req.user.id, newPinString);
 
       return res.json({ success: true, message: 'PIN updated successfully' });
     } catch (error) {
@@ -792,27 +798,32 @@ router.post('/me/pin/change',
 
 router.post('/onboarding/pin',
   mobileAuth,
-  body('pin').isLength({ min: 4, max: 4 }).isNumeric(),
-  body('confirmPin').isLength({ min: 4, max: 4 }).isNumeric(),
-  body('currentPin').optional().isLength({ min: 4, max: 4 }).isNumeric(),
+  body('pin').matches(/^\d{4}$/).withMessage('PIN must be exactly 4 digits'),
+  body('confirmPin').matches(/^\d{4}$/).withMessage('Confirm PIN must be exactly 4 digits'),
+  body('currentPin').optional().matches(/^\d{4}$/).withMessage('Current PIN must be exactly 4 digits'),
   validateRequest,
   async (req, res) => {
     try {
       const { pin, confirmPin, currentPin } = req.body;
+      
+      // Ensure PINs are strings to preserve leading zeros
+      const pinString = String(pin).padStart(4, '0');
+      const confirmPinString = String(confirmPin).padStart(4, '0');
+      const currentPinString = currentPin ? String(currentPin).padStart(4, '0') : null;
 
-      if (pin !== confirmPin) {
+      if (pinString !== confirmPinString) {
         return res.status(400).json({ error: 'PIN and confirm PIN do not match' });
       }
 
       const user = await userService.getUserById(req.user.id);
       if (user.pin) {
-        if (!currentPin) {
+        if (!currentPinString) {
           return res.status(400).json({ error: 'Current PIN is required to update existing PIN' });
         }
-        await userService.validateUserPin(user.id, currentPin);
+        await userService.validateUserPin(user.id, currentPinString);
       }
 
-      await userService.setUserPin(user.id, pin);
+      await userService.setUserPin(user.id, pinString);
       await user.update({ pinEnabled: true });
 
       const overview = await getOnboardingOverview(req.user.id);
@@ -1053,14 +1064,16 @@ router.post('/transfers',
   body('amount').isFloat({ min: 100 }),
   body('accountNumber').isLength({ min: 8, max: 11 }).isNumeric(),
   body('bankCode').notEmpty(),
-  body('pin').isLength({ min: 4, max: 4 }).isNumeric(),
+  body('pin').matches(/^\d{4}$/).withMessage('PIN must be exactly 4 digits'),
   body('narration').optional().isString().trim(),
   body('reference').optional().isString().trim(),
   validateRequest,
   async (req, res) => {
     try {
       const { pin, ...transferData } = req.body;
-      const result = await bankTransferService.processBankTransfer(req.user.id, transferData, pin);
+      // Ensure PIN is a string to preserve leading zeros
+      const pinString = String(pin).padStart(4, '0');
+      const result = await bankTransferService.processBankTransfer(req.user.id, transferData, pinString);
 
       return res.json({
         success: true,
@@ -1221,12 +1234,14 @@ router.post('/airtime/purchase',
   body('phoneNumber').isMobilePhone('any'),
   body('network').isIn(['mtn', 'airtel', 'glo', '9mobile', 'MTN', 'AIRTEL', 'GLO', '9MOBILE']),
   body('amount').isFloat({ min: 50 }),
-  body('pin').isLength({ min: 4, max: 4 }).isNumeric(),
+  body('pin').matches(/^\d{4}$/).withMessage('PIN must be exactly 4 digits'),
   validateRequest,
   async (req, res) => {
     try {
       const { phoneNumber, network, amount, pin } = req.body;
-      const result = await airtimeService.purchaseAirtime(req.user.id, phoneNumber, network, amount, pin);
+      // Ensure PIN is a string to preserve leading zeros
+      const pinString = String(pin).padStart(4, '0');
+      const result = await airtimeService.purchaseAirtime(req.user.id, phoneNumber, network, amount, pinString);
       return res.json({ success: true, purchase: result });
     } catch (error) {
       logger.error('Airtime purchase failed', { error: error.message, userId: req.user.id });
@@ -1297,12 +1312,14 @@ router.post('/data/purchase',
   body('phoneNumber').isMobilePhone('any'),
   body('network').isIn(['mtn', 'airtel', 'glo', '9mobile', 'MTN', 'AIRTEL', 'GLO', '9MOBILE']),
   body('planId').notEmpty(),
-  body('pin').isLength({ min: 4, max: 4 }).isNumeric(),
+  body('pin').matches(/^\d{4}$/).withMessage('PIN must be exactly 4 digits'),
   validateRequest,
   async (req, res) => {
     try {
       const { phoneNumber, network, planId, pin } = req.body;
-      const result = await dataService.purchaseData(req.user.id, phoneNumber, network, planId, pin);
+      // Ensure PIN is a string to preserve leading zeros
+      const pinString = String(pin).padStart(4, '0');
+      const result = await dataService.purchaseData(req.user.id, phoneNumber, network, planId, pinString);
       return res.json({ success: true, purchase: result });
     } catch (error) {
       logger.error('Data purchase failed', { error: error.message, userId: req.user.id });
@@ -1376,13 +1393,15 @@ router.post('/bills/pay',
   body('provider').notEmpty(),
   body('customerNumber').notEmpty(),
   body('amount').isFloat({ min: 100 }),
-  body('pin').isLength({ min: 4, max: 4 }).isNumeric(),
+  body('pin').matches(/^\d{4}$/).withMessage('PIN must be exactly 4 digits'),
   body('planId').optional().isString(),
   validateRequest,
   async (req, res) => {
     try {
       const { category, provider, customerNumber, amount, pin, planId } = req.body;
-      const payment = await utilityService.payBill(req.user.id, category, provider, customerNumber, amount, pin, planId);
+      // Ensure PIN is a string to preserve leading zeros
+      const pinString = String(pin).padStart(4, '0');
+      const payment = await utilityService.payBill(req.user.id, category, provider, customerNumber, amount, pinString, planId);
       return res.json({ success: true, payment });
     } catch (error) {
       logger.error('Utility payment failed', { error: error.message, userId: req.user.id });
