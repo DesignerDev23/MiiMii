@@ -656,13 +656,60 @@
           "body": "{\n  \"success\": true,\n  \"message\": \"All read notifications deleted\",\n  \"deletedCount\": 15\n}"
         }
       ]
-    }
-  ],
-  "variable": [
-    { "key": "baseUrl", "value": "https://api.chatmiimii.com" },
-    { "key": "MOBILE_TOKEN", "value": "" }
-  ]
-}
+    },
+    {
+      "name": "Data / Get All Plans",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/data/plans/all",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "data", "plans", "all"]
+        },
+        "description": "Get all data plans for all networks in a single request"
+      },
+      "response": [
+        {
+          "name": "200 OK - All Data Plans",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"dataPlans\": {\n    \"mtn\": {\n      \"network\": \"MTN\",\n      \"networkCode\": \"mtn\",\n      \"plans\": [\n        {\n          \"id\": \"mtn-100mb-100\",\n          \"size\": \"100MB\",\n          \"price\": 100,\n          \"duration\": \"1 day\",\n          \"code\": \"1\"\n        },\n        {\n          \"id\": \"mtn-1gb-500\",\n          \"size\": \"1GB\",\n          \"price\": 500,\n          \"duration\": \"7 days\",\n          \"code\": \"5\"\n        }\n      ]\n    },\n    \"airtel\": {\n      \"network\": \"AIRTEL\",\n      \"networkCode\": \"airtel\",\n      \"plans\": [\n        {\n          \"id\": \"airtel-1gb-350\",\n          \"size\": \"1GB\",\n          \"price\": 350,\n          \"duration\": \"1 day\",\n          \"code\": \"3\"\n        }\n      ]\n    },\n    \"glo\": {\n      \"network\": \"GLO\",\n      \"networkCode\": \"glo\",\n      \"plans\": []\n    },\n    \"9mobile\": {\n      \"network\": \"9MOBILE\",\n      \"networkCode\": \"9mobile\",\n      \"plans\": []\n    }\n  },\n  \"networks\": [\"mtn\", \"airtel\", \"glo\", \"9mobile\"]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Data / Get Plans by Network",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/data/plans?network=MTN",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "data", "plans"],
+          "query": [
+            { "key": "network", "value": "MTN" }
+          ]
+        },
+        "description": "Get data plans for a specific network"
+      },
+      "response": [
+        {
+          "name": "200 OK - Network Plans",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"network\": \"MTN\",\n  \"plans\": [\n    {\n      \"id\": \"mtn-100mb-100\",\n      \"size\": \"100MB\",\n      \"price\": 100,\n      \"duration\": \"1 day\",\n      \"code\": \"1\"\n    },\n    {\n      \"id\": \"mtn-1gb-500\",\n      \"size\": \"1GB\",\n      \"price\": 500,\n      \"duration\": \"7 days\",\n      \"code\": \"5\"\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Data / Purchase",
       "request": {
         "method": "POST",
         "header": [

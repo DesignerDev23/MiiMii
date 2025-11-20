@@ -1236,6 +1236,46 @@ router.post('/airtime/purchase',
 );
 
 // ===== Data =====
+// Get all data plans grouped by network
+router.get('/data/plans/all',
+  mobileAuth,
+  async (req, res) => {
+    try {
+      const networks = ['MTN', 'AIRTEL', 'GLO', '9MOBILE'];
+      const allPlans = {};
+
+      for (const network of networks) {
+        try {
+          const plans = await dataService.getDataPlans(network);
+          allPlans[network.toLowerCase()] = {
+            network: network,
+            networkCode: network.toLowerCase(),
+            plans: plans
+          };
+        } catch (error) {
+          logger.warn(`Failed to fetch plans for ${network}`, { error: error.message });
+          allPlans[network.toLowerCase()] = {
+            network: network,
+            networkCode: network.toLowerCase(),
+            plans: [],
+            error: 'Failed to load plans'
+          };
+        }
+      }
+
+      return res.json({
+        success: true,
+        dataPlans: allPlans,
+        networks: Object.keys(allPlans)
+      });
+    } catch (error) {
+      logger.error('Failed to fetch all data plans', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to fetch data plans' });
+    }
+  }
+);
+
+// Get data plans for a specific network
 router.get('/data/plans',
   mobileAuth,
   query('network').isIn(['mtn', 'airtel', 'glo', '9mobile', 'MTN', 'AIRTEL', 'GLO', '9MOBILE']),
@@ -1244,7 +1284,7 @@ router.get('/data/plans',
     try {
       const network = req.query.network.toUpperCase();
       const plans = await dataService.getDataPlans(network);
-      return res.json({ success: true, plans });
+      return res.json({ success: true, network, plans });
     } catch (error) {
       logger.error('Failed to fetch data plans', { error: error.message, userId: req.user.id });
       return res.status(400).json({ error: error.message });

@@ -762,6 +762,111 @@ The onboarding flow is **mandatory** and must be completed before users can perf
 
 **Response**: Same structure as airtime networks
 
+---
+
+#### 2. Get All Data Plans (All Networks)
+**Endpoint**: `GET /api/mobile/data/plans/all`
+
+**Description**: Returns all data plans for all networks in a single request. Useful for displaying all available plans in the app.
+
+**Response**:
+```json
+{
+  "success": true,
+  "dataPlans": {
+    "mtn": {
+      "network": "MTN",
+      "networkCode": "mtn",
+      "plans": [
+        {
+          "id": "mtn-100mb-100",
+          "size": "100MB",
+          "price": 100,
+          "duration": "1 day",
+          "code": "1"
+        },
+        {
+          "id": "mtn-1gb-500",
+          "size": "1GB",
+          "price": 500,
+          "duration": "7 days",
+          "code": "5"
+        }
+      ]
+    },
+    "airtel": {
+      "network": "AIRTEL",
+      "networkCode": "airtel",
+      "plans": [
+        {
+          "id": "airtel-1gb-350",
+          "size": "1GB",
+          "price": 350,
+          "duration": "1 day",
+          "code": "3"
+        }
+      ]
+    },
+    "glo": {
+      "network": "GLO",
+      "networkCode": "glo",
+      "plans": [...]
+    },
+    "9mobile": {
+      "network": "9MOBILE",
+      "networkCode": "9mobile",
+      "plans": [...]
+    }
+  },
+  "networks": ["mtn", "airtel", "glo", "9mobile"]
+}
+```
+
+**App Behavior**:
+- Fetch all plans once on app load or when entering data purchase screen
+- Group plans by network in the UI
+- Allow users to filter by network
+- Show plan size, price, and duration
+- Cache plans to reduce API calls
+
+---
+
+#### 3. Get Data Plans for Specific Network
+**Endpoint**: `GET /api/mobile/data/plans?network=MTN`
+
+**Query Parameters**:
+- `network` (required): `mtn`, `airtel`, `glo`, or `9mobile` (case-insensitive)
+
+**Response**:
+```json
+{
+  "success": true,
+  "network": "MTN",
+  "plans": [
+    {
+      "id": "mtn-100mb-100",
+      "size": "100MB",
+      "price": 100,
+      "duration": "1 day",
+      "code": "1"
+    },
+    {
+      "id": "mtn-1gb-500",
+      "size": "1GB",
+      "price": 500,
+      "duration": "7 days",
+      "code": "5"
+    }
+  ]
+}
+```
+
+**App Behavior**:
+- Use when user selects a specific network
+- Fetch plans on-demand when network is selected
+- Display plans in a scrollable list
+- Show plan details (size, price, duration)
+
 #### 2. Get Data Plans
 **Endpoint**: `GET /api/mobile/data/plans/:network`
 
