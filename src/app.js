@@ -23,6 +23,7 @@ const ensureChatMessagesTable = require('./scripts/selfHealing/chatMessagesTable
 const ensureNotificationsTable = require('./scripts/selfHealing/notificationsTable');
 const ensureOnboardingStepEnum = require('./scripts/selfHealing/onboardingStepEnum');
 const ensureRegistrationSourceEnum = require('./scripts/selfHealing/registrationSourceEnum');
+const ensureActivityLogEnum = require('./scripts/selfHealing/activityLogEnum');
 
 // Import models to ensure they are registered with Sequelize
 require('./models');
@@ -478,6 +479,7 @@ async function initializeDatabaseConnection() {
       await ensureNotificationsTable();
       await ensureOnboardingStepEnum();
       await ensureRegistrationSourceEnum();
+      await ensureActivityLogEnum();
     } catch (error) {
       logger.error('❌ Failed to initialize mobile app database structures:', { error: error.message });
     }

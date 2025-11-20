@@ -29,7 +29,8 @@ const ActivityLog = sequelize.define('ActivityLog', {
       'security_alert', 'fraud_detection', 'compliance_check',
       'admin_action', 'system_maintenance', 'api_call',
       'whatsapp_message_sent', 'whatsapp_message_received',
-      'webhook_received', 'webhook_processed'
+      'webhook_received', 'webhook_processed',
+      'ai_processing'
     ),
     allowNull: false
   },
