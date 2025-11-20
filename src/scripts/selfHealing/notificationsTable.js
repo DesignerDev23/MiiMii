@@ -109,12 +109,28 @@ async function ensureNotificationsTable() {
       }
     });
 
-    // Create indexes
-    await qi.addIndex('notifications', ['userId', 'isRead'], { name: 'notifications_user_read_idx' });
-    await qi.addIndex('notifications', ['userId', 'createdAt'], { name: 'notifications_user_created_idx' });
-    await qi.addIndex('notifications', ['type'], { name: 'notifications_type_idx' });
-    await qi.addIndex('notifications', ['priority'], { name: 'notifications_priority_idx' });
-    await qi.addIndex('notifications', ['expiresAt'], { name: 'notifications_expires_idx' });
+    // Create indexes (with error handling for existing indexes)
+    const indexes = [
+      { columns: ['userId', 'isRead'], name: 'notifications_user_read_idx' },
+      { columns: ['userId', 'createdAt'], name: 'notifications_user_created_idx' },
+      { columns: ['type'], name: 'notifications_type_idx' },
+      { columns: ['priority'], name: 'notifications_priority_idx' },
+      { columns: ['expiresAt'], name: 'notifications_expires_idx' }
+    ];
+
+    for (const index of indexes) {
+      try {
+        await qi.addIndex('notifications', index.columns, { name: index.name });
+        logger.info(`✅ Created index: ${index.name}`);
+      } catch (indexError) {
+        // Index might already exist
+        if (indexError.message && indexError.message.includes('already exists')) {
+          logger.info(`ℹ️ Index already exists: ${index.name}`);
+        } else {
+          logger.warn(`⚠️ Failed to create index ${index.name}:`, indexError.message);
+        }
+      }
+    }
 
     logger.info('✅ Notifications table created successfully');
   } catch (error) {

@@ -476,16 +476,25 @@ async function initializeDatabaseConnection() {
     }
     
     // Initialize mobile app database structures (self-healing)
-    try {
-      await ensureMobileAuthColumns();
-      await ensureChatMessagesTable();
-      await ensureNotificationsTable();
-      await ensureOnboardingStepEnum();
-      await ensureRegistrationSourceEnum();
-      await ensureActivityLogEnum();
-      await ensureAccountLinkingOTPColumns();
-    } catch (error) {
-      logger.error('❌ Failed to initialize mobile app database structures:', { error: error.message });
+    // Run each script independently so one failure doesn't stop the others
+    const selfHealingScripts = [
+      { name: 'Mobile Auth Columns', fn: ensureMobileAuthColumns },
+      { name: 'Chat Messages Table', fn: ensureChatMessagesTable },
+      { name: 'Notifications Table', fn: ensureNotificationsTable },
+      { name: 'Onboarding Step Enum', fn: ensureOnboardingStepEnum },
+      { name: 'Registration Source Enum', fn: ensureRegistrationSourceEnum },
+      { name: 'Activity Log Enum', fn: ensureActivityLogEnum },
+      { name: 'Account Linking OTP Columns', fn: ensureAccountLinkingOTPColumns }
+    ];
+
+    for (const script of selfHealingScripts) {
+      try {
+        await script.fn();
+        logger.info(`✅ ${script.name} check completed`);
+      } catch (error) {
+        logger.error(`❌ Failed to initialize ${script.name}:`, { error: error?.message || 'Unknown error' });
+        // Continue with other scripts even if one fails
+      }
     }
     
     // Self-healing: attempt to add missing columns if they don't exist (async, non-blocking)
