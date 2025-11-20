@@ -139,7 +139,7 @@ class AirtimeService {
 
       try {
         // Process airtime purchase through Bilal API
-        const purchaseResult = await this.processBilalAirtimePurchase(user, validation.cleanNumber, network, validAmount);
+        const purchaseResult = await this.processBilalAirtimePurchase(user, validation.cleanNumber, network, validAmount, pin);
         
         if (purchaseResult.success) {
           // Debit wallet
@@ -199,7 +199,7 @@ class AirtimeService {
   }
 
   // Process airtime purchase through Bilal API
-  async processBilalAirtimePurchase(user, phoneNumber, network, amount) {
+  async processBilalAirtimePurchase(user, phoneNumber, network, amount, pin) {
     try {
       const bilalService = require('./bilal');
       
@@ -214,7 +214,7 @@ class AirtimeService {
         phoneNumber,
         network,
         amount,
-        pin: '0000' // Dummy PIN - validation will be handled by the calling method
+        pin: pin // Use the validated PIN
       };
 
       const result = await bilalService.purchaseAirtime(user, airtimeData, phoneNumber);

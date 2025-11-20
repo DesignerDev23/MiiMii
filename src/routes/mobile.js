@@ -776,9 +776,9 @@ router.post('/me/pin/change',
       const { currentPin, newPin, confirmPin } = req.body;
       
       // Ensure PINs are strings to preserve leading zeros
-      const currentPinString = String(currentPin).padStart(4, '0');
-      const newPinString = String(newPin).padStart(4, '0');
-      const confirmPinString = String(confirmPin).padStart(4, '0');
+      const currentPinString = typeof currentPin === 'string' ? currentPin : String(currentPin).padStart(4, '0');
+      const newPinString = typeof newPin === 'string' ? newPin : String(newPin).padStart(4, '0');
+      const confirmPinString = typeof confirmPin === 'string' ? confirmPin : String(confirmPin).padStart(4, '0');
       
       if (newPinString !== confirmPinString) {
         return res.status(400).json({ error: 'New PIN and confirm PIN do not match' });
@@ -807,9 +807,9 @@ router.post('/onboarding/pin',
       const { pin, confirmPin, currentPin } = req.body;
       
       // Ensure PINs are strings to preserve leading zeros
-      const pinString = String(pin).padStart(4, '0');
-      const confirmPinString = String(confirmPin).padStart(4, '0');
-      const currentPinString = currentPin ? String(currentPin).padStart(4, '0') : null;
+      const pinString = typeof pin === 'string' ? pin : String(pin).padStart(4, '0');
+      const confirmPinString = typeof confirmPin === 'string' ? confirmPin : String(confirmPin).padStart(4, '0');
+      const currentPinString = currentPin ? (typeof currentPin === 'string' ? currentPin : String(currentPin).padStart(4, '0')) : null;
 
       if (pinString !== confirmPinString) {
         return res.status(400).json({ error: 'PIN and confirm PIN do not match' });
@@ -1072,7 +1072,11 @@ router.post('/transfers',
     try {
       const { pin, ...transferData } = req.body;
       // Ensure PIN is a string to preserve leading zeros
-      const pinString = String(pin).padStart(4, '0');
+      // If PIN is a number (e.g., 550), convert to string and pad. If it's already a string, use as-is
+      const pinString = typeof pin === 'string' ? pin : String(pin).padStart(4, '0');
+      if (!/^\d{4}$/.test(pinString)) {
+        return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+      }
       const result = await bankTransferService.processBankTransfer(req.user.id, transferData, pinString);
 
       return res.json({
@@ -1240,7 +1244,11 @@ router.post('/airtime/purchase',
     try {
       const { phoneNumber, network, amount, pin } = req.body;
       // Ensure PIN is a string to preserve leading zeros
-      const pinString = String(pin).padStart(4, '0');
+      // If PIN is a number (e.g., 550), convert to string and pad. If it's already a string, use as-is
+      const pinString = typeof pin === 'string' ? pin : String(pin).padStart(4, '0');
+      if (!/^\d{4}$/.test(pinString)) {
+        return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+      }
       const result = await airtimeService.purchaseAirtime(req.user.id, phoneNumber, network, amount, pinString);
       return res.json({ success: true, purchase: result });
     } catch (error) {
@@ -1318,7 +1326,10 @@ router.post('/data/purchase',
     try {
       const { phoneNumber, network, planId, pin } = req.body;
       // Ensure PIN is a string to preserve leading zeros
-      const pinString = String(pin).padStart(4, '0');
+      const pinString = typeof pin === 'string' ? pin : String(pin).padStart(4, '0');
+      if (!/^\d{4}$/.test(pinString)) {
+        return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+      }
       const result = await dataService.purchaseData(req.user.id, phoneNumber, network, planId, pinString);
       return res.json({ success: true, purchase: result });
     } catch (error) {
@@ -1400,7 +1411,10 @@ router.post('/bills/pay',
     try {
       const { category, provider, customerNumber, amount, pin, planId } = req.body;
       // Ensure PIN is a string to preserve leading zeros
-      const pinString = String(pin).padStart(4, '0');
+      const pinString = typeof pin === 'string' ? pin : String(pin).padStart(4, '0');
+      if (!/^\d{4}$/.test(pinString)) {
+        return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+      }
       const payment = await utilityService.payBill(req.user.id, category, provider, customerNumber, amount, pinString, planId);
       return res.json({ success: true, payment });
     } catch (error) {
