@@ -777,7 +777,12 @@ Extract intent and data from this message. Consider the user context and any ext
         logger.warn('Failed to log AI activity - continuing without logging', { error: dbError.message });
       }
 
-      return aiResult;
+      // Return with success flag for proper validation
+      // Ensure success is always true for successful AI responses
+      return {
+        ...aiResult,
+        success: true
+      };
 
     } catch (error) {
       const status = error.response?.status;
