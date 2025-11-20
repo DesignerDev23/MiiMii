@@ -37,34 +37,64 @@ class MobileMessageProcessor {
 
       // Handle different response structures
       if (aiResult) {
-        logger.debug('AI result structure', { 
+        logger.info('AI result received', { 
+          userId: user.id,
           hasSuccess: !!aiResult.success,
           hasResult: !!aiResult.result,
           hasMessage: !!aiResult.message,
           hasUserFriendlyResponse: !!aiResult.userFriendlyResponse,
           hasError: !!aiResult.error,
-          resultKeys: aiResult.result ? Object.keys(aiResult.result) : null
+          resultType: aiResult.result ? typeof aiResult.result : 'null',
+          resultKeys: aiResult.result && typeof aiResult.result === 'object' ? Object.keys(aiResult.result) : null,
+          fullResult: JSON.stringify(aiResult).substring(0, 500) // First 500 chars for debugging
         });
 
         // Case 1: Success response with result object (normal flow)
-        if (aiResult.success && aiResult.result) {
+        if (aiResult.success === true && aiResult.result) {
           rawResult = aiResult.result;
-          replyText = aiResult.result.message || replyText;
-          intent = aiResult.result.intent || null;
+          // Handle nested message structures
+          replyText = aiResult.result.message || 
+                     (aiResult.result.result && aiResult.result.result.message) ||
+                     replyText;
+          intent = aiResult.result.intent || 
+                  (aiResult.result.result && aiResult.result.result.intent) ||
+                  null;
+          logger.info('Using success result', { replyText: replyText.substring(0, 100), intent });
         }
         // Case 2: Direct result (from handleConversationFlow - returns intentResult directly)
         else if (aiResult.message) {
           rawResult = aiResult;
           replyText = aiResult.message;
           intent = aiResult.intent || null;
+          logger.info('Using direct message result', { replyText: replyText.substring(0, 100), intent });
         }
-        // Case 3: Error response with user-friendly message
+        // Case 3: Error response with user-friendly message (AI processing failed)
         else if (aiResult.userFriendlyResponse) {
           replyText = aiResult.userFriendlyResponse;
+          logger.warn('AI processing failed - using user-friendly error response', { 
+            error: aiResult.error,
+            success: aiResult.success,
+            replyText: replyText.substring(0, 100)
+          });
         }
         // Case 4: Error response
         else if (aiResult.error) {
           replyText = aiResult.error;
+          logger.warn('Using error response', { replyText: replyText.substring(0, 100) });
+        } 
+        // Case 5: Success but no result (shouldn't happen, but handle gracefully)
+        else if (aiResult.success === true) {
+          logger.warn('Success but no result object', { 
+            keys: Object.keys(aiResult),
+            result: JSON.stringify(aiResult).substring(0, 200)
+          });
+          replyText = "I received your message but couldn't process it. Please try again.";
+        } else {
+          logger.warn('AI result structure not recognized', { 
+            keys: Object.keys(aiResult),
+            success: aiResult.success,
+            result: JSON.stringify(aiResult).substring(0, 200)
+          });
         }
       } else {
         logger.warn('AI result is null or undefined', { userId: user.id, message: text });
