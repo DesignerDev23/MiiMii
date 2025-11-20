@@ -848,6 +848,261 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "Settings / Get Settings",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Change Password",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/change-password",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "change-password"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"currentPassword\": \"OldPassword123\",\n  \"newPassword\": \"NewPassword123\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Change PIN",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/change-pin",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "change-pin"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"currentPin\": \"1234\",\n  \"newPin\": \"5678\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Reset PIN",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/reset-pin",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "reset-pin"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"UserPassword123\",\n  \"newPin\": \"5678\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Update Profile",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/profile",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "profile"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Okafor\",\n  \"middleName\": \"Chioma\",\n  \"address\": \"123 Main Street, Lagos\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Update Email",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/email",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "email"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"newemail@example.com\",\n  \"password\": \"UserPassword123\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Request Statement",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/statement",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "statement"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"startDate\": \"2025-01-01\",\n  \"endDate\": \"2025-01-31\",\n  \"type\": \"credit\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Download Statement",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/statement/download?startDate=2025-01-01&endDate=2025-01-31",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "statement", "download"],
+          "query": [
+            { "key": "startDate", "value": "2025-01-01" },
+            { "key": "endDate", "value": "2025-01-31" },
+            { "key": "type", "value": "credit", "disabled": true },
+            { "key": "category", "value": "transfer", "disabled": true }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Delete Account",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/account",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "account"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"UserPassword123\",\n  \"confirmation\": \"DELETE\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Settings / Update Notifications",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/settings/notifications",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "settings", "notifications"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"push\": true,\n  \"email\": true,\n  \"sms\": false\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Support / Create Ticket",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/support/tickets",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "support", "tickets"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"inquiry\",\n  \"subject\": \"Account Balance Issue\",\n  \"description\": \"I noticed a discrepancy in my account balance. Please investigate.\",\n  \"priority\": \"high\",\n  \"transactionId\": null\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Support / List Tickets",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/support/tickets?status=open&limit=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "support", "tickets"],
+          "query": [
+            { "key": "status", "value": "open", "disabled": true },
+            { "key": "type", "value": "inquiry", "disabled": true },
+            { "key": "limit", "value": "20" },
+            { "key": "offset", "value": "0", "disabled": true }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Support / Get Ticket Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{MOBILE_TOKEN}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/mobile/support/tickets/:ticketId",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "mobile", "support", "tickets", ":ticketId"],
+          "variable": [
+            { "key": "ticketId", "value": "uuid-here" }
+          ]
+        }
+      },
+      "response": []
     }
   ],
   "variable": [

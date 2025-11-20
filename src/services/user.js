@@ -533,15 +533,31 @@ class UserService {
 
       logger.info('Password reset OTP generated', { userId: user.id, email });
 
-      // TODO: Integrate with email service to send OTP
-      // Example: await emailService.sendPasswordResetOTP(email, otp);
+      // Send OTP via email
+      try {
+        const emailService = require('./emailService');
+        const emailResult = await emailService.sendPasswordResetOTP(email, otp);
+        if (!emailResult.success) {
+          logger.warn('Failed to send password reset OTP email', {
+            error: emailResult.error,
+            userId: user.id
+          });
+          // Still return success but log the email failure
+        }
+      } catch (emailError) {
+        logger.warn('Email service error during password reset OTP', {
+          error: emailError.message,
+          userId: user.id
+        });
+        // Continue even if email fails - OTP is still generated
+      }
 
       // In production, remove OTP from response and send via email only
       return {
         success: true,
         message: 'If the email exists, an OTP has been sent',
         // Remove this in production - OTP should only be sent via email
-        otp // Only for development/testing
+        ...(process.env.NODE_ENV !== 'production' && { otp }) // Only for development/testing
       };
     } catch (error) {
       logger.error('Failed to generate password reset OTP', { error: error.message, email });

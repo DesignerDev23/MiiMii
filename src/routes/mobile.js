@@ -1667,5 +1667,601 @@ router.delete('/notifications/read/all',
   }
 );
 
+// ===== Settings & Account Management =====
+
+const statementService = require('../services/statementService');
+const emailService = require('../services/emailService');
+const { SupportTicket } = require('../models');
+
+// Change Password
+router.post('/settings/change-password',
+  mobileAuth,
+  body('currentPassword').isString().notEmpty(),
+  body('newPassword').matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{6,}$/).withMessage('Password must be at least 6 characters and contain at least one uppercase letter, one lowercase letter, and one number'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const user = req.user;
+
+      if (!user.appPasswordHash) {
+        return res.status(400).json({ error: 'Password not set. Please use password reset.' });
+      }
+
+      // Verify current password
+      const matches = await bcrypt.compare(currentPassword, user.appPasswordHash);
+      if (!matches) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+
+      // Hash new password
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await userService.updateUser(user.id, { appPasswordHash: passwordHash });
+
+      logger.info('Password changed successfully', { userId: user.id });
+
+      return res.json({
+        success: true,
+        message: 'Password changed successfully'
+      });
+    } catch (error) {
+      logger.error('Change password failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to change password' });
+    }
+  }
+);
+
+// Change Transaction PIN
+router.post('/settings/change-pin',
+  mobileAuth,
+  body('currentPin').matches(/^\d{4}$/).withMessage('Current PIN must be exactly 4 digits'),
+  body('newPin').matches(/^\d{4}$/).withMessage('New PIN must be exactly 4 digits'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { currentPin, newPin } = req.body;
+      const user = req.user;
+
+      // Ensure PINs are strings with leading zeros
+      const currentPinString = String(currentPin).padStart(4, '0');
+      const newPinString = String(newPin).padStart(4, '0');
+
+      if (!user.pin) {
+        return res.status(400).json({ error: 'PIN not set. Please set up your PIN first.' });
+      }
+
+      // Verify current PIN
+      await userService.validateUserPin(user.id, currentPinString);
+
+      // Update PIN
+      const pinHash = await bcrypt.hash(newPinString, 10);
+      await userService.updateUser(user.id, { pin: pinHash });
+
+      logger.info('Transaction PIN changed successfully', { userId: user.id });
+
+      return res.json({
+        success: true,
+        message: 'Transaction PIN changed successfully'
+      });
+    } catch (error) {
+      logger.error('Change PIN failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to change PIN' });
+    }
+  }
+);
+
+// Reset Transaction PIN (requires password verification)
+router.post('/settings/reset-pin',
+  mobileAuth,
+  body('password').isString().notEmpty(),
+  body('newPin').matches(/^\d{4}$/).withMessage('New PIN must be exactly 4 digits'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { password, newPin } = req.body;
+      const user = req.user;
+
+      if (!user.appPasswordHash) {
+        return res.status(400).json({ error: 'Password not set. Cannot reset PIN.' });
+      }
+
+      // Verify password
+      const matches = await bcrypt.compare(password, user.appPasswordHash);
+      if (!matches) {
+        return res.status(401).json({ error: 'Password is incorrect' });
+      }
+
+      // Set new PIN
+      const pinString = String(newPin).padStart(4, '0');
+      const pinHash = await bcrypt.hash(pinString, 10);
+      await userService.updateUser(user.id, { pin: pinHash, pinEnabled: true });
+
+      logger.info('Transaction PIN reset successfully', { userId: user.id });
+
+      return res.json({
+        success: true,
+        message: 'Transaction PIN reset successfully'
+      });
+    } catch (error) {
+      logger.error('Reset PIN failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to reset PIN' });
+    }
+  }
+);
+
+// Update Email
+router.put('/settings/email',
+  mobileAuth,
+  body('newEmail').isEmail().normalizeEmail(),
+  body('password').isString().notEmpty(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { newEmail, password } = req.body;
+      const normalizedEmail = newEmail.toLowerCase();
+      const user = req.user;
+
+      // Verify password
+      if (!user.appPasswordHash) {
+        return res.status(400).json({ error: 'Password not set' });
+      }
+
+      const matches = await bcrypt.compare(password, user.appPasswordHash);
+      if (!matches) {
+        return res.status(401).json({ error: 'Password is incorrect' });
+      }
+
+      // Check if email is already in use
+      const existingUser = await userService.findByAppEmail(normalizedEmail);
+      if (existingUser && existingUser.id !== user.id) {
+        return res.status(409).json({ error: 'Email already in use' });
+      }
+
+      // Update email
+      await userService.updateUser(user.id, { appEmail: normalizedEmail });
+
+      logger.info('Email updated successfully', { userId: user.id, newEmail: normalizedEmail });
+
+      return res.json({
+        success: true,
+        message: 'Email updated successfully',
+        email: normalizedEmail
+      });
+    } catch (error) {
+      logger.error('Update email failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to update email' });
+    }
+  }
+);
+
+// Update Profile
+router.put('/settings/profile',
+  mobileAuth,
+  body('firstName').optional().isString().trim(),
+  body('lastName').optional().isString().trim(),
+  body('middleName').optional().isString().trim(),
+  body('address').optional().isString().trim(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { firstName, lastName, middleName, address } = req.body;
+      const updates = {};
+
+      if (firstName !== undefined) updates.firstName = firstName;
+      if (lastName !== undefined) updates.lastName = lastName;
+      if (middleName !== undefined) updates.middleName = middleName;
+      if (address !== undefined) updates.address = address;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      await userService.updateUser(req.user.id, updates);
+      const updatedUser = await userService.getUserById(req.user.id);
+      const profile = await buildUserProfile(updatedUser);
+
+      logger.info('Profile updated successfully', { userId: req.user.id });
+
+      return res.json({
+        success: true,
+        message: 'Profile updated successfully',
+        user: profile
+      });
+    } catch (error) {
+      logger.error('Update profile failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to update profile' });
+    }
+  }
+);
+
+// Request Account Statement
+router.post('/settings/statement',
+  mobileAuth,
+  body('startDate').optional().isISO8601(),
+  body('endDate').optional().isISO8601(),
+  body('type').optional().isIn(['credit', 'debit']),
+  body('category').optional().isString(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { startDate, endDate, type, category } = req.body;
+      const user = req.user;
+
+      const options = {};
+      if (startDate) options.startDate = new Date(startDate);
+      if (endDate) options.endDate = new Date(endDate);
+      if (type) options.type = type;
+      if (category) options.category = category;
+
+      const result = await statementService.requestStatement(user, options);
+
+      return res.json({
+        success: true,
+        message: result.message,
+        statement: result.statement,
+        emailSent: result.emailSent
+      });
+    } catch (error) {
+      logger.error('Statement request failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to generate statement' });
+    }
+  }
+);
+
+// Download Statement (without email)
+router.get('/settings/statement/download',
+  mobileAuth,
+  query('startDate').optional().isISO8601(),
+  query('endDate').optional().isISO8601(),
+  query('type').optional().isIn(['credit', 'debit']),
+  query('category').optional().isString(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { startDate, endDate, type, category } = req.query;
+      const user = req.user;
+
+      const options = {};
+      if (startDate) options.startDate = new Date(startDate);
+      if (endDate) options.endDate = new Date(endDate);
+      if (type) options.type = type;
+      if (category) options.category = category;
+
+      const statement = await statementService.generateStatement(user, options);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${statement.fileName}"`);
+      res.send(statement.pdfBuffer);
+    } catch (error) {
+      logger.error('Statement download failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to generate statement' });
+    }
+  }
+);
+
+// Create Support Ticket
+router.post('/support/tickets',
+  mobileAuth,
+  body('type').isIn(['dispute', 'complaint', 'inquiry', 'technical', 'refund']),
+  body('subject').isString().trim().notEmpty().isLength({ min: 5, max: 200 }),
+  body('description').isString().trim().notEmpty().isLength({ min: 10, max: 5000 }),
+  body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+  body('transactionId').optional().isUUID(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { type, subject, description, priority = 'medium', transactionId } = req.body;
+      const user = req.user;
+
+      // Generate unique ticket number
+      const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+      const ticket = await SupportTicket.create({
+        ticketNumber,
+        userId: user.id,
+        transactionId: transactionId || null,
+        type,
+        priority,
+        status: 'open',
+        subject,
+        description,
+        metadata: {
+          source: 'mobile_app',
+          createdAt: new Date().toISOString()
+        }
+      });
+
+      logger.info('Support ticket created', { 
+        ticketId: ticket.id, 
+        ticketNumber: ticket.ticketNumber,
+        userId: user.id 
+      });
+
+      return res.json({
+        success: true,
+        message: 'Support ticket created successfully',
+        ticket: {
+          id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          type: ticket.type,
+          priority: ticket.priority,
+          status: ticket.status,
+          subject: ticket.subject,
+          createdAt: ticket.createdAt
+        }
+      });
+    } catch (error) {
+      logger.error('Create support ticket failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to create support ticket' });
+    }
+  }
+);
+
+// Get Support Tickets
+router.get('/support/tickets',
+  mobileAuth,
+  query('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed']),
+  query('type').optional().isIn(['dispute', 'complaint', 'inquiry', 'technical', 'refund']),
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  query('offset').optional().isInt({ min: 0 }),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { status, type, limit = 20, offset = 0 } = req.query;
+      const user = req.user;
+
+      const where = { userId: user.id };
+      if (status) where.status = status;
+      if (type) where.type = type;
+
+      const { count, rows: tickets } = await SupportTicket.findAndCountAll({
+        where,
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit, 10),
+        offset: parseInt(offset, 10)
+      });
+
+      return res.json({
+        success: true,
+        tickets: tickets.map(ticket => ({
+          id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          type: ticket.type,
+          priority: ticket.priority,
+          status: ticket.status,
+          subject: ticket.subject,
+          description: ticket.description,
+          resolution: ticket.resolution,
+          resolvedAt: ticket.resolvedAt,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt
+        })),
+        pagination: {
+          total: count,
+          limit: parseInt(limit, 10),
+          offset: parseInt(offset, 10),
+          hasMore: count > parseInt(offset, 10) + parseInt(limit, 10)
+        }
+      });
+    } catch (error) {
+      logger.error('Get support tickets failed', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to fetch support tickets' });
+    }
+  }
+);
+
+// Get Support Ticket Details
+router.get('/support/tickets/:ticketId',
+  mobileAuth,
+  param('ticketId').isUUID(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const user = req.user;
+
+      const ticket = await SupportTicket.findOne({
+        where: {
+          id: ticketId,
+          userId: user.id
+        }
+      });
+
+      if (!ticket) {
+        return res.status(404).json({ error: 'Support ticket not found' });
+      }
+
+      return res.json({
+        success: true,
+        ticket: {
+          id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          type: ticket.type,
+          priority: ticket.priority,
+          status: ticket.status,
+          subject: ticket.subject,
+          description: ticket.description,
+          resolution: ticket.resolution,
+          resolvedAt: ticket.resolvedAt,
+          assignedTo: ticket.assignedTo,
+          attachments: ticket.attachments,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt
+        }
+      });
+    } catch (error) {
+      logger.error('Get support ticket failed', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to fetch support ticket' });
+    }
+  }
+);
+
+// Delete Account
+router.delete('/settings/account',
+  mobileAuth,
+  body('password').isString().notEmpty(),
+  body('confirmation').equals('DELETE').withMessage('Confirmation must be exactly "DELETE"'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { password, confirmation } = req.body;
+      const user = req.user;
+
+      // Verify password
+      if (!user.appPasswordHash) {
+        return res.status(400).json({ error: 'Password not set' });
+      }
+
+      const matches = await bcrypt.compare(password, user.appPasswordHash);
+      if (!matches) {
+        return res.status(401).json({ error: 'Password is incorrect' });
+      }
+
+      // Check confirmation
+      if (confirmation !== 'DELETE') {
+        return res.status(400).json({ error: 'Invalid confirmation. Type "DELETE" to confirm.' });
+      }
+
+      // Get user email before deletion
+      const userEmail = user.appEmail || user.email;
+
+      // Soft delete: Mark account as deleted
+      await userService.updateUser(user.id, {
+        isActive: false,
+        isBanned: true, // Prevent login
+        appEmail: null,
+        appPasswordHash: null,
+        pin: null,
+        pinEnabled: false,
+        metadata: {
+          ...(user.metadata || {}),
+          deletedAt: new Date().toISOString(),
+          deletedBy: 'user',
+          deletionSource: 'mobile_app'
+        }
+      });
+
+      // Send deletion confirmation email if email exists
+      if (userEmail) {
+        try {
+          await emailService.sendAccountDeletionConfirmation(
+            userEmail,
+            new Date().toLocaleString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          );
+        } catch (emailError) {
+          logger.warn('Failed to send deletion confirmation email', {
+            error: emailError.message,
+            userId: user.id
+          });
+        }
+      }
+
+      logger.info('Account deleted successfully', { userId: user.id });
+
+      return res.json({
+        success: true,
+        message: 'Account deleted successfully. You will receive a confirmation email shortly.'
+      });
+    } catch (error) {
+      logger.error('Delete account failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to delete account' });
+    }
+  }
+);
+
+// Get Settings/Preferences
+router.get('/settings',
+  mobileAuth,
+  async (req, res) => {
+    try {
+      const user = req.user;
+      const profile = await buildUserProfile(user);
+
+      return res.json({
+        success: true,
+        settings: {
+          profile: {
+            firstName: user.firstName,
+            lastName: user.lastName,
+            middleName: user.middleName,
+            email: user.appEmail || user.email,
+            phoneNumber: user.whatsappNumber,
+            address: user.address
+          },
+          security: {
+            hasPassword: !!user.appPasswordHash,
+            hasPin: !!user.pin,
+            pinEnabled: user.pinEnabled,
+            emailVerified: user.appEmailVerified || false,
+            twoFactorEnabled: false // Future feature
+          },
+          preferences: {
+            notifications: {
+              push: true, // Default
+              email: true, // Default
+              sms: false // Default
+            },
+            language: 'en', // Default
+            currency: 'NGN' // Default
+          }
+        },
+        user: profile
+      });
+    } catch (error) {
+      logger.error('Get settings failed', { error: error.message, userId: req.user.id });
+      return res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+  }
+);
+
+// Update Notification Preferences
+router.put('/settings/notifications',
+  mobileAuth,
+  body('push').optional().isBoolean(),
+  body('email').optional().isBoolean(),
+  body('sms').optional().isBoolean(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { push, email, sms } = req.body;
+      const user = req.user;
+
+      const preferences = {
+        ...(user.metadata?.preferences?.notifications || {}),
+        ...(push !== undefined && { push }),
+        ...(email !== undefined && { email }),
+        ...(sms !== undefined && { sms })
+      };
+
+      await userService.updateUser(user.id, {
+        metadata: {
+          ...(user.metadata || {}),
+          preferences: {
+            ...(user.metadata?.preferences || {}),
+            notifications: preferences
+          }
+        }
+      });
+
+      logger.info('Notification preferences updated', { userId: user.id, preferences });
+
+      return res.json({
+        success: true,
+        message: 'Notification preferences updated successfully',
+        preferences
+      });
+    } catch (error) {
+      logger.error('Update notification preferences failed', { error: error.message, userId: req.user.id });
+      return res.status(400).json({ error: error.message || 'Failed to update notification preferences' });
+    }
+  }
+);
+
 module.exports = router;
 

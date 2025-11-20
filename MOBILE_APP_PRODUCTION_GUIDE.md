@@ -7,10 +7,13 @@
 4. [Onboarding Workflow](#onboarding-workflow)
 5. [Core Features & API Integration](#core-features--api-integration)
 6. [In-App Chat Bot](#in-app-chat-bot)
-7. [Error Handling](#error-handling)
-8. [Security Best Practices](#security-best-practices)
-9. [Testing Checklist](#testing-checklist)
-10. [Production Deployment](#production-deployment)
+7. [Notifications](#notifications)
+8. [Settings & Account Management](#settings--account-management)
+9. [Support Tickets](#support-tickets)
+10. [Error Handling](#error-handling)
+11. [Security Best Practices](#security-best-practices)
+12. [Testing Checklist](#testing-checklist)
+13. [Production Deployment](#production-deployment)
 
 ---
 
@@ -35,14 +38,24 @@ The MiiMii Mobile App is a fintech application that provides:
 # Mobile App Authentication
 MOBILE_JWT_SECRET=<generate-32-char-random-string>
 
-# Email Service (for OTP)
-EMAIL_SERVICE_API_KEY=<your-email-service-key>
-EMAIL_FROM_ADDRESS=noreply@miimii.com
+# Email Service (for OTP, Statements, Notifications)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM=MiiMii <noreply@miimii.ai>
 
 # Base URLs
 API_BASE_URL=https://api.chatmiimii.com
 MOBILE_APP_DEEP_LINK_SCHEME=miimii://
 ```
+
+**Email Configuration Notes**:
+- For Gmail: Use App Password (not regular password), enable 2FA
+- For other providers: Update `SMTP_HOST` and `SMTP_PORT` accordingly
+- Set `SMTP_SECURE=true` for port 465 (SSL)
+- Email service is optional - endpoints work without it but emails won't be sent
 
 ### Generate MOBILE_JWT_SECRET
 ```bash
@@ -1794,6 +1807,480 @@ The app includes a comprehensive notification system that alerts users about imp
 
 ---
 
+## Settings & Account Management
+
+### Overview
+
+The Settings section provides comprehensive account management features including password/PIN management, profile updates, account statements, support tickets, and account deletion.
+
+---
+
+### Get Settings
+
+**Endpoint**: `GET /api/mobile/settings`
+
+**Headers**: `Authorization: Bearer <token>`
+
+**Response**:
+```json
+{
+  "success": true,
+  "settings": {
+    "profile": {
+      "firstName": "Ada",
+      "lastName": "Okafor",
+      "middleName": "Chioma",
+      "email": "ada@example.com",
+      "phoneNumber": "+2348012345678",
+      "address": "123 Main Street, Lagos"
+    },
+    "security": {
+      "hasPassword": true,
+      "hasPin": true,
+      "pinEnabled": true,
+      "emailVerified": false,
+      "twoFactorEnabled": false
+    },
+    "preferences": {
+      "notifications": {
+        "push": true,
+        "email": true,
+        "sms": false
+      },
+      "language": "en",
+      "currency": "NGN"
+    }
+  },
+  "user": { /* full user profile */ }
+}
+```
+
+**App Behavior**:
+- Display settings screen with all user preferences
+- Show security status indicators
+- Allow editing of each section
+
+---
+
+### Change Password
+
+**Endpoint**: `POST /api/mobile/settings/change-password`
+
+**Request**:
+```json
+{
+  "currentPassword": "OldPassword123",
+  "newPassword": "NewPassword123"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Password changed successfully"
+}
+```
+
+**App Behavior**:
+- Show current password field (masked)
+- Validate new password strength
+- Show success message and return to settings
+
+**Error Handling**:
+- `400`: Current password incorrect
+- `400`: New password doesn't meet requirements
+
+---
+
+### Change Transaction PIN
+
+**Endpoint**: `POST /api/mobile/settings/change-pin`
+
+**Request**:
+```json
+{
+  "currentPin": "1234",
+  "newPin": "5678"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Transaction PIN changed successfully"
+}
+```
+
+**App Behavior**:
+- Use PIN input screen (4 digits, masked)
+- Verify current PIN before allowing change
+- Show success confirmation
+
+---
+
+### Reset Transaction PIN
+
+**Endpoint**: `POST /api/mobile/settings/reset-pin`
+
+**Request**:
+```json
+{
+  "password": "UserPassword123",
+  "newPin": "5678"
+}
+```
+
+**Response**: Same as change PIN
+
+**App Behavior**:
+- Require password verification (for security)
+- Use PIN input screen for new PIN
+- Show warning about PIN reset
+
+**Use Case**: When user forgets their PIN but remembers password
+
+---
+
+### Update Profile
+
+**Endpoint**: `PUT /api/mobile/settings/profile`
+
+**Request**:
+```json
+{
+  "firstName": "Ada",
+  "lastName": "Okafor",
+  "middleName": "Chioma",
+  "address": "123 Main Street, Lagos"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Profile updated successfully",
+  "user": { /* updated user profile */ }
+}
+```
+
+**App Behavior**:
+- Pre-fill form with current values
+- All fields optional (only update provided fields)
+- Show success message
+
+---
+
+### Update Email
+
+**Endpoint**: `PUT /api/mobile/settings/email`
+
+**Request**:
+```json
+{
+  "newEmail": "newemail@example.com",
+  "password": "UserPassword123"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Email updated successfully",
+  "email": "newemail@example.com"
+}
+```
+
+**App Behavior**:
+- Require password verification
+- Validate email format
+- Check if email already in use
+- Show success message
+
+**Error Handling**:
+- `401`: Password incorrect
+- `409`: Email already in use
+
+---
+
+### Request Account Statement
+
+**Endpoint**: `POST /api/mobile/settings/statement`
+
+**Request**:
+```json
+{
+  "startDate": "2025-01-01",
+  "endDate": "2025-01-31",
+  "type": "credit",
+  "category": "transfer"
+}
+```
+
+**Query Parameters** (all optional):
+- `startDate`: ISO 8601 date (default: 30 days ago)
+- `endDate`: ISO 8601 date (default: today)
+- `type`: `"credit"` or `"debit"` (default: all)
+- `category`: Transaction category filter
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Statement generated and sent to your email",
+  "statement": {
+    "pdfBuffer": "base64-encoded-pdf",
+    "fileName": "MiiMii_Statement_uuid_timestamp.pdf",
+    "transactionCount": 45,
+    "startDate": "2025-01-01",
+    "endDate": "2025-01-31"
+  },
+  "emailSent": true
+}
+```
+
+**App Behavior**:
+- Show date range picker
+- Allow filtering by type and category
+- Show loading state while generating
+- Display success message
+- Option to download PDF directly if email fails
+
+**Features**:
+- Branded PDF with MiiMii logo
+- Transaction summary (credits, debits, fees)
+- Detailed transaction list
+- Professional formatting
+
+---
+
+### Download Statement
+
+**Endpoint**: `GET /api/mobile/settings/statement/download`
+
+**Query Parameters**: Same as request statement (all optional)
+
+**Response**: PDF file (binary)
+
+**Headers**:
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="..."`
+
+**App Behavior**:
+- Show download progress
+- Save to device storage
+- Allow sharing/opening with PDF viewer
+
+---
+
+### Delete Account
+
+**Endpoint**: `DELETE /api/mobile/settings/account`
+
+**Request**:
+```json
+{
+  "password": "UserPassword123",
+  "confirmation": "DELETE"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Account deleted successfully. You will receive a confirmation email shortly."
+}
+```
+
+**App Behavior**:
+- Show warning dialog with consequences
+- Require password verification
+- Require typing "DELETE" to confirm
+- Show final confirmation screen
+- Log user out after deletion
+- Send confirmation email
+
+**Important**:
+- This is a **soft delete** (account marked inactive, data preserved)
+- User cannot login after deletion
+- Confirmation email sent to registered email
+
+---
+
+### Update Notification Preferences
+
+**Endpoint**: `PUT /api/mobile/settings/notifications`
+
+**Request**:
+```json
+{
+  "push": true,
+  "email": true,
+  "sms": false
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Notification preferences updated successfully",
+  "preferences": {
+    "push": true,
+    "email": true,
+    "sms": false
+  }
+}
+```
+
+**App Behavior**:
+- Show toggle switches for each notification type
+- Save preferences immediately
+- Show success feedback
+
+---
+
+## Support Tickets
+
+### Create Support Ticket
+
+**Endpoint**: `POST /api/mobile/support/tickets`
+
+**Request**:
+```json
+{
+  "type": "inquiry",
+  "subject": "Account Balance Issue",
+  "description": "I noticed a discrepancy in my account balance. Please investigate.",
+  "priority": "high",
+  "transactionId": "uuid-optional"
+}
+```
+
+**Ticket Types**:
+- `dispute`: Transaction disputes
+- `complaint`: General complaints
+- `inquiry`: Questions/inquiries
+- `technical`: Technical issues
+- `refund`: Refund requests
+
+**Priority Levels**:
+- `low`: Non-urgent
+- `medium`: Normal priority (default)
+- `high`: Urgent
+- `urgent`: Critical
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Support ticket created successfully",
+  "ticket": {
+    "id": "uuid",
+    "ticketNumber": "TKT-1234567890-ABC123",
+    "type": "inquiry",
+    "priority": "high",
+    "status": "open",
+    "subject": "Account Balance Issue",
+    "createdAt": "2025-01-20T10:30:00Z"
+  }
+}
+```
+
+**App Behavior**:
+- Show ticket creation form
+- Link to transaction if applicable
+- Auto-generate ticket number
+- Show success with ticket number
+- Navigate to ticket details
+
+---
+
+### List Support Tickets
+
+**Endpoint**: `GET /api/mobile/support/tickets`
+
+**Query Parameters**:
+- `status`: `open`, `in_progress`, `resolved`, `closed` (optional)
+- `type`: Ticket type filter (optional)
+- `limit`: Number of results (default: 20, max: 100)
+- `offset`: Pagination offset (default: 0)
+
+**Response**:
+```json
+{
+  "success": true,
+  "tickets": [
+    {
+      "id": "uuid",
+      "ticketNumber": "TKT-1234567890-ABC123",
+      "type": "inquiry",
+      "priority": "high",
+      "status": "open",
+      "subject": "Account Balance Issue",
+      "description": "Full description...",
+      "resolution": null,
+      "resolvedAt": null,
+      "createdAt": "2025-01-20T10:30:00Z",
+      "updatedAt": "2025-01-20T10:30:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 5,
+    "limit": 20,
+    "offset": 0,
+    "hasMore": false
+  }
+}
+```
+
+**App Behavior**:
+- Display tickets in list/card format
+- Show status badges (open, in progress, resolved)
+- Show priority indicators
+- Allow filtering by status/type
+- Implement pagination
+
+---
+
+### Get Ticket Details
+
+**Endpoint**: `GET /api/mobile/support/tickets/:ticketId`
+
+**Response**:
+```json
+{
+  "success": true,
+  "ticket": {
+    "id": "uuid",
+    "ticketNumber": "TKT-1234567890-ABC123",
+    "type": "inquiry",
+    "priority": "high",
+    "status": "open",
+    "subject": "Account Balance Issue",
+    "description": "Full description...",
+    "resolution": "Issue resolved. Balance corrected.",
+    "resolvedAt": "2025-01-21T14:00:00Z",
+    "assignedTo": "support@miimii.ai",
+    "attachments": [],
+    "createdAt": "2025-01-20T10:30:00Z",
+    "updatedAt": "2025-01-21T14:00:00Z"
+  }
+}
+```
+
+**App Behavior**:
+- Show full ticket details
+- Display resolution if available
+- Show status and priority
+- Show creation and resolution dates
+
+---
+
 ## API Endpoint Summary
 
 ### Authentication
@@ -1863,6 +2350,23 @@ The app includes a comprehensive notification system that alerts users about imp
 - `DELETE /api/mobile/notifications/:id` - Delete notification
 - `DELETE /api/mobile/notifications/read/all` - Delete all read notifications
 
+### Settings & Account Management
+- `GET /api/mobile/settings` - Get all settings
+- `POST /api/mobile/settings/change-password` - Change password
+- `POST /api/mobile/settings/change-pin` - Change transaction PIN
+- `POST /api/mobile/settings/reset-pin` - Reset transaction PIN
+- `PUT /api/mobile/settings/profile` - Update profile
+- `PUT /api/mobile/settings/email` - Update email
+- `POST /api/mobile/settings/statement` - Request account statement (PDF + email)
+- `GET /api/mobile/settings/statement/download` - Download statement PDF
+- `DELETE /api/mobile/settings/account` - Delete account
+- `PUT /api/mobile/settings/notifications` - Update notification preferences
+
+### Support
+- `POST /api/mobile/support/tickets` - Create support ticket
+- `GET /api/mobile/support/tickets` - List support tickets
+- `GET /api/mobile/support/tickets/:ticketId` - Get ticket details
+
 ---
 
 ## Conclusion
@@ -1880,6 +2384,14 @@ For questions or issues, refer to the Postman collection (`postman/MiiMii_Mobile
 
 ---
 
-**Last Updated**: November 2025
-**Version**: 1.0.0
+**Last Updated**: January 2025
+**Version**: 2.0.0
+
+**Changelog**:
+- v2.0.0: Added comprehensive Settings & Account Management endpoints
+  - Password and PIN management
+  - Account statements (PDF generation + email)
+  - Support ticket system
+  - Notification preferences
+  - Account deletion
 
