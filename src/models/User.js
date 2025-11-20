@@ -277,6 +277,22 @@ const User = sequelize.define('User', {
     allowNull: false,
     comment: 'Number of failed OTP verification attempts'
   },
+  appLinkOTP: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'OTP for account linking (6 digits)'
+  },
+  appLinkOTPExpiry: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Expiry time for account linking OTP'
+  },
+  appLinkOTPAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    allowNull: false,
+    comment: 'Number of failed account linking OTP verification attempts'
+  },
   appLoginAttempts: {
     type: DataTypes.INTEGER,
     defaultValue: 0,

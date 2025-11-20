@@ -334,6 +334,7 @@ router.post('/auth/refresh', mobileAuth, async (req, res) => {
 });
 
 // Check if phone number exists and is onboarded (for linking WhatsApp account to mobile app)
+// This endpoint generates and sends OTP via WhatsApp
 router.post('/auth/check-phone',
   body('phoneNumber').isMobilePhone('any').withMessage('Valid phone number is required'),
   validateRequest,
@@ -354,6 +355,15 @@ router.post('/auth/check-phone',
       // Check if user has completed onboarding
       const isOnboarded = user.onboardingStep === 'completed';
       
+      if (!isOnboarded) {
+        return res.status(400).json({
+          error: 'Onboarding incomplete',
+          message: 'Account found but onboarding is not complete. Please complete onboarding on WhatsApp first.',
+          isOnboarded: false,
+          onboardingStep: user.onboardingStep
+        });
+      }
+      
       // Check if user already has mobile app credentials
       const hasMobileCredentials = !!(user.appEmail && user.appPasswordHash);
       
@@ -365,22 +375,53 @@ router.post('/auth/check-phone',
         });
       }
 
-      // Return user info (without sensitive data) if account exists and is onboarded
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+
+      // Store OTP in user record
+      await userService.updateUser(user.id, {
+        appLinkOTP: otp,
+        appLinkOTPExpiry: otpExpiry,
+        appLinkOTPAttempts: 0
+      });
+
+      // Send OTP via WhatsApp
+      try {
+        const whatsappService = require('../services/whatsapp');
+        const userName = user.firstName || user.fullName || 'there';
+        const otpMessage = `🔐 *MiiMii Account Linking*\n\nHi ${userName}!\n\nYour verification code is: *${otp}*\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this, please ignore this message.\n\n_Stay secure with MiiMii_`;
+        
+        await whatsappService.sendTextMessage(user.whatsappNumber, otpMessage);
+        
+        logger.info('Account linking OTP sent via WhatsApp', {
+          userId: user.id,
+          phoneNumber: user.whatsappNumber
+        });
+      } catch (whatsappError) {
+        logger.error('Failed to send OTP via WhatsApp', {
+          error: whatsappError?.message || 'Unknown error',
+          userId: user.id,
+          phoneNumber: user.whatsappNumber
+        });
+        // Still return success but log the WhatsApp failure
+        // In production, you might want to fail here if WhatsApp is critical
+      }
+
+      // Return success (OTP sent via WhatsApp, not in response for security)
       return res.json({
         success: true,
         exists: true,
-        isOnboarded,
-        canLink: isOnboarded,
-        message: isOnboarded 
-          ? 'Account found. Please provide your email and password to link your account.'
-          : 'Account found but onboarding is not complete. Please complete onboarding on WhatsApp first.',
+        isOnboarded: true,
+        canLink: true,
+        message: 'Verification code sent to your WhatsApp. Please enter the code to continue.',
         user: {
           firstName: user.firstName,
           lastName: user.lastName,
           phoneNumber: user.whatsappNumber,
-          kycStatus: user.kycStatus,
-          onboardingStep: user.onboardingStep
+          kycStatus: user.kycStatus
         }
+        // OTP is NOT included in response - only sent via WhatsApp
       });
     } catch (error) {
       logger.error('Check phone failed', { error: error?.message || 'Unknown error', phoneNumber: req.body.phoneNumber });
@@ -389,15 +430,113 @@ router.post('/auth/check-phone',
   }
 );
 
+// Verify OTP for account linking
+router.post('/auth/verify-link-otp',
+  body('phoneNumber').isMobilePhone('any').withMessage('Valid phone number is required'),
+  body('otp').isLength({ min: 6, max: 6 }).isNumeric().withMessage('OTP must be a 6-digit number'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { phoneNumber, otp } = req.body;
+      
+      // Find user by phone number
+      const user = await userService.getUserByWhatsappNumber(phoneNumber);
+      
+      if (!user) {
+        return res.status(404).json({ 
+          error: 'Account not found',
+          message: 'No account found with this phone number.'
+        });
+      }
+
+      // Check if OTP exists and is not expired
+      if (!user.appLinkOTP || !user.appLinkOTPExpiry) {
+        return res.status(400).json({ 
+          valid: false,
+          error: 'No OTP found. Please request a new verification code.' 
+        });
+      }
+
+      if (user.appLinkOTPExpiry < new Date()) {
+        // Clear expired OTP
+        await userService.updateUser(user.id, {
+          appLinkOTP: null,
+          appLinkOTPExpiry: null,
+          appLinkOTPAttempts: 0
+        });
+        return res.status(400).json({ 
+          valid: false,
+          error: 'OTP has expired. Please request a new verification code.' 
+        });
+      }
+
+      // Check attempt limit (max 5 attempts)
+      if (user.appLinkOTPAttempts >= 5) {
+        // Clear OTP after max attempts
+        await userService.updateUser(user.id, {
+          appLinkOTP: null,
+          appLinkOTPExpiry: null,
+          appLinkOTPAttempts: 0
+        });
+        return res.status(400).json({ 
+          valid: false,
+          error: 'Too many failed attempts. Please request a new verification code.' 
+        });
+      }
+
+      // Verify OTP
+      if (user.appLinkOTP !== otp) {
+        // Increment attempt counter
+        await userService.updateUser(user.id, {
+          appLinkOTPAttempts: (user.appLinkOTPAttempts || 0) + 1
+        });
+        const remainingAttempts = 5 - (user.appLinkOTPAttempts + 1);
+        return res.status(400).json({ 
+          valid: false,
+          error: `Invalid OTP. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : 'Please request a new verification code.'}` 
+        });
+      }
+
+      // OTP is valid - clear it and return success
+      await userService.updateUser(user.id, {
+        appLinkOTP: null,
+        appLinkOTPExpiry: null,
+        appLinkOTPAttempts: 0
+      });
+
+      logger.info('Account linking OTP verified successfully', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber
+      });
+
+      return res.json({
+        success: true,
+        valid: true,
+        message: 'OTP verified successfully. You can now proceed to link your account.',
+        user: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phoneNumber: user.whatsappNumber
+        }
+      });
+    } catch (error) {
+      logger.error('Verify link OTP failed', { error: error?.message || 'Unknown error', phoneNumber: req.body.phoneNumber });
+      return res.status(500).json({ error: 'Failed to verify OTP' });
+    }
+  }
+);
+
 // Link existing WhatsApp account to mobile app (add email and password)
+// Requires OTP verification first (via /auth/verify-link-otp)
 router.post('/auth/link-account',
   body('phoneNumber').isMobilePhone('any').withMessage('Valid phone number is required'),
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('otp').isLength({ min: 6, max: 6 }).isNumeric().withMessage('OTP must be a 6-digit number'),
   validateRequest,
   async (req, res) => {
     try {
-      const { phoneNumber, email, password } = req.body;
+      const { phoneNumber, email, password, otp } = req.body;
       const normalizedEmail = email.toLowerCase();
 
       // Find user by phone number
@@ -407,6 +546,22 @@ router.post('/auth/link-account',
         return res.status(404).json({ 
           error: 'Account not found',
           message: 'No account found with this phone number. Please check your phone number and try again.'
+        });
+      }
+
+      // Verify OTP first (security check)
+      if (!user.appLinkOTP || user.appLinkOTP !== otp) {
+        return res.status(400).json({
+          error: 'Invalid OTP',
+          message: 'Please verify your phone number with the OTP sent to your WhatsApp first.'
+        });
+      }
+
+      // Check if OTP is expired
+      if (!user.appLinkOTPExpiry || user.appLinkOTPExpiry < new Date()) {
+        return res.status(400).json({
+          error: 'OTP expired',
+          message: 'The verification code has expired. Please request a new one.'
         });
       }
 
@@ -440,11 +595,14 @@ router.post('/auth/link-account',
       // Hash password
       const passwordHash = await bcrypt.hash(password, 12);
 
-      // Update user with mobile app credentials
+      // Update user with mobile app credentials and clear OTP
       await userService.updateUser(user.id, {
         appEmail: normalizedEmail,
         appPasswordHash: passwordHash,
         appEmailVerified: false, // Can be verified later via email
+        appLinkOTP: null, // Clear OTP after successful linking
+        appLinkOTPExpiry: null,
+        appLinkOTPAttempts: 0,
         registrationSource: user.registrationSource === 'whatsapp' ? 'whatsapp' : user.registrationSource // Keep original source
       });
 
