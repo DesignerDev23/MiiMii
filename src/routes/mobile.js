@@ -497,11 +497,12 @@ router.post('/auth/verify-link-otp',
         });
       }
 
-      // OTP is valid - clear it and return success
+      // OTP is valid - mark as verified but DON'T clear it yet
+      // We'll clear it in link-account after successful linking
+      // Reset attempts counter since OTP is verified
       await userService.updateUser(user.id, {
-        appLinkOTP: null,
-        appLinkOTPExpiry: null,
         appLinkOTPAttempts: 0
+        // Keep appLinkOTP and appLinkOTPExpiry for link-account verification
       });
 
       logger.info('Account linking OTP verified successfully', {
@@ -540,7 +541,7 @@ router.post('/auth/link-account',
       const normalizedEmail = email.toLowerCase();
 
       // Find user by phone number
-      const user = await userService.getUserByWhatsappNumber(phoneNumber);
+      let user = await userService.getUserByWhatsappNumber(phoneNumber);
       
       if (!user) {
         return res.status(404).json({ 
@@ -549,16 +550,25 @@ router.post('/auth/link-account',
         });
       }
 
+      // Reload user to get fresh data (including OTP)
+      user = await userService.getUserById(user.id);
+
       // Verify OTP first (security check)
       if (!user.appLinkOTP || user.appLinkOTP !== otp) {
         return res.status(400).json({
           error: 'Invalid OTP',
-          message: 'Please verify your phone number with the OTP sent to your WhatsApp first.'
+          message: 'Please verify your phone number with the OTP sent to your WhatsApp first. The OTP may have expired or been used already.'
         });
       }
 
       // Check if OTP is expired
       if (!user.appLinkOTPExpiry || user.appLinkOTPExpiry < new Date()) {
+        // Clear expired OTP
+        await userService.updateUser(user.id, {
+          appLinkOTP: null,
+          appLinkOTPExpiry: null,
+          appLinkOTPAttempts: 0
+        });
         return res.status(400).json({
           error: 'OTP expired',
           message: 'The verification code has expired. Please request a new one.'
