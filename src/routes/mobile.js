@@ -328,10 +328,147 @@ router.post('/auth/refresh', mobileAuth, async (req, res) => {
   try {
     return await respondWithAuthPayload(res, req.user, 'Token refreshed');
   } catch (error) {
-    logger.error('Token refresh failed', { error: error.message, userId: req.user.id });
-    return res.status(500).json({ error: error.message });
+    logger.error('Token refresh failed', { error: error?.message || 'Unknown error', userId: req.user.id });
+    return res.status(500).json({ error: error?.message || 'Failed to refresh token' });
   }
 });
+
+// Check if phone number exists and is onboarded (for linking WhatsApp account to mobile app)
+router.post('/auth/check-phone',
+  body('phoneNumber').isMobilePhone('any').withMessage('Valid phone number is required'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { phoneNumber } = req.body;
+      
+      // Find user by phone number
+      const user = await userService.getUserByWhatsappNumber(phoneNumber);
+      
+      if (!user) {
+        return res.status(404).json({ 
+          error: 'Account not found',
+          message: 'No account found with this phone number. Please sign up first.'
+        });
+      }
+
+      // Check if user has completed onboarding
+      const isOnboarded = user.onboardingStep === 'completed';
+      
+      // Check if user already has mobile app credentials
+      const hasMobileCredentials = !!(user.appEmail && user.appPasswordHash);
+      
+      if (hasMobileCredentials) {
+        return res.status(409).json({
+          error: 'Account already linked',
+          message: 'This phone number is already linked to a mobile app account. Please login instead.',
+          canLogin: true
+        });
+      }
+
+      // Return user info (without sensitive data) if account exists and is onboarded
+      return res.json({
+        success: true,
+        exists: true,
+        isOnboarded,
+        canLink: isOnboarded,
+        message: isOnboarded 
+          ? 'Account found. Please provide your email and password to link your account.'
+          : 'Account found but onboarding is not complete. Please complete onboarding on WhatsApp first.',
+        user: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phoneNumber: user.whatsappNumber,
+          kycStatus: user.kycStatus,
+          onboardingStep: user.onboardingStep
+        }
+      });
+    } catch (error) {
+      logger.error('Check phone failed', { error: error?.message || 'Unknown error', phoneNumber: req.body.phoneNumber });
+      return res.status(500).json({ error: 'Failed to check phone number' });
+    }
+  }
+);
+
+// Link existing WhatsApp account to mobile app (add email and password)
+router.post('/auth/link-account',
+  body('phoneNumber').isMobilePhone('any').withMessage('Valid phone number is required'),
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { phoneNumber, email, password } = req.body;
+      const normalizedEmail = email.toLowerCase();
+
+      // Find user by phone number
+      const user = await userService.getUserByWhatsappNumber(phoneNumber);
+      
+      if (!user) {
+        return res.status(404).json({ 
+          error: 'Account not found',
+          message: 'No account found with this phone number. Please check your phone number and try again.'
+        });
+      }
+
+      // Check if user has completed onboarding
+      if (user.onboardingStep !== 'completed') {
+        return res.status(400).json({
+          error: 'Onboarding incomplete',
+          message: 'Please complete your onboarding on WhatsApp before linking to the mobile app.',
+          onboardingStep: user.onboardingStep
+        });
+      }
+
+      // Check if user already has mobile app credentials
+      if (user.appEmail && user.appPasswordHash) {
+        return res.status(409).json({
+          error: 'Account already linked',
+          message: 'This phone number is already linked to a mobile app account. Please login instead.',
+          canLogin: true
+        });
+      }
+
+      // Check if email is already registered with another account
+      const existingByAppEmail = await userService.findByAppEmail(normalizedEmail);
+      if (existingByAppEmail && existingByAppEmail.id !== user.id) {
+        return res.status(409).json({ 
+          error: 'Email already registered',
+          message: 'This email is already registered with another account.'
+        });
+      }
+
+      // Hash password
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      // Update user with mobile app credentials
+      await userService.updateUser(user.id, {
+        appEmail: normalizedEmail,
+        appPasswordHash: passwordHash,
+        appEmailVerified: false, // Can be verified later via email
+        registrationSource: user.registrationSource === 'whatsapp' ? 'whatsapp' : user.registrationSource // Keep original source
+      });
+
+      // Reload user to get fresh data
+      const updatedUser = await userService.getUserById(user.id);
+
+      logger.info('WhatsApp account linked to mobile app', {
+        userId: user.id,
+        phoneNumber: user.whatsappNumber,
+        email: normalizedEmail
+      });
+
+      // Return auth payload (same as login/signup)
+      return await respondWithAuthPayload(res, updatedUser, 'Account linked successfully. You can now use the mobile app.');
+    } catch (error) {
+      logger.error('Link account failed', { 
+        error: error?.message || 'Unknown error', 
+        phoneNumber: req.body.phoneNumber,
+        email: req.body.email 
+      });
+      return res.status(500).json({ error: error?.message || 'Failed to link account' });
+    }
+  }
+);
 
 // ===== Password Reset (OTP-based) =====
 router.post('/auth/forgot-password',
