@@ -51,7 +51,12 @@ class UserService {
 
       return user;
     } catch (error) {
-      logger.error('Failed to get or create user', { error: error.message, whatsappNumber });
+      logger.error('Failed to get or create user', { 
+        error: error?.message || 'Unknown error', 
+        stack: error?.stack,
+        whatsappNumber,
+        errorType: typeof error
+      });
       throw error;
     }
   }
@@ -60,7 +65,7 @@ class UserService {
     try {
       return await databaseService.createWithRetry(User, data, {}, { operationName: 'create user' });
     } catch (error) {
-      logger.error('Failed to create user', { error: error.message, data });
+      logger.error('Failed to create user', { error: error?.message || 'Unknown error', stack: error?.stack, data });
       throw error;
     }
   }
@@ -77,7 +82,7 @@ class UserService {
       
       return user;
     } catch (error) {
-      logger.error('Failed to get user by ID', { error: error.message, userId });
+      logger.error('Failed to get user by ID', { error: error?.message || 'Unknown error', stack: error?.stack, userId });
       throw error;
     }
   }
