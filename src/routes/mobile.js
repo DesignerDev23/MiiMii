@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { body, query, param, validationResult } = require('express-validator');
 const multer = require('multer');
-const { Transaction, ChatMessage, User } = require('../models');
+const { Transaction, ChatMessage, User, SupportTicket } = require('../models');
 const databaseService = require('../services/database');
 const bcrypt = require('bcryptjs');
 const userService = require('../services/user');
@@ -1671,7 +1671,6 @@ router.delete('/notifications/read/all',
 
 const statementService = require('../services/statementService');
 const emailService = require('../services/emailService');
-const { SupportTicket } = require('../models');
 
 // Change Password
 router.post('/settings/change-password',

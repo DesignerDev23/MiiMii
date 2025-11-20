@@ -14,7 +14,21 @@ const sessionManager = require('../utils/sessionManager');
 class MessageProcessor {
   async processIncomingMessage(parsedMessage) {
     try {
+      // Validate parsedMessage structure
+      if (!parsedMessage) {
+        throw new Error('parsedMessage is required');
+      }
+      
       const { from, message, messageType, contact, messageId } = parsedMessage;
+      
+      // Validate required fields
+      if (!from) {
+        throw new Error('from (phone number) is required in parsedMessage');
+      }
+      
+      if (!message) {
+        throw new Error('message object is required in parsedMessage');
+      }
       
       // Debug: Log the parsed message details
       logger.info('Processing incoming message', {
@@ -1483,7 +1497,17 @@ class MessageProcessor {
           context: user.conversationState?.context
         });
         
-        return await this.handlePinDisableEnableConfirmation(user, message, messageType);
+        try {
+          return await this.handlePinDisableEnableConfirmation(user, message, messageType);
+        } catch (handlerError) {
+          logger.error('handlePinDisableEnableConfirmation failed', {
+            error: handlerError?.message || 'Unknown error',
+            stack: handlerError?.stack,
+            userId: user.id,
+            hasMessage: !!message
+          });
+          throw handlerError; // Re-throw to be caught by outer catch
+        }
       }
 
       if (user.conversationState?.awaitingInput === 'bank_details') {
@@ -1494,7 +1518,17 @@ class MessageProcessor {
           context: user.conversationState?.context
         });
         
-        return await this.handleBankDetailsInput(user, message, messageType);
+        try {
+          return await this.handleBankDetailsInput(user, message, messageType);
+        } catch (handlerError) {
+          logger.error('handleBankDetailsInput failed', {
+            error: handlerError?.message || 'Unknown error',
+            stack: handlerError?.stack,
+            userId: user.id,
+            hasMessage: !!message
+          });
+          throw handlerError; // Re-throw to be caught by outer catch
+        }
       }
 
       // Analyze user message with AI to determine intent
@@ -1744,14 +1778,35 @@ class MessageProcessor {
 
     } catch (error) {
       logger.error('Failed to process incoming message', {
-        error: error.message, 
-        parsedMessage
+        error: error?.message || 'Unknown error', 
+        stack: error?.stack,
+        parsedMessage: parsedMessage ? {
+          from: parsedMessage.from,
+          messageType: parsedMessage.messageType,
+          hasMessage: !!parsedMessage.message
+        } : null
       });
       
-      // Send error message to user
-      const whatsappService = require('./whatsapp');
-      await whatsappService.sendTextMessage(parsedMessage.from, 
-        "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment.");
+      // Send error message to user (only if we have a valid parsedMessage)
+      // Note: This might fail if WhatsApp service is intercepted (e.g., in mobile app)
+      // So we wrap it in try-catch and ignore failures
+      if (parsedMessage && parsedMessage.from) {
+        try {
+          const whatsappService = require('./whatsapp');
+          // Check if sendTextMessage exists and is callable
+          if (whatsappService && typeof whatsappService.sendTextMessage === 'function') {
+            await whatsappService.sendTextMessage(parsedMessage.from, 
+              "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment.");
+          }
+        } catch (sendError) {
+          // Ignore errors sending error message (especially if service is intercepted)
+          logger.warn('Failed to send error message to user', { 
+            error: sendError?.message || 'Unknown error',
+            errorType: typeof sendError,
+            hasWhatsappService: !!require.cache[require.resolve('./whatsapp')]
+          });
+        }
+      }
     }
   }
 

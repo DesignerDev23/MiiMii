@@ -345,6 +345,8 @@ app.use('/api/debug', debugDataPlansRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/test-whatsapp', testWhatsAppRoutes);
 app.use('/api/mobile', mobileRoutes);
+// Workaround for mobile app calling /api/mobile/mobile/* (duplicate mobile path)
+app.use('/api/mobile/mobile', mobileRoutes);
 
 // Serve admin dashboard
 app.get('/admin*', (req, res) => {

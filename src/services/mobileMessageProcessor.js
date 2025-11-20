@@ -1,4 +1,5 @@
 const messageProcessor = require('./messageProcessor');
+const aiAssistantService = require('./aiAssistant');
 const { ChatMessage } = require('../models');
 const logger = require('../utils/logger');
 
@@ -34,22 +35,32 @@ class MobileMessageProcessor {
       // Clear any previous captured messages for this user
       capturedMessages.set(user.id, []);
 
+      // Initialize response variables
+      let replyText = "I'm having trouble understanding that right now. Please try again.";
+      let intent = null;
+      let requiresAction = null;
+      let actionData = null;
+
       // Create a message interceptor to capture WhatsApp service calls
       const whatsappService = require('./whatsapp');
-      const originalSendText = whatsappService.sendTextMessage.bind(whatsappService);
+      const originalSendText = whatsappService.sendTextMessage?.bind(whatsappService);
       const originalSendButton = whatsappService.sendButtonMessage?.bind(whatsappService);
       const originalSendList = whatsappService.sendListMessage?.bind(whatsappService);
+      const originalMarkRead = whatsappService.markMessageAsRead?.bind(whatsappService);
+      const originalTyping = whatsappService.sendTypingIndicator?.bind(whatsappService);
 
       // Intercept WhatsApp service calls to capture responses
-      whatsappService.sendTextMessage = async (phoneNumber, message) => {
-        if (phoneNumber === phone) {
-          const messages = capturedMessages.get(user.id) || [];
-          messages.push({ type: 'text', content: message });
-          capturedMessages.set(user.id, messages);
-        }
-        // Don't actually send WhatsApp message for mobile requests
-        return { success: true };
-      };
+      if (whatsappService.sendTextMessage) {
+        whatsappService.sendTextMessage = async (phoneNumber, message) => {
+          if (phoneNumber === phone) {
+            const messages = capturedMessages.get(user.id) || [];
+            messages.push({ type: 'text', content: message });
+            capturedMessages.set(user.id, messages);
+          }
+          // Don't actually send WhatsApp message for mobile requests
+          return { success: true };
+        };
+      }
 
       if (whatsappService.sendButtonMessage) {
         whatsappService.sendButtonMessage = async (phoneNumber, message, buttons) => {
@@ -73,6 +84,19 @@ class MobileMessageProcessor {
         };
       }
 
+      // Intercept mark as read and typing indicator (don't fail if they don't exist)
+      if (whatsappService.markMessageAsRead) {
+        whatsappService.markMessageAsRead = async () => {
+          return { success: true };
+        };
+      }
+
+      if (whatsappService.sendTypingIndicator) {
+        whatsappService.sendTypingIndicator = async () => {
+          return { success: true };
+        };
+      }
+
       try {
         // Route through WhatsApp message processor (same flow, captures responses)
         // Create a parsed message structure that WhatsApp processor expects
@@ -91,12 +115,47 @@ class MobileMessageProcessor {
         };
 
         // Process through WhatsApp message processor (this will execute all actions)
-        await messageProcessor.processIncomingMessage(parsedMessage);
+        // Wrap in try-catch to handle any errors gracefully
+        try {
+          await messageProcessor.processIncomingMessage(parsedMessage);
+        } catch (processorError) {
+          logger.error('WhatsApp message processor error (mobile)', {
+            error: processorError?.message || 'Unknown error',
+            stack: processorError?.stack,
+            userId: user.id,
+            message: text,
+            parsedMessage: JSON.stringify(parsedMessage),
+            errorType: typeof processorError,
+            errorKeys: processorError ? Object.keys(processorError) : []
+          });
+          // If processing fails, we'll use fallback below
+          throw processorError;
+        }
+      } catch (processorError) {
+        logger.error('Failed to process message through WhatsApp processor', {
+          error: processorError?.message || 'Unknown error',
+          stack: processorError?.stack,
+          userId: user.id,
+          message: text,
+          errorType: typeof processorError
+        });
+        // Fallback: use AI analysis directly if WhatsApp processor fails
+        try {
+          const aiAnalysis = await aiAssistantService.analyzeUserIntent(text, user, null);
+          if (aiAnalysis && aiAnalysis.intent && aiAnalysis.confidence > 0.7) {
+            replyText = aiAnalysis.response || aiAnalysis.suggestedAction || replyText;
+            intent = aiAnalysis.intent;
+          }
+        } catch (aiError) {
+          logger.error('AI fallback also failed', { error: aiError?.message });
+        }
       } finally {
         // Restore original WhatsApp service methods
-        whatsappService.sendTextMessage = originalSendText;
+        if (originalSendText) whatsappService.sendTextMessage = originalSendText;
         if (originalSendButton) whatsappService.sendButtonMessage = originalSendButton;
         if (originalSendList) whatsappService.sendListMessage = originalSendList;
+        if (originalMarkRead) whatsappService.markMessageAsRead = originalMarkRead;
+        if (originalTyping) whatsappService.sendTypingIndicator = originalTyping;
       }
 
       // Get captured messages
@@ -104,11 +163,6 @@ class MobileMessageProcessor {
       capturedMessages.delete(user.id);
 
       // Extract reply text and metadata from captured messages
-      let replyText = "I'm having trouble understanding that right now. Please try again.";
-      let intent = null;
-      let requiresAction = null;
-      let actionData = null;
-
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         replyText = lastMessage.content || replyText;
