@@ -49,51 +49,89 @@ class MobileMessageProcessor {
       const originalMarkRead = whatsappService.markMessageAsRead?.bind(whatsappService);
       const originalTyping = whatsappService.sendTypingIndicator?.bind(whatsappService);
 
-      // Intercept WhatsApp service calls to capture responses
+      // Normalize phone numbers for comparison (handle both +234 and 234 formats)
+      const normalizePhone = (phoneNum) => {
+        if (!phoneNum) return null;
+        const cleaned = String(phoneNum).replace(/\D/g, '');
+        if (cleaned.startsWith('234') && cleaned.length === 13) {
+          return `+${cleaned}`;
+        }
+        return phoneNum.startsWith('+') ? phoneNum : `+${cleaned}`;
+      };
+      
+      const normalizedPhone = normalizePhone(phone);
+      
+      // Intercept WhatsApp service calls to capture responses ONLY for mobile requests
+      // For WhatsApp messages (different phone numbers), call original methods
       if (whatsappService.sendTextMessage) {
         whatsappService.sendTextMessage = async (phoneNumber, message) => {
-          if (phoneNumber === phone) {
+          // Normalize and compare phone numbers
+          const normalizedTarget = normalizePhone(phoneNumber);
+          // Only intercept if this is the mobile user's phone number
+          if (normalizedTarget === normalizedPhone) {
             const messages = capturedMessages.get(user.id) || [];
             messages.push({ type: 'text', content: message });
             capturedMessages.set(user.id, messages);
+            // Don't actually send WhatsApp message for mobile requests
+            return { success: true };
           }
-          // Don't actually send WhatsApp message for mobile requests
-          return { success: true };
+          // For WhatsApp messages, use original method
+          return await originalSendText(phoneNumber, message);
         };
       }
 
       if (whatsappService.sendButtonMessage) {
         whatsappService.sendButtonMessage = async (phoneNumber, message, buttons) => {
-          if (phoneNumber === phone) {
+          // Normalize and compare phone numbers
+          const normalizedTarget = normalizePhone(phoneNumber);
+          // Only intercept if this is the mobile user's phone number
+          if (normalizedTarget === normalizedPhone) {
             const messages = capturedMessages.get(user.id) || [];
             messages.push({ type: 'buttons', content: message, buttons });
             capturedMessages.set(user.id, messages);
+            return { success: true };
           }
-          return { success: true };
+          // For WhatsApp messages, use original method
+          return await originalSendButton(phoneNumber, message, buttons);
         };
       }
 
       if (whatsappService.sendListMessage) {
         whatsappService.sendListMessage = async (phoneNumber, message, title, sections) => {
-          if (phoneNumber === phone) {
+          // Normalize and compare phone numbers
+          const normalizedTarget = normalizePhone(phoneNumber);
+          // Only intercept if this is the mobile user's phone number
+          if (normalizedTarget === normalizedPhone) {
             const messages = capturedMessages.get(user.id) || [];
             messages.push({ type: 'list', content: message, title, sections });
             capturedMessages.set(user.id, messages);
+            return { success: true };
           }
-          return { success: true };
+          // For WhatsApp messages, use original method
+          return await originalSendList(phoneNumber, message, title, sections);
         };
       }
 
-      // Intercept mark as read and typing indicator (don't fail if they don't exist)
+      // Intercept mark as read and typing indicator - be more careful here
       if (whatsappService.markMessageAsRead) {
-        whatsappService.markMessageAsRead = async () => {
+        whatsappService.markMessageAsRead = async (messageId) => {
+          // For mobile requests, we don't need to mark as read
+          // But we can't determine if it's mobile or WhatsApp from messageId alone
+          // So we'll just skip it - WhatsApp messages will work because original is restored
           return { success: true };
         };
       }
 
       if (whatsappService.sendTypingIndicator) {
-        whatsappService.sendTypingIndicator = async () => {
-          return { success: true };
+        whatsappService.sendTypingIndicator = async (phoneNumber, messageId, duration) => {
+          // Normalize and compare phone numbers
+          const normalizedTarget = normalizePhone(phoneNumber);
+          // Only skip for mobile requests
+          if (normalizedTarget === normalizedPhone) {
+            return { success: true };
+          }
+          // For WhatsApp messages, use original method
+          return await originalTyping(phoneNumber, messageId, duration);
         };
       }
 
@@ -150,12 +188,30 @@ class MobileMessageProcessor {
           logger.error('AI fallback also failed', { error: aiError?.message });
         }
       } finally {
-        // Restore original WhatsApp service methods
-        if (originalSendText) whatsappService.sendTextMessage = originalSendText;
-        if (originalSendButton) whatsappService.sendButtonMessage = originalSendButton;
-        if (originalSendList) whatsappService.sendListMessage = originalSendList;
-        if (originalMarkRead) whatsappService.markMessageAsRead = originalMarkRead;
-        if (originalTyping) whatsappService.sendTypingIndicator = originalTyping;
+        // CRITICAL: Always restore original WhatsApp service methods immediately
+        // This ensures WhatsApp messages work even if mobile processing is ongoing
+        try {
+          if (originalSendText) whatsappService.sendTextMessage = originalSendText;
+          if (originalSendButton) whatsappService.sendButtonMessage = originalSendButton;
+          if (originalSendList) whatsappService.sendListMessage = originalSendList;
+          if (originalMarkRead) whatsappService.markMessageAsRead = originalMarkRead;
+          if (originalTyping) whatsappService.sendTypingIndicator = originalTyping;
+        } catch (restoreError) {
+          logger.error('Failed to restore WhatsApp service methods', {
+            error: restoreError?.message || 'Unknown error',
+            userId: user.id
+          });
+          // Force restore even if there's an error
+          try {
+            whatsappService.sendTextMessage = originalSendText;
+            whatsappService.sendButtonMessage = originalSendButton;
+            whatsappService.sendListMessage = originalSendList;
+            whatsappService.markMessageAsRead = originalMarkRead;
+            whatsappService.sendTypingIndicator = originalTyping;
+          } catch (forceRestoreError) {
+            logger.error('Force restore also failed', { error: forceRestoreError?.message });
+          }
+        }
       }
 
       // Get captured messages
