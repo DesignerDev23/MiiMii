@@ -2,6 +2,7 @@ const express = require('express');
 const userService = require('../services/user');
 const walletService = require('../services/wallet');
 const kycService = require('../services/kyc');
+const { SupportTicket } = require('../models');
 const { body, param, query, validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 
@@ -495,6 +496,195 @@ router.get('/search',
     } catch (error) {
       logger.error('User search failed', { error: error.message, query: req.query.q });
       res.status(500).json({ error: 'Search failed' });
+    }
+  }
+);
+
+// Create Support Ticket (User endpoint - phone number based)
+router.post('/support/tickets',
+  [
+    body('phoneNumber').isMobilePhone('any').withMessage('Valid phone number is required'),
+    body('type').isIn(['dispute', 'complaint', 'inquiry', 'technical', 'refund']).withMessage('Valid ticket type is required'),
+    body('subject').isString().trim().notEmpty().isLength({ min: 5, max: 200 }).withMessage('Subject must be between 5 and 200 characters'),
+    body('description').isString().trim().notEmpty().isLength({ min: 10, max: 5000 }).withMessage('Description must be between 10 and 5000 characters'),
+    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']).withMessage('Invalid priority level'),
+    body('transactionId').optional().isUUID().withMessage('Invalid transaction ID format')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { phoneNumber, type, subject, description, priority = 'medium', transactionId } = req.body;
+      
+      // Get user by phone number
+      const user = await userService.getUserByPhoneNumber(phoneNumber);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found. Please register first.' });
+      }
+
+      // Check if user is active
+      if (!user.isActive || user.isBanned) {
+        return res.status(403).json({ error: 'Account is inactive or banned' });
+      }
+      
+      // Generate unique ticket number
+      const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      
+      // Create support ticket
+      const ticket = await SupportTicket.create({
+        ticketNumber,
+        userId: user.id,
+        transactionId: transactionId || null,
+        type,
+        priority,
+        status: 'open',
+        subject: subject.trim(),
+        description: description.trim(),
+        metadata: {
+          source: 'user_api',
+          phoneNumber: phoneNumber,
+          createdAt: new Date().toISOString()
+        }
+      });
+
+      logger.info('Support ticket created via user API', { 
+        ticketId: ticket.id, 
+        ticketNumber: ticket.ticketNumber,
+        userId: user.id,
+        phoneNumber: phoneNumber
+      });
+      
+      res.json({
+        success: true,
+        message: 'Support ticket created successfully',
+        ticket: {
+          id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          type: ticket.type,
+          priority: ticket.priority,
+          status: ticket.status,
+          subject: ticket.subject,
+          createdAt: ticket.createdAt
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to create support ticket', { 
+        error: error.message,
+        stack: error.stack,
+        phoneNumber: req.body.phoneNumber
+      });
+      res.status(500).json({ 
+        error: 'Failed to create support ticket',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// Get User's Support Tickets
+router.get('/support/tickets/:phoneNumber',
+  param('phoneNumber').isMobilePhone('any'),
+  query('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed']),
+  query('type').optional().isIn(['dispute', 'complaint', 'inquiry', 'technical', 'refund']),
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  query('offset').optional().isInt({ min: 0 }),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { phoneNumber } = req.params;
+      const { status, type, limit = 20, offset = 0 } = req.query;
+      
+      // Get user by phone number
+      const user = await userService.getUserByPhoneNumber(phoneNumber);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const where = { userId: user.id };
+      if (status) where.status = status;
+      if (type) where.type = type;
+
+      const { count, rows: tickets } = await SupportTicket.findAndCountAll({
+        where,
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit, 10),
+        offset: parseInt(offset, 10)
+      });
+
+      return res.json({
+        success: true,
+        tickets: tickets.map(ticket => ({
+          id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          type: ticket.type,
+          priority: ticket.priority,
+          status: ticket.status,
+          subject: ticket.subject,
+          description: ticket.description,
+          resolution: ticket.resolution,
+          resolvedAt: ticket.resolvedAt,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt
+        })),
+        pagination: {
+          total: count,
+          limit: parseInt(limit, 10),
+          offset: parseInt(offset, 10),
+          hasMore: (parseInt(offset, 10) + parseInt(limit, 10)) < count
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to get support tickets', { error: error.message, phoneNumber: req.params.phoneNumber });
+      return res.status(500).json({ error: 'Failed to get support tickets' });
+    }
+  }
+);
+
+// Get Single Support Ticket
+router.get('/support/tickets/:phoneNumber/:ticketId',
+  param('phoneNumber').isMobilePhone('any'),
+  param('ticketId').isUUID(),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { phoneNumber, ticketId } = req.params;
+      
+      // Get user by phone number
+      const user = await userService.getUserByPhoneNumber(phoneNumber);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const ticket = await SupportTicket.findOne({
+        where: {
+          id: ticketId,
+          userId: user.id
+        }
+      });
+
+      if (!ticket) {
+        return res.status(404).json({ error: 'Ticket not found' });
+      }
+
+      return res.json({
+        success: true,
+        ticket: {
+          id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          type: ticket.type,
+          priority: ticket.priority,
+          status: ticket.status,
+          subject: ticket.subject,
+          description: ticket.description,
+          resolution: ticket.resolution,
+          resolvedAt: ticket.resolvedAt,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt,
+          metadata: ticket.metadata
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to get support ticket', { error: error.message, ticketId: req.params.ticketId });
+      return res.status(500).json({ error: 'Failed to get support ticket' });
     }
   }
 );

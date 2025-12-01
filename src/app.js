@@ -51,6 +51,7 @@ const debugDataPlansRoutes = require('./routes/debug-data-plans');
 const testRoutes = require('./routes/test');
 const testWhatsAppRoutes = require('./routes/testWhatsApp');
 const mobileRoutes = require('./routes/mobile');
+const webRoutes = require('./routes/web');
 
 const app = express();
 
@@ -348,6 +349,7 @@ app.use('/api/test-whatsapp', testWhatsAppRoutes);
 app.use('/api/mobile', mobileRoutes);
 // Workaround for mobile app calling /api/mobile/mobile/* (duplicate mobile path)
 app.use('/api/mobile/mobile', mobileRoutes);
+app.use('/api/web', webRoutes);
 
 // Serve admin dashboard
 app.get('/admin*', (req, res) => {

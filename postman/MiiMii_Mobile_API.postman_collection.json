@@ -1103,6 +1103,174 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "User API / Create Support Ticket",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/support/tickets",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "users", "support", "tickets"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+2348012345678\",\n  \"type\": \"inquiry\",\n  \"subject\": \"Account Balance Issue\",\n  \"description\": \"I noticed a discrepancy in my account balance. Please investigate.\",\n  \"priority\": \"medium\",\n  \"transactionId\": \"uuid-optional\"\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Ticket created",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Support ticket created successfully\",\n  \"ticket\": {\n    \"id\": \"uuid\",\n    \"ticketNumber\": \"TKT-1234567890-ABC123\",\n    \"type\": \"inquiry\",\n    \"priority\": \"medium\",\n    \"status\": \"open\",\n    \"subject\": \"Account Balance Issue\",\n    \"createdAt\": \"2025-01-20T10:30:00Z\"\n  }\n}"
+        },
+        {
+          "name": "404 Not Found - User not found",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"User not found. Please register first.\"\n}"
+        },
+        {
+          "name": "403 Forbidden - Account inactive",
+          "status": "Forbidden",
+          "code": 403,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Account is inactive or banned\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "User API / List Support Tickets",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/support/tickets/:phoneNumber?status=open&limit=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "users", "support", "tickets", ":phoneNumber"],
+          "query": [
+            { "key": "status", "value": "open", "disabled": true },
+            { "key": "type", "value": "", "disabled": true },
+            { "key": "limit", "value": "20", "disabled": true },
+            { "key": "offset", "value": "0", "disabled": true }
+          ],
+          "variable": [
+            { "key": "phoneNumber", "value": "+2348012345678" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Tickets list",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"tickets\": [\n    {\n      \"id\": \"uuid\",\n      \"ticketNumber\": \"TKT-1234567890-ABC123\",\n      \"type\": \"inquiry\",\n      \"priority\": \"high\",\n      \"status\": \"open\",\n      \"subject\": \"Account Balance Issue\",\n      \"description\": \"Full description...\",\n      \"resolution\": null,\n      \"resolvedAt\": null,\n      \"createdAt\": \"2025-01-20T10:30:00Z\",\n      \"updatedAt\": \"2025-01-20T10:30:00Z\"\n    }\n  ],\n  \"pagination\": {\n    \"total\": 5,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"hasMore\": false\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "User API / Get Support Ticket",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/support/tickets/:phoneNumber/:ticketId",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "users", "support", "tickets", ":phoneNumber", ":ticketId"],
+          "variable": [
+            { "key": "phoneNumber", "value": "+2348012345678" },
+            { "key": "ticketId", "value": "uuid-here" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Ticket details",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"ticket\": {\n    \"id\": \"uuid\",\n    \"ticketNumber\": \"TKT-1234567890-ABC123\",\n    \"type\": \"inquiry\",\n    \"priority\": \"high\",\n    \"status\": \"open\",\n    \"subject\": \"Account Balance Issue\",\n    \"description\": \"Full description...\",\n    \"resolution\": \"Issue resolved. Balance corrected.\",\n    \"resolvedAt\": \"2025-01-21T14:00:00Z\",\n    \"createdAt\": \"2025-01-20T10:30:00Z\",\n    \"updatedAt\": \"2025-01-21T14:00:00Z\",\n    \"metadata\": {\n      \"source\": \"user_api\",\n      \"phoneNumber\": \"+2348012345678\",\n      \"createdAt\": \"2025-01-20T10:30:00Z\"\n    }\n  }\n}"
+        },
+        {
+          "name": "404 Not Found - Ticket not found",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Ticket not found\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Web API / Create Support Ticket (Public)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/web/support/tickets",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "web", "support", "tickets"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user@example.com\",\n  \"phoneNumber\": \"+2348012345678\",\n  \"name\": \"John Doe\",\n  \"type\": \"inquiry\",\n  \"subject\": \"Account Balance Issue\",\n  \"description\": \"I noticed a discrepancy in my account balance. Please investigate.\",\n  \"priority\": \"medium\",\n  \"transactionId\": null\n}"
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Ticket created",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"message\": \"Support ticket created successfully\",\n  \"ticket\": {\n    \"id\": \"uuid\",\n    \"ticketNumber\": \"TKT-1234567890-ABC123\",\n    \"type\": \"inquiry\",\n    \"priority\": \"medium\",\n    \"status\": \"open\",\n    \"subject\": \"Account Balance Issue\",\n    \"createdAt\": \"2025-01-20T10:30:00Z\"\n  },\n  \"note\": \"We will contact you via the provided email or phone number\"\n}"
+        },
+        {
+          "name": "400 Bad Request - Missing contact info",
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Either email or phone number is required for contact\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Web API / Check Ticket Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/web/support/tickets/:ticketNumber",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "web", "support", "tickets", ":ticketNumber"],
+          "variable": [
+            { "key": "ticketNumber", "value": "TKT-1234567890-ABC123" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Ticket status",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"ticket\": {\n    \"ticketNumber\": \"TKT-1234567890-ABC123\",\n    \"type\": \"inquiry\",\n    \"priority\": \"high\",\n    \"status\": \"open\",\n    \"subject\": \"Account Balance Issue\",\n    \"createdAt\": \"2025-01-20T10:30:00Z\",\n    \"updatedAt\": \"2025-01-20T10:30:00Z\"\n  }\n}"
+        },
+        {
+          "name": "404 Not Found - Ticket not found",
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"error\": \"Ticket not found\"\n}"
+        }
+      ]
     }
   ],
   "variable": [

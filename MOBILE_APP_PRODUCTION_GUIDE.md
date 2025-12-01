@@ -2367,6 +2367,15 @@ The Settings section provides comprehensive account management features includin
 - `GET /api/mobile/support/tickets` - List support tickets
 - `GET /api/mobile/support/tickets/:ticketId` - Get ticket details
 
+### User API (Phone Number Based - No JWT Required)
+- `POST /api/users/support/tickets` - Create support ticket (phone number auth)
+- `GET /api/users/support/tickets/:phoneNumber` - List user's tickets
+- `GET /api/users/support/tickets/:phoneNumber/:ticketId` - Get ticket details
+
+### Web API (Public Website - No Authentication Required)
+- `POST /api/web/support/tickets` - Create support ticket (public, guest users allowed)
+- `GET /api/web/support/tickets/:ticketNumber` - Check ticket status by ticket number
+
 ---
 
 ## Conclusion
@@ -2385,13 +2394,26 @@ For questions or issues, refer to the Postman collection (`postman/MiiMii_Mobile
 ---
 
 **Last Updated**: January 2025
-**Version**: 2.0.0
+**Version**: 2.2.0
 
 **Changelog**:
+- v2.2.0: Added Web API endpoints for public website support tickets
+  - No authentication required (public endpoint)
+  - Guest user support (auto-creates user if needed)
+  - Email or phone number required for contact
+  - Check ticket status by ticket number
+- v2.1.0: Added User API endpoints for support tickets
+  - Phone number based authentication (no JWT required)
+  - Suitable for WhatsApp bot and third-party integrations
+  - Create, list, and get ticket details endpoints
 - v2.0.0: Added comprehensive Settings & Account Management endpoints
   - Password and PIN management
   - Account statements (PDF generation + email)
   - Support ticket system
   - Notification preferences
   - Account deletion
+- v2.1.0: Added User API endpoints for support tickets
+  - Phone number based authentication (no JWT required)
+  - Suitable for WhatsApp bot and third-party integrations
+  - Create, list, and get ticket details endpoints
 
