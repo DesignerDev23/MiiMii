@@ -38,186 +38,20 @@ class SupabaseDatabaseManager {
   }
 
   initialize() {
-    // Prefer connection string (simpler and Supabase-recommended)
-    // If connection string is provided, use it directly
+    // SUPER SIMPLE: Just use the connection string
     if (process.env.SUPABASE_DB_URL) {
-      // Use Supabase connection URL directly (simplest method)
       this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
         dialect: 'postgres',
-        logging: process.env.NODE_ENV === 'development' 
-          ? (msg) => logger.debug(msg) 
-          : false,
-        pool: {
-          max: 25,
-          min: 5,
-          acquire: 60000,
-          idle: 30000,
-          evict: 10000,
-          handleDisconnects: true
-        },
+        logging: false,
         dialectOptions: {
-          ssl: createSupabaseSSLConfig(),
-          application_name: 'miimii-api',
-          connectTimeout: 10000
-        },
-        retry: {
-          match: [
-            /ECONNRESET/,
-            /ENOTFOUND/,
-            /ECONNREFUSED/,
-            /ETIMEDOUT/,
-            /EHOSTUNREACH/,
-            /self-signed certificate/,
-            /certificate verify failed/,
-            /connection terminated/,
-            /connection reset/,
-            /timeout/,
-            /Connection terminated unexpectedly/,
-            /server closed the connection/
-          ],
-          max: 5,
-          backoffBase: 2000,
-          backoffExponent: 1.5,
-        },
-        hooks: {
-          beforeConnect: (config) => {
-            if (this.isShuttingDown) {
-              throw new Error('Database is shutting down, cannot create new connections');
-            }
-            logger.debug('Attempting Supabase database connection...');
-          },
-          afterConnect: () => {
-            logger.info('Supabase database connection established');
-            this.isConnected = true;
-            this.reconnectAttempts = 0;
-            this.reconnectDelay = 5000;
-          },
-          beforeDisconnect: () => {
-            logger.info('Supabase database connection closing...');
-          },
-          afterDisconnect: () => {
-            logger.warn('Supabase database connection lost');
-            this.isConnected = false;
-            if (!this.isShuttingDown) {
-              this.scheduleReconnect();
-            }
-          }
+          ssl: { require: true, rejectUnauthorized: false }
         }
       });
-    } else if (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD) {
-      // Use individual parameters - convert to pooler endpoint for better connectivity
-      // Extract project ref from host if it's a direct connection
-      let host = process.env.SUPABASE_DB_HOST;
-      const projectRef = host.replace('db.', '').replace('.supabase.co', '');
-      
-      // Use pooler endpoint for better IPv4/IPv6 compatibility
-      // Pooler format: aws-0-[project-ref].pooler.supabase.com (port 6543)
-      // Or try: [project-ref].pooler.supabase.com
-      if (!host.includes('pooler')) {
-        // Try to use pooler endpoint
-        host = `aws-0-${projectRef}.pooler.supabase.com`;
-        logger.info(`Using Supabase connection pooler: ${host}:6543`);
-      }
-      
-      const isPooler = host.includes('pooler');
-      const defaultPort = isPooler ? 6543 : 5432;
-      
-      this.sequelize = new Sequelize({
-        database: process.env.SUPABASE_DB_NAME || 'postgres',
-        username: process.env.SUPABASE_DB_USER || 'postgres',
-        password: process.env.SUPABASE_DB_PASSWORD,
-        host: host,
-        port: parseInt(process.env.SUPABASE_DB_PORT) || defaultPort,
-        dialect: 'postgres',
-        logging: process.env.NODE_ENV === 'development' 
-          ? (msg) => logger.debug(msg) 
-          : false,
-        pool: {
-          max: 25,
-          min: 5,
-          acquire: 60000,
-          idle: 30000,
-          evict: 10000,
-          handleDisconnects: true
-        },
-        dialectOptions: {
-          ssl: {
-            require: true,
-            rejectUnauthorized: false
-          },
-          application_name: 'miimii-api',
-          connectTimeout: 10000
-        },
-        retry: {
-          match: [
-            /ECONNRESET/,
-            /ENOTFOUND/,
-            /ECONNREFUSED/,
-            /ETIMEDOUT/,
-            /EHOSTUNREACH/,
-            /self-signed certificate/,
-            /certificate verify failed/,
-            /connection terminated/,
-            /connection reset/,
-            /timeout/,
-            /Connection terminated unexpectedly/,
-            /server closed the connection/
-          ],
-          max: 5,
-          backoffBase: 2000,
-          backoffExponent: 1.5,
-        },
-        hooks: {
-          beforeConnect: (config) => {
-            if (this.isShuttingDown) {
-              throw new Error('Database is shutting down, cannot create new connections');
-            }
-            logger.debug('Attempting Supabase database connection...');
-          },
-          afterConnect: () => {
-            logger.info('Supabase database connection established');
-            this.isConnected = true;
-            this.reconnectAttempts = 0;
-            this.reconnectDelay = 5000;
-          },
-          beforeDisconnect: () => {
-            logger.info('Supabase database connection closing...');
-          },
-          afterDisconnect: () => {
-            logger.warn('Supabase database connection lost');
-            this.isConnected = false;
-            if (!this.isShuttingDown) {
-              this.scheduleReconnect();
-            }
-          }
-        }
-      });
+      this.startHealthCheck();
     } else {
-        // No Supabase configuration found - log error and create disabled instance
-        logger.error('❌ No Supabase database configuration found!', {
-          availableEnvVars: {
-            hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
-            hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST,
-            hasSupabaseDbPassword: !!process.env.SUPABASE_DB_PASSWORD,
-            hasDbConnectionUrl: !!process.env.DB_CONNECTION_URL,
-            dbConnectionUrlIsSupabase: process.env.DB_CONNECTION_URL?.includes('supabase') || false
-          },
-          instructions: 'Please set SUPABASE_DB_HOST and SUPABASE_DB_PASSWORD (or SUPABASE_DB_URL) environment variables. See SUPABASE_MIGRATION_GUIDE.md for details.'
-        });
-        
-        // Create a disabled PostgreSQL instance (won't actually connect)
-        // This prevents errors when sequelize is accessed but won't allow queries
-        this.sequelize = new Sequelize({
-          dialect: 'postgres',
-          logging: false,
-          // Don't set host/database so it won't try to connect
-          // This will fail gracefully when authenticate() is called
-        });
-        logger.warn('⚠️ Database connection disabled - database features will not work until SUPABASE_DB_HOST and SUPABASE_DB_PASSWORD are configured');
-        return;
-      }
-
-    this.startHealthCheck();
+      logger.error('❌ SUPABASE_DB_URL not set!');
+      this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
+    }
   }
 
   async connect() {
