@@ -457,14 +457,38 @@ async function startServer() {
 // Separate function to initialize database connection
 async function initializeDatabaseConnection() {
   try {
-    if (!config.getDatabaseUrl() && !process.env.DB_HOST) {
-      logger.warn('Database configuration missing - running without database connectivity');
+    // Check for Supabase configuration
+    const hasSupabaseConfig = process.env.SUPABASE_DB_URL || 
+                              (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD) ||
+                              (process.env.DB_CONNECTION_URL && process.env.DB_CONNECTION_URL.includes('supabase.com'));
+    
+    if (!hasSupabaseConfig) {
+      logger.warn('⚠️ Supabase database configuration missing', {
+        availableEnvVars: {
+          hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
+          hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST,
+          hasDbConnectionUrl: !!process.env.DB_CONNECTION_URL,
+          dbConnectionUrlIsSupabase: process.env.DB_CONNECTION_URL?.includes('supabase.com') || false
+        },
+        message: 'Running without database connectivity. Set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables.'
+      });
       return;
     }
 
-    logger.info('Attempting to connect to database...');
-    await sequelize.authenticate();
-    logger.info('✅ Database connection established successfully');
+    logger.info('Attempting to connect to Supabase database...');
+    try {
+      await sequelize.authenticate();
+      logger.info('✅ Supabase database connection established successfully');
+    } catch (error) {
+      logger.error('❌ Failed to connect to Supabase database:', {
+        error: error.message,
+        code: error.code,
+        host: sequelize.config?.host || 'unknown',
+        database: sequelize.config?.database || 'unknown',
+        suggestion: 'Please verify your SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables are correct. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
+      });
+      throw error; // Re-throw to be caught by outer try-catch
+    }
 
     // Sync database models only after successful connection
     await sequelize.sync({ force: false, alter: false });

@@ -186,9 +186,9 @@ class SupabaseDatabaseManager {
         }
       });
     } else {
-      // Fallback: try to use existing DB_CONNECTION_URL if it's a Supabase URL
+      // Check if DB_CONNECTION_URL is a Supabase URL (for backward compatibility)
       if (process.env.DB_CONNECTION_URL && process.env.DB_CONNECTION_URL.includes('supabase.com')) {
-        logger.info('Using DB_CONNECTION_URL for Supabase connection');
+        logger.info('Using DB_CONNECTION_URL for Supabase connection (detected Supabase URL)');
         const connectionUrl = process.env.DB_CONNECTION_URL;
         
         this.sequelize = new Sequelize(connectionUrl, {
@@ -253,16 +253,27 @@ class SupabaseDatabaseManager {
               if (!this.isShuttingDown) {
                 this.scheduleReconnect();
               }
-            }
           }
-        });
+        }
+      });
       } else {
+        // No Supabase configuration found - log error and create dummy instance
+        logger.error('❌ No Supabase database configuration found!', {
+          availableEnvVars: {
+            hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
+            hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST,
+            hasDbConnectionUrl: !!process.env.DB_CONNECTION_URL,
+            dbConnectionUrlIsSupabase: process.env.DB_CONNECTION_URL?.includes('supabase.com') || false
+          },
+          instructions: 'Please set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables. See SUPABASE_MIGRATION_GUIDE.md for details.'
+        });
+        
         // Create a dummy sequelize instance to prevent errors
         this.sequelize = new Sequelize('sqlite::memory:', {
           logging: false,
           dialectOptions: {}
         });
-        logger.warn('No Supabase database configuration found - using in-memory SQLite for basic operation');
+        logger.warn('⚠️ Using in-memory SQLite - database features will be disabled');
         return;
       }
     }
