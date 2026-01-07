@@ -142,8 +142,6 @@ class SupabaseDatabaseManager {
           connectTimeout: 10000,
           // Force IPv4 to avoid IPv6 connection issues (EHOSTUNREACH)
           family: 4
-          // Force IPv4 to avoid IPv6 connection issues
-          family: 4
         },
         retry: {
           match: [
