@@ -475,24 +475,51 @@ async function initializeDatabaseConnection() {
       return;
     }
 
+    // Check if sequelize is properly initialized
+    if (!sequelize || !sequelize.config) {
+      logger.error('❌ Database connection not properly initialized', {
+        suggestion: 'Please set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
+      });
+      return;
+    }
+
     logger.info('Attempting to connect to Supabase database...');
     try {
       await sequelize.authenticate();
       logger.info('✅ Supabase database connection established successfully');
     } catch (error) {
-      logger.error('❌ Failed to connect to Supabase database:', {
-        error: error.message,
-        code: error.code,
-        host: sequelize.config?.host || 'unknown',
-        database: sequelize.config?.database || 'unknown',
-        suggestion: 'Please verify your SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables are correct. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
-      });
-      throw error; // Re-throw to be caught by outer try-catch
+      // Check if it's a configuration error (missing host/database)
+      if (error.message && (
+        error.message.includes('dialect was not supplied') ||
+        error.message.includes('host parameter is not valid') ||
+        error.message.includes('database parameter is not valid')
+      )) {
+        logger.error('❌ Database configuration incomplete:', {
+          error: error.message,
+          suggestion: 'Please set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables with complete connection details. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
+        });
+      } else {
+        logger.error('❌ Failed to connect to Supabase database:', {
+          error: error.message,
+          code: error.code,
+          host: sequelize.config?.host || 'unknown',
+          database: sequelize.config?.database || 'unknown',
+          suggestion: 'Please verify your SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables are correct. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
+        });
+      }
+      // Don't throw - allow app to continue without database (with limited functionality)
+      logger.warn('⚠️ Application will continue without database connectivity');
+      return;
     }
 
     // Sync database models only after successful connection
-    await sequelize.sync({ force: false, alter: false });
-    logger.info('✅ Database models synchronized');
+    try {
+      await sequelize.sync({ force: false, alter: false });
+      logger.info('✅ Database models synchronized');
+    } catch (error) {
+      logger.error('❌ Failed to sync database models:', { error: error.message });
+      return; // Exit early if sync fails
+    }
     
     // Initialize data plans system
     try {

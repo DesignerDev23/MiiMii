@@ -257,7 +257,7 @@ class SupabaseDatabaseManager {
         }
       });
       } else {
-        // No Supabase configuration found - log error and create dummy instance
+        // No Supabase configuration found - log error and create disabled instance
         logger.error('❌ No Supabase database configuration found!', {
           availableEnvVars: {
             hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
@@ -268,12 +268,15 @@ class SupabaseDatabaseManager {
           instructions: 'Please set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables. See SUPABASE_MIGRATION_GUIDE.md for details.'
         });
         
-        // Create a dummy sequelize instance to prevent errors
-        this.sequelize = new Sequelize('sqlite::memory:', {
+        // Create a disabled PostgreSQL instance (won't actually connect)
+        // This prevents errors when sequelize is accessed but won't allow queries
+        this.sequelize = new Sequelize({
+          dialect: 'postgres',
           logging: false,
-          dialectOptions: {}
+          // Don't set host/database so it won't try to connect
+          // This will fail gracefully when authenticate() is called
         });
-        logger.warn('⚠️ Using in-memory SQLite - database features will be disabled');
+        logger.warn('⚠️ Database connection disabled - database features will not work until SUPABASE_DB_URL is configured');
         return;
       }
     }

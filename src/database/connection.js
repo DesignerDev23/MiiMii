@@ -168,12 +168,26 @@ class DatabaseManager {
         }
       });
     } else {
-      // Create a dummy sequelize instance to prevent errors
-      this.sequelize = new Sequelize('sqlite::memory:', {
-        logging: false,
-        dialectOptions: {}
+      // No database configuration found - create disabled instance
+      logger.error('❌ No database configuration found!', {
+        availableEnvVars: {
+          hasDbConnectionUrl: !!process.env.DB_CONNECTION_URL,
+          hasDbHost: !!process.env.DB_HOST,
+          hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
+          hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST
+        },
+        instructions: 'Please set DB_CONNECTION_URL, DB_HOST, or SUPABASE_DB_URL environment variables.'
       });
-      logger.warn('No database configuration found - using in-memory SQLite for basic operation');
+      
+      // Create a disabled PostgreSQL instance (won't actually connect)
+      // This prevents errors when sequelize is accessed but won't allow queries
+      this.sequelize = new Sequelize({
+        dialect: 'postgres',
+        logging: false,
+        // Don't set host/database so it won't try to connect
+        // This will fail gracefully when authenticate() is called
+      });
+      logger.warn('⚠️ Database connection disabled - database features will not work until database configuration is provided');
       return;
     }
 
