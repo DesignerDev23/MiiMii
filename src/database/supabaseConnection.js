@@ -211,7 +211,6 @@ class SupabaseDatabaseManager {
         logger.warn('⚠️ Database connection disabled - database features will not work until SUPABASE_DB_HOST and SUPABASE_DB_PASSWORD are configured');
         return;
       }
-    }
 
     this.startHealthCheck();
   }
