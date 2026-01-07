@@ -477,9 +477,19 @@ async function initializeDatabaseConnection() {
     }
 
     // Check if sequelize is properly initialized
-    if (!sequelize || !sequelize.config) {
+    if (!sequelize) {
       logger.error('❌ Database connection not properly initialized', {
-        suggestion: 'Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables.'
+        suggestion: 'Please set SUPABASE_DB_URL environment variable.'
+      });
+      return;
+    }
+    
+    // Check if it's a disabled instance (no config means no connection string was provided)
+    if (!sequelize.config || !sequelize.config.host) {
+      logger.error('❌ Database connection string not configured', {
+        hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
+        hasSupabaseUrl: !!process.env.SUPABASE_URL,
+        suggestion: 'Please set SUPABASE_DB_URL environment variable with your connection string.'
       });
       return;
     }

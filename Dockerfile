@@ -1,5 +1,5 @@
-# Use Node.js 18 LTS for better compatibility with canvas package
-FROM node:18-slim
+# Use Node.js 20 LTS (required for @supabase/supabase-js)
+FROM node:20-slim
 
 # Install system dependencies for canvas and other packages
 RUN apt-get update && apt-get install -y \
