@@ -1,29 +1,11 @@
+const { createClient } = require('@supabase/supabase-js');
 const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
-
-/**
- * Supabase Database Connection Configuration
- * 
- * Supabase uses PostgreSQL with SSL connections.
- * Connection string format:
- * postgresql://[user]:[password]@[host]:[port]/[database]?sslmode=require
- * 
- * Or use individual parameters with SSL enabled.
- */
-
-// Function to create SSL configuration for Supabase
-function createSupabaseSSLConfig() {
-  return {
-    require: true,
-    rejectUnauthorized: false, // Supabase uses valid certificates, but this allows flexibility
-    // Supabase provides valid SSL certificates, but we keep rejectUnauthorized: false
-    // for compatibility with connection pooling and various network configurations
-  };
-}
 
 class SupabaseDatabaseManager {
   constructor() {
     this.sequelize = null;
+    this.supabase = null;
     this.isConnected = false;
     this.isShuttingDown = false;
     this.reconnectAttempts = 0;
@@ -38,18 +20,33 @@ class SupabaseDatabaseManager {
   }
 
   initialize() {
-    // SUPER SIMPLE: Just use the connection string
-    if (process.env.SUPABASE_DB_URL) {
-      this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
-        dialect: 'postgres',
-        logging: false,
-        dialectOptions: {
-          ssl: { require: true, rejectUnauthorized: false }
-        }
-      });
-      this.startHealthCheck();
+    // Use Supabase client library approach (like your Render app)
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      // Create Supabase client
+      this.supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      
+      // Still need Sequelize for existing code - build connection from URL
+      const urlMatch = process.env.SUPABASE_URL.match(/https?:\/\/([^.]+)\.supabase\.co/);
+      if (urlMatch && process.env.SUPABASE_DB_PASSWORD) {
+        const projectRef = urlMatch[1];
+        const connectionString = `postgresql://postgres.${projectRef}:${process.env.SUPABASE_DB_PASSWORD}@aws-0-${projectRef}.pooler.supabase.com:6543/postgres?sslmode=require`;
+        this.sequelize = new Sequelize(connectionString, {
+          dialect: 'postgres',
+          logging: false,
+          dialectOptions: {
+            ssl: { require: true, rejectUnauthorized: false }
+          }
+        });
+        this.startHealthCheck();
+      } else {
+        logger.warn('⚠️ SUPABASE_DB_PASSWORD needed for Sequelize. Using Supabase client only.');
+        this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
+      }
     } else {
-      logger.error('❌ SUPABASE_DB_URL not set!');
+      logger.error('❌ Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY!');
       this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
     }
   }
@@ -286,9 +283,10 @@ class SupabaseDatabaseManager {
 // Create singleton instance
 const supabaseDatabaseManager = new SupabaseDatabaseManager();
 
-// Export the manager and sequelize instance
+// Export the manager, sequelize instance, and supabase client
 module.exports = { 
   sequelize: supabaseDatabaseManager.getSequelize(),
-  databaseManager: supabaseDatabaseManager
+  databaseManager: supabaseDatabaseManager,
+  supabase: supabaseDatabaseManager.supabase || null
 };
 
