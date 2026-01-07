@@ -9,12 +9,15 @@ class Config {
   loadConfig() {
     // Database Configuration
     this.database = {
-      url: process.env.DB_CONNECTION_URL,
-      host: process.env.DB_HOST,
+      url: process.env.DB_CONNECTION_URL || process.env.SUPABASE_DB_URL,
+      host: process.env.DB_HOST || process.env.SUPABASE_DB_HOST,
       port: parseInt(process.env.DB_PORT) || 5432,
-      name: process.env.DB_NAME,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD
+      name: process.env.DB_NAME || process.env.SUPABASE_DB_NAME,
+      user: process.env.DB_USER || process.env.SUPABASE_DB_USER,
+      password: process.env.DB_PASSWORD || process.env.SUPABASE_DB_PASSWORD,
+      // Supabase specific
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
     };
 
     // WhatsApp Configuration - Use exact variable names from Digital Ocean
@@ -155,8 +158,13 @@ class Config {
     // Warn about critical missing environment variables
     const missingCritical = [];
     
-    if (!this.database.url && !this.database.host) {
-      missingCritical.push('Database configuration (DB_CONNECTION_URL or DB_HOST)');
+    // Check for database config - support both old and new Supabase approach
+    const hasDatabaseConfig = this.database.url || 
+                              this.database.host || 
+                              (this.database.supabaseUrl && this.database.supabaseServiceRoleKey);
+    
+    if (!hasDatabaseConfig) {
+      missingCritical.push('Database configuration (DB_CONNECTION_URL, DB_HOST, or SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)');
       logger.warn('Database configuration missing - running without database connectivity');
     }
     

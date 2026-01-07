@@ -48,6 +48,7 @@ class SupabaseDatabaseManager {
     }
     // Option 2: Direct connection string (fallback)
     else if (process.env.SUPABASE_DB_URL) {
+      logger.info('Using SUPABASE_DB_URL for connection');
       this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
         dialect: 'postgres',
         logging: false,
@@ -57,7 +58,16 @@ class SupabaseDatabaseManager {
       });
       this.startHealthCheck();
     } else {
-      logger.error('❌ Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL)!');
+      logger.error('❌ No Supabase configuration found!', {
+        availableEnvVars: {
+          hasSupabaseUrl: !!process.env.SUPABASE_URL,
+          hasSupabaseServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
+          hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST,
+          hasSupabaseDbPassword: !!process.env.SUPABASE_DB_PASSWORD
+        },
+        instructions: 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL)'
+      });
       this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
     }
   }
