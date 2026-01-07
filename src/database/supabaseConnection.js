@@ -66,7 +66,9 @@ class SupabaseDatabaseManager {
         dialectOptions: {
           ssl: createSupabaseSSLConfig(),
           application_name: 'miimii-api',
-          connectTimeout: 10000
+          connectTimeout: 10000,
+          // Force IPv4 to avoid IPv6 connection issues (EHOSTUNREACH)
+          family: 4
         },
         retry: {
           match: [
@@ -137,7 +139,11 @@ class SupabaseDatabaseManager {
           // Supabase connection pooler settings
           application_name: 'miimii-api',
           // Connection timeout
-          connectTimeout: 10000
+          connectTimeout: 10000,
+          // Force IPv4 to avoid IPv6 connection issues (EHOSTUNREACH)
+          family: 4
+          // Force IPv4 to avoid IPv6 connection issues
+          family: 4
         },
         retry: {
           match: [
@@ -209,7 +215,9 @@ class SupabaseDatabaseManager {
         dialectOptions: {
           ssl: createSupabaseSSLConfig(),
           application_name: 'miimii-api',
-          connectTimeout: 10000
+          connectTimeout: 10000,
+          // Force IPv4 to avoid IPv6 connection issues (EHOSTUNREACH)
+          family: 4
         },
         retry: {
           match: [
@@ -299,7 +307,9 @@ class SupabaseDatabaseManager {
               rejectUnauthorized: false
             },
             application_name: 'miimii-api',
-            connectTimeout: 10000
+            connectTimeout: 10000,
+            // Force IPv4 to avoid IPv6 connection issues (EHOSTUNREACH)
+            family: 4
           },
           retry: {
             match: [
