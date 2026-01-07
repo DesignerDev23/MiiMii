@@ -457,20 +457,21 @@ async function startServer() {
 // Separate function to initialize database connection
 async function initializeDatabaseConnection() {
   try {
-    // Check for Supabase configuration
-    const hasSupabaseConfig = process.env.SUPABASE_DB_URL || 
-                              (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD) ||
-                              (process.env.DB_CONNECTION_URL && process.env.DB_CONNECTION_URL.includes('supabase.com'));
+    // Check for Supabase configuration (prefer individual parameters)
+    const hasSupabaseConfig = (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD) ||
+                              process.env.SUPABASE_DB_URL ||
+                              (process.env.DB_CONNECTION_URL && process.env.DB_CONNECTION_URL.includes('supabase'));
     
     if (!hasSupabaseConfig) {
       logger.warn('⚠️ Supabase database configuration missing', {
         availableEnvVars: {
           hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
           hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST,
+          hasSupabaseDbPassword: !!process.env.SUPABASE_DB_PASSWORD,
           hasDbConnectionUrl: !!process.env.DB_CONNECTION_URL,
-          dbConnectionUrlIsSupabase: process.env.DB_CONNECTION_URL?.includes('supabase.com') || false
+          dbConnectionUrlIsSupabase: process.env.DB_CONNECTION_URL?.includes('supabase') || false
         },
-        message: 'Running without database connectivity. Set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables.'
+        message: 'Running without database connectivity. Set SUPABASE_DB_HOST and SUPABASE_DB_PASSWORD (or SUPABASE_DB_URL) environment variables.'
       });
       return;
     }
