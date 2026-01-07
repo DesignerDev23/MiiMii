@@ -20,7 +20,7 @@ class SupabaseDatabaseManager {
   }
 
   initialize() {
-    // Use Supabase client library approach (like your Render app)
+    // Option 1: Use Supabase client library approach (like your Render app)
     if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       // Create Supabase client
       this.supabase = createClient(
@@ -45,8 +45,19 @@ class SupabaseDatabaseManager {
         logger.warn('⚠️ SUPABASE_DB_PASSWORD needed for Sequelize. Using Supabase client only.');
         this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
       }
+    }
+    // Option 2: Direct connection string (fallback)
+    else if (process.env.SUPABASE_DB_URL) {
+      this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
+        dialect: 'postgres',
+        logging: false,
+        dialectOptions: {
+          ssl: { require: true, rejectUnauthorized: false }
+        }
+      });
+      this.startHealthCheck();
     } else {
-      logger.error('❌ Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY!');
+      logger.error('❌ Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL)!');
       this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
     }
   }

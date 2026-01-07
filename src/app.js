@@ -457,21 +457,21 @@ async function startServer() {
 // Separate function to initialize database connection
 async function initializeDatabaseConnection() {
   try {
-    // Check for Supabase configuration (prefer individual parameters)
-    const hasSupabaseConfig = (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD) ||
+    // Check for Supabase configuration (new simple approach)
+    const hasSupabaseConfig = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) ||
                               process.env.SUPABASE_DB_URL ||
-                              (process.env.DB_CONNECTION_URL && process.env.DB_CONNECTION_URL.includes('supabase'));
+                              (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD);
     
     if (!hasSupabaseConfig) {
       logger.warn('⚠️ Supabase database configuration missing', {
         availableEnvVars: {
+          hasSupabaseUrl: !!process.env.SUPABASE_URL,
+          hasSupabaseServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
           hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
           hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST,
-          hasSupabaseDbPassword: !!process.env.SUPABASE_DB_PASSWORD,
-          hasDbConnectionUrl: !!process.env.DB_CONNECTION_URL,
-          dbConnectionUrlIsSupabase: process.env.DB_CONNECTION_URL?.includes('supabase') || false
+          hasSupabaseDbPassword: !!process.env.SUPABASE_DB_PASSWORD
         },
-        message: 'Running without database connectivity. Set SUPABASE_DB_HOST and SUPABASE_DB_PASSWORD (or SUPABASE_DB_URL) environment variables.'
+        message: 'Running without database connectivity. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables.'
       });
       return;
     }
@@ -479,7 +479,7 @@ async function initializeDatabaseConnection() {
     // Check if sequelize is properly initialized
     if (!sequelize || !sequelize.config) {
       logger.error('❌ Database connection not properly initialized', {
-        suggestion: 'Please set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
+        suggestion: 'Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables.'
       });
       return;
     }
@@ -497,7 +497,7 @@ async function initializeDatabaseConnection() {
       )) {
         logger.error('❌ Database configuration incomplete:', {
           error: error.message,
-          suggestion: 'Please set SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables with complete connection details. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
+          suggestion: 'Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables.'
         });
       } else {
         logger.error('❌ Failed to connect to Supabase database:', {
@@ -505,7 +505,7 @@ async function initializeDatabaseConnection() {
           code: error.code,
           host: sequelize.config?.host || 'unknown',
           database: sequelize.config?.database || 'unknown',
-          suggestion: 'Please verify your SUPABASE_DB_URL or SUPABASE_DB_HOST environment variables are correct. See SUPABASE_MIGRATION_GUIDE.md for setup instructions.'
+          suggestion: 'Please verify your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables are correct.'
         });
       }
       // Don't throw - allow app to continue without database (with limited functionality)
