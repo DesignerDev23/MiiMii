@@ -23,7 +23,29 @@ class SupabaseDatabaseManager {
     // SIMPLE: Use SUPABASE_DB_URL if set (you have this!)
     if (process.env.SUPABASE_DB_URL) {
       logger.info('✅ Connecting using SUPABASE_DB_URL');
-      this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
+      
+      // Convert direct connection to pooler if needed (more reliable)
+      let connectionString = process.env.SUPABASE_DB_URL;
+      
+      // If it's a direct connection (db.*.supabase.co), convert to pooler
+      if (connectionString.includes('db.') && connectionString.includes('.supabase.co:5432')) {
+        const match = connectionString.match(/@db\.([^.]+)\.supabase\.co:5432\//);
+        if (match) {
+          const projectRef = match[1];
+          // Extract password from original URL
+          const passwordMatch = connectionString.match(/:\/\/[^:]+:([^@]+)@/);
+          const password = passwordMatch ? passwordMatch[1] : '';
+          
+          // Use pooler endpoint (port 6543, more reliable)
+          connectionString = connectionString
+            .replace(/@db\.([^.]+)\.supabase\.co:5432\//, `@aws-0-$1.pooler.supabase.com:6543/`)
+            .replace(/postgresql:\/\/([^:]+):/, `postgresql://postgres.$1:`);
+          
+          logger.info('Converted to pooler endpoint for better reliability');
+        }
+      }
+      
+      this.sequelize = new Sequelize(connectionString, {
         dialect: 'postgres',
         logging: false,
         dialectOptions: {

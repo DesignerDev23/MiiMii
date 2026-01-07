@@ -1,5 +1,11 @@
-const { Sequelize } = require('sequelize');
-const logger = require('../utils/logger');
+// Re-export from supabaseConnection for backward compatibility
+// All imports should eventually use supabaseConnection directly
+const { sequelize, databaseManager } = require('./supabaseConnection');
+
+module.exports = {
+  sequelize,
+  databaseManager
+};
 
 // Configure Node.js to handle DigitalOcean SSL certificates
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
