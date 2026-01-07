@@ -1,5 +1,9 @@
 const { Sequelize } = require('sequelize');
+const dns = require('dns');
+const { promisify } = require('util');
 const logger = require('../utils/logger');
+
+const dnsLookup = promisify(dns.lookup);
 
 /**
  * Supabase Database Connection Configuration
@@ -33,6 +37,7 @@ class SupabaseDatabaseManager {
     this.healthCheckInterval = null;
     this.connectionPromise = null;
     
+    // Initialize synchronously - DNS resolution will happen on first connection
     this.initialize();
   }
 
@@ -66,9 +71,7 @@ class SupabaseDatabaseManager {
         dialectOptions: {
           ssl: createSupabaseSSLConfig(),
           application_name: 'miimii-api',
-          connectTimeout: 10000,
-          // Force IPv4 to avoid IPv6 connection issues (EHOSTUNREACH)
-          family: 4
+          connectTimeout: 10000
         },
         retry: {
           match: [
@@ -90,11 +93,22 @@ class SupabaseDatabaseManager {
           backoffExponent: 1.5,
         },
         hooks: {
-          beforeConnect: () => {
+          beforeConnect: async (config) => {
             if (this.isShuttingDown) {
               throw new Error('Database is shutting down, cannot create new connections');
             }
             logger.debug('Attempting Supabase database connection...');
+            
+            // Resolve hostname to IPv4 to avoid IPv6 connection issues
+            if (config.host && !config.host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+              try {
+                const address = await dnsLookup(config.host, { family: 4 });
+                config.host = address.address;
+                logger.debug(`Resolved hostname to IPv4: ${address.address}`);
+              } catch (error) {
+                logger.warn(`Failed to resolve ${config.host} to IPv4, using hostname:`, error.message);
+              }
+            }
           },
           afterConnect: () => {
             logger.info('Supabase database connection established');
@@ -139,9 +153,7 @@ class SupabaseDatabaseManager {
           // Supabase connection pooler settings
           application_name: 'miimii-api',
           // Connection timeout
-          connectTimeout: 10000,
-          // Force IPv4 to avoid IPv6 connection issues (EHOSTUNREACH)
-          family: 4
+          connectTimeout: 10000
         },
         retry: {
           match: [
@@ -163,11 +175,22 @@ class SupabaseDatabaseManager {
           backoffExponent: 1.5,
         },
         hooks: {
-          beforeConnect: () => {
+          beforeConnect: async (config) => {
             if (this.isShuttingDown) {
               throw new Error('Database is shutting down, cannot create new connections');
             }
             logger.debug('Attempting Supabase database connection...');
+            
+            // For connection URL, extract and resolve hostname
+            if (config.host && !config.host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+              try {
+                const address = await dnsLookup(config.host, { family: 4 });
+                config.host = address.address;
+                logger.debug(`Resolved hostname to IPv4: ${address.address}`);
+              } catch (error) {
+                logger.warn(`Failed to resolve ${config.host} to IPv4:`, error.message);
+              }
+            }
           },
           afterConnect: () => {
             logger.info('Supabase database connection established');
