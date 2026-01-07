@@ -1,9 +1,5 @@
 const { Sequelize } = require('sequelize');
-const dns = require('dns');
-const { promisify } = require('util');
 const logger = require('../utils/logger');
-
-const dnsLookup = promisify(dns.lookup);
 
 /**
  * Supabase Database Connection Configuration
@@ -42,20 +38,11 @@ class SupabaseDatabaseManager {
   }
 
   initialize() {
-    // Prefer individual parameters over connection string
-    // This allows better control and avoids URL encoding issues
-    
-    if (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD) {
-      // Use individual Supabase connection parameters (preferred)
-      const isSupabasePooler = process.env.SUPABASE_DB_HOST.includes('pooler.supabase.com');
-      const defaultPort = isSupabasePooler ? 6543 : 5432;
-      
-      this.sequelize = new Sequelize({
-        database: process.env.SUPABASE_DB_NAME || 'postgres',
-        username: process.env.SUPABASE_DB_USER || 'postgres',
-        password: process.env.SUPABASE_DB_PASSWORD,
-        host: process.env.SUPABASE_DB_HOST,
-        port: parseInt(process.env.SUPABASE_DB_PORT) || defaultPort,
+    // Prefer connection string (simpler and Supabase-recommended)
+    // If connection string is provided, use it directly
+    if (process.env.SUPABASE_DB_URL) {
+      // Use Supabase connection URL directly (simplest method)
+      this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
         dialect: 'postgres',
         logging: process.env.NODE_ENV === 'development' 
           ? (msg) => logger.debug(msg) 
@@ -93,22 +80,11 @@ class SupabaseDatabaseManager {
           backoffExponent: 1.5,
         },
         hooks: {
-          beforeConnect: async (config) => {
+          beforeConnect: (config) => {
             if (this.isShuttingDown) {
               throw new Error('Database is shutting down, cannot create new connections');
             }
             logger.debug('Attempting Supabase database connection...');
-            
-            // Resolve hostname to IPv4 to avoid IPv6 connection issues
-            if (config.host && !config.host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-              try {
-                const address = await dnsLookup(config.host, { family: 4 });
-                config.host = address.address;
-                logger.debug(`Resolved hostname to IPv4: ${address.address}`);
-              } catch (error) {
-                logger.warn(`Failed to resolve ${config.host} to IPv4, using hostname:`, error.message);
-              }
-            }
           },
           afterConnect: () => {
             logger.info('Supabase database connection established');
@@ -128,17 +104,36 @@ class SupabaseDatabaseManager {
           }
         }
       });
-    } else if (process.env.SUPABASE_DB_URL) {
-      // Use Supabase connection URL (recommended)
-      const connectionUrl = process.env.SUPABASE_DB_URL;
+    } else if (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD) {
+      // Use individual parameters - convert to pooler endpoint for better connectivity
+      // Extract project ref from host if it's a direct connection
+      let host = process.env.SUPABASE_DB_HOST;
+      const projectRef = host.replace('db.', '').replace('.supabase.co', '');
       
-      this.sequelize = new Sequelize(connectionUrl, {
+      // Use pooler endpoint for better IPv4/IPv6 compatibility
+      // Pooler format: aws-0-[project-ref].pooler.supabase.com (port 6543)
+      // Or try: [project-ref].pooler.supabase.com
+      if (!host.includes('pooler')) {
+        // Try to use pooler endpoint
+        host = `aws-0-${projectRef}.pooler.supabase.com`;
+        logger.info(`Using Supabase connection pooler: ${host}:6543`);
+      }
+      
+      const isPooler = host.includes('pooler');
+      const defaultPort = isPooler ? 6543 : 5432;
+      
+      this.sequelize = new Sequelize({
+        database: process.env.SUPABASE_DB_NAME || 'postgres',
+        username: process.env.SUPABASE_DB_USER || 'postgres',
+        password: process.env.SUPABASE_DB_PASSWORD,
+        host: host,
+        port: parseInt(process.env.SUPABASE_DB_PORT) || defaultPort,
+        dialect: 'postgres',
         logging: process.env.NODE_ENV === 'development' 
           ? (msg) => logger.debug(msg) 
           : false,
-        dialect: 'postgres',
         pool: {
-          max: 25, // Supabase connection pooler supports up to 200 connections
+          max: 25,
           min: 5,
           acquire: 60000,
           idle: 30000,
@@ -148,11 +143,9 @@ class SupabaseDatabaseManager {
         dialectOptions: {
           ssl: {
             require: true,
-            rejectUnauthorized: false // Supabase uses valid certificates
+            rejectUnauthorized: false
           },
-          // Supabase connection pooler settings
           application_name: 'miimii-api',
-          // Connection timeout
           connectTimeout: 10000
         },
         retry: {
@@ -175,28 +168,17 @@ class SupabaseDatabaseManager {
           backoffExponent: 1.5,
         },
         hooks: {
-          beforeConnect: async (config) => {
+          beforeConnect: (config) => {
             if (this.isShuttingDown) {
               throw new Error('Database is shutting down, cannot create new connections');
             }
             logger.debug('Attempting Supabase database connection...');
-            
-            // For connection URL, extract and resolve hostname
-            if (config.host && !config.host.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-              try {
-                const address = await dnsLookup(config.host, { family: 4 });
-                config.host = address.address;
-                logger.debug(`Resolved hostname to IPv4: ${address.address}`);
-              } catch (error) {
-                logger.warn(`Failed to resolve ${config.host} to IPv4:`, error.message);
-              }
-            }
           },
           afterConnect: () => {
             logger.info('Supabase database connection established');
             this.isConnected = true;
             this.reconnectAttempts = 0;
-            this.reconnectDelay = 5000; // Reset delay
+            this.reconnectDelay = 5000;
           },
           beforeDisconnect: () => {
             logger.info('Supabase database connection closing...');
