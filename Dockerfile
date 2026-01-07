@@ -28,7 +28,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Install dependencies (production only for smaller image)
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Create non-root user
 RUN groupadd -r miimii && useradd -r -g miimii miimii
