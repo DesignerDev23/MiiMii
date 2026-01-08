@@ -2,6 +2,9 @@ const { createClient } = require('@supabase/supabase-js');
 const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
 
+// Supabase client (like your other app)
+let supabaseClient = null;
+
 class SupabaseDatabaseManager {
   constructor() {
     this.sequelize = null;
@@ -20,11 +23,66 @@ class SupabaseDatabaseManager {
   }
 
   initialize() {
-    // SIMPLE: Use SUPABASE_DB_URL if set (you have this!)
+    // Use SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (like your other app)
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      // Create Supabase client (like your other app)
+      supabaseClient = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }
+      );
+      this.supabase = supabaseClient;
+      
+      // For Sequelize, we need the database password to build connection string
+      // Extract project ref from URL
+      const urlMatch = process.env.SUPABASE_URL.match(/https?:\/\/([^.]+)\.supabase\.co/);
+      if (urlMatch) {
+        const projectRef = urlMatch[1];
+        
+        // Try to use SUPABASE_DB_PASSWORD if provided
+        if (process.env.SUPABASE_DB_PASSWORD) {
+          // Use direct connection (db.*.supabase.co:5432)
+          const connectionString = `postgresql://postgres.${projectRef}:${process.env.SUPABASE_DB_PASSWORD}@db.${projectRef}.supabase.co:5432/postgres?sslmode=require`;
+          this.sequelize = new Sequelize(connectionString, {
+            dialect: 'postgres',
+            logging: false,
+            dialectOptions: {
+              ssl: { require: true, rejectUnauthorized: false }
+            }
+          });
+          this.startHealthCheck();
+          logger.info('✅ Supabase client and Sequelize initialized');
+          return;
+        }
+        
+        // If no password, try SUPABASE_DB_URL as fallback
+        if (process.env.SUPABASE_DB_URL) {
+          this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
+            dialect: 'postgres',
+            logging: false,
+            dialectOptions: {
+              ssl: { require: true, rejectUnauthorized: false }
+            }
+          });
+          this.startHealthCheck();
+          logger.info('✅ Supabase client initialized, Sequelize using SUPABASE_DB_URL');
+          return;
+        }
+        
+        logger.warn('⚠️ Supabase client initialized, but Sequelize needs SUPABASE_DB_PASSWORD or SUPABASE_DB_URL');
+        this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
+        return;
+      }
+    }
+    
+    // Fallback: Use SUPABASE_DB_URL directly
     if (process.env.SUPABASE_DB_URL) {
       logger.info('✅ Connecting using SUPABASE_DB_URL');
-      
-      // Use the connection string as-is (no pooler conversion - use direct connection)
       this.sequelize = new Sequelize(process.env.SUPABASE_DB_URL, {
         dialect: 'postgres',
         logging: false,
@@ -36,28 +94,35 @@ class SupabaseDatabaseManager {
       return;
     }
     
-    // Option 2: Use SUPABASE_URL + keys
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      this.supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-      const urlMatch = process.env.SUPABASE_URL.match(/https?:\/\/([^.]+)\.supabase\.co/);
-      if (urlMatch && process.env.SUPABASE_DB_PASSWORD) {
-        const projectRef = urlMatch[1];
-        const connectionString = `postgresql://postgres.${projectRef}:${process.env.SUPABASE_DB_PASSWORD}@aws-0-${projectRef}.pooler.supabase.com:6543/postgres?sslmode=require`;
-        this.sequelize = new Sequelize(connectionString, {
-          dialect: 'postgres',
-          logging: false,
-          dialectOptions: {
-            ssl: { require: true, rejectUnauthorized: false }
-          }
-        });
-        this.startHealthCheck();
-        return;
-      }
-    }
-    
     // No config found
-    logger.error('❌ No Supabase configuration! Set SUPABASE_DB_URL');
+    logger.error('❌ No Supabase configuration! Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL)');
     this.sequelize = new Sequelize({ dialect: 'postgres', logging: false });
+  }
+  
+  // Test connection (like your other app)
+  async testConnection() {
+    try {
+      if (this.supabase) {
+        // Test using Supabase client
+        const { data, error } = await this.supabase.from('users').select('count').limit(1);
+        if (error) {
+          logger.error('Supabase client connection test failed', { error: error.message });
+          throw error;
+        }
+        logger.info('✅ Supabase client connection test successful');
+      }
+      
+      // Test Sequelize connection
+      if (this.sequelize && this.sequelize.config) {
+        await this.sequelize.authenticate();
+        logger.info('✅ Sequelize connection test successful');
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Database connection test failed', { error: error.message });
+      throw error;
+    }
   }
 
   async connect() {
@@ -296,6 +361,7 @@ const supabaseDatabaseManager = new SupabaseDatabaseManager();
 module.exports = { 
   sequelize: supabaseDatabaseManager.getSequelize(),
   databaseManager: supabaseDatabaseManager,
-  supabase: supabaseDatabaseManager.supabase || null
+  supabase: supabaseDatabaseManager.supabase || supabaseClient || null,
+  testConnection: () => supabaseDatabaseManager.testConnection()
 };
 

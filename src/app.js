@@ -496,7 +496,9 @@ async function initializeDatabaseConnection() {
 
     logger.info('Attempting to connect to Supabase database...');
     try {
-      await sequelize.authenticate();
+      // Test connection (like your other app)
+      const { testConnection } = require('./database/supabaseConnection');
+      await testConnection();
       logger.info('✅ Supabase database connection established successfully');
     } catch (error) {
       // Check if it's a configuration error (missing host/database)
