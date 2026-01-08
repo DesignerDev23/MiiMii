@@ -81,6 +81,35 @@ class SupabaseDatabaseManager {
     logger.info('Initiating graceful Supabase shutdown...');
     this.isConnected = false;
   }
+
+  async executeWithRetry(operation, maxRetries = 3) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (this.isShuttingDown) {
+          throw new Error('Database is shutting down');
+        }
+
+        if (!this.isConnected && attempt > 1) {
+          // Try to reconnect
+          await this.testConnection();
+        }
+
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        
+        if (attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          logger.warn(`Supabase operation failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms:`, error.message);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError;
+  }
 }
 
 // Create singleton instance

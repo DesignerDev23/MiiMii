@@ -355,8 +355,13 @@ class RedisClient {
     if (!this.isConnected) return false;
     try {
       if (this.useDbFallback) {
-        await sequelize.query('SELECT 1');
-        return true;
+        // Use Supabase client instead of Sequelize
+        const { supabase } = require('../database/connection');
+        if (supabase) {
+          const { error } = await supabase.from('users').select('count').limit(1);
+          return !error;
+        }
+        return false;
       }
       const result = await this.client.ping();
       return result === 'PONG';

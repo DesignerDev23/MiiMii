@@ -1,9 +1,9 @@
-const { databaseManager } = require('../database/connection');
+const { supabase, databaseManager } = require('../database/connection');
 const logger = require('../utils/logger');
 
 class DatabaseService {
   constructor() {
-    this.sequelize = databaseManager.getSequelize();
+    this.supabase = supabase;
     this.isHealthy = false;
     this.lastHealthCheck = null;
     this.healthCheckInterval = null;
@@ -17,9 +17,23 @@ class DatabaseService {
 
   async healthCheck() {
     try {
+      if (!this.supabase) {
+        this.isHealthy = false;
+        return {
+          isHealthy: false,
+          error: 'Supabase client not initialized',
+          lastCheck: this.lastHealthCheck
+        };
+      }
+
       const startTime = Date.now();
-      await this.sequelize.query('SELECT 1');
+      // Use Supabase client instead of Sequelize (NO connection strings!)
+      const { error } = await this.supabase.from('users').select('count').limit(1);
       const duration = Date.now() - startTime;
+      
+      if (error) {
+        throw error;
+      }
       
       this.isHealthy = true;
       this.lastHealthCheck = new Date();
@@ -166,10 +180,9 @@ class DatabaseService {
   }
 
   async queryWithRetry(sql, options, retryOptions = {}) {
-    const { maxRetries = 3, operationName = 'query' } = retryOptions;
-    return this.executeWithRetry(async () => {
-      return await this.sequelize.query(sql, options);
-    }, maxRetries);
+    // Note: Supabase client uses PostgREST, not direct SQL queries
+    // This will need to be migrated to use Supabase client methods
+    throw new Error('Direct SQL queries not supported with Supabase client. Use Supabase client methods instead.');
   }
 
   async safeExecute(operation, options = {}) {

@@ -14,11 +14,25 @@ const sequelize = {
   sync: async () => {
     throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
   },
+  transaction: async () => {
+    throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
+  },
+  getSequelize: () => {
+    throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
+  },
   config: null
+};
+
+// Wrap databaseManager to prevent Sequelize access
+const wrappedDatabaseManager = {
+  ...databaseManager,
+  getSequelize: () => {
+    throw new Error('Sequelize is disabled. Use supabase client instead. Import supabase from database/supabaseConnection');
+  }
 };
 
 module.exports = {
   sequelize,
-  databaseManager,
+  databaseManager: wrappedDatabaseManager,
   supabase
 };
