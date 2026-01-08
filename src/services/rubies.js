@@ -190,8 +190,8 @@ class RubiesService {
             responseCode: response.responseCode,
             responseMessage: response.responseMessage,
             success: true,
-            ipAddress: bvnData.ipAddress || null,
-            userAgent: bvnData.userAgent || null
+          ipAddress: bvnData.ipAddress || null,
+          userAgent: bvnData.userAgent || null
           }
         );
 
@@ -226,8 +226,8 @@ class RubiesService {
           success: false,
           error: error.message,
           errorType: error.name || 'Unknown',
-          ipAddress: bvnData.ipAddress || null,
-          userAgent: bvnData.userAgent || null
+        ipAddress: bvnData.ipAddress || null,
+        userAgent: bvnData.userAgent || null
         }
       );
 

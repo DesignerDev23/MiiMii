@@ -1,10 +1,33 @@
 // Re-export from supabaseConnection for backward compatibility
 // NOTE: sequelize is now null - use supabase client instead
 const { supabase, databaseManager } = require('./supabaseConnection');
+const { DataTypes } = require('sequelize');
+
+// Create a mock model class for backward compatibility
+class MockModel {
+  static hasOne() { return MockModel; }
+  static hasMany() { return MockModel; }
+  static belongsTo() { return MockModel; }
+  static findByPk() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  static findOne() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  static findAll() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  static findAndCountAll() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  static count() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  static create() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  static update() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  static destroy() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+  async save() { throw new Error('Sequelize models are disabled. Use supabase client instead.'); }
+}
 
 // Create a dummy sequelize for backward compatibility (won't actually work)
 // All code should be migrated to use supabase client
 const sequelize = {
+  define: (modelName, attributes, options) => {
+    // Return a mock model so the app can start without crashing
+    // NOTE: This model won't actually work - all operations will throw errors
+    console.warn(`⚠️  Model "${modelName}" is using disabled Sequelize. Migrate to Supabase client.`);
+    return MockModel;
+  },
   authenticate: async () => {
     throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
   },
@@ -22,7 +45,7 @@ const sequelize = {
   },
   config: null
 };
-
+          
 // Wrap databaseManager to prevent Sequelize access
 const wrappedDatabaseManager = {
   ...databaseManager,
@@ -31,8 +54,9 @@ const wrappedDatabaseManager = {
   }
 };
 
-module.exports = {
+module.exports = { 
   sequelize,
   databaseManager: wrappedDatabaseManager,
-  supabase
+  supabase,
+  DataTypes // Export DataTypes for model definitions
 };
