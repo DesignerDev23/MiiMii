@@ -1,7 +1,7 @@
 // Re-export from supabaseConnection for backward compatibility
 // NOTE: sequelize is now null - use supabase client instead
 const { supabase, databaseManager } = require('./supabaseConnection');
-const { DataTypes } = require('sequelize');
+const { DataTypes, Sequelize } = require('sequelize');
 
 // Create a mock model class for backward compatibility
 class MockModel {
@@ -31,8 +31,38 @@ const sequelize = {
   authenticate: async () => {
     throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
   },
-  query: async () => {
-    throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
+  query: async (sql, options) => {
+    // For self-healing scripts that need raw SQL, we'll need to use Supabase RPC or direct client
+    // For now, log a warning and return empty result to prevent crashes
+    console.warn('⚠️  sequelize.query() called - this needs to be migrated to Supabase client');
+    console.warn('⚠️  SQL:', sql?.substring(0, 100));
+    // Return empty result array to match Sequelize format [results, metadata]
+    return [[], {}];
+  },
+  getQueryInterface: () => {
+    // Return a mock query interface for self-healing scripts
+    return {
+      showAllTables: async () => {
+        console.warn('⚠️  getQueryInterface().showAllTables() called - needs Supabase migration');
+        return [];
+      },
+      describeTable: async () => {
+        console.warn('⚠️  getQueryInterface().describeTable() called - needs Supabase migration');
+        return {};
+      },
+      addColumn: async () => {
+        console.warn('⚠️  getQueryInterface().addColumn() called - needs Supabase migration');
+        // Silently succeed to prevent crashes
+      },
+      createTable: async () => {
+        console.warn('⚠️  getQueryInterface().createTable() called - needs Supabase migration');
+        // Silently succeed to prevent crashes
+      },
+      addIndex: async () => {
+        console.warn('⚠️  getQueryInterface().addIndex() called - needs Supabase migration');
+        // Silently succeed to prevent crashes
+      }
+    };
   },
   sync: async () => {
     throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
@@ -43,20 +73,22 @@ const sequelize = {
   getSequelize: () => {
     throw new Error('Sequelize is disabled. Use supabase client instead. Import from database/supabaseConnection');
   },
+  Sequelize, // Add Sequelize for scripts that use sequelize.Sequelize.STRING
+  QueryTypes: Sequelize.QueryTypes, // For sequelize.QueryTypes.SELECT
   config: null
 };
           
-// Wrap databaseManager to prevent Sequelize access
-const wrappedDatabaseManager = {
-  ...databaseManager,
-  getSequelize: () => {
+// Export databaseManager directly - it already has all needed methods
+// Just add getSequelize if it doesn't exist (for backward compatibility)
+if (!databaseManager.getSequelize) {
+  databaseManager.getSequelize = () => {
     throw new Error('Sequelize is disabled. Use supabase client instead. Import supabase from database/supabaseConnection');
-  }
-};
+  };
+}
 
 module.exports = { 
   sequelize,
-  databaseManager: wrappedDatabaseManager,
+  databaseManager,
   supabase,
   DataTypes // Export DataTypes for model definitions
 };
