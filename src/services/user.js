@@ -10,6 +10,7 @@ const {
 } = require('../models');
 const logger = require('../utils/logger');
 const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
 const { supabase } = require('../database/connection');
 const { Op } = require('sequelize');
 const crypto = require('crypto');
@@ -244,7 +245,37 @@ class UserService {
     user.save = async () => {
       // Extract only the fields that should be updated
       const { id, wallet, ...updateData } = user;
-      return await this.updateUser(id, updateData);
+      const updated = await this.updateUser(id, updateData);
+      // Update local object with returned data
+      Object.assign(user, updated);
+      return updated;
+    };
+    
+    // Add update method (for Sequelize compatibility)
+    user.update = async (updateData) => {
+      const updated = await this.updateUser(user.id, updateData);
+      // Update local object with returned data
+      Object.assign(user, updated);
+      // Re-add helper methods after update
+      this.addUserHelperMethods(user);
+      return updated;
+    };
+    
+    // Add reload method (for Sequelize compatibility)
+    user.reload = async () => {
+      const reloaded = await this.getUserById(user.id);
+      // Replace all properties except helper methods
+      const helperMethods = {
+        clearConversationState: user.clearConversationState,
+        updateConversationState: user.updateConversationState,
+        save: user.save,
+        update: user.update,
+        reload: user.reload
+      };
+      Object.assign(user, reloaded);
+      // Restore helper methods
+      Object.assign(user, helperMethods);
+      return user;
     };
     
     return user;
@@ -345,9 +376,9 @@ class UserService {
         throw new Error('User not found or no changes made');
       }
 
-      // Fetch and return the updated user with helper methods
-      const user = await this.getUserById(userId);
-      return user;
+      // Return updated data (don't fetch again to avoid extra query)
+      // Helper methods will be added by the caller if needed
+      return updated;
     } catch (error) {
       logger.error('Failed to update user', { error: error.message, userId, updateData });
       throw error;
