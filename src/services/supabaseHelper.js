@@ -54,9 +54,8 @@ class SupabaseHelper {
       if (options.order && Array.isArray(options.order) && options.order.length > 0) {
         const [column, direction] = options.order[0] || [];
         if (column) {
-          // Convert camelCase to snake_case for Supabase
-          const snakeColumn = column.replace(/([A-Z])/g, '_$1').toLowerCase();
-          query = query.order(snakeColumn, { ascending: direction ? direction.toLowerCase() !== 'desc' : true });
+          // Supabase uses camelCase column names as-is
+          query = query.order(column, { ascending: direction ? direction.toLowerCase() !== 'desc' : true });
         }
       }
       
@@ -132,14 +131,10 @@ class SupabaseHelper {
    */
   async update(table, data, conditions = {}) {
     try {
-      // Convert camelCase to snake_case for timestamps
+      // Ensure updatedAt is set
       const updateData = { ...data };
-      if (updateData.updatedAt) {
-        updateData.updated_at = updateData.updatedAt;
-        delete updateData.updatedAt;
-      }
-      if (!updateData.updated_at) {
-        updateData.updated_at = new Date().toISOString();
+      if (!updateData.updatedAt) {
+        updateData.updatedAt = new Date().toISOString();
       }
       
       let query = supabase.from(table).update(updateData);

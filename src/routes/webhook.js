@@ -118,13 +118,14 @@ const logWebhook = (provider) => async (req, res, next) => {
     // Only log if database is healthy
     if (databaseService.isConnectionHealthy()) {
       const webhookLog = await databaseService.executeWithRetry(async () => {
-        return await supabaseHelper.create('webhook_logs', {
-          provider,
-          event: req.body.type || req.body.event || 'unknown',
-          headers: req.headers,
-          payload: req.body,
-          signature: req.headers['x-webhook-signature'] || req.headers['x-signature'],
-          verified: true, // Will be false if signature verification fails
+        return await supabaseHelper.create('webhookLogs', {
+          source: provider, // Map provider to source
+          eventType: req.body.type || req.body.event || 'unknown',
+          payload: {
+            headers: req.headers,
+            body: req.body,
+            signature: req.headers['x-webhook-signature'] || req.headers['x-signature']
+          },
           processed: false
         });
       });
@@ -312,7 +313,7 @@ router.post('/rubies',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: true,
               processedAt: new Date().toISOString()
             }, { id: req.webhookLogId });
@@ -337,7 +338,7 @@ router.post('/rubies',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: false,
               processedAt: new Date().toISOString(),
               errorMessage: error.message
@@ -381,7 +382,7 @@ router.post('/bellbank',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: true,
               processedAt: new Date().toISOString(),
               responseCode: 200
@@ -402,7 +403,7 @@ router.post('/bellbank',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: false,
               errorMessage: error.message,
               responseCode: 500
@@ -449,7 +450,7 @@ router.post('/bellbank/incoming',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: true,
               processedAt: new Date().toISOString(),
               responseCode: 200
@@ -479,7 +480,7 @@ router.post('/bellbank/incoming',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: false,
               errorMessage: error.message,
               responseCode: 500
@@ -520,7 +521,7 @@ router.post('/bilal',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: true,
               processedAt: new Date().toISOString(),
               responseCode: 200
@@ -541,7 +542,7 @@ router.post('/bilal',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: false,
               errorMessage: error.message,
               responseCode: 500
@@ -582,7 +583,7 @@ router.post('/fincra',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: true,
               processedAt: new Date().toISOString(),
               responseCode: 200
@@ -603,7 +604,7 @@ router.post('/fincra',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: false,
               errorMessage: error.message,
               responseCode: 500
@@ -644,7 +645,7 @@ router.post('/dojah',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: true,
               processedAt: new Date().toISOString(),
               responseCode: 200
@@ -665,7 +666,7 @@ router.post('/dojah',
       if (req.webhookLogId) {
         try {
           await databaseService.executeWithRetry(async () => {
-            return await supabaseHelper.update('webhook_logs', {
+            return await supabaseHelper.update('webhookLogs', {
               processed: false,
               errorMessage: error.message,
               responseCode: 500

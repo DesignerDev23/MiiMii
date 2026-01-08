@@ -783,7 +783,7 @@ router.get('/webhook-logs',
       if (provider) where.provider = provider;
 
       const supabaseHelper = require('../services/supabaseHelper');
-      const { rows: logs, count } = await supabaseHelper.findAndCountAll('webhook_logs', where, {
+      const { rows: logs, count } = await supabaseHelper.findAndCountAll('webhookLogs', where, {
         order: [['createdAt', 'DESC']],
         limit,
         offset
@@ -799,15 +799,13 @@ router.get('/webhook-logs',
         },
         logs: logs.map(log => ({
           id: log.id,
-          provider: log.provider,
-          event: log.event,
-          verified: log.verified,
+          source: log.source,
+          eventType: log.eventType,
           processed: log.processed,
-          responseCode: log.responseCode,
+          responseStatus: log.responseStatus,
           errorMessage: log.errorMessage,
-          retryCount: log.retryCount,
-          createdAt: log.created_at || log.createdAt,
-          processedAt: log.processed_at || log.processedAt
+          createdAt: log.createdAt,
+          processedAt: log.processedAt
         }))
       });
     } catch (error) {

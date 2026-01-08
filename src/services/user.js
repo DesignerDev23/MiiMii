@@ -64,6 +64,9 @@ class UserService {
           if (!walletError && wallet) {
             user.wallet = wallet;
           }
+          
+          // Add helper methods to user object
+          this.addUserHelperMethods(user);
         }
       } catch (findError) {
         logger.error('Database find operation failed', {
@@ -140,8 +143,11 @@ class UserService {
               
               if (updateError) throw updateError;
               
-              // Update local user object
-              user.fullName = displayName;
+      // Update local user object
+      user.fullName = displayName;
+      
+      // Re-add helper methods after update
+      this.addUserHelperMethods(user);
             });
           } catch (updateError) {
             // Non-critical error, log but don't fail
@@ -188,19 +194,60 @@ class UserService {
 
   async getUserById(userId) {
     try {
-      const user = await databaseService.findByPkWithRetry(User, userId, {
-        include: [{ model: Wallet, as: 'wallet' }]
-      }, { operationName: 'find user by ID' });
+      const user = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('users', userId);
+      });
       
       if (!user) {
         throw new Error('User not found');
       }
       
-      return user;
+      // Fetch wallet separately
+      const wallet = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('wallets', { userId });
+      });
+      
+      if (wallet) {
+        user.wallet = wallet;
+      }
+      
+      // Add helper methods to user object for backward compatibility
+      return this.addUserHelperMethods(user);
     } catch (error) {
       logger.error('Failed to get user by ID', { error: error?.message || 'Unknown error', stack: error?.stack, userId });
       throw error;
     }
+  }
+
+  /**
+   * Add helper methods to user object for backward compatibility
+   */
+  addUserHelperMethods(user) {
+    if (!user || typeof user !== 'object') return user;
+    
+    // Add clearConversationState method
+    user.clearConversationState = async () => {
+      return await this.updateUser(user.id, {
+        conversationState: null,
+        sessionData: null
+      });
+    };
+    
+    // Add updateConversationState method
+    user.updateConversationState = async (state) => {
+      return await this.updateUser(user.id, {
+        conversationState: state
+      });
+    };
+    
+    // Add save method (for compatibility)
+    user.save = async () => {
+      // Extract only the fields that should be updated
+      const { id, wallet, ...updateData } = user;
+      return await this.updateUser(id, updateData);
+    };
+    
+    return user;
   }
 
   /**
@@ -290,16 +337,17 @@ class UserService {
 
   async updateUser(userId, updateData) {
     try {
-      const [updatedRowsCount] = await databaseService.updateWithRetry(User, updateData, {
-        where: { id: userId }
-      }, { operationName: 'update user' });
+      const updated = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.update('users', updateData, { id: userId });
+      });
 
-      if (updatedRowsCount === 0) {
+      if (!updated) {
         throw new Error('User not found or no changes made');
       }
 
-      // Fetch and return the updated user
-      return await this.getUserById(userId);
+      // Fetch and return the updated user with helper methods
+      const user = await this.getUserById(userId);
+      return user;
     } catch (error) {
       logger.error('Failed to update user', { error: error.message, userId, updateData });
       throw error;
