@@ -13,7 +13,7 @@ const path = require('path');
 const config = require('./config');
 
 const logger = require('./utils/logger');
-const { sequelize, databaseManager } = require('./database/supabaseConnection');
+const { supabase, databaseManager } = require('./database/supabaseConnection');
 const redisClient = require('./utils/redis');
 const errorHandler = require('./middleware/errorHandler');
 const { testSSLConnections } = require('./utils/sslTest');
@@ -265,14 +265,21 @@ app.get('/health', async (req, res) => {
     message: 'Service is operational'
   };
 
-  // Check database connection
+  // Check database connection using Supabase client
   try {
     const dbStart = Date.now();
-    await sequelize.authenticate();
-    health.services.database = {
-      status: 'healthy',
-      responseTime: Date.now() - dbStart
-    };
+    if (supabase) {
+      const { error } = await supabase.from('users').select('count').limit(1);
+      health.services.database = {
+        status: error ? 'unhealthy' : 'healthy',
+        responseTime: Date.now() - dbStart
+      };
+    } else {
+      health.services.database = {
+        status: 'unavailable',
+        responseTime: 0
+      };
+    }
     logger.debug('Database health check passed');
   } catch (error) {
     logger.debug('Database health check failed:', error.message);
@@ -457,82 +464,42 @@ async function startServer() {
 // Separate function to initialize database connection
 async function initializeDatabaseConnection() {
   try {
-    // Check for Supabase configuration (new simple approach)
-    const hasSupabaseConfig = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) ||
-                              process.env.SUPABASE_DB_URL ||
-                              (process.env.SUPABASE_DB_HOST && process.env.SUPABASE_DB_PASSWORD);
-    
-    if (!hasSupabaseConfig) {
-      logger.warn('⚠️ Supabase database configuration missing', {
-        availableEnvVars: {
-          hasSupabaseUrl: !!process.env.SUPABASE_URL,
-          hasSupabaseServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-          hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
-          hasSupabaseDbHost: !!process.env.SUPABASE_DB_HOST,
-          hasSupabaseDbPassword: !!process.env.SUPABASE_DB_PASSWORD
-        },
-        message: 'Running without database connectivity. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables.'
+    // SIMPLE: Just check for SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (NO connection strings!)
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      logger.warn('⚠️ Supabase configuration missing', {
+        hasSupabaseUrl: !!process.env.SUPABASE_URL,
+        hasSupabaseServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        message: 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.'
       });
       return;
     }
 
-    // Check if sequelize is properly initialized
-    if (!sequelize) {
-      logger.error('❌ Database connection not properly initialized', {
-        suggestion: 'Please set SUPABASE_DB_URL environment variable.'
-      });
-      return;
-    }
-    
-    // Check if it's a disabled instance (no config means no connection string was provided)
-    if (!sequelize.config || !sequelize.config.host) {
-      logger.error('❌ Database connection string not configured', {
-        hasSupabaseDbUrl: !!process.env.SUPABASE_DB_URL,
-        hasSupabaseUrl: !!process.env.SUPABASE_URL,
-        suggestion: 'Please set SUPABASE_DB_URL environment variable with your connection string.'
+    // Check if Supabase client is initialized
+    if (!supabase) {
+      logger.error('❌ Supabase client not initialized', {
+        suggestion: 'Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.'
       });
       return;
     }
 
     logger.info('Attempting to connect to Supabase database...');
     try {
-      // Test connection (like your other app)
+      // Test connection using Supabase client (like your other app - NO connection strings!)
       const { testConnection } = require('./database/supabaseConnection');
       await testConnection();
       logger.info('✅ Supabase database connection established successfully');
     } catch (error) {
-      // Check if it's a configuration error (missing host/database)
-      if (error.message && (
-        error.message.includes('dialect was not supplied') ||
-        error.message.includes('host parameter is not valid') ||
-        error.message.includes('database parameter is not valid')
-      )) {
-        logger.error('❌ Database configuration incomplete:', {
-          error: error.message,
-          suggestion: 'Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables.'
-        });
-      } else {
-        logger.error('❌ Failed to connect to Supabase database:', {
-          error: error.message,
-          code: error.code,
-          host: sequelize.config?.host || 'unknown',
-          database: sequelize.config?.database || 'unknown',
-          suggestion: 'Please verify your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_DB_URL) environment variables are correct.'
-        });
-      }
-      // Don't throw - allow app to continue without database (with limited functionality)
+      logger.error('❌ Failed to connect to Supabase database:', {
+        error: error.message,
+        suggestion: 'Please verify your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are correct.'
+      });
       logger.warn('⚠️ Application will continue without database connectivity');
       return;
     }
 
-    // Sync database models only after successful connection
-    try {
-      await sequelize.sync({ force: false, alter: false });
-      logger.info('✅ Database models synchronized');
-    } catch (error) {
-      logger.error('❌ Failed to sync database models:', { error: error.message });
-      return; // Exit early if sync fails
-    }
+    // Note: Database schema is managed via Supabase migrations
+    // No need to sync models - Supabase handles the schema
+    logger.info('✅ Using Supabase client - schema managed via Supabase migrations');
     
     // Initialize data plans system
     try {
