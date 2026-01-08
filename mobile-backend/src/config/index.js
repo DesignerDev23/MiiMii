@@ -1,0 +1,282 @@
+// Configuration management for MiiMii
+const logger = require('../utils/logger');
+
+class Config {
+  constructor() {
+    this.loadConfig();
+  }
+
+  loadConfig() {
+    // Database Configuration
+    this.database = {
+      url: process.env.DB_CONNECTION_URL || process.env.SUPABASE_DB_URL,
+      host: process.env.DB_HOST || process.env.SUPABASE_DB_HOST,
+      port: parseInt(process.env.DB_PORT) || 5432,
+      name: process.env.DB_NAME || process.env.SUPABASE_DB_NAME,
+      user: process.env.DB_USER || process.env.SUPABASE_DB_USER,
+      password: process.env.DB_PASSWORD || process.env.SUPABASE_DB_PASSWORD,
+      // Supabase specific
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+    };
+
+    // WhatsApp Configuration - Use exact variable names from Digital Ocean
+    this.whatsapp = {
+      accessToken: process.env.BOT_ACCESS_TOKEN, // Changed from WHATSAPP_ACCESS_TOKEN
+      phoneNumberId: process.env.BOT_PHONE_NUMBER_ID, // Changed from WHATSAPP_PHONE_NUMBER_ID
+      businessAccountId: process.env.BOT_BUSINESS_ACCOUNT_ID,
+      webhookSecret: process.env.WEBHOOK_SECRET, // Changed from WHATSAPP_WEBHOOK_SECRET
+      // Flow Configuration
+      onboardingFlowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID,
+      welcomeFlowId: process.env.WELCOME_FLOW_ID || '1223628202852216',
+      loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID || '1104486355198946',
+      transferPinFlowId: process.env.WHATSAPP_TRANSFER_PIN_FLOW_ID || '2116470049180989',
+      dataPurchaseFlowId: process.env.DATA_PURCHASE_FLOW_ID || '805698978546902',
+      flowSecretKey: process.env.FLOW_SECRET_KEY || 'default-flow-secret-key'
+    };
+
+    // Rubies Configuration (replacing Bellbank)
+    this.rubies = {
+      apiKey: process.env.RUBIES_API_KEY, // Direct API key for Authorization header
+      webhookSecret: process.env.RUBIES_WEBHOOK_SECRET
+    };
+
+    // Legacy Bellbank Configuration (deprecated - use Rubies)
+    this.bellbank = {
+      consumerKey: process.env.BANK_CONSUMER_KEY,
+      consumerSecret: process.env.BANK_CONSUMER_SECRET
+    };
+
+    // Bilal Configuration
+    this.bilal = {
+      username: process.env.PROVIDER_USERNAME,
+      password: process.env.PROVIDER_PASSWORD,
+      apiKey: process.env.BILAL_API_KEY,
+      baseUrl: process.env.BILAL_BASE_URL
+    };
+
+    // Dojah Configuration
+    this.dojah = {
+      appId: process.env.DOJAH_APP_ID,
+      secretKey: process.env.DOJAH_SECRET_KEY,
+      publicKey: process.env.DOJAH_PUBLIC_KEY
+    };
+
+    // Fincra Configuration
+    this.fincra = {
+      apiKey: process.env.FINCRA_API_KEY,
+      secretKey: process.env.FINCRA_SECRET_KEY,
+      businessId: process.env.FINCRA_BUSINESS_ID
+    };
+
+    // OpenAI Configuration
+    this.openai = {
+      apiKey: process.env.AI_API_KEY,
+      model: process.env.AI_MODEL || 'gpt-4o-mini'
+    };
+
+    // Server Configuration
+    this.server = {
+      port: parseInt(process.env.PORT) || 3000,
+      nodeEnv: process.env.NODE_ENV || 'development',
+      jwtSecret: process.env.APP_SECRET,
+      jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d'
+    };
+
+    // Fees Configuration
+    this.fees = {
+      transferFeePercentage: parseFloat(process.env.TRANSFER_FEE_PERCENTAGE) || 0.5,
+      platformFee: parseInt(process.env.PLATFORM_FEE) || 5,
+      bellbankFee: parseInt(process.env.BELLBANK_FEE) || 20,
+      maintenanceFee: parseInt(process.env.MAINTENANCE_FEE) || 50,
+      dataPurchaseFee: parseInt(process.env.DATA_PURCHASE_FEE) || 10
+    };
+
+    // Rate Limiting Configuration
+    this.rateLimit = {
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
+      maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
+    };
+
+    // Other Configuration
+    this.webhookSecret = process.env.WEBHOOK_SECRET;
+    this.adminEmail = process.env.ADMIN_EMAIL;
+    this.adminPassword = process.env.ADMIN_PASSWORD;
+    this.baseUrl = process.env.BASE_URL;
+    this.maxFileSize = parseInt(process.env.MAX_FILE_SIZE) || 10485760;
+    this.uploadPath = process.env.UPLOAD_PATH || 'uploads/';
+    this.redisUrl = process.env.REDIS_URL;
+
+    // Log configuration status
+    this.logConfigurationStatus();
+  }
+
+  logConfigurationStatus() {
+    // Enhanced AI API key logging
+    const mask = (v) => {
+      if (!v) return 'NOT_SET';
+      if (v.length < 8) return 'TOO_SHORT';
+      return `${v.slice(0, 4)}***${v.slice(-4)}`;
+    };
+    
+    logger.info('Configuration loaded for Digital Ocean App Platform', {
+      hasDatabaseUrl: !!this.database.url,
+      hasWhatsappToken: !!this.whatsapp.accessToken,
+      hasWhatsappPhoneId: !!this.whatsapp.phoneNumberId,
+      hasRubiesKey: !!this.rubies.apiKey,
+      hasBellbankKey: !!this.bellbank.consumerKey,
+      hasOpenAIKey: !!this.openai.apiKey,
+      hasJwtSecret: !!this.server.jwtSecret,
+      nodeEnv: this.server.nodeEnv,
+      port: this.server.port,
+      platform: 'DigitalOcean App Platform',
+      service: 'config',
+      timestamp: new Date().toISOString()
+    });
+    
+    // Detailed AI configuration logging
+    logger.info('AI Configuration Details', {
+      AI_API_KEY: mask(process.env.AI_API_KEY),
+      AI_MODEL: process.env.AI_MODEL || 'DEFAULT',
+      AI_BASE_URL: process.env.AI_BASE_URL || 'DEFAULT',
+      openaiApiKey: mask(this.openai.apiKey),
+      openaiModel: this.openai.model,
+      apiKeyLength: this.openai.apiKey ? this.openai.apiKey.length : 0,
+      apiKeyStartsWith: this.openai.apiKey ? this.openai.apiKey.substring(0, 3) : 'N/A'
+    });
+
+    // Generate a fallback JWT secret if none provided (for development/testing)
+    if (!this.server.jwtSecret) {
+      if (this.server.nodeEnv === 'production') {
+        logger.error('CRITICAL: APP_SECRET environment variable is required in production');
+      } else {
+        this.server.jwtSecret = 'fallback-jwt-secret-' + Math.random().toString(36).substring(7);
+        logger.warn('Using fallback JWT secret for development - set APP_SECRET for production');
+      }
+    }
+
+    // Warn about critical missing environment variables
+    const missingCritical = [];
+    
+    // Check for database config - support both old and new Supabase approach
+    const hasDatabaseConfig = this.database.url || 
+                              this.database.host || 
+                              (this.database.supabaseUrl && this.database.supabaseServiceRoleKey);
+    
+    if (!hasDatabaseConfig) {
+      missingCritical.push('Database configuration (DB_CONNECTION_URL, DB_HOST, or SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)');
+      logger.warn('Database configuration missing - running without database connectivity');
+    }
+    
+    if (!this.whatsapp.accessToken) {
+      missingCritical.push('WhatsApp Access Token (BOT_ACCESS_TOKEN)');
+      logger.warn('BOT_ACCESS_TOKEN environment variable is missing - WhatsApp functionality will be limited');
+    }
+    
+    if (this.server.nodeEnv === 'production' && !this.server.jwtSecret) {
+      missingCritical.push('JWT Secret (APP_SECRET)');
+      logger.error('APP_SECRET environment variable is required in production');
+    }
+    
+    if (!this.openai.apiKey) {
+      missingCritical.push('OpenAI API Key (AI_API_KEY)');
+      logger.warn('AI_API_KEY environment variable is missing - AI features will use fallback processing');
+    }
+
+    if (missingCritical.length > 0) {
+      logger.warn('Missing critical configuration:', {
+        missing: missingCritical,
+        impact: 'Some features will be disabled or have limited functionality',
+        recommendation: 'Set missing environment variables for full functionality'
+      });
+    } else {
+      logger.info('✅ All critical configuration variables are present');
+    }
+  }
+
+  getDatabaseUrl() {
+    return this.database.url;
+  }
+
+  getWhatsappConfig() {
+    // Add runtime logging for Flow ID debugging
+    const logger = require('../utils/logger');
+    logger.info('🔍 Config: WhatsApp Flow IDs at runtime', {
+      hasOnboardingFlowId: !!this.whatsapp.welcomeFlowId,
+      hasLoginFlowId: !!this.whatsapp.loginFlowId,
+      hasTransferPinFlowId: !!this.whatsapp.transferPinFlowId,
+      hasDataPurchaseFlowId: !!this.whatsapp.dataPurchaseFlowId,
+      onboardingFlowIdLength: this.whatsapp.welcomeFlowId ? this.whatsapp.welcomeFlowId.length : 0,
+      loginFlowIdLength: this.whatsapp.loginFlowId ? this.whatsapp.loginFlowId.length : 0,
+      transferPinFlowIdLength: this.whatsapp.transferPinFlowId ? this.whatsapp.transferPinFlowId.length : 0,
+      dataPurchaseFlowIdLength: this.whatsapp.dataPurchaseFlowId ? this.whatsapp.dataPurchaseFlowId.length : 0,
+      environment: process.env.NODE_ENV
+    });
+    
+    return this.whatsapp;
+  }
+
+  getRubiesConfig() {
+    return this.rubies;
+  }
+
+  getBellbankConfig() {
+    return this.bellbank;
+  }
+
+  getBilalConfig() {
+    return this.bilal;
+  }
+
+  getDojahConfig() {
+    return this.dojah;
+  }
+
+  getFincraConfig() {
+    return this.fincra;
+  }
+
+  getOpenAIConfig() {
+    return this.openai;
+  }
+
+  getServerConfig() {
+    return this.server;
+  }
+
+  getFeesConfig() {
+    return this.fees;
+  }
+
+  getRateLimitConfig() {
+    return this.rateLimit;
+  }
+
+  getWebhookSecret() {
+    return this.webhookSecret;
+  }
+
+  getAdminConfig() {
+    return {
+      email: this.adminEmail,
+      password: this.adminPassword
+    };
+  }
+
+  getBaseUrl() {
+    return this.baseUrl;
+  }
+
+  getFileConfig() {
+    return {
+      maxSize: this.maxFileSize,
+      uploadPath: this.uploadPath
+    };
+  }
+
+  getRedisUrl() {
+    return this.redisUrl;
+  }
+}
+
+module.exports = new Config(); 

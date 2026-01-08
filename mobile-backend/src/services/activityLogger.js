@@ -1,9 +1,7 @@
 const { ActivityLog } = require('../models');
 const databaseService = require('./database');
-const supabaseHelper = require('./supabaseHelper');
 const logger = require('../utils/logger');
 const { Op } = require('sequelize');
-const { v4: uuidv4 } = require('uuid');
 
 class ActivityLoggerService {
   /**
@@ -13,44 +11,17 @@ class ActivityLoggerService {
     try {
       // Only log if database is healthy
       if (databaseService.isConnectionHealthy()) {
-        return await databaseService.executeWithRetry(async () => {
-          // Map activityType to enum values
-          const typeMap = {
-            'kyc_verification': 'kyc_verified',
-            'kyc_verified': 'kyc_verified',
-            'kyc_submitted': 'kyc_submitted',
-            'kyc_rejected': 'kyc_rejected',
-            'wallet_funding': 'wallet_funded',
-            'wallet_funded': 'wallet_funded',
-            'wallet_debited': 'wallet_debited',
-            'virtual_account_initiated': 'wallet_funded',
-            'virtual_account_created_error': 'wallet_funded',
-            'bvn_verified': 'kyc_verified',
-            'bvn_verification_failed': 'kyc_rejected'
-          };
-          
-          const mappedType = typeMap[activityType] || activityType || 'system_event';
-          
-          return await supabaseHelper.create('activityLogs', {
-            id: uuidv4(),
-            userId: userId || null,
-            type: mappedType,
-            description: metadata.description || action,
-            source: metadata.source || 'whatsapp',
-            severity: metadata.severity || 'info',
-            ipAddress: metadata.ipAddress || null,
-            userAgent: metadata.userAgent || null,
-            requestData: metadata.requestData || null,
-            responseData: metadata.responseData || null,
-            metadata: {
-              ...metadata,
-              action,
-              originalActivityType: activityType,
-              sessionId: metadata.sessionId,
-              deviceInfo: metadata.deviceInfo,
-              geolocation: metadata.geolocation
-            }
-          });
+        return await databaseService.create(ActivityLog, {
+          userId,
+          activityType,
+          action,
+          description: metadata.description,
+          metadata,
+          source: metadata.source || 'whatsapp',
+          sessionId: metadata.sessionId,
+          ipAddress: metadata.ipAddress,
+          deviceInfo: metadata.deviceInfo,
+          geolocation: metadata.geolocation
         });
       } else {
         logger.debug('Skipping activity logging - database connection unhealthy');
@@ -73,23 +44,17 @@ class ActivityLoggerService {
     try {
       // Only log if database is healthy
       if (databaseService.isConnectionHealthy()) {
-        return await databaseService.executeWithRetry(async () => {
-          return await supabaseHelper.create('activityLogs', {
-            id: uuidv4(),
-            userId: userId || null,
-            relatedTransactionId: transactionId,
-            type: activityType,
-            description: metadata.description || action,
-            source: metadata.source || 'system',
-            severity: metadata.severity || 'info',
-            metadata: {
-              ...metadata,
-              action,
-              entityType: 'transaction',
-              entityId: transactionId,
-              isSuccessful: metadata.isSuccessful !== false
-            }
-          });
+        return await databaseService.create(ActivityLog, {
+          userId,
+          activityType,
+          action,
+          description: metadata.description,
+          entityType: 'transaction',
+          entityId: transactionId,
+          relatedTransactionId: transactionId,
+          metadata,
+          source: metadata.source || 'system',
+          isSuccessful: metadata.isSuccessful !== false
         });
       } else {
         logger.debug('Skipping transaction activity logging - database connection unhealthy');
@@ -112,23 +77,18 @@ class ActivityLoggerService {
     try {
       // Only log if database is healthy
       if (databaseService.isConnectionHealthy()) {
-        return await databaseService.executeWithRetry(async () => {
-          return await supabaseHelper.create('activityLogs', {
-            id: uuidv4(),
-            userId: userId || null,
-            type: 'security_alert',
-            description: metadata.description || action,
-            source: metadata.source || 'system',
-            severity: severity || 'info',
-            ipAddress: metadata.ipAddress || null,
-            userAgent: metadata.userAgent || null,
-            metadata: {
-              ...metadata,
-              action,
-              requiresAttention: severity === 'critical' || severity === 'error',
-              tags: ['security', severity]
-            }
-          });
+        return await databaseService.create(ActivityLog, {
+          userId,
+          activityType: 'security_alert',
+          action,
+          description: metadata.description,
+          severity,
+          metadata,
+          source: metadata.source || 'system',
+          requiresAttention: severity === 'critical' || severity === 'error',
+          ipAddress: metadata.ipAddress,
+          deviceInfo: metadata.deviceInfo,
+          tags: ['security', severity]
         });
       } else {
         logger.warn('Skipping security event logging - database connection unhealthy');
@@ -151,23 +111,17 @@ class ActivityLoggerService {
     try {
       // Only log if database is healthy
       if (databaseService.isConnectionHealthy()) {
-        return await databaseService.executeWithRetry(async () => {
-          return await supabaseHelper.create('activityLogs', {
-            id: uuidv4(),
-            userId: targetUserId || null,
-            adminUserId: adminUserId || null,
-            type: 'admin_action',
-            description: metadata.description || action,
-            source: 'admin',
-            severity: metadata.severity || 'info',
-            metadata: {
-              ...metadata,
-              action,
-              oldValues: metadata.oldValues,
-              newValues: metadata.newValues,
-              tags: ['admin', 'manual']
-            }
-          });
+        return await databaseService.create(ActivityLog, {
+          userId: targetUserId,
+          adminUserId,
+          activityType: 'admin_action',
+          action,
+          description: metadata.description,
+          oldValues: metadata.oldValues,
+          newValues: metadata.newValues,
+          metadata,
+          source: 'admin',
+          tags: ['admin', 'manual']
         });
       } else {
         logger.warn('Skipping admin action logging - database connection unhealthy');
@@ -190,19 +144,13 @@ class ActivityLoggerService {
     try {
       // Only log if database is healthy
       if (databaseService.isConnectionHealthy()) {
-        return await databaseService.executeWithRetry(async () => {
-          return await supabaseHelper.create('activityLogs', {
-            id: uuidv4(),
-            userId: null,
-            type: 'system_maintenance',
-            description: metadata.description || action,
-            source: 'system',
-            severity: metadata.severity || 'info',
-            metadata: {
-              ...metadata,
-              action
-            }
-          });
+        return await databaseService.create(ActivityLog, {
+          activityType: 'system_maintenance',
+          action,
+          description: metadata.description,
+          metadata,
+          source: 'system',
+          severity: metadata.severity || 'info'
         });
       } else {
         logger.debug('Skipping system event logging - database connection unhealthy');

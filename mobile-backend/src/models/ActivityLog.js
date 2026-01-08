@@ -172,30 +172,77 @@ const ActivityLog = sequelize.define('ActivityLog', {
   ]
 });
 
-// Static methods delegate to activityLogger service (which uses Supabase)
+// Static methods for easy logging
 ActivityLog.logUserActivity = async function(userId, activityType, action, metadata = {}) {
-  const activityLogger = require('../services/activityLogger');
-  return await activityLogger.logUserActivity(userId, activityType, action, metadata);
+  return this.create({
+    userId,
+    activityType,
+    action,
+    description: metadata.description,
+    metadata,
+    source: metadata.source || 'whatsapp',
+    sessionId: metadata.sessionId,
+    ipAddress: metadata.ipAddress,
+    deviceInfo: metadata.deviceInfo,
+    geolocation: metadata.geolocation
+  });
 };
 
 ActivityLog.logTransactionActivity = async function(transactionId, userId, activityType, action, metadata = {}) {
-  const activityLogger = require('../services/activityLogger');
-  return await activityLogger.logTransactionActivity(transactionId, userId, activityType, action, metadata);
+  return this.create({
+    userId,
+    activityType,
+    action,
+    description: metadata.description,
+    entityType: 'transaction',
+    entityId: transactionId,
+    relatedTransactionId: transactionId,
+    metadata,
+    source: metadata.source || 'system',
+    isSuccessful: metadata.isSuccessful !== false
+  });
 };
 
 ActivityLog.logSecurityEvent = async function(userId, action, severity, metadata = {}) {
-  const activityLogger = require('../services/activityLogger');
-  return await activityLogger.logSecurityEvent(userId, action, severity, metadata);
+  return this.create({
+    userId,
+    activityType: 'security_alert',
+    action,
+    description: metadata.description,
+    severity,
+    metadata,
+    source: metadata.source || 'system',
+    requiresAttention: severity === 'critical' || severity === 'error',
+    ipAddress: metadata.ipAddress,
+    deviceInfo: metadata.deviceInfo,
+    tags: ['security', severity]
+  });
 };
 
 ActivityLog.logAdminAction = async function(adminUserId, targetUserId, action, metadata = {}) {
-  const activityLogger = require('../services/activityLogger');
-  return await activityLogger.logAdminAction(adminUserId, targetUserId, action, metadata);
+  return this.create({
+    userId: targetUserId,
+    adminUserId,
+    activityType: 'admin_action',
+    action,
+    description: metadata.description,
+    oldValues: metadata.oldValues,
+    newValues: metadata.newValues,
+    metadata,
+    source: 'admin',
+    tags: ['admin', 'manual']
+  });
 };
 
 ActivityLog.logSystemEvent = async function(action, metadata = {}) {
-  const activityLogger = require('../services/activityLogger');
-  return await activityLogger.logSystemEvent(action, metadata);
+  return this.create({
+    activityType: 'system_maintenance',
+    action,
+    description: metadata.description,
+    metadata,
+    source: 'system',
+    severity: metadata.severity || 'info'
+  });
 };
 
 // Instance methods

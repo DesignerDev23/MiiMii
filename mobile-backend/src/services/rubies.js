@@ -4,7 +4,6 @@ const { Transaction, ActivityLog, User, Wallet } = require('../models');
 const { axiosConfig } = require('../utils/httpsAgent');
 const whatsappService = require('./whatsapp');
 const RetryHelper = require('../utils/retryHelper');
-const activityLogger = require('./activityLogger');
 
 class RubiesService {
   constructor() {
@@ -179,7 +178,7 @@ class RubiesService {
         });
 
         // Log activity
-        await activityLogger.logUserActivity(
+        await ActivityLog.logUserActivity(
           bvnData.userId || null,
           'kyc_verification',
           'bvn_verified',
@@ -191,8 +190,8 @@ class RubiesService {
             responseCode: response.responseCode,
             responseMessage: response.responseMessage,
             success: true,
-            ipAddress: bvnData.ipAddress || null,
-            userAgent: bvnData.userAgent || null
+          ipAddress: bvnData.ipAddress || null,
+          userAgent: bvnData.userAgent || null
           }
         );
 
@@ -215,7 +214,7 @@ class RubiesService {
       });
 
       // Log activity
-      await activityLogger.logUserActivity(
+      await ActivityLog.logUserActivity(
         bvnData.userId || null,
         'kyc_verification',
         'bvn_verification_failed',
@@ -302,7 +301,7 @@ class RubiesService {
         });
 
         // Log activity
-        await activityLogger.logUserActivity(
+        await ActivityLog.logUserActivity(
           userData.userId,
           'wallet_funding',
           'virtual_account_initiated',
@@ -350,7 +349,7 @@ class RubiesService {
       }
 
       // Log activity
-      await activityLogger.logUserActivity(
+      await ActivityLog.logUserActivity(
         userData.userId,
         'wallet_funding',
         'virtual_account_created_error',
