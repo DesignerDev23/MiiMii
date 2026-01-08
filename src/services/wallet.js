@@ -1,46 +1,66 @@
 const { Wallet, Transaction, User, ActivityLog } = require('../models');
-const { sequelize } = require('../database/connection');
+const { sequelize, supabase } = require('../database/connection');
 const rubiesService = require('./rubies');
 const rubiesWalletService = require('./rubiesWalletService');
 const logger = require('../utils/logger');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize'); // Added Op for date range queries
 const userService = require('./user'); // Added userService for getUserById
 
 class WalletService {
   async createWallet(userId) {
-    const transaction = await sequelize.transaction();
-    
     try {
-      // Check if wallet already exists
-      const existingWallet = await Wallet.findOne({ where: { userId } });
+      // Check if wallet already exists using Supabase
+      const existingWallet = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('wallets', { userId });
+      });
+      
       if (existingWallet) {
-        await transaction.rollback();
         return existingWallet;
       }
 
-      // Create wallet
-      const wallet = await Wallet.create({
+      // Create wallet using Supabase
+      const walletData = {
+        id: uuidv4(),
         userId,
         balance: 0.00,
         ledgerBalance: 0.00,
-        currency: 'NGN'
-      }, { transaction });
+        currency: 'NGN',
+        availableBalance: 0.00,
+        previousBalance: 0.00,
+        totalCredits: 0.00,
+        totalDebits: 0.00,
+        isActive: true
+      };
+
+      const wallet = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('wallets', walletData);
+      });
 
       // Get user for virtual account creation
-      const user = await User.findByPk(userId);
+      const user = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('users', userId);
+      });
       
       // Only create Rubies wallet if user has completed onboarding
-      if (user.onboardingStep === 'completed' && user.firstName && user.lastName && user.bvn && user.gender && user.dateOfBirth) {
+      if (user && user.onboardingStep === 'completed' && user.firstName && user.lastName && user.bvn && user.gender && user.dateOfBirth) {
         try {
           const rubiesWallet = await rubiesWalletService.createRubiesWallet(userId);
           
           if (rubiesWallet.success) {
-            await wallet.update({
-              rubiesAccountNumber: rubiesWallet.accountNumber,
-              rubiesCustomerId: rubiesWallet.customerId,
-              rubiesWalletStatus: 'ACTIVE'
-            }, { transaction });
+            await databaseService.executeWithRetry(async () => {
+              return await supabaseHelper.update('wallets', {
+                rubiesAccountNumber: rubiesWallet.accountNumber,
+                rubiesCustomerId: rubiesWallet.customerId,
+                rubiesWalletStatus: 'ACTIVE'
+              }, { id: wallet.id });
+            });
+            
+            wallet.rubiesAccountNumber = rubiesWallet.accountNumber;
+            wallet.rubiesCustomerId = rubiesWallet.customerId;
+            wallet.rubiesWalletStatus = 'ACTIVE';
             
             logger.info('Rubies wallet created successfully', {
               userId,
@@ -63,16 +83,14 @@ class WalletService {
       } else {
         logger.info('Skipping Rubies wallet creation - user not fully onboarded', {
           userId,
-          onboardingStep: user.onboardingStep,
-          hasFirstName: !!user.firstName,
-          hasLastName: !!user.lastName,
-          hasBvn: !!user.bvn,
-          hasGender: !!user.gender,
-          hasDateOfBirth: !!user.dateOfBirth
+          onboardingStep: user?.onboardingStep,
+          hasFirstName: !!user?.firstName,
+          hasLastName: !!user?.lastName,
+          hasBvn: !!user?.bvn,
+          hasGender: !!user?.gender,
+          hasDateOfBirth: !!user?.dateOfBirth
         });
       }
-
-      await transaction.commit();
       
       logger.info('Wallet created successfully', {
         userId,
@@ -82,7 +100,6 @@ class WalletService {
 
       return wallet;
     } catch (error) {
-      await transaction.rollback();
       logger.error('Failed to create wallet', { error: error.message, userId });
       throw error;
     }
@@ -90,7 +107,9 @@ class WalletService {
 
   async getUserWallet(userId) {
     try {
-      let wallet = await Wallet.findOne({ where: { userId } });
+      let wallet = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('wallets', { userId });
+      });
       
       if (!wallet) {
         wallet = await this.createWallet(userId);

@@ -5,6 +5,7 @@ const whatsappService = require('../services/whatsapp');
 const messageProcessor = require('../services/messageProcessor');
 const logger = require('../utils/logger');
 const databaseService = require('../services/database');
+const supabaseHelper = require('../services/supabaseHelper');
 const userService = require('../services/user');
 
 const router = express.Router();
@@ -116,13 +117,16 @@ const logWebhook = (provider) => async (req, res, next) => {
   try {
     // Only log if database is healthy
     if (databaseService.isConnectionHealthy()) {
-      const webhookLog = await databaseService.create(WebhookLog, {
-        provider,
-        event: req.body.type || req.body.event || 'unknown',
-        headers: req.headers,
-        payload: req.body,
-        signature: req.headers['x-webhook-signature'] || req.headers['x-signature'],
-        verified: true // Will be false if signature verification fails
+      const webhookLog = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('webhook_logs', {
+          provider,
+          event: req.body.type || req.body.event || 'unknown',
+          headers: req.headers,
+          payload: req.body,
+          signature: req.headers['x-webhook-signature'] || req.headers['x-signature'],
+          verified: true, // Will be false if signature verification fails
+          processed: false
+        });
       });
       
       req.webhookLogId = webhookLog?.id || null;
@@ -307,10 +311,12 @@ router.post('/rubies',
       // Update webhook log status
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { status: 'processed', processedAt: new Date() },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: true,
+              processedAt: new Date().toISOString()
+            }, { id: req.webhookLogId });
+          });
         } catch (logError) {
           logger.error('Failed to update webhook log', { error: logError.message });
         }
@@ -330,14 +336,13 @@ router.post('/rubies',
       // Update webhook log status
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { 
-              status: 'failed', 
-              processedAt: new Date(),
-              errorMessage: error.message 
-            },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: false,
+              processedAt: new Date().toISOString(),
+              errorMessage: error.message
+            }, { id: req.webhookLogId });
+          });
         } catch (logError) {
           logger.error('Failed to update webhook log', { error: logError.message });
         }
@@ -375,10 +380,13 @@ router.post('/bellbank',
 
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: true, processedAt: new Date(), responseCode: 200 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: true,
+              processedAt: new Date().toISOString(),
+              responseCode: 200
+            }, { id: req.webhookLogId });
+          });
         } catch (error) {
           logger.warn('Failed to update webhook log status', { 
             error: error.message, 
@@ -393,10 +401,13 @@ router.post('/bellbank',
       
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: false, errorMessage: error.message, responseCode: 500 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: false,
+              errorMessage: error.message,
+              responseCode: 500
+            }, { id: req.webhookLogId });
+          });
         } catch (dbError) {
           logger.warn('Failed to update webhook log with error status', { 
             error: dbError.message, 
@@ -437,10 +448,13 @@ router.post('/bellbank/incoming',
       // Update webhook log status
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: true, processedAt: new Date(), responseCode: 200 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: true,
+              processedAt: new Date().toISOString(),
+              responseCode: 200
+            }, { id: req.webhookLogId });
+          });
         } catch (error) {
           logger.warn('Failed to update webhook log status', { 
             error: error.message, 
@@ -464,10 +478,13 @@ router.post('/bellbank/incoming',
       // Update webhook log with error status
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: false, errorMessage: error.message, responseCode: 500 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: false,
+              errorMessage: error.message,
+              responseCode: 500
+            }, { id: req.webhookLogId });
+          });
         } catch (dbError) {
           logger.warn('Failed to update webhook log with error status', { 
             error: dbError.message, 
@@ -502,10 +519,13 @@ router.post('/bilal',
 
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: true, processedAt: new Date(), responseCode: 200 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: true,
+              processedAt: new Date().toISOString(),
+              responseCode: 200
+            }, { id: req.webhookLogId });
+          });
         } catch (error) {
           logger.warn('Failed to update webhook log status', { 
             error: error.message, 
@@ -520,10 +540,13 @@ router.post('/bilal',
       
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: false, errorMessage: error.message, responseCode: 500 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: false,
+              errorMessage: error.message,
+              responseCode: 500
+            }, { id: req.webhookLogId });
+          });
         } catch (dbError) {
           logger.warn('Failed to update webhook log with error status', { 
             error: dbError.message, 
@@ -558,10 +581,13 @@ router.post('/fincra',
 
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: true, processedAt: new Date(), responseCode: 200 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: true,
+              processedAt: new Date().toISOString(),
+              responseCode: 200
+            }, { id: req.webhookLogId });
+          });
         } catch (error) {
           logger.warn('Failed to update webhook log status', { 
             error: error.message, 
@@ -576,10 +602,13 @@ router.post('/fincra',
       
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: false, errorMessage: error.message, responseCode: 500 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: false,
+              errorMessage: error.message,
+              responseCode: 500
+            }, { id: req.webhookLogId });
+          });
         } catch (dbError) {
           logger.warn('Failed to update webhook log with error status', { 
             error: dbError.message, 
@@ -614,10 +643,13 @@ router.post('/dojah',
 
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: true, processedAt: new Date(), responseCode: 200 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: true,
+              processedAt: new Date().toISOString(),
+              responseCode: 200
+            }, { id: req.webhookLogId });
+          });
         } catch (error) {
           logger.warn('Failed to update webhook log status', { 
             error: error.message, 
@@ -632,10 +664,13 @@ router.post('/dojah',
       
       if (req.webhookLogId) {
         try {
-          await databaseService.update(WebhookLog,
-            { processed: false, errorMessage: error.message, responseCode: 500 },
-            { where: { id: req.webhookLogId } }
-          );
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('webhook_logs', {
+              processed: false,
+              errorMessage: error.message,
+              responseCode: 500
+            }, { id: req.webhookLogId });
+          });
         } catch (dbError) {
           logger.warn('Failed to update webhook log with error status', { 
             error: dbError.message, 

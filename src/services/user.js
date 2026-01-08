@@ -10,9 +10,11 @@ const {
 } = require('../models');
 const logger = require('../utils/logger');
 const databaseService = require('./database');
+const { supabase } = require('../database/connection');
 const { Op } = require('sequelize');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
 class UserService {
   async getOrCreateUser(whatsappNumber, displayName = null) {
@@ -34,13 +36,35 @@ class UserService {
         throw new Error(`Invalid phone number format: ${whatsappNumber}. ${cleanError?.message || 'Please check the phone number format.'}`);
       }
       
-      // Try to find existing user using retry logic
+      // Try to find existing user using Supabase
       let user;
       try {
-        user = await databaseService.findOneWithRetry(User, {
-          where: { whatsappNumber: cleanNumber },
-          include: [{ model: Wallet, as: 'wallet' }]
-        }, { operationName: 'find user by WhatsApp number' });
+        const { data: foundUser, error: findError } = await databaseService.executeWithRetry(async () => {
+          return await supabase
+            .from('users')
+            .select('*')
+            .eq('whatsappNumber', cleanNumber)
+            .maybeSingle();
+        });
+
+        if (findError) {
+          throw findError;
+        }
+
+        user = foundUser;
+        
+        // If user exists, fetch wallet separately
+        if (user) {
+          const { data: wallet, error: walletError } = await supabase
+            .from('wallets')
+            .select('*')
+            .eq('userId', user.id)
+            .maybeSingle();
+          
+          if (!walletError && wallet) {
+            user.wallet = wallet;
+          }
+        }
       } catch (findError) {
         logger.error('Database find operation failed', {
           error: findError?.message || 'Unknown error',
@@ -52,17 +76,47 @@ class UserService {
       }
 
       if (!user) {
-        // Create new user using retry logic
+        // Create new user using Supabase
         try {
-          user = await databaseService.createWithRetry(User, {
+          const newUserData = {
+            id: uuidv4(),
             whatsappNumber: cleanNumber,
             fullName: displayName || null,
-            isActive: true
-          }, {}, { operationName: 'create new user' });
+            isActive: true,
+            onboardingStep: 'initial',
+            kycStatus: 'not_required',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          const { data: newUser, error: createError } = await databaseService.executeWithRetry(async () => {
+            return await supabase
+              .from('users')
+              .insert(newUserData)
+              .select('*')
+              .single();
+          });
+
+          if (createError) {
+            throw createError;
+          }
+
+          user = newUser;
 
           // Create wallet for new user
           const walletService = require('./wallet');
           await walletService.createWallet(user.id);
+
+          // Fetch wallet for the new user
+          const { data: wallet, error: walletError } = await supabase
+            .from('wallets')
+            .select('*')
+            .eq('userId', user.id)
+            .maybeSingle();
+          
+          if (!walletError && wallet) {
+            user.wallet = wallet;
+          }
 
           logger.info('New user created', { userId: user.id, whatsappNumber: cleanNumber });
         } catch (createError) {
@@ -78,10 +132,17 @@ class UserService {
         // Update display name if provided and not already set
         if (displayName && !user.fullName) {
           try {
-            await databaseService.executeWithRetry(
-              () => user.update({ fullName: displayName }),
-              { operationName: 'update user display name' }
-            );
+            await databaseService.executeWithRetry(async () => {
+              const { error: updateError } = await supabase
+                .from('users')
+                .update({ fullName: displayName, updatedAt: new Date().toISOString() })
+                .eq('id', user.id);
+              
+              if (updateError) throw updateError;
+              
+              // Update local user object
+              user.fullName = displayName;
+            });
           } catch (updateError) {
             // Non-critical error, log but don't fail
             logger.warn('Failed to update display name', {
