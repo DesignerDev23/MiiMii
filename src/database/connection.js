@@ -33,10 +33,31 @@ const sequelize = {
   },
   query: async (sql, options) => {
     // For self-healing scripts that need raw SQL, we'll need to use Supabase RPC or direct client
-    // For now, log a warning and return empty result to prevent crashes
+    // For now, log a warning and return appropriate mock data to prevent crashes
     console.warn('⚠️  sequelize.query() called - this needs to be migrated to Supabase client');
     console.warn('⚠️  SQL:', sql?.substring(0, 100));
-    // Return empty result array to match Sequelize format [results, metadata]
+    
+    // Handle SELECT EXISTS queries - return false (column doesn't exist) to prevent errors
+    if (sql && sql.includes('SELECT EXISTS')) {
+      return [[{ exists: false }], {}];
+    }
+    
+    // Handle SELECT column_name queries - return empty array (column doesn't exist)
+    if (sql && sql.includes('SELECT column_name')) {
+      return [[], {}];
+    }
+    
+    // Handle SELECT table_name queries - return empty array (table doesn't exist)
+    if (sql && sql.includes('SELECT table_name')) {
+      return [[], {}];
+    }
+    
+    // Handle SELECT t.typname (enum type queries) - return empty array
+    if (sql && sql.includes('SELECT t.typname')) {
+      return [[], {}];
+    }
+    
+    // Default: return empty result array to match Sequelize format [results, metadata]
     return [[], {}];
   },
   getQueryInterface: () => {
