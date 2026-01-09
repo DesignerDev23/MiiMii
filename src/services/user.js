@@ -262,7 +262,8 @@ class UserService {
         save: user.save,
         update: user.update,
         reload: user.reload,
-        validatePin: user.validatePin
+        validatePin: user.validatePin,
+        canPerformTransactions: user.canPerformTransactions
       };
       Object.assign(user, reloaded);
       // Restore helper methods
@@ -281,6 +282,16 @@ class UserService {
       }
       // Validate PIN using bcrypt
       return await bcrypt.compare(pin, user.pin);
+    };
+    
+    // Add canPerformTransactions method (for transaction eligibility check)
+    user.canPerformTransactions = () => {
+      const now = new Date();
+      return user.isActive && 
+             !user.isBanned && 
+             user.onboardingStep === 'completed' &&
+             user.pin &&
+             (!user.pinLockedUntil || new Date(user.pinLockedUntil) < now);
     };
     
     return user;
