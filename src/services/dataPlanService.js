@@ -182,6 +182,7 @@ class DataPlanService {
   async deleteDataPlan(planId) {
     try {
       await databaseService.executeWithRetry(async () => {
+        const { supabase } = require('../database/connection');
         const { error, count } = await supabase
           .from('dataPlans')
           .update({
@@ -222,21 +223,22 @@ class DataPlanService {
 
       logger.info('Fetching all data plans with options:', { options, where });
 
-      const { count, rows } = await DataPlan.findAndCountAll({
-        where,
-        order: [[orderBy, orderDirection]],
-        limit: parseInt(limit),
-        offset: (parseInt(page) - 1) * parseInt(limit)
+      const result = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAndCountAll('dataPlans', where, {
+          order: [[orderBy, orderDirection]],
+          limit: parseInt(limit),
+          offset: (parseInt(page) - 1) * parseInt(limit)
+        });
       });
 
-      logger.info('Data plans query result:', { count, rowsCount: rows.length });
+      logger.info('Data plans query result:', { count: result.count, rowsCount: result.rows.length });
 
       return {
-        plans: rows,
-        total: count,
+        plans: result.rows,
+        total: result.count,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(count / parseInt(limit))
+        totalPages: Math.ceil(result.count / parseInt(limit))
       };
     } catch (error) {
       logger.error('Error fetching all data plans', { error: error.message, options });
@@ -266,6 +268,7 @@ class DataPlanService {
           if (existingPlan) {
             // Update existing plan
             await databaseService.executeWithRetry(async () => {
+              const { supabase } = require('../database/connection');
               const { error } = await supabase
                 .from('dataPlans')
                 .update({
