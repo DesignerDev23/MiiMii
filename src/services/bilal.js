@@ -1030,7 +1030,7 @@ class BilalService {
       
       // Format plans for WhatsApp display
       const formattedPlans = plans.map(plan => ({
-        id: plan.apiPlanId || plan.id,
+        id: plan.providerPlanId || plan.id,
         dataplan: plan.dataSize,
         amount: plan.sellingPrice.toString(),
         validity: plan.validity,

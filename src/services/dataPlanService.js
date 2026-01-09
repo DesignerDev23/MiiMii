@@ -46,10 +46,33 @@ class DataPlanService {
    */
   async createDataPlan(planData) {
     try {
+      // Map field names to match Supabase schema
+      const mappedData = {
+        network: planData.network,
+        type: planData.planType || planData.type || 'SME',
+        name: planData.name || planData.dataSize || `${planData.dataSize} ${planData.network}`,
+        dataSize: planData.dataSize,
+        dataSizeMB: planData.dataSizeMB || this.parseDataSizeToMB(planData.dataSize),
+        price: planData.sellingPrice || planData.retailPrice || planData.price,
+        validityDays: planData.validityDays || this.parseValidityToDays(planData.validity),
+        providerCode: planData.providerCode || planData.networkCode?.toString(),
+        providerPlanId: planData.providerPlanId || planData.apiPlanId?.toString(),
+        isActive: planData.isActive !== undefined ? planData.isActive : true,
+        displayOrder: planData.displayOrder || 0,
+        metadata: planData.metadata || (planData.description ? { description: planData.description } : {})
+      };
+
+      // Remove undefined values
+      Object.keys(mappedData).forEach(key => {
+        if (mappedData[key] === undefined) {
+          delete mappedData[key];
+        }
+      });
+
       const plan = await databaseService.executeWithRetry(async () => {
         return await supabaseHelper.create('dataPlans', {
           id: uuidv4(),
-          ...planData,
+          ...mappedData,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -63,15 +86,77 @@ class DataPlanService {
   }
 
   /**
+   * Parse data size string (e.g., "1GB", "500MB") to MB
+   */
+  parseDataSizeToMB(dataSize) {
+    if (!dataSize) return 0;
+    const size = dataSize.toString().toUpperCase();
+    const match = size.match(/(\d+(?:\.\d+)?)\s*(GB|MB|KB)/);
+    if (!match) return 0;
+    const value = parseFloat(match[1]);
+    const unit = match[2];
+    if (unit === 'GB') return Math.round(value * 1024);
+    if (unit === 'MB') return Math.round(value);
+    if (unit === 'KB') return Math.round(value / 1024);
+    return 0;
+  }
+
+  /**
+   * Parse validity string (e.g., "30 days", "1 Month") to days
+   */
+  parseValidityToDays(validity) {
+    if (!validity) return 30;
+    const validityStr = validity.toString().toLowerCase();
+    const match = validityStr.match(/(\d+)\s*(day|days|month|months|week|weeks)/);
+    if (!match) return 30;
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    if (unit.includes('month')) return value * 30;
+    if (unit.includes('week')) return value * 7;
+    return value;
+  }
+
+  /**
    * Update a data plan
    */
   async updateDataPlan(planId, updateData) {
     try {
+      // Map field names to match Supabase schema
+      const mappedData = {};
+      
+      if (updateData.network !== undefined) mappedData.network = updateData.network;
+      if (updateData.planType !== undefined || updateData.type !== undefined) {
+        mappedData.type = updateData.planType || updateData.type;
+      }
+      if (updateData.name !== undefined) mappedData.name = updateData.name;
+      if (updateData.dataSize !== undefined) mappedData.dataSize = updateData.dataSize;
+      if (updateData.dataSizeMB !== undefined) mappedData.dataSizeMB = updateData.dataSizeMB;
+      if (updateData.price !== undefined || updateData.sellingPrice !== undefined || updateData.retailPrice !== undefined) {
+        mappedData.price = updateData.sellingPrice || updateData.retailPrice || updateData.price;
+      }
+      if (updateData.validityDays !== undefined) mappedData.validityDays = updateData.validityDays;
+      if (updateData.validity !== undefined) {
+        mappedData.validityDays = this.parseValidityToDays(updateData.validity);
+      }
+      if (updateData.providerCode !== undefined || updateData.networkCode !== undefined) {
+        mappedData.providerCode = updateData.providerCode || updateData.networkCode?.toString();
+      }
+      if (updateData.providerPlanId !== undefined || updateData.apiPlanId !== undefined) {
+        mappedData.providerPlanId = updateData.providerPlanId || updateData.apiPlanId?.toString();
+      }
+      if (updateData.isActive !== undefined) mappedData.isActive = updateData.isActive;
+      if (updateData.displayOrder !== undefined) mappedData.displayOrder = updateData.displayOrder;
+      if (updateData.metadata !== undefined) mappedData.metadata = updateData.metadata;
+      if (updateData.description !== undefined) {
+        mappedData.metadata = { ...(mappedData.metadata || {}), description: updateData.description };
+      }
+
       await databaseService.executeWithRetry(async () => {
+        const { supabase } = require('../database/connection');
         const { error, count } = await supabase
           .from('dataPlans')
           .update({
-            ...updateData,
+            ...mappedData,
             updatedAt: new Date().toISOString()
           })
           .eq('id', planId);
@@ -217,7 +302,7 @@ class DataPlanService {
           }
         } catch (error) {
           results.errors.push({
-            apiPlanId: apiPlan.id,
+            providerPlanId: apiPlan.id?.toString(),
             error: error.message
           });
         }

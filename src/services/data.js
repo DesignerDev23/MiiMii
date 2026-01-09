@@ -103,7 +103,7 @@ class DataService {
 
       // Format plans for WhatsApp display
       const formattedPlans = plans.map(plan => ({
-        id: plan.apiPlanId || plan.id,
+        id: plan.providerPlanId || plan.id,
         title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
         validity: plan.validity,
         type: plan.planType,
@@ -148,7 +148,7 @@ class DataService {
       for (const network of networks) {
         const networkPlans = result.plans.filter(plan => plan.network === network);
         allPlans[network] = networkPlans.map(plan => ({
-          id: plan.apiPlanId || plan.id,
+          id: plan.providerPlanId || plan.id,
           title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
           validity: plan.validity,
           type: plan.planType,
