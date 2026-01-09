@@ -130,13 +130,19 @@ class VirtualCardService {
       }
 
       // Check card limit (max 5 active cards per user)
-      const { VirtualCard } = require('../models');
-      const activeCards = await VirtualCard.count({
-        where: {
+      const databaseService = require('./database');
+      const supabaseHelper = require('./supabaseHelper');
+      const { supabase } = require('../database/connection');
+      const { v4: uuidv4 } = require('uuid');
+      
+      const activeCardsList = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('virtualCards', {
           userId,
           status: ['active', 'inactive']
-        }
+        });
       });
+      
+      const activeCards = activeCardsList.length;
 
       if (activeCards >= 5) {
         throw new Error('Maximum of 5 virtual cards allowed per user');
@@ -149,25 +155,33 @@ class VirtualCardService {
       const cardHash = crypto.createHash('sha256').update(cardNumber).digest('hex');
 
       // Create card record
-      const virtualCard = await VirtualCard.create({
-        userId,
-        cardType,
-        brand,
-        cardNumber: cardHash, // Store hash for security
-        maskedCardNumber: `**** **** **** ${cardNumber.slice(-4)}`,
-        cvv: crypto.createHash('sha256').update(cvv.toString()).digest('hex'), // Store hash
-        expiryDate,
-        balance: parseFloat(fundingAmount || 0),
-        status: this.cardStatuses.ACTIVE,
-        dailyLimit: this.cardConfig.limits.daily,
-        monthlyLimit: this.cardConfig.limits.monthly,
-        transactionLimit: this.cardConfig.limits.transaction,
-        metadata: {
-          createdDate: new Date(),
-          lastUsed: null,
-          totalSpent: 0,
-          transactionCount: 0
-        }
+      const [expiryMonth, expiryYear] = expiryDate.split('/');
+      const virtualCard = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('virtualCards', {
+          id: uuidv4(),
+          userId,
+          type: cardType,
+          network: brand,
+          cardNumber: cardHash, // Store hash for security
+          cvv: crypto.createHash('sha256').update(cvv.toString()).digest('hex'), // Store hash
+          expiryMonth: parseInt(expiryMonth),
+          expiryYear: 2000 + parseInt(expiryYear), // Convert YY to YYYY
+          cardHolderName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Card Holder',
+          balance: parseFloat(fundingAmount || 0),
+          status: this.cardStatuses.ACTIVE,
+          dailyLimit: this.cardConfig.limits.daily,
+          monthlyLimit: this.cardConfig.limits.monthly,
+          metadata: {
+            createdDate: new Date().toISOString(),
+            lastUsed: null,
+            totalSpent: 0,
+            transactionCount: 0,
+            maskedCardNumber: `**** **** **** ${cardNumber.slice(-4)}`,
+            originalExpiryDate: expiryDate
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       });
 
       // Debit wallet for creation fee and funding
@@ -241,25 +255,25 @@ class VirtualCardService {
   // Get user's virtual cards
   async getUserCards(userId) {
     try {
-      const { VirtualCard } = require('../models');
-      
-      const cards = await VirtualCard.findAll({
-        where: { userId },
-        order: [['createdAt', 'DESC']]
+      const cards = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('virtualCards', { userId }, {
+          orderBy: 'createdAt',
+          order: 'desc'
+        });
       });
 
       return cards.map(card => ({
         id: card.id,
-        cardType: card.cardType,
-        brand: card.brand,
-        maskedCardNumber: card.maskedCardNumber,
-        expiryDate: card.expiryDate,
-        balance: parseFloat(card.balance),
+        cardType: card.type,
+        brand: card.network,
+        maskedCardNumber: card.metadata?.maskedCardNumber || `**** **** **** ${card.cardNumber?.slice(-4) || '****'}`,
+        expiryDate: card.metadata?.originalExpiryDate || `${String(card.expiryMonth).padStart(2, '0')}/${String(card.expiryYear).slice(-2)}`,
+        balance: parseFloat(card.balance || 0),
         status: card.status,
         limits: {
-          daily: card.dailyLimit,
-          monthly: card.monthlyLimit,
-          transaction: card.transactionLimit
+          daily: parseFloat(card.dailyLimit || 0),
+          monthly: parseFloat(card.monthlyLimit || 0),
+          transaction: 100000 // Default transaction limit
         },
         metadata: card.metadata,
         createdAt: card.createdAt
@@ -273,10 +287,8 @@ class VirtualCardService {
   // Get card details (masked)
   async getCardDetails(userId, cardId) {
     try {
-      const { VirtualCard } = require('../models');
-      
-      const card = await VirtualCard.findOne({
-        where: { id: cardId, userId }
+      const card = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('virtualCards', { id: cardId, userId });
       });
 
       if (!card) {
@@ -285,16 +297,16 @@ class VirtualCardService {
 
       return {
         id: card.id,
-        cardType: card.cardType,
-        brand: card.brand,
-        maskedCardNumber: card.maskedCardNumber,
-        expiryDate: card.expiryDate,
-        balance: parseFloat(card.balance),
+        cardType: card.type,
+        brand: card.network,
+        maskedCardNumber: card.metadata?.maskedCardNumber || `**** **** **** ${card.cardNumber?.slice(-4) || '****'}`,
+        expiryDate: card.metadata?.originalExpiryDate || `${String(card.expiryMonth).padStart(2, '0')}/${String(card.expiryYear).slice(-2)}`,
+        balance: parseFloat(card.balance || 0),
         status: card.status,
         limits: {
-          daily: card.dailyLimit,
-          monthly: card.monthlyLimit,
-          transaction: card.transactionLimit
+          daily: parseFloat(card.dailyLimit || 0),
+          monthly: parseFloat(card.monthlyLimit || 0),
+          transaction: 100000 // Default transaction limit
         },
         usage: await this.getCardUsageStats(cardId),
         metadata: card.metadata,
@@ -318,9 +330,8 @@ class VirtualCardService {
       await userService.validateUserPin(userId, pin);
 
       // Get card
-      const { VirtualCard } = require('../models');
-      const card = await VirtualCard.findOne({
-        where: { id: cardId, userId }
+      const card = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('virtualCards', { id: cardId, userId });
       });
 
       if (!card) {
@@ -343,8 +354,18 @@ class VirtualCardService {
       }
 
       // Update card balance
-      const newBalance = parseFloat(card.balance) + fundingAmount;
-      await card.update({ balance: newBalance });
+      const newBalance = parseFloat(card.balance || 0) + fundingAmount;
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('virtualCards')
+          .update({
+            balance: newBalance,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', cardId);
+        
+        if (error) throw error;
+      });
 
       // Debit wallet
       await walletService.debitWallet(userId, fundingAmount, 
@@ -379,12 +400,12 @@ class VirtualCardService {
         newBalance
       });
 
-      return {
+        return {
         success: true,
         card: {
           id: card.id,
-          maskedCardNumber: card.maskedCardNumber,
-          previousBalance: parseFloat(card.balance),
+          maskedCardNumber: card.metadata?.maskedCardNumber || `**** **** **** ${card.cardNumber?.slice(-4) || '****'}`,
+          previousBalance: parseFloat(card.balance || 0),
           fundedAmount: fundingAmount,
           newBalance: newBalance
         }
@@ -407,9 +428,8 @@ class VirtualCardService {
       await userService.validateUserPin(userId, pin);
 
       // Get card
-      const { VirtualCard } = require('../models');
-      const card = await VirtualCard.findOne({
-        where: { id: cardId, userId }
+      const card = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('virtualCards', { id: cardId, userId });
       });
 
       if (!card) {
@@ -446,20 +466,28 @@ class VirtualCardService {
       }
 
       // Update card status
-      await card.update({ 
-        status: newStatus,
-        metadata: {
-          ...card.metadata,
-          statusChanges: [
-            ...(card.metadata.statusChanges || []),
-            {
-              from: card.status,
-              to: newStatus,
-              action,
-              timestamp: new Date()
-            }
-          ]
-        }
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('virtualCards')
+          .update({
+            status: newStatus,
+            metadata: {
+              ...(card.metadata || {}),
+              statusChanges: [
+                ...((card.metadata || {}).statusChanges || []),
+                {
+                  from: card.status,
+                  to: newStatus,
+                  action,
+                  timestamp: new Date().toISOString()
+                }
+              ]
+            },
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', cardId);
+        
+        if (error) throw error;
       });
 
       logger.info('Card status changed', {
@@ -570,24 +598,34 @@ class VirtualCardService {
       const { Transaction } = require('../models');
       
       // Verify card belongs to user
-      const { VirtualCard } = require('../models');
-      const card = await VirtualCard.findOne({
-        where: { id: cardId, userId }
+      const card = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('virtualCards', { id: cardId, userId });
       });
 
       if (!card) {
         throw new Error('Card not found');
       }
 
-      const transactions = await Transaction.findAndCountAll({
-        where: {
-          'metadata.cardId': cardId,
+      // Get transactions using Supabase
+      const allTransactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', {
           category: ['virtual_card', 'virtual_card_transaction']
-        },
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
+        }, {
+          orderBy: 'createdAt',
+          order: 'desc'
+        });
       });
+      
+      // Filter by cardId in metadata
+      const filteredTransactions = allTransactions.filter(tx => {
+        return tx.metadata?.cardId === cardId;
+      });
+      
+      const total = filteredTransactions.length;
+      const transactions = {
+        rows: filteredTransactions.slice(parseInt(offset), parseInt(offset) + parseInt(limit)),
+        count: total
+      };
 
       return {
         transactions: transactions.rows.map(tx => ({
@@ -625,9 +663,8 @@ class VirtualCardService {
       await userService.validateUserPin(userId, pin);
 
       // Get card
-      const { VirtualCard } = require('../models');
-      const card = await VirtualCard.findOne({
-        where: { id: cardId, userId }
+      const card = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('virtualCards', { id: cardId, userId });
       });
 
       if (!card) {
@@ -637,8 +674,8 @@ class VirtualCardService {
       // Check if card has balance
       if (parseFloat(card.balance) > 0) {
         // Refund balance to wallet
-        await walletService.creditWallet(userId, parseFloat(card.balance), 
-          `Card closure refund - ${card.maskedCardNumber}`, {
+        await walletService.creditWallet(userId, parseFloat(card.balance || 0), 
+          `Card closure refund - ${card.metadata?.maskedCardNumber || 'Card'}`, {
           category: 'virtual_card',
           cardId: card.id,
           action: 'refund'
@@ -662,13 +699,21 @@ class VirtualCardService {
       }
 
       // Update card status to blocked (soft delete)
-      await card.update({ 
-        status: this.cardStatuses.BLOCKED,
-        metadata: {
-          ...card.metadata,
-          deletedAt: new Date(),
-          deletionReason: 'User requested deletion'
-        }
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('virtualCards')
+          .update({
+            status: this.cardStatuses.BLOCKED,
+            metadata: {
+              ...(card.metadata || {}),
+              deletedAt: new Date().toISOString(),
+              deletionReason: 'User requested deletion'
+            },
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', cardId);
+        
+        if (error) throw error;
       });
 
       logger.info('Virtual card deleted successfully', {

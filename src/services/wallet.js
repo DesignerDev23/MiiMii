@@ -1,13 +1,11 @@
-const { Wallet, Transaction, User, ActivityLog } = require('../models');
-const { sequelize, supabase } = require('../database/connection');
+const { supabase } = require('../database/connection');
 const rubiesService = require('./rubies');
 const rubiesWalletService = require('./rubiesWalletService');
 const logger = require('../utils/logger');
 const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
 const { v4: uuidv4 } = require('uuid');
-const { Op } = require('sequelize'); // Added Op for date range queries
-const userService = require('./user'); // Added userService for getUserById
+const userService = require('./user');
 
 class WalletService {
   async createWallet(userId) {
@@ -123,11 +121,9 @@ class WalletService {
   }
 
   async creditWallet(userId, amount, description, metadata = {}) {
-    const transaction = await sequelize.transaction();
-    
     try {
       const wallet = await this.getUserWallet(userId);
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
 
       if (!wallet.isActive) {
         throw new Error('Wallet is inactive');
@@ -136,34 +132,48 @@ class WalletService {
       const balanceBefore = parseFloat(wallet.balance);
       const creditAmount = parseFloat(amount);
       const balanceAfter = balanceBefore + creditAmount;
+      const reference = this.generateReference();
 
-      // Create transaction record
-      const txnRecord = await Transaction.create({
-        reference: this.generateReference(),
-        userId,
-        type: 'credit',
-        category: metadata.category || 'wallet_funding',
-        amount: creditAmount,
-        fee: 0,
-        totalAmount: creditAmount,
-        status: 'completed',
-        description,
-        balanceBefore,
-        balanceAfter,
-        metadata,
-        processedAt: new Date()
-      }, { transaction });
+      // Create transaction record using Supabase
+      const txnRecord = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('transactions', {
+          id: uuidv4(),
+          reference,
+          userId,
+          type: 'credit',
+          category: metadata.category || 'wallet_funding',
+          amount: creditAmount,
+          fee: 0,
+          totalAmount: creditAmount,
+          status: 'completed',
+          description,
+          metadata: {
+            ...metadata,
+            balanceBefore,
+            balanceAfter
+          },
+          processedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      });
 
-      // Update wallet balance
-      await wallet.update({
-        previousBalance: balanceBefore,
-        balance: balanceAfter,
-        availableBalance: parseFloat(wallet.availableBalance || 0) + creditAmount,
-        ledgerBalance: balanceAfter,
-        totalCredits: parseFloat(wallet.totalCredits || 0) + creditAmount
-      }, { transaction });
-
-      await transaction.commit();
+      // Update wallet balance using Supabase
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('wallets')
+          .update({
+            previousBalance: balanceBefore,
+            balance: balanceAfter,
+            availableBalance: parseFloat(wallet.availableBalance || 0) + creditAmount,
+            ledgerBalance: balanceAfter,
+            totalCredits: parseFloat(wallet.totalCredits || 0) + creditAmount,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', wallet.id);
+        
+        if (error) throw error;
+      });
 
       logger.info('Wallet credited successfully', {
         userId,
@@ -211,18 +221,15 @@ class WalletService {
         previousBalance: balanceBefore
       };
     } catch (error) {
-      await transaction.rollback();
       logger.error('Failed to credit wallet', { error: error.message, userId, amount });
       throw error;
     }
   }
 
   async debitWallet(userId, amount, description, metadata = {}) {
-    const transaction = await sequelize.transaction();
-    
     try {
       const wallet = await this.getUserWallet(userId);
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
 
       if (!wallet.isActive) {
         throw new Error('Wallet is inactive');
@@ -242,35 +249,49 @@ class WalletService {
       }
 
       const balanceAfter = balanceBefore - debitAmount;
+      const reference = this.generateReference();
 
-      // Create transaction record
-      const txnRecord = await Transaction.create({
-        reference: this.generateReference(),
-        userId,
-        type: 'debit',
-        category: metadata.category || 'wallet_transfer',
-        amount: debitAmount,
-        fee: metadata.fee || 0,
-        totalAmount: debitAmount + (metadata.fee || 0),
-        status: 'completed',
-        description,
-        balanceBefore,
-        balanceAfter,
-        metadata,
-        processedAt: new Date()
-      }, { transaction });
+      // Create transaction record using Supabase
+      const txnRecord = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('transactions', {
+          id: uuidv4(),
+          reference,
+          userId,
+          type: 'debit',
+          category: metadata.category || 'wallet_transfer',
+          amount: debitAmount,
+          fee: metadata.fee || 0,
+          totalAmount: debitAmount + (metadata.fee || 0),
+          status: 'completed',
+          description,
+          metadata: {
+            ...metadata,
+            balanceBefore,
+            balanceAfter
+          },
+          processedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      });
 
-      // Update wallet balance
+      // Update wallet balance using Supabase
       const newAvailable = Math.max(0, parseFloat(wallet.availableBalance || 0) - debitAmount);
-      await wallet.update({
-        previousBalance: balanceBefore,
-        balance: balanceAfter,
-        availableBalance: newAvailable,
-        ledgerBalance: balanceAfter,
-        totalDebits: parseFloat(wallet.totalDebits || 0) + debitAmount
-      }, { transaction });
-
-      await transaction.commit();
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('wallets')
+          .update({
+            previousBalance: balanceBefore,
+            balance: balanceAfter,
+            availableBalance: newAvailable,
+            ledgerBalance: balanceAfter,
+            totalDebits: parseFloat(wallet.totalDebits || 0) + debitAmount,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', wallet.id);
+        
+        if (error) throw error;
+      });
 
       logger.info('Wallet debited successfully', {
         userId,
@@ -285,24 +306,22 @@ class WalletService {
         previousBalance: balanceBefore
       };
     } catch (error) {
-      await transaction.rollback();
       logger.error('Failed to debit wallet', { error: error.message, userId, amount });
       throw error;
     }
   }
 
   async transferBetweenWallets(fromUserId, toUserId, amount, description = 'Wallet transfer') {
-    const transaction = await sequelize.transaction();
-    
     try {
-      const fromUser = await User.findByPk(fromUserId);
-      const toUser = await User.findByPk(toUserId);
+      const fromUser = await userService.getUserById(fromUserId);
+      const toUser = await userService.getUserById(toUserId);
 
       if (!fromUser || !toUser) {
         throw new Error('User not found');
       }
 
-      if (!fromUser.canPerformTransactions()) {
+      // Check if user can perform transactions (basic checks)
+      if (!fromUser.isActive || fromUser.isBanned) {
         throw new Error('Sender cannot perform transactions');
       }
 
@@ -325,8 +344,6 @@ class WalletService {
         transferReference: reference
       });
 
-      await transaction.commit();
-
       logger.info('Wallet to wallet transfer completed', {
         fromUserId,
         toUserId,
@@ -341,7 +358,6 @@ class WalletService {
         recipient: toUser.whatsappNumber
       };
     } catch (error) {
-      await transaction.rollback();
       logger.error('Wallet transfer failed', { 
         error: error.message, 
         fromUserId, 
@@ -414,18 +430,29 @@ class WalletService {
     try {
       const wallet = await this.getUserWallet(userId);
       
-      await wallet.update({
-        isFrozen: true,
-        metadata: {
-          ...wallet.metadata,
-          frozenAt: new Date(),
-          freezeReason: reason
-        }
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('wallets')
+          .update({
+            isFrozen: true,
+            frozenAt: new Date().toISOString(),
+            freezeReason: reason,
+            metadata: {
+              ...(wallet.metadata || {}),
+              frozenAt: new Date().toISOString(),
+              freezeReason: reason
+            },
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', wallet.id);
+        
+        if (error) throw error;
       });
 
       logger.info('Wallet frozen', { userId, reason });
       
-      return wallet;
+      // Return updated wallet
+      return await this.getUserWallet(userId);
     } catch (error) {
       logger.error('Failed to freeze wallet', { error: error.message, userId });
       throw error;
@@ -436,17 +463,28 @@ class WalletService {
     try {
       const wallet = await this.getUserWallet(userId);
       
-      await wallet.update({
-        isFrozen: false,
-        metadata: {
-          ...wallet.metadata,
-          unfrozenAt: new Date()
-        }
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('wallets')
+          .update({
+            isFrozen: false,
+            frozenAt: null,
+            freezeReason: null,
+            metadata: {
+              ...(wallet.metadata || {}),
+              unfrozenAt: new Date().toISOString()
+            },
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', wallet.id);
+        
+        if (error) throw error;
       });
 
       logger.info('Wallet unfrozen', { userId });
       
-      return wallet;
+      // Return updated wallet
+      return await this.getUserWallet(userId);
     } catch (error) {
       logger.error('Failed to unfreeze wallet', { error: error.message, userId });
       throw error;
@@ -455,7 +493,11 @@ class WalletService {
 
   async createVirtualAccountForWallet(userId) {
     try {
-      const user = await User.findByPk(userId);
+      // Get user using Supabase
+      const user = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('users', userId);
+      });
+      
       if (!user) {
         throw new Error('User not found');
       }
@@ -481,15 +523,20 @@ class WalletService {
         };
       }
 
-      // Check for duplicate account numbers across all wallets
-      const existingWallet = await Wallet.findOne({
-        where: {
-          virtualAccountNumber: { [Op.ne]: null },
-          userId: { [Op.ne]: userId }
-        }
-      });
+      // Check for duplicate account numbers across all wallets using Supabase
+      const { data: existingWallets, error: findError } = await supabase
+        .from('wallets')
+        .select('*')
+        .not('virtualAccountNumber', 'is', null)
+        .neq('userId', userId)
+        .limit(1);
+      
+      if (findError) {
+        logger.warn('Error checking for duplicate account numbers', { error: findError.message });
+      }
 
-      if (existingWallet) {
+      if (existingWallets && existingWallets.length > 0) {
+        const existingWallet = existingWallets[0];
         logger.warn('Potential duplicate account number detected', {
           userId,
           existingAccountNumber: existingWallet.virtualAccountNumber,
@@ -536,15 +583,20 @@ class WalletService {
         throw new Error(rubiesWalletResult.message || 'Failed to create Rubies wallet');
       }
 
-      // Check for duplicate account numbers after creation
-      const duplicateWallet = await Wallet.findOne({
-        where: {
-          virtualAccountNumber: rubiesWalletResult.accountNumber,
-          userId: { [Op.ne]: userId }
-        }
-      });
+      // Check for duplicate account numbers after creation using Supabase
+      const { data: duplicateWallets, error: duplicateError } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('virtualAccountNumber', rubiesWalletResult.accountNumber)
+        .neq('userId', userId)
+        .limit(1);
+      
+      if (duplicateError) {
+        logger.warn('Error checking for duplicate account numbers after creation', { error: duplicateError.message });
+      }
 
-      if (duplicateWallet) {
+      if (duplicateWallets && duplicateWallets.length > 0) {
+        const duplicateWallet = duplicateWallets[0];
         logger.error('Duplicate Rubies account number detected after creation', {
           userId,
           accountNumber: rubiesWalletResult.accountNumber,
@@ -554,16 +606,33 @@ class WalletService {
         throw new Error('Rubies account number already exists for another user. Please contact support.');
       }
       
-      await wallet.update({
-        virtualAccountNumber: rubiesWalletResult.accountNumber,
-        virtualAccountBank: 'Rubies MFB',
-        virtualAccountName: `${user.firstName} ${user.lastName}`,
-        accountReference: rubiesWalletResult.customerId
+      // Update wallet using Supabase
+      await databaseService.executeWithRetry(async () => {
+        const { error: updateError } = await supabase
+          .from('wallets')
+          .update({
+            virtualAccountNumber: rubiesWalletResult.accountNumber,
+            virtualAccountBank: 'Rubies MFB',
+            virtualAccountName: `${user.firstName} ${user.lastName}`,
+            accountReference: rubiesWalletResult.customerId,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', wallet.id);
+        
+        if (updateError) throw updateError;
       });
 
-      // Mark user onboarding as completed since Rubies wallet is created
-      await user.update({
-        onboardingStep: 'completed'
+      // Mark user onboarding as completed since Rubies wallet is created using Supabase
+      await databaseService.executeWithRetry(async () => {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            onboardingStep: 'completed',
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', userId);
+        
+        if (updateError) throw updateError;
       });
 
       logger.info('Rubies wallet created successfully for wallet', {

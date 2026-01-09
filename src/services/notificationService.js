@@ -1,6 +1,7 @@
-const { Notification, User } = require('../models');
 const logger = require('../utils/logger');
 const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
+const { v4: uuidv4 } = require('uuid');
 
 class NotificationService {
   /**
@@ -19,16 +20,22 @@ class NotificationService {
         expiresAt = null
       } = notificationData;
 
-      const notification = await Notification.create({
-        userId,
-        type,
-        title,
-        message,
-        data,
-        priority,
-        actionUrl,
-        imageUrl,
-        expiresAt
+      const notification = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('notifications', {
+          id: uuidv4(),
+          userId,
+          type,
+          title,
+          message,
+          data,
+          priority,
+          actionUrl,
+          imageUrl,
+          expiresAt: expiresAt ? expiresAt.toISOString() : null,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       });
 
       logger.info('Notification created', {
@@ -184,20 +191,21 @@ class NotificationService {
         where.priority = priority;
       }
 
-      // Exclude expired notifications
-      where[require('sequelize').Op.or] = [
-        { expiresAt: null },
-        { expiresAt: { [require('sequelize').Op.gt]: new Date() } }
-      ];
-
-      const notifications = await Notification.findAll({
-        where,
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit, 10),
-        offset: parseInt(offset, 10)
+      // Get all notifications and filter expired ones
+      const allNotifications = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('notifications', where, {
+          orderBy: 'createdAt',
+          order: 'desc'
+        });
       });
-
-      const total = await Notification.count({ where });
+      
+      // Filter expired notifications
+      const now = new Date();
+      const notifications = allNotifications
+        .filter(n => !n.expiresAt || new Date(n.expiresAt) > now)
+        .slice(parseInt(offset, 10), parseInt(offset, 10) + parseInt(limit, 10));
+      
+      const total = allNotifications.filter(n => !n.expiresAt || new Date(n.expiresAt) > now).length;
 
       return {
         notifications,
@@ -222,16 +230,16 @@ class NotificationService {
    */
   async getUnreadCount(userId) {
     try {
-      const count = await Notification.count({
-        where: {
+      const notifications = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('notifications', {
           userId,
-          isRead: false,
-          [require('sequelize').Op.or]: [
-            { expiresAt: null },
-            { expiresAt: { [require('sequelize').Op.gt]: new Date() } }
-          ]
-        }
+          isRead: false
+        });
       });
+      
+      // Filter expired notifications
+      const now = new Date();
+      const count = notifications.filter(n => !n.expiresAt || new Date(n.expiresAt) > now).length;
 
       return count;
     } catch (error) {
@@ -248,11 +256,11 @@ class NotificationService {
    */
   async markAsRead(notificationId, userId) {
     try {
-      const notification = await Notification.findOne({
-        where: {
+      const notification = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('notifications', {
           id: notificationId,
           userId
-        }
+        });
       });
 
       if (!notification) {
@@ -260,10 +268,21 @@ class NotificationService {
       }
 
       if (!notification.isRead) {
-        await notification.update({
-          isRead: true,
-          readAt: new Date()
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from('notifications')
+            .update({
+              isRead: true,
+              readAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', notificationId);
+          
+          if (error) throw error;
         });
+        
+        notification.isRead = true;
+        notification.readAt = new Date().toISOString();
       }
 
       return notification;
@@ -282,18 +301,29 @@ class NotificationService {
    */
   async markAllAsRead(userId) {
     try {
-      const [updatedCount] = await Notification.update(
-        {
-          isRead: true,
-          readAt: new Date()
-        },
-        {
-          where: {
-            userId,
-            isRead: false
-          }
-        }
-      );
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('notifications')
+          .update({
+            isRead: true,
+            readAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          })
+          .eq('userId', userId)
+          .eq('isRead', false);
+        
+        if (error) throw error;
+      });
+      
+      // Get count of updated notifications
+      const notifications = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('notifications', {
+          userId,
+          isRead: false
+        });
+      });
+      
+      const updatedCount = notifications.length;
 
       logger.info('Marked all notifications as read', {
         userId,
@@ -315,18 +345,25 @@ class NotificationService {
    */
   async deleteNotification(notificationId, userId) {
     try {
-      const notification = await Notification.findOne({
-        where: {
+      const notification = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('notifications', {
           id: notificationId,
           userId
-        }
+        });
       });
 
       if (!notification) {
         throw new Error('Notification not found');
       }
 
-      await notification.destroy();
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('notifications')
+          .delete()
+          .eq('id', notificationId);
+        
+        if (error) throw error;
+      });
 
       return true;
     } catch (error) {

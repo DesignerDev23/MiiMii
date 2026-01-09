@@ -1,6 +1,8 @@
-const { Beneficiary, User } = require('../models');
 const logger = require('../utils/logger');
-const { Op } = require('sequelize');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
+const { supabase } = require('../database/connection');
+const { v4: uuidv4 } = require('uuid');
 
 class BeneficiaryService {
   /**
@@ -28,14 +30,22 @@ class BeneficiaryService {
       });
 
       if (existingBeneficiary) {
-        // Update existing beneficiary
-        await existingBeneficiary.updateUsage(transferData.amount || 0);
+        // Update existing beneficiary usage
+        const newTotalTransactions = (existingBeneficiary.totalTransactions || 0) + 1;
+        const newTotalAmount = parseFloat(existingBeneficiary.totalAmount || 0) + parseFloat(transferData.amount || 0);
+        const newAverageAmount = newTotalAmount / newTotalTransactions;
+        
+        const updateData = {
+          totalTransactions: newTotalTransactions,
+          totalAmount: newTotalAmount,
+          averageAmount: newAverageAmount,
+          lastUsedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
         
         // Update nickname if provided and not already set
         if (nickname && !existingBeneficiary.nickname) {
-          existingBeneficiary.nickname = nickname;
-          await existingBeneficiary.save();
-          
+          updateData.nickname = nickname;
           logger.info('Updated existing beneficiary with nickname', {
             userId,
             beneficiaryId: existingBeneficiary.id,
@@ -43,26 +53,44 @@ class BeneficiaryService {
           });
         }
         
-        return existingBeneficiary;
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from('beneficiaries')
+            .update(updateData)
+            .eq('id', existingBeneficiary.id);
+          
+          if (error) throw error;
+        });
+        
+        // Return updated beneficiary
+        return await databaseService.executeWithRetry(async () => {
+          return await supabaseHelper.findByPk('beneficiaries', existingBeneficiary.id);
+        });
       }
 
       // Create new beneficiary
-      const beneficiary = await Beneficiary.create({
-        userId,
-        type,
-        name: recipientName || accountNumber || phoneNumber,
-        phoneNumber: phoneNumber || null,
-        accountNumber: accountNumber || null,
-        bankCode: bankCode || null,
-        bankName: bankName || null,
-        nickname: nickname || null,
-        category: this.categorizeByNickname(nickname),
-        isVerified: !!recipientName, // Verified if we have recipient name from name enquiry
-        verificationData: recipientName ? { accountName: recipientName } : null,
-        totalTransactions: 1,
-        totalAmount: transferData.amount || 0,
-        averageAmount: transferData.amount || 0,
-        lastUsedAt: new Date()
+      const beneficiary = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('beneficiaries', {
+          id: uuidv4(),
+          userId,
+          type,
+          name: recipientName || accountNumber || phoneNumber,
+          phoneNumber: phoneNumber || null,
+          accountNumber: accountNumber || null,
+          bankCode: bankCode || null,
+          bankName: bankName || null,
+          nickname: nickname || null,
+          category: this.categorizeByNickname(nickname),
+          isVerified: !!recipientName,
+          verificationData: recipientName ? { accountName: recipientName } : null,
+          totalTransactions: 1,
+          totalAmount: transferData.amount || 0,
+          averageAmount: transferData.amount || 0,
+          lastUsedAt: new Date().toISOString(),
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       });
 
       logger.info('Auto-saved new beneficiary', {
@@ -92,21 +120,34 @@ class BeneficiaryService {
     try {
       const normalizedNickname = nickname.toLowerCase().trim();
       
-      const beneficiary = await Beneficiary.findOne({
-        where: {
-          userId,
-          isActive: true,
-          [Op.or]: [
-            { nickname: { [Op.iLike]: normalizedNickname } },
-            { name: { [Op.iLike]: `%${normalizedNickname}%` } }
-          ]
-        },
-        order: [
-          ['isFavorite', 'DESC'],
-          ['totalTransactions', 'DESC'],
-          ['lastUsedAt', 'DESC']
-        ]
+      // Get all beneficiaries and filter in memory (Supabase doesn't support complex OR with ILIKE)
+      const beneficiaries = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('beneficiaries', { 
+          userId, 
+          isActive: true 
+        }, {
+          orderBy: 'isFavorite',
+          order: 'desc'
+        });
       });
+      
+      // Filter by nickname or name
+      const beneficiary = beneficiaries.find(ben => {
+        const benNickname = (ben.nickname || '').toLowerCase();
+        const benName = (ben.name || '').toLowerCase();
+        return benNickname === normalizedNickname || benName.includes(normalizedNickname);
+      });
+      
+      // Sort by totalTransactions and lastUsedAt
+      if (beneficiaries.length > 1) {
+        beneficiaries.sort((a, b) => {
+          if (a.isFavorite !== b.isFavorite) return b.isFavorite - a.isFavorite;
+          if ((b.totalTransactions || 0) !== (a.totalTransactions || 0)) return (b.totalTransactions || 0) - (a.totalTransactions || 0);
+          const aDate = a.lastUsedAt ? new Date(a.lastUsedAt) : new Date(0);
+          const bDate = b.lastUsedAt ? new Date(b.lastUsedAt) : new Date(0);
+          return bDate - aDate;
+        });
+      }
 
       if (beneficiary) {
         logger.info('Found beneficiary by nickname', {
@@ -143,7 +184,9 @@ class BeneficiaryService {
         return null;
       }
 
-      return await Beneficiary.findOne({ where });
+      return await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('beneficiaries', where);
+      });
     } catch (error) {
       logger.error('Failed to find beneficiary', { error: error.message, userId });
       return null;
@@ -172,15 +215,22 @@ class BeneficiaryService {
       if (type) where.type = type;
       if (isFavorite !== null) where.isFavorite = isFavorite;
 
-      const beneficiaries = await Beneficiary.findAll({
-        where,
-        order: [
-          ['isFavorite', 'DESC'],
-          ['totalTransactions', 'DESC'],
-          ['lastUsedAt', 'DESC']
-        ],
-        limit,
-        offset
+      const beneficiaries = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('beneficiaries', where, {
+          orderBy: 'isFavorite',
+          order: 'desc',
+          limit,
+          offset
+        });
+      });
+      
+      // Sort by totalTransactions and lastUsedAt (Supabase doesn't support multiple orderBy)
+      beneficiaries.sort((a, b) => {
+        if (a.isFavorite !== b.isFavorite) return b.isFavorite - a.isFavorite;
+        if ((b.totalTransactions || 0) !== (a.totalTransactions || 0)) return (b.totalTransactions || 0) - (a.totalTransactions || 0);
+        const aDate = a.lastUsedAt ? new Date(a.lastUsedAt) : new Date(0);
+        const bDate = b.lastUsedAt ? new Date(b.lastUsedAt) : new Date(0);
+        return bDate - aDate;
       });
 
       return beneficiaries;
@@ -195,17 +245,24 @@ class BeneficiaryService {
    */
   async getFrequentBeneficiaries(userId, limit = 10) {
     try {
-      return await Beneficiary.findAll({
-        where: {
+      const beneficiaries = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('beneficiaries', {
           userId,
           isActive: true
-        },
-        order: [
-          ['totalTransactions', 'DESC'],
-          ['totalAmount', 'DESC']
-        ],
-        limit
+        }, {
+          orderBy: 'totalTransactions',
+          order: 'desc',
+          limit
+        });
       });
+      
+      // Sort by totalAmount as secondary sort
+      beneficiaries.sort((a, b) => {
+        if ((b.totalTransactions || 0) !== (a.totalTransactions || 0)) return (b.totalTransactions || 0) - (a.totalTransactions || 0);
+        return parseFloat(b.totalAmount || 0) - parseFloat(a.totalAmount || 0);
+      });
+      
+      return beneficiaries.slice(0, limit);
     } catch (error) {
       logger.error('Failed to get frequent beneficiaries', { error: error.message, userId });
       return [];
@@ -217,8 +274,8 @@ class BeneficiaryService {
    */
   async updateBeneficiary(userId, beneficiaryId, updates) {
     try {
-      const beneficiary = await Beneficiary.findOne({
-        where: { id: beneficiaryId, userId }
+      const beneficiary = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('beneficiaries', { id: beneficiaryId, userId });
       });
 
       if (!beneficiary) {
@@ -227,7 +284,9 @@ class BeneficiaryService {
 
       // Only allow certain fields to be updated
       const allowedUpdates = ['nickname', 'category', 'notes', 'isFavorite'];
-      const filteredUpdates = {};
+      const filteredUpdates = {
+        updatedAt: new Date().toISOString()
+      };
       
       allowedUpdates.forEach(field => {
         if (updates[field] !== undefined) {
@@ -235,7 +294,14 @@ class BeneficiaryService {
         }
       });
 
-      await beneficiary.update(filteredUpdates);
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('beneficiaries')
+          .update(filteredUpdates)
+          .eq('id', beneficiaryId);
+        
+        if (error) throw error;
+      });
 
       logger.info('Beneficiary updated', {
         userId,
@@ -243,7 +309,10 @@ class BeneficiaryService {
         updates: Object.keys(filteredUpdates)
       });
 
-      return beneficiary;
+      // Return updated beneficiary
+      return await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('beneficiaries', beneficiaryId);
+      });
     } catch (error) {
       logger.error('Failed to update beneficiary', { error: error.message, userId, beneficiaryId });
       throw error;
@@ -255,15 +324,25 @@ class BeneficiaryService {
    */
   async deleteBeneficiary(userId, beneficiaryId) {
     try {
-      const beneficiary = await Beneficiary.findOne({
-        where: { id: beneficiaryId, userId }
+      const beneficiary = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('beneficiaries', { id: beneficiaryId, userId });
       });
 
       if (!beneficiary) {
         throw new Error('Beneficiary not found');
       }
 
-      await beneficiary.update({ isActive: false });
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('beneficiaries')
+          .update({ 
+            isActive: false,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', beneficiaryId);
+        
+        if (error) throw error;
+      });
 
       logger.info('Beneficiary deactivated', {
         userId,
@@ -317,23 +396,34 @@ class BeneficiaryService {
    */
   async searchBeneficiaries(userId, searchTerm) {
     try {
-      const beneficiaries = await Beneficiary.findAll({
-        where: {
-          userId,
-          isActive: true,
-          [Op.or]: [
-            { nickname: { [Op.iLike]: `%${searchTerm}%` } },
-            { name: { [Op.iLike]: `%${searchTerm}%` } },
-            { accountNumber: { [Op.like]: `%${searchTerm}%` } },
-            { phoneNumber: { [Op.like]: `%${searchTerm}%` } }
-          ]
-        },
-        order: [
-          ['isFavorite', 'DESC'],
-          ['totalTransactions', 'DESC']
-        ],
-        limit: 20
+      // Get all active beneficiaries and filter in memory
+      const allBeneficiaries = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('beneficiaries', { 
+          userId, 
+          isActive: true 
+        });
       });
+      
+      const searchLower = searchTerm.toLowerCase();
+      const beneficiaries = allBeneficiaries.filter(ben => {
+        const nickname = (ben.nickname || '').toLowerCase();
+        const name = (ben.name || '').toLowerCase();
+        const accountNumber = (ben.accountNumber || '').toLowerCase();
+        const phoneNumber = (ben.phoneNumber || '').toLowerCase();
+        
+        return nickname.includes(searchLower) || 
+               name.includes(searchLower) || 
+               accountNumber.includes(searchLower) || 
+               phoneNumber.includes(searchLower);
+      });
+      
+      // Sort by isFavorite and totalTransactions
+      beneficiaries.sort((a, b) => {
+        if (a.isFavorite !== b.isFavorite) return b.isFavorite - a.isFavorite;
+        return (b.totalTransactions || 0) - (a.totalTransactions || 0);
+      });
+      
+      return beneficiaries.slice(0, 20);
 
       return beneficiaries;
     } catch (error) {
@@ -347,23 +437,40 @@ class BeneficiaryService {
    */
   async toggleFavorite(userId, beneficiaryId) {
     try {
-      const beneficiary = await Beneficiary.findOne({
-        where: { id: beneficiaryId, userId }
+      const beneficiary = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('beneficiaries', { id: beneficiaryId, userId });
       });
 
       if (!beneficiary) {
         throw new Error('Beneficiary not found');
       }
 
-      await beneficiary.toggleFavorite();
+      const newFavoriteStatus = !beneficiary.isFavorite;
+      
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('beneficiaries')
+          .update({ 
+            isFavorite: newFavoriteStatus,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', beneficiaryId);
+        
+        if (error) throw error;
+      });
+      
+      beneficiary.isFavorite = newFavoriteStatus;
 
       logger.info('Beneficiary favorite toggled', {
         userId,
         beneficiaryId,
-        isFavorite: beneficiary.isFavorite
+        isFavorite: newFavoriteStatus
       });
 
-      return beneficiary;
+      // Return updated beneficiary
+      return await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('beneficiaries', beneficiaryId);
+      });
     } catch (error) {
       logger.error('Failed to toggle favorite', { error: error.message, userId, beneficiaryId });
       throw error;
@@ -404,18 +511,28 @@ class BeneficiaryService {
    */
   async getBeneficiaryStats(userId) {
     try {
-      const [total, favorites, family, friends, business, recentlyUsed] = await Promise.all([
-        Beneficiary.count({ where: { userId, isActive: true } }),
-        Beneficiary.count({ where: { userId, isActive: true, isFavorite: true } }),
-        Beneficiary.count({ where: { userId, isActive: true, category: 'family' } }),
-        Beneficiary.count({ where: { userId, isActive: true, category: 'friend' } }),
-        Beneficiary.count({ where: { userId, isActive: true, category: 'business' } }),
-        Beneficiary.findAll({
-          where: { userId, isActive: true, lastUsedAt: { [Op.not]: null } },
-          order: [['lastUsedAt', 'DESC']],
-          limit: 5
-        })
-      ]);
+      // Get all active beneficiaries
+      const allBeneficiaries = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('beneficiaries', { userId, isActive: true });
+      });
+      
+      const total = allBeneficiaries.length;
+      const favorites = allBeneficiaries.filter(b => b.isFavorite).length;
+      const family = allBeneficiaries.filter(b => b.category === 'family').length;
+      const friends = allBeneficiaries.filter(b => b.category === 'friend').length;
+      const business = allBeneficiaries.filter(b => b.category === 'business').length;
+      
+      // Get recently used
+      const recentlyUsed = allBeneficiaries
+        .filter(b => b.lastUsedAt)
+        .sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt))
+        .slice(0, 5)
+        .map(b => ({
+          id: b.id,
+          name: b.name,
+          nickname: b.nickname,
+          lastUsedAt: b.lastUsedAt
+        }));
 
       return {
         total,
@@ -426,7 +543,7 @@ class BeneficiaryService {
           business,
           other: total - family - friends - business
         },
-        recentlyUsed: recentlyUsed.map(b => b.getDisplayInfo())
+        recentlyUsed
       };
     } catch (error) {
       logger.error('Failed to get beneficiary stats', { error: error.message, userId });

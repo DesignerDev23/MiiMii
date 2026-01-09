@@ -1,10 +1,13 @@
-const { Transaction, User } = require('../models');
+const { supabase } = require('../database/connection');
 const bellBankService = require('./bellbank');
 const walletService = require('./wallet');
 const userService = require('./user');
 const whatsappService = require('./whatsapp');
 const aiService = require('./ai');
 const logger = require('../utils/logger');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
+const { v4: uuidv4 } = require('uuid');
 
 class TransactionService {
   // Create a new transaction record
@@ -31,31 +34,36 @@ class TransactionService {
       } = transactionData;
 
       // Generate reference if not provided
-      const finalReference = reference || Transaction.generateReference(type, category);
+      const finalReference = reference || this.generateReference(type, category);
 
       // Calculate total amount if not provided
       const finalTotalAmount = totalAmount || (parseFloat(amount) + parseFloat(fee) + parseFloat(platformFee) + parseFloat(providerFee));
 
-      const transaction = await Transaction.create({
-        userId,
-        reference: finalReference,
-        type,
-        category,
-        subCategory,
-        amount: parseFloat(amount),
-        fee: parseFloat(fee),
-        platformFee: parseFloat(platformFee),
-        providerFee: parseFloat(providerFee),
-        totalAmount: parseFloat(finalTotalAmount),
-        currency,
-        description,
-        recipientDetails,
-        metadata,
-        status,
-        source,
-        priority,
-        approvalStatus,
-        processedAt: status === 'completed' ? new Date() : null
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('transactions', {
+          id: uuidv4(),
+          userId,
+          reference: finalReference,
+          type,
+          category,
+          subCategory,
+          amount: parseFloat(amount),
+          fee: parseFloat(fee),
+          platformFee: parseFloat(platformFee),
+          providerFee: parseFloat(providerFee),
+          totalAmount: parseFloat(finalTotalAmount),
+          currency,
+          description,
+          recipientDetails,
+          metadata,
+          status,
+          source,
+          priority,
+          approvalStatus,
+          processedAt: status === 'completed' ? new Date().toISOString() : null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       });
 
       logger.info('Transaction created successfully', {
@@ -79,10 +87,20 @@ class TransactionService {
     }
   }
 
+  // Generate transaction reference
+  generateReference(type, category) {
+    const prefix = type === 'credit' ? 'CR' : type === 'debit' ? 'DB' : 'TX';
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `${prefix}${timestamp}${random}`;
+  }
+
   // Update transaction status
   async updateTransactionStatus(reference, status, additionalData = {}) {
     try {
-      const transaction = await Transaction.findOne({ where: { reference } });
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { reference });
+      });
       
       if (!transaction) {
         throw new Error(`Transaction with reference ${reference} not found`);
@@ -90,15 +108,23 @@ class TransactionService {
 
       const updateData = {
         status,
-        ...additionalData
+        ...additionalData,
+        updatedAt: new Date().toISOString()
       };
 
       // Set processedAt if status is completed
       if (status === 'completed') {
-        updateData.processedAt = new Date();
+        updateData.processedAt = new Date().toISOString();
       }
 
-      await transaction.update(updateData);
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('transactions')
+          .update(updateData)
+          .eq('id', transaction.id);
+        
+        if (error) throw error;
+      });
 
       logger.info('Transaction status updated', {
         reference,
@@ -416,10 +442,18 @@ class TransactionService {
       }
 
       // Update transaction status
-      await transaction.update({
-        status: 'completed',
-        processedAt: new Date(),
-        providerResponse: webhookData
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            status: 'completed',
+            processedAt: new Date().toISOString(),
+            providerResponse: webhookData,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', transaction.id);
+        
+        if (error) throw error;
       });
 
       // Generate and send receipt
@@ -428,7 +462,7 @@ class TransactionService {
         const receiptData = {
           transactionType: 'Bank Transfer',
           amount: parseFloat(amount),
-          sender: transaction.user.name || 'MiiMii User',
+          sender: user ? (user.firstName + ' ' + (user.lastName || '')) || 'MiiMii User' : 'MiiMii User',
           beneficiary: recipient_account,
           reference: transaction.reference,
           date: new Date().toLocaleString('en-US', {
@@ -447,26 +481,26 @@ class TransactionService {
 
         const receiptService = require('./receipt');
         
-        // Try to send image receipt first
+          // Try to send image receipt first
         try {
           // Generate transfer receipt with proper bank name
           const transferReceiptData = {
             type: 'Bank Transfer',
             amount: parseFloat(amount),
-            fee: transaction.fee || feeCalculation.totalFee,
-            totalAmount: feeCalculation.totalAmount,
+            fee: transaction.fee || 0,
+            totalAmount: parseFloat(transaction.totalAmount || amount),
             recipientName: recipient_account,
-            recipientBank: transaction.senderDetails?.bankName || transaction.senderDetails?.bank || 'Bank',
-            recipientAccount: transaction.senderDetails?.accountNumber || 'Account',
+            recipientBank: transaction.metadata?.bankName || transaction.metadata?.bank || 'Bank',
+            recipientAccount: transaction.metadata?.accountNumber || 'Account',
             reference: transaction.reference,
             date: new Date().toLocaleString('en-GB'),
-            senderName: transaction.user.name || 'MiiMii User'
+            senderName: user ? (user.firstName + ' ' + (user.lastName || '')) || 'MiiMii User' : 'MiiMii User'
           };
           
           const transferReceiptBuffer = await receiptService.generateTransferReceipt(transferReceiptData);
           
           // Try to send as image
-          await whatsappService.sendImageMessage(transaction.user.whatsappNumber, transferReceiptBuffer, 'transfer-receipt.jpg');
+          await whatsappService.sendImageMessage(user?.whatsappNumber || '', transferReceiptBuffer, 'transfer-receipt.jpg');
           logger.info('Transfer receipt image sent successfully via webhook', { reference: transaction.reference });
           receiptSent = true;
         } catch (imageError) {
@@ -476,14 +510,14 @@ class TransactionService {
         // Fallback to text receipt if image failed
         if (!receiptSent) {
           await whatsappService.sendTextMessage(
-            transaction.user.whatsappNumber,
-            `✅ *Transfer Receipt*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n💸 Fee: ₦${transaction.fee || feeCalculation.totalFee}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
+            user?.whatsappNumber || '',
+            `✅ *Transfer Receipt*\n\n💰 Amount: ₦${parseFloat(amount).toLocaleString()}\n💸 Fee: ₦${(transaction.fee || 0).toLocaleString()}\n👤 To: ${recipient_account}\n📋 Reference: ${transaction.reference}\n📅 Date: ${new Date().toLocaleString('en-GB')}\n✅ Status: Successful\n\nYour transfer has been processed! 🎉`
           );
         }
         
         // Send additional success message
         await whatsappService.sendTextMessage(
-          transaction.user.whatsappNumber,
+          user?.whatsappNumber || '',
           `🎉 *Transfer Completed Successfully!*\n\nYour transfer of ₦${parseFloat(amount).toLocaleString()} to ${recipient_account} has been processed.\n\n📋 *Reference:* ${transaction.reference}\n⏰ *Estimated Arrival:* 5-15 minutes\n\nThank you for using MiiMii! 💙`
         );
         
@@ -493,9 +527,9 @@ class TransactionService {
       }
 
       // Send text notification if receipt wasn't sent
-      if (!receiptSent) {
+      if (!receiptSent && user) {
         await whatsappService.sendTextMessage(
-          transaction.user.whatsappNumber,
+          user.whatsappNumber,
           `✅ *Transfer Completed!*\n\n` +
           `Amount: ₦${parseFloat(amount).toLocaleString()}\n` +
           `To: ${recipient_account}\n` +
@@ -522,10 +556,12 @@ class TransactionService {
       const { reference, amount, reason } = webhookData;
       
       // Find transaction by reference
-      const transaction = await Transaction.findOne({ 
-        where: { providerReference: reference },
-        include: [{ model: User, as: 'user' }]
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { providerReference: reference });
       });
+      
+      // Get user separately
+      const user = transaction ? await userService.getUserById(transaction.userId) : null;
 
       if (!transaction) {
         logger.warn('Transaction not found for BellBank failure webhook', { reference });
@@ -533,11 +569,19 @@ class TransactionService {
       }
 
       // Update transaction status
-      await transaction.update({
-        status: 'failed',
-        processedAt: new Date(),
-        failureReason: reason,
-        providerResponse: webhookData
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            status: 'failed',
+            processedAt: new Date().toISOString(),
+            failureReason: reason,
+            providerResponse: webhookData,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', transaction.id);
+        
+        if (error) throw error;
       });
 
       // Refund user
@@ -553,15 +597,17 @@ class TransactionService {
       );
 
       // Notify user
-      await whatsappService.sendTextMessage(
-        transaction.user.whatsappNumber,
-        `❌ *Transfer Failed*\n\n` +
-        `Amount: ₦${parseFloat(amount).toLocaleString()}\n` +
-        `Reference: ${transaction.reference}\n` +
-        `Reason: ${reason}\n\n` +
-        `💰 Your money has been refunded to your wallet.\n\n` +
-        `Please try again or contact support if the issue persists.`
-      );
+      if (user) {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          `❌ *Transfer Failed*\n\n` +
+          `Amount: ₦${parseFloat(amount).toLocaleString()}\n` +
+          `Reference: ${transaction.reference}\n` +
+          `Reason: ${reason}\n\n` +
+          `💰 Your money has been refunded to your wallet.\n\n` +
+          `Please try again or contact support if the issue persists.`
+        );
+      }
 
       logger.info('Bank transfer failed, user refunded', {
         reference,
@@ -579,10 +625,12 @@ class TransactionService {
 
   async sendTransactionHistory(user, userPhoneNumber, limit = 5) {
     try {
-      const transactions = await Transaction.findAll({
-        where: { userId: user.id },
-        order: [['createdAt', 'DESC']],
-        limit: limit
+      const transactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', { userId: user.id }, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: limit
+        });
       });
 
       if (transactions.length === 0) {
@@ -703,10 +751,12 @@ class TransactionService {
 
   async sendTransactionHistoryText(user, userPhoneNumber, limit = 5) {
     try {
-      const transactions = await Transaction.findAll({
-        where: { userId: user.id },
-        order: [['createdAt', 'DESC']],
-        limit: limit
+      const transactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', { userId: user.id }, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: limit
+        });
       });
       
       if (transactions.length === 0) {
@@ -792,10 +842,15 @@ class TransactionService {
 
   async getTransactionByReference(reference) {
     try {
-      const transaction = await Transaction.findOne({
-        where: { reference },
-        include: [{ model: User, as: 'user' }]
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { reference });
       });
+
+      // Get user separately if needed
+      if (transaction) {
+        const user = await userService.getUserById(transaction.userId);
+        transaction.user = user;
+      }
 
       return transaction;
     } catch (error) {
@@ -809,9 +864,12 @@ class TransactionService {
 
   async retryFailedTransaction(transactionId, userPhoneNumber) {
     try {
-      const transaction = await Transaction.findByPk(transactionId, {
-        include: [{ model: User, as: 'user' }]
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('transactions', transactionId);
       });
+      
+      // Get user separately
+      const user = transaction ? await userService.getUserById(transaction.userId) : null;
 
       if (!transaction || transaction.status !== 'failed') {
         await whatsappService.sendTextMessage(
@@ -822,10 +880,10 @@ class TransactionService {
       }
 
       // Re-initiate the transaction based on type
-      if (transaction.category === 'bank_transfer') {
+      if (transaction.category === 'bank_transfer' && user) {
         const recipientDetails = transaction.recipientDetails || {};
         
-        await this.handleBankTransfer(transaction.user, {
+        await this.handleBankTransfer(user, {
           amount: transaction.amount,
           accountNumber: recipientDetails.accountNumber,
           bankCode: recipientDetails.bankCode,
@@ -888,11 +946,12 @@ class TransactionService {
   // Get recent transactions for a user
   async getRecentTransactions(userId, limit = 5) {
     try {
-      const transactions = await Transaction.findAll({
-        where: { userId },
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        attributes: ['id', 'type', 'category', 'amount', 'status', 'description', 'createdAt', 'reference']
+      const transactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', { userId }, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: parseInt(limit)
+        });
       });
 
       return transactions.map(tx => ({

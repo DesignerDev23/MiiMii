@@ -1,5 +1,7 @@
-const { DataPlan } = require('../models');
 const logger = require('../utils/logger');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
+const { v4: uuidv4 } = require('uuid');
 
 class DataPlanService {
   /**
@@ -7,12 +9,14 @@ class DataPlanService {
    */
   async getDataPlansByNetwork(network) {
     try {
-      const plans = await DataPlan.findAll({
-        where: {
+      const plans = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('dataPlans', {
           network: network.toUpperCase(),
           isActive: true
-        },
-        order: [['sellingPrice', 'ASC']]
+        }, {
+          orderBy: 'price',
+          order: 'asc'
+        });
       });
 
       return plans;
@@ -27,7 +31,9 @@ class DataPlanService {
    */
   async getDataPlanById(planId) {
     try {
-      const plan = await DataPlan.findByPk(planId);
+      const plan = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('dataPlans', planId);
+      });
       return plan;
     } catch (error) {
       logger.error('Error fetching data plan by ID', { error: error.message, planId });
@@ -40,7 +46,14 @@ class DataPlanService {
    */
   async createDataPlan(planData) {
     try {
-      const plan = await DataPlan.create(planData);
+      const plan = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.create('dataPlans', {
+          id: uuidv4(),
+          ...planData,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      });
       logger.info('Data plan created successfully', { planId: plan.id, network: plan.network });
       return plan;
     } catch (error) {
@@ -54,15 +67,22 @@ class DataPlanService {
    */
   async updateDataPlan(planId, updateData) {
     try {
-      const [updatedRowsCount] = await DataPlan.update(updateData, {
-        where: { id: planId }
+      await databaseService.executeWithRetry(async () => {
+        const { error, count } = await supabase
+          .from('dataPlans')
+          .update({
+            ...updateData,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', planId);
+        
+        if (error) throw error;
+        if (!count || count === 0) throw new Error('Data plan not found');
       });
 
-      if (updatedRowsCount === 0) {
-        throw new Error('Data plan not found');
-      }
-
-      const updatedPlan = await DataPlan.findByPk(planId);
+      const updatedPlan = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findByPk('dataPlans', planId);
+      });
       logger.info('Data plan updated successfully', { planId, updateData });
       return updatedPlan;
     } catch (error) {
@@ -76,14 +96,18 @@ class DataPlanService {
    */
   async deleteDataPlan(planId) {
     try {
-      const [updatedRowsCount] = await DataPlan.update(
-        { isActive: false },
-        { where: { id: planId } }
-      );
-
-      if (updatedRowsCount === 0) {
-        throw new Error('Data plan not found');
-      }
+      await databaseService.executeWithRetry(async () => {
+        const { error, count } = await supabase
+          .from('dataPlans')
+          .update({
+            isActive: false,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', planId);
+        
+        if (error) throw error;
+        if (!count || count === 0) throw new Error('Data plan not found');
+      });
 
       logger.info('Data plan deleted successfully', { planId });
       return true;
@@ -148,30 +172,46 @@ class DataPlanService {
 
       for (const apiPlan of apiPlans) {
         try {
-          const existingPlan = await DataPlan.findOne({
-            where: { apiPlanId: apiPlan.id }
+          const existingPlan = await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.findOne('dataPlans', { 
+              providerPlanId: apiPlan.id?.toString() 
+            });
           });
 
           if (existingPlan) {
             // Update existing plan
-            await existingPlan.update({
-              dataSize: apiPlan.dataSize,
-              validity: apiPlan.validity,
-              retailPrice: apiPlan.retailPrice,
-              networkCode: apiPlan.networkCode
+            await databaseService.executeWithRetry(async () => {
+              const { error } = await supabase
+                .from('dataPlans')
+                .update({
+                  dataSize: apiPlan.dataSize,
+                  validityDays: apiPlan.validity,
+                  price: apiPlan.retailPrice,
+                  providerCode: apiPlan.networkCode?.toString(),
+                  updatedAt: new Date().toISOString()
+                })
+                .eq('id', existingPlan.id);
+              
+              if (error) throw error;
             });
             results.updated++;
           } else {
             // Create new plan
-            await DataPlan.create({
-              network: apiPlan.network,
-              planType: apiPlan.planType,
-              dataSize: apiPlan.dataSize,
-              validity: apiPlan.validity,
-              retailPrice: apiPlan.retailPrice,
-              sellingPrice: apiPlan.retailPrice, // Default to retail price
-              networkCode: apiPlan.networkCode,
-              apiPlanId: apiPlan.id
+            await databaseService.executeWithRetry(async () => {
+              return await supabaseHelper.create('dataPlans', {
+                id: uuidv4(),
+                network: apiPlan.network,
+                type: apiPlan.planType || 'data',
+                name: `${apiPlan.dataSize} ${apiPlan.network}`,
+                dataSize: apiPlan.dataSize,
+                validityDays: apiPlan.validity,
+                price: apiPlan.retailPrice,
+                providerCode: apiPlan.networkCode?.toString(),
+                providerPlanId: apiPlan.id?.toString(),
+                isActive: true,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              });
             });
             results.created++;
           }
