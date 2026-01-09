@@ -1057,6 +1057,7 @@ class RubiesService {
         } else {
           logger.warn('No wallet found for virtual account number', { accountNumber });
         }
+      }
     } catch (error) {
       logger.error('Failed to handle Rubies account credit', { error: error.message, data });
     }
