@@ -1,7 +1,5 @@
 const rubiesService = require('./rubies');
 const logger = require('../utils/logger');
-const userService = require('./user');
-const walletService = require('./wallet');
 const activityLogger = require('./activityLogger');
 const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
@@ -15,6 +13,8 @@ class RubiesWalletService {
   // Create a Rubies wallet for a user
   async createRubiesWallet(userId) {
     try {
+      // Use lazy loading to avoid circular dependency
+      const userService = require('./user');
       const user = await userService.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
@@ -55,6 +55,8 @@ class RubiesWalletService {
         });
 
         // Update user's wallet with Rubies account details
+        // Lazy load to avoid circular dependency
+        const walletService = require('./wallet');
         const wallet = await walletService.getUserWallet(userId);
         if (wallet) {
           await databaseService.executeWithRetry(async () => {
@@ -344,6 +346,8 @@ class RubiesWalletService {
   // Sync Rubies wallet balance with local wallet
   async syncWalletBalance(userId) {
     try {
+      // Lazy load to avoid circular dependency
+      const walletService = require('./wallet');
       const wallet = await walletService.getUserWallet(userId);
       if (!wallet || !wallet.virtualAccountNumber) {
         throw new Error('Rubies wallet not found for user');
@@ -402,6 +406,8 @@ class RubiesWalletService {
   // Check if user has Rubies wallet
   async hasRubiesWallet(userId) {
     try {
+      // Lazy load to avoid circular dependency
+      const walletService = require('./wallet');
       const wallet = await walletService.getUserWallet(userId);
       return !!(wallet && wallet.virtualAccountNumber && wallet.virtualAccountBank === 'Rubies MFB');
     } catch (error) {
@@ -416,6 +422,8 @@ class RubiesWalletService {
   // Get Rubies wallet status
   async getRubiesWalletStatus(userId) {
     try {
+      // Lazy load to avoid circular dependency
+      const walletService = require('./wallet');
       const wallet = await walletService.getUserWallet(userId);
       
       if (!wallet) {
