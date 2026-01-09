@@ -5,8 +5,8 @@ const logger = require('../utils/logger');
 const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
 const { v4: uuidv4 } = require('uuid');
-const userService = require('./user');
 const activityLogger = require('./activityLogger');
+// Note: userService is loaded lazily to avoid circular dependency
 
 class WalletService {
   async createWallet(userId) {
@@ -124,6 +124,8 @@ class WalletService {
   async creditWallet(userId, amount, description, metadata = {}) {
     try {
       const wallet = await this.getUserWallet(userId);
+      // Lazy load to avoid circular dependency
+      const userService = require('./user');
       const user = await userService.getUserById(userId);
 
       if (!wallet.isActive) {
@@ -230,6 +232,8 @@ class WalletService {
   async debitWallet(userId, amount, description, metadata = {}) {
     try {
       const wallet = await this.getUserWallet(userId);
+      // Lazy load to avoid circular dependency
+      const userService = require('./user');
       const user = await userService.getUserById(userId);
 
       if (!wallet.isActive) {
@@ -314,6 +318,8 @@ class WalletService {
 
   async transferBetweenWallets(fromUserId, toUserId, amount, description = 'Wallet transfer') {
     try {
+      // Lazy load to avoid circular dependency
+      const userService = require('./user');
       const fromUser = await userService.getUserById(fromUserId);
       const toUser = await userService.getUserById(toUserId);
 
@@ -374,6 +380,8 @@ class WalletService {
       const { customer_id, amount, reference, sender_name, sender_bank } = webhookData;
       
       // Find user by customer_id (which should be the user ID)
+      // Lazy load to avoid circular dependency
+      const userService = require('./user');
       const user = await userService.getUserById(customer_id);
       if (!user) {
         throw new Error('User not found for virtual account credit');
@@ -727,6 +735,8 @@ class WalletService {
 
   async chargeMaintenanceFee(userId) {
     try {
+      // Lazy load to avoid circular dependency
+      const userService = require('./user');
       const user = await userService.getUserById(userId);
       const wallet = await this.getUserWallet(userId);
 
@@ -784,6 +794,8 @@ class WalletService {
   // Check maintenance fee status for admin
   async getMaintenanceFeeStatus(userId) {
     try {
+      // Lazy load to avoid circular dependency
+      const userService = require('./user');
       const user = await userService.getUserById(userId);
       const wallet = await this.getUserWallet(userId);
 
@@ -950,6 +962,8 @@ class WalletService {
   // Get comprehensive wallet details
   async getWalletDetails(userId) {
     try {
+      // Lazy load to avoid circular dependency
+      const userService = require('./user');
       const user = await userService.getUserById(userId);
       if (!user) {
         throw new Error('User not found');

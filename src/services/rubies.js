@@ -1033,6 +1033,8 @@ class RubiesService {
         });
         
         if (wallet) {
+          // Lazy load to avoid circular dependency
+          const userService = require('./user');
           const user = await userService.getUserById(wallet.userId);
           if (user) {
             // Credit the digital wallet using the existing mechanism
