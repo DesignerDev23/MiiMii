@@ -12,7 +12,6 @@ const KVStore = require('./KVStore');
 const WebhookLog = require('./WebhookLog');
 const ActivityLog = require('./ActivityLog');
 const DataPlan = require('./DataPlan');
-const ChatMessage = require('./ChatMessage');
 const Notification = require('./Notification');
 
 // Define relationships
@@ -50,11 +49,6 @@ User.hasMany(SupportTicket, {
 User.hasMany(ActivityLog, {
   foreignKey: 'userId',
   as: 'activityLogs'
-});
-
-User.hasMany(ChatMessage, {
-  foreignKey: 'userId',
-  as: 'chatMessages'
 });
 
 User.hasMany(Notification, {
@@ -151,11 +145,6 @@ ActivityLog.belongsTo(User, {
   as: 'reviewer'
 });
 
-ChatMessage.belongsTo(User, {
-  foreignKey: 'userId',
-  as: 'user'
-});
-
 // Export all models
 module.exports = {
   sequelize,
@@ -170,6 +159,5 @@ module.exports = {
   ActivityLog,
   KVStore,
   DataPlan,
-  ChatMessage,
   Notification
 };

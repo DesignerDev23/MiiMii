@@ -270,12 +270,26 @@ class UserService {
         updateConversationState: user.updateConversationState,
         save: user.save,
         update: user.update,
-        reload: user.reload
+        reload: user.reload,
+        validatePin: user.validatePin
       };
       Object.assign(user, reloaded);
       // Restore helper methods
       Object.assign(user, helperMethods);
       return user;
+    };
+    
+    // Add validatePin method (for PIN validation)
+    user.validatePin = async (pin) => {
+      if (!user.pin) {
+        return false;
+      }
+      // Check if PIN is disabled - always return true
+      if (!user.pinEnabled) {
+        return true;
+      }
+      // Validate PIN using bcrypt
+      return await bcrypt.compare(pin, user.pin);
     };
     
     return user;
@@ -613,21 +627,39 @@ class UserService {
         throw new Error('PIN must be 4 digits');
       }
 
-      const user = await User.findByPk(userId);
-      
-      if (!user) {
+      // Hash the PIN before storing
+      const hashedPin = await bcrypt.hash(pin, 10);
+
+      // Update user PIN using Supabase
+      const { data: updatedUser, error: updateError } = await databaseService.executeWithRetry(async () => {
+        return await supabase
+          .from('users')
+          .update({
+            pin: hashedPin,
+            pinAttempts: 0,
+            pinLockedUntil: null,
+            pinSetAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', userId)
+          .select()
+          .single();
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      if (!updatedUser) {
         throw new Error('User not found');
       }
 
-      await user.update({ 
-        pin,
-        pinAttempts: 0,
-        pinLockedUntil: null
-      });
+      // Add helper methods to user object
+      this.addUserHelperMethods(updatedUser);
 
       logger.info('User PIN set', { userId });
       
-      return user;
+      return updatedUser;
     } catch (error) {
       logger.error('Failed to set user PIN', { error: error.message, userId });
       throw error;
@@ -636,7 +668,7 @@ class UserService {
 
   async validateUserPin(userId, pin) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await this.getUserById(userId);
       
       if (!user) {
         throw new Error('User not found');
@@ -653,20 +685,32 @@ class UserService {
       }
 
       // Check if PIN is locked
-      if (user.pinLockedUntil && user.pinLockedUntil > new Date()) {
-        const lockMinutes = Math.ceil((user.pinLockedUntil - new Date()) / 60000);
+      if (user.pinLockedUntil && new Date(user.pinLockedUntil) > new Date()) {
+        const lockMinutes = Math.ceil((new Date(user.pinLockedUntil) - new Date()) / 60000);
         throw new Error(`PIN locked for ${lockMinutes} more minutes`);
       }
 
-      const isValid = await user.validatePin(pin);
+      // Validate PIN using bcrypt
+      const isValid = await bcrypt.compare(pin, user.pin);
 
       if (isValid) {
         // Reset PIN attempts on successful validation
-        await user.update({ pinAttempts: 0, pinLockedUntil: null });
+        await databaseService.executeWithRetry(async () => {
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({
+              pinAttempts: 0,
+              pinLockedUntil: null,
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', userId);
+          
+          if (updateError) throw updateError;
+        });
         return true;
       } else {
         // Increment PIN attempts
-        const newAttempts = user.pinAttempts + 1;
+        const newAttempts = (user.pinAttempts || 0) + 1;
         let pinLockedUntil = null;
 
         // Lock PIN after 3 failed attempts for 15 minutes
@@ -674,7 +718,18 @@ class UserService {
           pinLockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
         }
 
-        await user.update({ pinAttempts: newAttempts, pinLockedUntil });
+        await databaseService.executeWithRetry(async () => {
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({
+              pinAttempts: newAttempts,
+              pinLockedUntil: pinLockedUntil ? pinLockedUntil.toISOString() : null,
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', userId);
+          
+          if (updateError) throw updateError;
+        });
 
         if (pinLockedUntil) {
           throw new Error('PIN locked for 15 minutes due to too many failed attempts');
@@ -690,14 +745,25 @@ class UserService {
 
   async incrementAppLoginAttempts(userId) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await this.getUserById(userId);
       if (!user) return;
       const attempts = (user.appLoginAttempts || 0) + 1;
-      const updates = { appLoginAttempts: attempts };
+      const updates = { 
+        appLoginAttempts: attempts,
+        updatedAt: new Date().toISOString()
+      };
       if (attempts >= 5) {
-        updates.appLockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        updates.appLockUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
       }
-      await user.update(updates);
+      
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .update(updates)
+          .eq('id', userId);
+        
+        if (error) throw error;
+      });
     } catch (error) {
       logger.error('Failed to increment app login attempts', { error: error.message, userId });
     }
@@ -705,9 +771,21 @@ class UserService {
 
   async resetAppLoginAttempts(userId) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await this.getUserById(userId);
       if (!user) return;
-      await user.update({ appLoginAttempts: 0, appLockUntil: null });
+      
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .update({
+            appLoginAttempts: 0,
+            appLockUntil: null,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', userId);
+        
+        if (error) throw error;
+      });
     } catch (error) {
       logger.error('Failed to reset app login attempts', { error: error.message, userId });
     }

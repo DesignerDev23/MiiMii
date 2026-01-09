@@ -7,35 +7,14 @@ class Config {
   }
 
   loadConfig() {
-    // Database Configuration
+    // Database Configuration - Supabase only (no connection strings needed!)
     this.database = {
-      url: process.env.DB_CONNECTION_URL || process.env.SUPABASE_DB_URL,
-      host: process.env.DB_HOST || process.env.SUPABASE_DB_HOST,
-      port: parseInt(process.env.DB_PORT) || 5432,
-      name: process.env.DB_NAME || process.env.SUPABASE_DB_NAME,
-      user: process.env.DB_USER || process.env.SUPABASE_DB_USER,
-      password: process.env.DB_PASSWORD || process.env.SUPABASE_DB_PASSWORD,
-      // Supabase specific
+      // Supabase configuration (required)
       supabaseUrl: process.env.SUPABASE_URL,
       supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
     };
 
-    // WhatsApp Configuration - Use exact variable names from Digital Ocean
-    this.whatsapp = {
-      accessToken: process.env.BOT_ACCESS_TOKEN, // Changed from WHATSAPP_ACCESS_TOKEN
-      phoneNumberId: process.env.BOT_PHONE_NUMBER_ID, // Changed from WHATSAPP_PHONE_NUMBER_ID
-      businessAccountId: process.env.BOT_BUSINESS_ACCOUNT_ID,
-      webhookSecret: process.env.WEBHOOK_SECRET, // Changed from WHATSAPP_WEBHOOK_SECRET
-      // Flow Configuration
-      onboardingFlowId: process.env.WHATSAPP_ONBOARDING_FLOW_ID,
-      welcomeFlowId: process.env.WELCOME_FLOW_ID || '1223628202852216',
-      loginFlowId: process.env.WHATSAPP_LOGIN_FLOW_ID || '1104486355198946',
-      transferPinFlowId: process.env.WHATSAPP_TRANSFER_PIN_FLOW_ID || '2116470049180989',
-      dataPurchaseFlowId: process.env.DATA_PURCHASE_FLOW_ID || '805698978546902',
-      flowSecretKey: process.env.FLOW_SECRET_KEY || 'default-flow-secret-key'
-    };
-
-    // Rubies Configuration (replacing Bellbank)
+    // Rubies Configuration
     this.rubies = {
       apiKey: process.env.RUBIES_API_KEY, // Direct API key for Authorization header
       webhookSecret: process.env.RUBIES_WEBHOOK_SECRET
@@ -119,17 +98,16 @@ class Config {
       return `${v.slice(0, 4)}***${v.slice(-4)}`;
     };
     
-    logger.info('Configuration loaded for Digital Ocean App Platform', {
-      hasDatabaseUrl: !!this.database.url,
-      hasWhatsappToken: !!this.whatsapp.accessToken,
-      hasWhatsappPhoneId: !!this.whatsapp.phoneNumberId,
+    logger.info('Configuration loaded for Mobile Backend', {
+      hasSupabaseUrl: !!this.database.supabaseUrl,
+      hasSupabaseServiceRoleKey: !!this.database.supabaseServiceRoleKey,
       hasRubiesKey: !!this.rubies.apiKey,
       hasBellbankKey: !!this.bellbank.consumerKey,
       hasOpenAIKey: !!this.openai.apiKey,
       hasJwtSecret: !!this.server.jwtSecret,
       nodeEnv: this.server.nodeEnv,
       port: this.server.port,
-      platform: 'DigitalOcean App Platform',
+      platform: 'Mobile Backend',
       service: 'config',
       timestamp: new Date().toISOString()
     });
@@ -158,19 +136,15 @@ class Config {
     // Warn about critical missing environment variables
     const missingCritical = [];
     
-    // Check for database config - support both old and new Supabase approach
-    const hasDatabaseConfig = this.database.url || 
-                              this.database.host || 
-                              (this.database.supabaseUrl && this.database.supabaseServiceRoleKey);
+    // Check for Supabase configuration (required - no connection strings!)
+    const hasSupabaseConfig = this.database.supabaseUrl && this.database.supabaseServiceRoleKey;
     
-    if (!hasDatabaseConfig) {
-      missingCritical.push('Database configuration (DB_CONNECTION_URL, DB_HOST, or SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)');
-      logger.warn('Database configuration missing - running without database connectivity');
-    }
-    
-    if (!this.whatsapp.accessToken) {
-      missingCritical.push('WhatsApp Access Token (BOT_ACCESS_TOKEN)');
-      logger.warn('BOT_ACCESS_TOKEN environment variable is missing - WhatsApp functionality will be limited');
+    if (!hasSupabaseConfig) {
+      missingCritical.push('Supabase configuration (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)');
+      logger.error('❌ Supabase configuration missing - set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables');
+      logger.warn('⚠️  Running without database connectivity - application will not function properly');
+    } else {
+      logger.info('✅ Supabase configuration found - database connectivity available');
     }
     
     if (this.server.nodeEnv === 'production' && !this.server.jwtSecret) {
@@ -194,26 +168,11 @@ class Config {
     }
   }
 
-  getDatabaseUrl() {
-    return this.database.url;
-  }
-
-  getWhatsappConfig() {
-    // Add runtime logging for Flow ID debugging
-    const logger = require('../utils/logger');
-    logger.info('🔍 Config: WhatsApp Flow IDs at runtime', {
-      hasOnboardingFlowId: !!this.whatsapp.welcomeFlowId,
-      hasLoginFlowId: !!this.whatsapp.loginFlowId,
-      hasTransferPinFlowId: !!this.whatsapp.transferPinFlowId,
-      hasDataPurchaseFlowId: !!this.whatsapp.dataPurchaseFlowId,
-      onboardingFlowIdLength: this.whatsapp.welcomeFlowId ? this.whatsapp.welcomeFlowId.length : 0,
-      loginFlowIdLength: this.whatsapp.loginFlowId ? this.whatsapp.loginFlowId.length : 0,
-      transferPinFlowIdLength: this.whatsapp.transferPinFlowId ? this.whatsapp.transferPinFlowId.length : 0,
-      dataPurchaseFlowIdLength: this.whatsapp.dataPurchaseFlowId ? this.whatsapp.dataPurchaseFlowId.length : 0,
-      environment: process.env.NODE_ENV
-    });
-    
-    return this.whatsapp;
+  getSupabaseConfig() {
+    return {
+      url: this.database.supabaseUrl,
+      serviceRoleKey: this.database.supabaseServiceRoleKey
+    };
   }
 
   getRubiesConfig() {

@@ -8,14 +8,15 @@ const User = sequelize.define('User', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
-  whatsappNumber: {
+  phoneNumber: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
     unique: true,
     validate: {
       notEmpty: true,
       is: /^[\+]?[0-9]+$/
-    }
+    },
+    comment: 'User phone number (optional for mobile app registration)'
   },
   firstName: {
     type: DataTypes.STRING,
@@ -88,16 +89,10 @@ const User = sequelize.define('User', {
   },
   onboardingStep: {
     type: DataTypes.ENUM(
-      'initial', 'greeting', 'name_collection', 
-      'address_collection', 'bvn_collection', 'virtual_account_creation', 'pin_setup', 'flow_onboarding', 'completed',
-      'profile_setup', 'kyc_submission'
+      'initial', 'profile_setup', 'kyc_submission', 
+      'virtual_account_creation', 'pin_setup', 'completed'
     ),
     defaultValue: 'initial'
-  },
-  conversationState: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    comment: 'Stores current conversation context and expected inputs'
   },
   sessionData: {
     type: DataTypes.JSONB,
@@ -144,21 +139,21 @@ const User = sequelize.define('User', {
   fullName: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: 'Full name from WhatsApp profile'
+    comment: 'Full name from user profile'
   },
   profilePicture: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: 'WhatsApp profile picture URL'
+    comment: 'User profile picture URL'
   },
   registrationSource: {
-    type: DataTypes.ENUM('whatsapp', 'api', 'admin', 'app'),
-    defaultValue: 'whatsapp'
+    type: DataTypes.ENUM('api', 'admin', 'app'),
+    defaultValue: 'app'
   },
   deviceInfo: {
     type: DataTypes.JSONB,
     allowNull: true,
-    comment: 'Device and WhatsApp client information'
+    comment: 'Device and client information'
   },
   securitySettings: {
     type: DataTypes.JSONB,
@@ -170,7 +165,7 @@ const User = sequelize.define('User', {
       },
       notificationPreferences: {
         sms: true,
-        whatsapp: true,
+        push: true,
         email: false
       }
     }
@@ -277,22 +272,6 @@ const User = sequelize.define('User', {
     allowNull: false,
     comment: 'Number of failed OTP verification attempts'
   },
-  appLinkOTP: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'OTP for account linking (6 digits)'
-  },
-  appLinkOTPExpiry: {
-    type: DataTypes.DATE,
-    allowNull: true,
-    comment: 'Expiry time for account linking OTP'
-  },
-  appLinkOTPAttempts: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    allowNull: false,
-    comment: 'Number of failed account linking OTP verification attempts'
-  },
   appLoginAttempts: {
     type: DataTypes.INTEGER,
     defaultValue: 0,
@@ -313,7 +292,8 @@ const User = sequelize.define('User', {
   tableName: 'users',
   timestamps: true,
   indexes: [
-    { fields: ['whatsappNumber'] },
+    { fields: ['phoneNumber'] },
+    { fields: ['appEmail'] },
     { fields: ['kycStatus'] },
     { fields: ['onboardingStep'] },
     { fields: ['referralCode'] },
@@ -362,35 +342,7 @@ User.prototype.requiresPinForTransactions = function() {
   return this.pinEnabled && this.pin;
 };
 
-User.prototype.updateConversationState = async function(state) {
-  const logger = require('../utils/logger');
-  
-  logger.info('Updating conversation state', {
-    userId: this.id,
-    oldState: this.conversationState,
-    newState: state
-  });
-  
-  // If state is null, clear the conversation state
-  if (state === null) {
-    this.conversationState = null;
-  } else {
-    // Replace the entire conversation state with the new state
-    this.conversationState = state;
-  }
-  
-  const result = await this.save();
-  
-  logger.info('Conversation state updated successfully', {
-    userId: this.id,
-    finalState: this.conversationState
-  });
-  
-  return result;
-};
-
-User.prototype.clearConversationState = async function() {
-  this.conversationState = null;
+User.prototype.clearSessionData = async function() {
   this.sessionData = null;
   return this.save();
 };
@@ -411,10 +363,9 @@ User.prototype.isOnboardingComplete = function() {
 
 User.prototype.getNextOnboardingStep = function() {
   const steps = {
-    'greeting': 'name_collection',
-    'name_collection': 'kyc_data',
-    'kyc_data': 'bvn_verification',
-    'bvn_verification': 'virtual_account_creation',
+    'initial': 'profile_setup',
+    'profile_setup': 'kyc_submission',
+    'kyc_submission': 'virtual_account_creation',
     'virtual_account_creation': 'pin_setup',
     'pin_setup': 'completed'
   };

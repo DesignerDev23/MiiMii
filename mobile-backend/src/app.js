@@ -193,10 +193,11 @@ app.get('/health', async (req, res) => {
       status: 'disconnected',
       error: 'Database not connected yet or configuration missing'
     };
-    if (config.getDatabaseUrl() || process.env.DB_HOST) {
-      health.status = 'DEGRADED';
-      health.message = 'Service is operational but some features may be limited';
-    }
+        const supabaseConfig = config.getSupabaseConfig();
+        if (supabaseConfig.url && supabaseConfig.serviceRoleKey) {
+          health.status = 'DEGRADED';
+          health.message = 'Service is operational but some features may be limited';
+        }
   }
 
   // Check Redis connection
@@ -257,7 +258,10 @@ async function startServer() {
       host: HOST,
       nodeVersion: process.version,
       platform: process.platform,
-      arch: process.arch
+      arch: process.arch,
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      hasJwtSecret: !!(process.env.MOBILE_JWT_SECRET || process.env.APP_SECRET)
     });
 
     // Start server first

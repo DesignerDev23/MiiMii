@@ -1,6 +1,6 @@
 const redis = require('redis');
 const logger = require('./logger');
-const { sequelize, KVStore } = require('../models');
+const { supabase } = require('../database/connection');
 
 class RedisClient {
   constructor() {
@@ -113,7 +113,21 @@ class RedisClient {
     try {
       if (this.useDbFallback) {
         const expiresAt = new Date(Date.now() + ttl * 1000);
-        await KVStore.upsert({ key, value: sessionData, expiresAt });
+        const now = new Date().toISOString();
+        
+        // Use Supabase upsert (INSERT ... ON CONFLICT UPDATE)
+        const { error } = await supabase
+          .from('kvStore')
+          .upsert({
+            key,
+            value: sessionData,
+            expiresAt: expiresAt.toISOString(),
+            updatedAt: now
+          }, {
+            onConflict: 'key'
+          });
+        
+        if (error) throw error;
         return true;
       }
       await this.client.setEx(key, ttl, JSON.stringify(sessionData));
@@ -129,10 +143,21 @@ class RedisClient {
     const key = `session:${sessionId}`;
     try {
       if (this.useDbFallback) {
-        const row = await KVStore.findByPk(key);
+        const { data: row, error } = await supabase
+          .from('kvStore')
+          .select('*')
+          .eq('key', key)
+          .maybeSingle();
+        
+        if (error) throw error;
         if (!row) return null;
-        if (row.expiresAt && row.expiresAt < new Date()) {
-          await KVStore.destroy({ where: { key } });
+        
+        // Check if expired
+        if (row.expiresAt && new Date(row.expiresAt) < new Date()) {
+          await supabase
+            .from('kvStore')
+            .delete()
+            .eq('key', key);
           return null;
         }
         return row.value ?? null;
@@ -150,7 +175,12 @@ class RedisClient {
     const key = `session:${sessionId}`;
     try {
       if (this.useDbFallback) {
-        await KVStore.destroy({ where: { key } });
+        const { error } = await supabase
+          .from('kvStore')
+          .delete()
+          .eq('key', key);
+        
+        if (error) throw error;
         return true;
       }
       await this.client.del(key);
@@ -167,7 +197,20 @@ class RedisClient {
     try {
       if (this.useDbFallback) {
         const expiresAt = ttl ? new Date(Date.now() + ttl * 1000) : null;
-        await KVStore.upsert({ key, value, expiresAt });
+        const now = new Date().toISOString();
+        
+        const { error } = await supabase
+          .from('kvStore')
+          .upsert({
+            key,
+            value,
+            expiresAt: expiresAt ? expiresAt.toISOString() : null,
+            updatedAt: now
+          }, {
+            onConflict: 'key'
+          });
+        
+        if (error) throw error;
         return true;
       }
       const serializedValue = JSON.stringify(value);
@@ -187,10 +230,21 @@ class RedisClient {
     if (!this.isConnected) return null;
     try {
       if (this.useDbFallback) {
-        const row = await KVStore.findByPk(key);
+        const { data: row, error } = await supabase
+          .from('kvStore')
+          .select('*')
+          .eq('key', key)
+          .maybeSingle();
+        
+        if (error) throw error;
         if (!row) return null;
-        if (row.expiresAt && row.expiresAt < new Date()) {
-          await KVStore.destroy({ where: { key } });
+        
+        // Check if expired
+        if (row.expiresAt && new Date(row.expiresAt) < new Date()) {
+          await supabase
+            .from('kvStore')
+            .delete()
+            .eq('key', key);
           return null;
         }
         return row.value ?? null;
@@ -207,7 +261,12 @@ class RedisClient {
     if (!this.isConnected) return false;
     try {
       if (this.useDbFallback) {
-        await KVStore.destroy({ where: { key } });
+        const { error } = await supabase
+          .from('kvStore')
+          .delete()
+          .eq('key', key);
+        
+        if (error) throw error;
         return true;
       }
       await this.client.del(key);
@@ -224,20 +283,40 @@ class RedisClient {
     const key = `rate_limit:${identifier}`;
     try {
       if (this.useDbFallback) {
-        const result = await sequelize.transaction(async (t) => {
-          const now = new Date();
-          let row = await KVStore.findByPk(key, { transaction: t, lock: t.LOCK.UPDATE });
-          if (!row || (row.expiresAt && row.expiresAt < now)) {
-            const expiresAt = new Date(Date.now() + window * 1000);
-            await KVStore.upsert({ key, value: { count: 1 }, expiresAt }, { transaction: t });
-            return 1;
-          }
-          const count = (row.value && row.value.count) ? row.value.count + 1 : 1;
-          await row.update({ value: { count } }, { transaction: t });
-          return count;
-        });
-        const remaining = Math.max(0, limit - result);
-        return { allowed: result <= limit, remaining, total: limit, resetTime: Date.now() + (window * 1000) };
+        const now = new Date();
+        const expiresAt = new Date(Date.now() + window * 1000);
+        
+        // Get current count
+        const { data: row, error: getError } = await supabase
+          .from('kvStore')
+          .select('*')
+          .eq('key', key)
+          .maybeSingle();
+        
+        if (getError) throw getError;
+        
+        let count = 1;
+        if (row && (!row.expiresAt || new Date(row.expiresAt) >= now)) {
+          // Increment existing count
+          count = (row.value && row.value.count) ? row.value.count + 1 : 1;
+        }
+        
+        // Upsert with new count
+        const { error: upsertError } = await supabase
+          .from('kvStore')
+          .upsert({
+            key,
+            value: { count },
+            expiresAt: expiresAt.toISOString(),
+            updatedAt: new Date().toISOString()
+          }, {
+            onConflict: 'key'
+          });
+        
+        if (upsertError) throw upsertError;
+        
+        const remaining = Math.max(0, limit - count);
+        return { allowed: count <= limit, remaining, total: limit, resetTime: Date.now() + (window * 1000) };
       }
       const current = await this.client.incr(key);
       if (current === 1) {
@@ -257,10 +336,29 @@ class RedisClient {
     const key = `queue:${queueName}`;
     try {
       if (this.useDbFallback) {
-        const row = await KVStore.findByPk(key);
+        const { data: row, error: getError } = await supabase
+          .from('kvStore')
+          .select('*')
+          .eq('key', key)
+          .maybeSingle();
+        
+        if (getError) throw getError;
+        
         const list = Array.isArray(row?.value) ? row.value : [];
         list.push(data);
-        await KVStore.upsert({ key, value: list, expiresAt: null });
+        
+        const { error: upsertError } = await supabase
+          .from('kvStore')
+          .upsert({
+            key,
+            value: list,
+            expiresAt: null,
+            updatedAt: new Date().toISOString()
+          }, {
+            onConflict: 'key'
+          });
+        
+        if (upsertError) throw upsertError;
         return true;
       }
       await this.client.rPush(`queue:${queueName}`, JSON.stringify(data));
@@ -276,12 +374,28 @@ class RedisClient {
     const key = `queue:${queueName}`;
     try {
       if (this.useDbFallback) {
-        const row = await KVStore.findByPk(key);
-        const list = Array.isArray(row?.value) ? row.value : [];
+        const { data: row, error: getError } = await supabase
+          .from('kvStore')
+          .select('*')
+          .eq('key', key)
+          .maybeSingle();
+        
+        if (getError) throw getError;
+        if (!row) return null;
+        
+        const list = Array.isArray(row.value) ? row.value : [];
         const item = list.shift();
-        if (row) {
-          await row.update({ value: list });
-        }
+        
+        // Update the queue with remaining items
+        const { error: updateError } = await supabase
+          .from('kvStore')
+          .update({
+            value: list,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('key', key);
+        
+        if (updateError) throw updateError;
         return item ?? null;
       }
       const result = await this.client.blPop(

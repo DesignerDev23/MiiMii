@@ -18,23 +18,23 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
 class UserService {
-  async getOrCreateUser(whatsappNumber, displayName = null) {
+  async getOrCreateUser(phoneNumber, displayName = null) {
     try {
-      if (!whatsappNumber) {
-        throw new Error('WhatsApp number is required');
+      if (!phoneNumber) {
+        throw new Error('Phone number is required');
       }
 
       // Clean phone number
       let cleanNumber;
       try {
-        cleanNumber = this.cleanPhoneNumber(whatsappNumber);
+        cleanNumber = this.cleanPhoneNumber(phoneNumber);
       } catch (cleanError) {
         logger.error('Phone number cleaning failed', { 
           error: cleanError?.message || 'Unknown error',
-          whatsappNumber,
+          phoneNumber,
           errorType: typeof cleanError
         });
-        throw new Error(`Invalid phone number format: ${whatsappNumber}. ${cleanError?.message || 'Please check the phone number format.'}`);
+        throw new Error(`Invalid phone number format: ${phoneNumber}. ${cleanError?.message || 'Please check the phone number format.'}`);
       }
       
       // Try to find existing user using Supabase
@@ -44,7 +44,7 @@ class UserService {
           return await supabase
             .from('users')
             .select('*')
-            .eq('whatsappNumber', cleanNumber)
+            .eq('phoneNumber', cleanNumber)
             .maybeSingle();
         });
 
@@ -84,11 +84,12 @@ class UserService {
         try {
           const newUserData = {
             id: uuidv4(),
-            whatsappNumber: cleanNumber,
+            phoneNumber: cleanNumber,
             fullName: displayName || null,
             isActive: true,
             onboardingStep: 'initial',
             kycStatus: 'not_required',
+            registrationSource: 'app',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
@@ -122,7 +123,7 @@ class UserService {
             user.wallet = wallet;
           }
 
-          logger.info('New user created', { userId: user.id, whatsappNumber: cleanNumber });
+          logger.info('New user created', { userId: user.id, phoneNumber: cleanNumber });
         } catch (createError) {
           logger.error('User creation failed', {
             error: createError?.message || 'Unknown error',
@@ -169,7 +170,7 @@ class UserService {
       logger.error('Failed to get or create user', { 
         error: errorMessage,
         stack: errorStack,
-        whatsappNumber,
+        phoneNumber,
         errorType: typeof error,
         errorConstructor: error?.constructor?.name,
         isError: error instanceof Error
@@ -338,18 +339,29 @@ class UserService {
     }
   }
 
-  async getUserByWhatsappNumber(whatsappNumber) {
+  async getUserByPhoneNumber(phoneNumber) {
     try {
-      const cleanNumber = this.cleanPhoneNumber(whatsappNumber);
+      if (!phoneNumber) return null;
+      const cleanNumber = this.cleanPhoneNumber(phoneNumber);
       
-      const user = await databaseService.findOneWithRetry(User, {
-        where: { whatsappNumber: cleanNumber },
-        include: [{ model: Wallet, as: 'wallet' }]
-      }, { operationName: 'find user by WhatsApp number' });
+      const user = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('users', { phoneNumber: cleanNumber });
+      });
+
+      if (user) {
+        // Fetch wallet separately
+        const wallet = await databaseService.executeWithRetry(async () => {
+          return await supabaseHelper.findOne('wallets', { userId: user.id });
+        });
+        if (wallet) {
+          user.wallet = wallet;
+        }
+        this.addUserHelperMethods(user);
+      }
 
       return user;
     } catch (error) {
-      logger.error('Failed to get user by WhatsApp number', { error: error.message, whatsappNumber });
+      logger.error('Failed to get user by phone number', { error: error.message, phoneNumber });
       throw error;
     }
   }
