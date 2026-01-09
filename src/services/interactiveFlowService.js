@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const whatsappService = require('./whatsapp');
-const { ActivityLog } = require('../models');
+const activityLogger = require('./activityLogger');
 
 class InteractiveFlowService {
   constructor() {
@@ -40,7 +40,7 @@ class InteractiveFlowService {
       const result = await flow.handler(phoneNumber, userData, flowData);
       
       // Log flow activity
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         userData.userId || null,
         'interactive_flow',
         'flow_executed',
@@ -485,7 +485,7 @@ class InteractiveFlowService {
   // Flow Analytics
   async logFlowCompletion(phoneNumber, flowType, flowStep, userData, success = true) {
     try {
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         userData.userId || null,
         'interactive_flow',
         success ? 'flow_completed' : 'flow_failed',

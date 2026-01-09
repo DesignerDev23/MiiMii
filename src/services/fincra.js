@@ -1,7 +1,7 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const { axiosConfig } = require('../utils/httpsAgent');
-const { ActivityLog } = require('../models');
+const activityLogger = require('./activityLogger');
 const { v4: uuidv4 } = require('uuid');
 const RetryHelper = require('../utils/retryHelper');
 const config = require('../config');
@@ -110,7 +110,7 @@ class FincraService {
         });
 
         // Log activity
-        await ActivityLog.create({
+        await activityLogger.logUserActivity(
           userId: bvnData.userId || null,
           action: 'bvn_verification',
           details: {
@@ -118,10 +118,8 @@ class FincraService {
             provider: 'fincra',
             status: verificationData.verificationStatus,
             success: true
-          },
-          ipAddress: bvnData.ipAddress || null,
-          userAgent: bvnData.userAgent || null
-        });
+          }
+        );
 
         return {
           success: true,
@@ -136,7 +134,7 @@ class FincraService {
         });
 
         // Log activity
-        await ActivityLog.create({
+        await activityLogger.logUserActivity(
           userId: bvnData.userId || null,
           action: 'bvn_verification',
           details: {
@@ -145,10 +143,8 @@ class FincraService {
             status: 'failed',
             success: false,
             error: response.message || 'Unknown error'
-          },
-          ipAddress: bvnData.ipAddress || null,
-          userAgent: bvnData.userAgent || null
-        });
+          }
+        );
 
         return {
           success: false,
@@ -164,19 +160,18 @@ class FincraService {
       });
 
       // Log activity
-      await ActivityLog.create({
-        userId: bvnData.userId || null,
-        action: 'bvn_verification',
-        details: {
+      await activityLogger.logUserActivity(
+        bvnData.userId || null,
+        'kyc_verification',
+        'bvn_verification_error',
+        {
           bvnMasked: bvnData.bvn ? `***${bvnData.bvn.slice(-4)}` : 'unknown',
           provider: 'fincra',
           status: 'error',
           success: false,
           error: error.message
-        },
-        ipAddress: bvnData.ipAddress || null,
-        userAgent: bvnData.userAgent || null
-      });
+        }
+      );
 
       throw error;
     }

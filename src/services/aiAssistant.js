@@ -761,7 +761,7 @@ Extract intent and data from this message. Consider the user context and any ext
       
       // Log AI response for monitoring - handle gracefully if DB unavailable
       try {
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'ai_processing',
           'intent_extracted',

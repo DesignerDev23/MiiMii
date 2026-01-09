@@ -3,7 +3,7 @@ const whatsappService = require('./whatsapp');
 const userService = require('./user');
 const rubiesService = require('./rubies');
 const walletService = require('./wallet');
-const { ActivityLog } = require('../models');
+const activityLogger = require('./activityLogger');
 const sessionManager = require('../utils/sessionManager');
 
 class OnboardingService {
@@ -519,7 +519,7 @@ class OnboardingService {
       await whatsappService.sendTextMessage(user.whatsappNumber, nextMessage);
 
           // Log successful BVN verification
-          await ActivityLog.logUserActivity(
+          await activityLogger.logUserActivity(
             user.id,
             'kyc_verification',
             'bvn_verified',
@@ -544,7 +544,7 @@ class OnboardingService {
           );
 
           // Log failed BVN verification
-          await ActivityLog.logUserActivity(
+          await activityLogger.logUserActivity(
             user.id,
             'kyc_verification',
             'bvn_verification_failed',

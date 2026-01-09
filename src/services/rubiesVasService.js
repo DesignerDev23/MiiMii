@@ -1,7 +1,11 @@
 const rubiesService = require('./rubies');
 const logger = require('../utils/logger');
-const { User, Transaction, ActivityLog } = require('../models');
-const { sequelize } = require('../database/connection');
+const userService = require('./user');
+const transactionService = require('./transaction');
+const activityLogger = require('./activityLogger');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
+const { supabase } = require('../database/connection');
 
 class RubiesVasService {
   constructor() {
@@ -77,10 +81,8 @@ class RubiesVasService {
 
   // Purchase airtime
   async purchaseAirtime(userId, phoneNumber, network, amount, pin) {
-    const transaction = await sequelize.transaction();
-    
     try {
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
       }
@@ -118,9 +120,8 @@ class RubiesVasService {
 
       if (response.responseCode === '00') {
         // Create transaction record
-        const txnRecord = await Transaction.create({
+        const txnRecord = await transactionService.createTransaction(userId, {
           reference: reference,
-          userId,
           type: 'debit',
           category: 'airtime_purchase',
           amount: airtimeAmount,
@@ -135,10 +136,10 @@ class RubiesVasService {
             rubiesReference: response.reference,
             provider: 'rubies_vas'
           }
-        }, { transaction });
+        });
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           userId,
           'airtime_purchase',
           'airtime_purchased',
@@ -175,7 +176,6 @@ class RubiesVasService {
         throw new Error(response.responseMessage || 'Airtime purchase failed');
       }
     } catch (error) {
-      await transaction.rollback();
       
       logger.error('Airtime purchase failed', {
         userId,
@@ -208,10 +208,8 @@ class RubiesVasService {
 
   // Purchase data bundle
   async purchaseData(userId, phoneNumber, network, planId, pin) {
-    const transaction = await sequelize.transaction();
-    
     try {
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
       }
@@ -251,9 +249,8 @@ class RubiesVasService {
 
       if (response.responseCode === '00') {
         // Create transaction record
-        const txnRecord = await Transaction.create({
+        const txnRecord = await transactionService.createTransaction(userId, {
           reference: reference,
-          userId,
           type: 'debit',
           category: 'data_purchase',
           amount: dataPlan.price,
@@ -271,10 +268,10 @@ class RubiesVasService {
             rubiesReference: response.reference,
             provider: 'rubies_vas'
           }
-        }, { transaction });
+        });
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           userId,
           'data_purchase',
           'data_purchased',
@@ -315,7 +312,6 @@ class RubiesVasService {
         throw new Error(response.responseMessage || 'Data purchase failed');
       }
     } catch (error) {
-      await transaction.rollback();
       
       logger.error('Data bundle purchase failed', {
         userId,
@@ -348,10 +344,8 @@ class RubiesVasService {
 
   // Purchase bill payment (electricity, cable TV, etc.)
   async purchaseBill(userId, customerId, billerCode, productCode, amount, pin) {
-    const transaction = await sequelize.transaction();
-    
     try {
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
       }
@@ -382,9 +376,8 @@ class RubiesVasService {
 
       if (response.responseCode === '00') {
         // Create transaction record
-        const txnRecord = await Transaction.create({
+        const txnRecord = await transactionService.createTransaction(userId, {
           reference: reference,
-          userId,
           type: 'debit',
           category: 'bill_payment',
           amount: billAmount,
@@ -399,10 +392,10 @@ class RubiesVasService {
             rubiesReference: response.reference,
             provider: 'rubies_vas'
           }
-        }, { transaction });
+        });
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           userId,
           'bill_payment',
           'bill_paid',
@@ -440,7 +433,6 @@ class RubiesVasService {
         throw new Error(response.responseMessage || 'Bill payment failed');
       }
     } catch (error) {
-      await transaction.rollback();
       
       logger.error('Bill payment failed', {
         userId,

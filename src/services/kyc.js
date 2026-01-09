@@ -6,7 +6,10 @@ const whatsappService = require('./whatsapp');
 const ocrService = require('./ocr');
 const fincraService = require('./fincra');
 const rubiesService = require('./rubies');
-const { ActivityLog, User } = require('../models');
+const activityLogger = require('./activityLogger');
+const userService = require('./user');
+const databaseService = require('./database');
+const { supabase } = require('../database/connection');
 const { v4: uuidv4 } = require('uuid');
 
 class KYCService {
@@ -91,7 +94,7 @@ class KYCService {
       const reference = `KYC_${Date.now()}_${uuidv4().slice(0, 8)}`;
 
       // Log KYC initiation
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'kyc_submission',
         'kyc_process_started',
@@ -123,7 +126,7 @@ class KYCService {
         stack: error.stack
       });
       
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'kyc_submission',
         'kyc_process_failed',
@@ -247,7 +250,7 @@ class KYCService {
                                   (checks.phoneMatch || checks.genderMatch);
 
         // Log successful verification
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'kyc_verification',
           'bvn_verified',
@@ -272,7 +275,7 @@ class KYCService {
       } else {
         const errorMsg = response.error?.message || 'BVN not found or invalid';
         
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'kyc_verification',
           'bvn_verification_failed',
@@ -297,7 +300,7 @@ class KYCService {
         userId: user.id 
       });
 
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'kyc_verification',
         'bvn_verification_error',
@@ -356,7 +359,7 @@ class KYCService {
         verification.overallValid = verification.validationChecks.isValid && 
                                   verification.validationChecks.isReachable;
 
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'kyc_verification',
           'phone_verified',
@@ -441,7 +444,7 @@ class KYCService {
         results.details.watchList = { error: error.message };
       }
 
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'compliance_check',
         'compliance_screening_completed',
@@ -592,7 +595,7 @@ class KYCService {
       const riskLevel = riskScore < 0.3 ? 'low' : 
                        riskScore < 0.7 ? 'medium' : 'high';
 
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'kyc_verification',
         'risk_assessment_completed',
@@ -984,22 +987,30 @@ class KYCService {
     try {
       const { user_id, verification_status, details } = data;
       
-      const user = await User.findByPk(user_id);
+      const user = await userService.getUserById(user_id);
       if (!user) {
         logger.warn('User not found for KYC verification webhook', { user_id });
         return;
       }
 
-      await user.update({
-        kycStatus: 'verified',
-        kycData: {
-          ...user.kycData,
-          webhookVerification: details,
-          verifiedAt: new Date()
-        }
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .update({
+            kycStatus: 'verified',
+            kycData: {
+              ...(user.kycData || {}),
+              webhookVerification: details,
+              verifiedAt: new Date().toISOString()
+            },
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', user_id);
+        
+        if (error) throw error;
       });
 
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'kyc_verification',
         'kyc_verified_webhook',
@@ -1025,7 +1036,7 @@ class KYCService {
     try {
       const { user_id, rejection_reason, details } = data;
       
-      const user = await User.findByPk(user_id);
+      const user = await userService.getUserById(user_id);
       if (!user) {
         logger.warn('User not found for KYC rejection webhook', { user_id });
         return;
@@ -1041,7 +1052,7 @@ class KYCService {
         }
       });
 
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'kyc_verification',
         'kyc_rejected_webhook',
@@ -1141,7 +1152,7 @@ class KYCService {
   // Updated verifyBVN method to use Fincra
   async verifyBVN(bvn, userId) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
       }
@@ -1155,7 +1166,7 @@ class KYCService {
       });
 
       // Log BVN verification attempt
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         userId,
         'kyc_verification',
         verification.verified ? 'bvn_verified' : 'bvn_verification_failed',

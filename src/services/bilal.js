@@ -6,7 +6,7 @@ const whatsappService = require('./whatsapp');
 const bellbankService = require('./bellbank');
 const feesService = require('./fees');
 const RetryHelper = require('../utils/retryHelper');
-const { ActivityLog } = require('../models');
+const activityLogger = require('./activityLogger');
 const receiptService = require('./receipt');
 const dataPlanService = require('./dataPlanService');
 
@@ -324,7 +324,7 @@ class BilalService {
         );
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'airtime_purchase',
           'airtime_purchased',
@@ -673,7 +673,7 @@ class BilalService {
         );
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'data_purchase',
           'data_purchased',
@@ -864,7 +864,7 @@ class BilalService {
         );
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'electricity_bill',
           'electricity_bill_paid',

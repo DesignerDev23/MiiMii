@@ -1,18 +1,9 @@
-const { 
-  User, 
-  Wallet,
-  Transaction,
-  Beneficiary,
-  BankAccount,
-  VirtualCard,
-  SupportTicket,
-  ActivityLog
-} = require('../models');
 const logger = require('../utils/logger');
 const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
 const { supabase } = require('../database/connection');
-const { Op } = require('sequelize');
+const activityLogger = require('./activityLogger');
+const walletService = require('./wallet');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
@@ -403,70 +394,74 @@ class UserService {
     const { force = false, deletedBy = null, reason = null } = options;
     
     try {
-      const result = await databaseService.transaction(async (transaction) => {
-        const user = await User.findByPk(userId, {
-          transaction,
-          lock: transaction.LOCK.UPDATE
+      const user = await this.getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const wallet = await walletService.getUserWallet(userId);
+      const walletBalance = wallet ? parseFloat(wallet.balance || 0) : 0;
+      const pendingBalance = wallet ? parseFloat(wallet.pendingBalance || 0) : 0;
+
+      if (!force && (walletBalance !== 0 || pendingBalance !== 0)) {
+        throw new Error('User wallet must have zero balance and no pending funds before deletion');
+      }
+
+      // Delete related records using Supabase
+      const tablesToDelete = ['virtualCards', 'beneficiaries', 'bankAccounts', 'supportTickets', 'activityLogs', 'transactions'];
+      
+      for (const table of tablesToDelete) {
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from(table)
+            .delete()
+            .eq('userId', userId);
+          
+          if (error) throw error;
         });
+      }
 
-        if (!user) {
-          throw new Error('User not found');
-        }
-
-        const wallet = await Wallet.findOne({
-          where: { userId },
-          transaction,
-          lock: transaction.LOCK.UPDATE
+      if (wallet) {
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from('wallets')
+            .delete()
+            .eq('id', wallet.id);
+          
+          if (error) throw error;
         });
+      }
 
-        const walletBalance = wallet ? parseFloat(wallet.balance || 0) : 0;
-        const pendingBalance = wallet ? parseFloat(wallet.pendingBalance || 0) : 0;
+      const snapshot = {
+        id: user.id,
+        whatsappNumber: user.whatsappNumber,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email
+      };
 
-        if (!force && (walletBalance !== 0 || pendingBalance !== 0)) {
-          throw new Error('User wallet must have zero balance and no pending funds before deletion');
+      // Delete user
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .delete()
+          .eq('id', userId);
+        
+        if (error) throw error;
+      });
+
+      // Log activity
+      await activityLogger.logAdminAction(
+        deletedBy || userId,
+        'user_deleted',
+        reason || 'User account permanently deleted by admin',
+        {
+          deletedBy,
+          reason,
+          targetUserId: userId,
+          userSnapshot: snapshot
         }
-
-        const destroyByUserId = async (model) => {
-          await model.destroy({ where: { userId }, transaction, individualHooks: true });
-        };
-
-        await Promise.all([
-          destroyByUserId(VirtualCard),
-          destroyByUserId(Beneficiary),
-          destroyByUserId(BankAccount),
-          destroyByUserId(SupportTicket),
-          destroyByUserId(ActivityLog),
-          destroyByUserId(Transaction)
-        ]);
-
-        if (wallet) {
-          await Wallet.destroy({ where: { id: wallet.id }, transaction });
-        }
-
-        const snapshot = {
-          id: user.id,
-          whatsappNumber: user.whatsappNumber,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email
-        };
-
-        await User.destroy({ where: { id: userId }, transaction });
-
-        await ActivityLog.create({
-          userId: null,
-          activityType: 'admin_action',
-          action: 'user_deleted',
-          description: reason || 'User account permanently deleted by admin',
-          metadata: {
-            deletedBy,
-            reason,
-            targetUserId: userId,
-            userSnapshot: snapshot
-          },
-          source: 'admin',
-          tags: ['admin', 'user_delete']
-        }, { transaction });
+      );
 
         return snapshot;
       });
@@ -855,12 +850,20 @@ class UserService {
         return { valid: false, error: 'No OTP found. Please request a new one.' };
       }
 
-      if (user.appPasswordResetOTPExpiry < new Date()) {
+      if (new Date(user.appPasswordResetOTPExpiry) < new Date()) {
         // Clear expired OTP
-        await user.update({
-          appPasswordResetOTP: null,
-          appPasswordResetOTPExpiry: null,
-          appPasswordResetOTPAttempts: 0
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from('users')
+            .update({
+              appPasswordResetOTP: null,
+              appPasswordResetOTPExpiry: null,
+              appPasswordResetOTPAttempts: 0,
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', user.id);
+          
+          if (error) throw error;
         });
         return { valid: false, error: 'OTP has expired. Please request a new one.' };
       }
@@ -868,10 +871,18 @@ class UserService {
       // Check attempt limit (max 5 attempts)
       if (user.appPasswordResetOTPAttempts >= 5) {
         // Clear OTP after max attempts
-        await user.update({
-          appPasswordResetOTP: null,
-          appPasswordResetOTPExpiry: null,
-          appPasswordResetOTPAttempts: 0
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from('users')
+            .update({
+              appPasswordResetOTP: null,
+              appPasswordResetOTPExpiry: null,
+              appPasswordResetOTPAttempts: 0,
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', user.id);
+          
+          if (error) throw error;
         });
         return { valid: false, error: 'Too many failed attempts. Please request a new OTP.' };
       }
@@ -879,8 +890,16 @@ class UserService {
       // Verify OTP
       if (user.appPasswordResetOTP !== otp) {
         // Increment attempt counter
-        await user.update({
-          appPasswordResetOTPAttempts: (user.appPasswordResetOTPAttempts || 0) + 1
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from('users')
+            .update({
+              appPasswordResetOTPAttempts: (user.appPasswordResetOTPAttempts || 0) + 1,
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', user.id);
+          
+          if (error) throw error;
         });
         const remainingAttempts = 5 - (user.appPasswordResetOTPAttempts + 1);
         return { 
@@ -911,13 +930,21 @@ class UserService {
       const passwordHash = await bcrypt.hash(newPassword, saltRounds);
 
       // Update password and clear OTP
-      await user.update({
-        appPasswordHash: passwordHash,
-        appPasswordResetOTP: null,
-        appPasswordResetOTPExpiry: null,
-        appPasswordResetOTPAttempts: 0,
-        appLoginAttempts: 0,
-        appLockUntil: null
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .update({
+            appPasswordHash: passwordHash,
+            appPasswordResetOTP: null,
+            appPasswordResetOTPExpiry: null,
+            appPasswordResetOTPAttempts: 0,
+            appLoginAttempts: 0,
+            appLockUntil: null,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', user.id);
+        
+        if (error) throw error;
       });
 
       logger.info('Password reset successful with OTP', { userId: user.id });
@@ -931,7 +958,7 @@ class UserService {
 
   async disableUserPin(userId, confirmationPin) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await this.getUserById(userId);
       
       if (!user) {
         throw new Error('User not found');
@@ -941,14 +968,24 @@ class UserService {
         throw new Error('PIN not set');
       }
 
-      // Validate the confirmation PIN
+      // Validate the confirmation PIN using helper method
       const isValidPin = await user.validatePin(confirmationPin);
       if (!isValidPin) {
         throw new Error('Invalid PIN provided for confirmation');
       }
 
       // Disable PIN
-      await user.update({ pinEnabled: false });
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .update({
+            pinEnabled: false,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', userId);
+        
+        if (error) throw error;
+      });
 
       logger.info('PIN disabled for user', { userId, pinEnabled: false });
       
@@ -965,7 +1002,7 @@ class UserService {
 
   async enableUserPin(userId, confirmationPin) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await this.getUserById(userId);
       
       if (!user) {
         throw new Error('User not found');
@@ -975,14 +1012,24 @@ class UserService {
         throw new Error('PIN not set');
       }
 
-      // Validate the confirmation PIN
+      // Validate the confirmation PIN using helper method
       const isValidPin = await user.validatePin(confirmationPin);
       if (!isValidPin) {
         throw new Error('Invalid PIN provided for confirmation');
       }
 
       // Enable PIN
-      await user.update({ pinEnabled: true });
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .update({
+            pinEnabled: true,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', userId);
+        
+        if (error) throw error;
+      });
 
       logger.info('PIN enabled for user', { userId, pinEnabled: true });
       
@@ -999,7 +1046,7 @@ class UserService {
 
   async getPinStatus(userId) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await this.getUserById(userId);
       
       if (!user) {
         throw new Error('User not found');

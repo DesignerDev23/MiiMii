@@ -6,6 +6,7 @@ const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
 const { v4: uuidv4 } = require('uuid');
 const userService = require('./user');
+const activityLogger = require('./activityLogger');
 
 class WalletService {
   async createWallet(userId) {
@@ -373,7 +374,7 @@ class WalletService {
       const { customer_id, amount, reference, sender_name, sender_bank } = webhookData;
       
       // Find user by customer_id (which should be the user ID)
-      const user = await User.findByPk(customer_id);
+      const user = await userService.getUserById(customer_id);
       if (!user) {
         throw new Error('User not found for virtual account credit');
       }
@@ -668,7 +669,7 @@ class WalletService {
 
         // Log activity for Rubies API failure
         try {
-          await ActivityLog.logUserActivity(
+          await activityLogger.logUserActivity(
             userId,
             'wallet_funding',
             'rubies_wallet_creation_error',
@@ -703,7 +704,7 @@ class WalletService {
 
       // Log activity for general failure
       try {
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           userId,
           'wallet_funding',
           'virtual_account_creation_failed',
@@ -726,7 +727,7 @@ class WalletService {
 
   async chargeMaintenanceFee(userId) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       const wallet = await this.getUserWallet(userId);
 
       if (!user.isActive || user.isBanned) {
@@ -734,7 +735,7 @@ class WalletService {
       }
 
       const maintenanceFee = 50; // Fixed ₦50 per requirements
-      const lastCharge = wallet.lastMaintenanceFee || user.createdAt; // start counting from onboarding
+      const lastCharge = wallet.lastMaintenanceFee ? new Date(wallet.lastMaintenanceFee) : new Date(user.createdAt); // start counting from onboarding
       const now = new Date();
 
       // Determine months due since last charge
@@ -783,7 +784,7 @@ class WalletService {
   // Check maintenance fee status for admin
   async getMaintenanceFeeStatus(userId) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       const wallet = await this.getUserWallet(userId);
 
       if (!user || !user.isActive || user.isBanned) {
@@ -795,7 +796,7 @@ class WalletService {
       }
 
       const maintenanceFee = 50; // Fixed ₦50 per requirements
-      const lastCharge = wallet.lastMaintenanceFee || user.createdAt;
+      const lastCharge = wallet.lastMaintenanceFee ? new Date(wallet.lastMaintenanceFee) : new Date(user.createdAt);
       const now = new Date();
 
       // Check if current month's fee has been paid
@@ -868,11 +869,13 @@ class WalletService {
 
   async getWalletTransactions(userId, limit = 10, offset = 0) {
     try {
-      const transactions = await Transaction.findAll({
-        where: { userId },
-        order: [['createdAt', 'DESC']],
-        limit,
-        offset
+      const transactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', { userId }, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit,
+          offset
+        });
       });
 
       return transactions;
@@ -888,15 +891,15 @@ class WalletService {
   async updateTransactionMetadata(userId, requestId, metadata) {
     try {
       // Find the transaction by user ID and metadata containing the requestId
-      const transaction = await Transaction.findOne({
-        where: {
-          userId,
-          metadata: {
-            requestId: requestId
-          }
-        },
-        order: [['createdAt', 'DESC']]
+      const allTransactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', { userId }, {
+          orderBy: 'createdAt',
+          order: 'desc'
+        });
       });
+      
+      // Filter by requestId in metadata
+      const transaction = allTransactions.find(tx => tx.metadata?.requestId === requestId);
 
       if (!transaction) {
         logger.warn('Transaction not found for metadata update', {
@@ -908,13 +911,21 @@ class WalletService {
 
       // Update metadata by merging with existing metadata
       const updatedMetadata = {
-        ...transaction.metadata,
+        ...(transaction.metadata || {}),
         ...metadata,
         updatedAt: new Date().toISOString()
       };
 
-      await transaction.update({
-        metadata: updatedMetadata
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            metadata: updatedMetadata,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', transaction.id);
+        
+        if (error) throw error;
       });
 
       logger.info('Transaction metadata updated', {
@@ -1005,24 +1016,22 @@ class WalletService {
       
       const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       
-      const todayTransactions = await Transaction.findAll({
-        where: {
+      // Get all debit transactions and filter by date
+      const allDebitTransactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', {
           userId,
-          createdAt: {
-            [Op.gte]: today
-          },
           type: 'debit'
-        }
+        });
+      });
+      
+      const todayTransactions = allDebitTransactions.filter(tx => {
+        const txDate = new Date(tx.createdAt);
+        return txDate >= today;
       });
 
-      const monthTransactions = await Transaction.findAll({
-        where: {
-          userId,
-          createdAt: {
-            [Op.gte]: firstDayOfMonth
-          },
-          type: 'debit'
-        }
+      const monthTransactions = allDebitTransactions.filter(tx => {
+        const txDate = new Date(tx.createdAt);
+        return txDate >= firstDayOfMonth;
       });
 
       const dailyUsed = todayTransactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);

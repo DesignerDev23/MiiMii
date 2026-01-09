@@ -6,7 +6,6 @@ const whatsappFlowService = require('./whatsappFlowService');
 const bellbankService = require('./bellbank');
 const rubiesService = require('./rubies');
 const imageProcessingService = require('./imageProcessing');
-const { ActivityLog } = require('../models');
 const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
 const sessionManager = require('../utils/sessionManager');
@@ -2400,7 +2399,7 @@ class MessageProcessor {
       }
 
       // Log processed message
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'whatsapp_message_received',
         'message_processed',
@@ -2832,7 +2831,7 @@ class MessageProcessor {
       
       if (transcription && transcription.text) {
         // Log successful transcription
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           user.id,
           'whatsapp_message_received',
           'voice_transcribed',
@@ -2909,7 +2908,7 @@ class MessageProcessor {
             
             if (validation.isValid) {
               // Log successful bank details extraction
-              await ActivityLog.logUserActivity(
+              await activityLogger.logUserActivity(
                 user.id,
                 'whatsapp_message_received',
                 'bank_details_extracted',
@@ -2995,7 +2994,7 @@ class MessageProcessor {
             processedText += (processedText ? '\n' : '') + ocrResult.text;
             
             // Log successful OCR
-            await ActivityLog.logUserActivity(
+            await activityLogger.logUserActivity(
               user.id,
               'whatsapp_message_received',
               'image_ocr_processed',
@@ -3177,7 +3176,7 @@ class MessageProcessor {
       await whatsappService.sendTextMessage(user.whatsappNumber, receipt);
       
       // Log receipt sent
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         user.id,
         'whatsapp_message_sent',
         'transaction_receipt_sent',

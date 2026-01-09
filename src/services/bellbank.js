@@ -1,6 +1,12 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
-const { Transaction, ActivityLog, User, Wallet } = require('../models');
+const transactionService = require('./transaction');
+const activityLogger = require('./activityLogger');
+const userService = require('./user');
+const walletService = require('./wallet');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
+const { supabase } = require('../database/connection');
 const { axiosConfig } = require('../utils/httpsAgent');
 const walletService = require('./wallet');
 const whatsappService = require('./whatsapp');
@@ -192,7 +198,7 @@ class BellBankService {
         });
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           userData.userId,
           'wallet_funding',
           'virtual_account_created',
@@ -224,7 +230,7 @@ class BellBankService {
         });
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           userData.userId,
           'wallet_funding',
           'virtual_account_created_failed',
@@ -1327,7 +1333,7 @@ class BellBankService {
       await transaction.save();
 
       // Log activity
-      await ActivityLog.logTransactionActivity(
+      await activityLogger.logTransactionActivity(
         transaction.id,
         user.id,
         'wallet_funding',

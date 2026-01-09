@@ -1,7 +1,11 @@
 const rubiesService = require('./rubies');
 const logger = require('../utils/logger');
-const { User, Wallet, Transaction, ActivityLog } = require('../models');
-const { sequelize } = require('../database/connection');
+const userService = require('./user');
+const walletService = require('./wallet');
+const activityLogger = require('./activityLogger');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
+const { supabase } = require('../database/connection');
 
 class RubiesWalletService {
   constructor() {
@@ -11,7 +15,7 @@ class RubiesWalletService {
   // Create a Rubies wallet for a user
   async createRubiesWallet(userId) {
     try {
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       if (!user) {
         throw new Error('User not found');
       }
@@ -51,18 +55,26 @@ class RubiesWalletService {
         });
 
         // Update user's wallet with Rubies account details
-        const wallet = await Wallet.findOne({ where: { userId } });
+        const wallet = await walletService.getUserWallet(userId);
         if (wallet) {
-          await wallet.update({
-            virtualAccountNumber: response.accountNumber,
-            virtualAccountBank: 'Rubies MFB',
-            virtualAccountName: `${user.firstName} ${user.lastName}`,
-            accountReference: response.customerId
+          await databaseService.executeWithRetry(async () => {
+            const { error } = await supabase
+              .from('wallets')
+              .update({
+                virtualAccountNumber: response.accountNumber,
+                virtualAccountBank: 'Rubies MFB',
+                virtualAccountName: `${user.firstName} ${user.lastName}`,
+                accountReference: response.customerId,
+                updatedAt: new Date().toISOString()
+              })
+              .eq('id', wallet.id);
+            
+            if (error) throw error;
           });
         }
 
         // Log activity
-        await ActivityLog.logUserActivity(
+        await activityLogger.logUserActivity(
           userId,
           'wallet_funding',
           'rubies_wallet_created',
@@ -93,7 +105,7 @@ class RubiesWalletService {
       });
 
       // Log activity
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         userId,
         'wallet_funding',
         'rubies_wallet_creation_error',
@@ -332,7 +344,7 @@ class RubiesWalletService {
   // Sync Rubies wallet balance with local wallet
   async syncWalletBalance(userId) {
     try {
-      const wallet = await Wallet.findOne({ where: { userId } });
+      const wallet = await walletService.getUserWallet(userId);
       if (!wallet || !wallet.virtualAccountNumber) {
         throw new Error('Rubies wallet not found for user');
       }
@@ -344,9 +356,17 @@ class RubiesWalletService {
         const rubiesLedgerBalance = walletDetails.wallet.accountLedgerBalance;
 
         // Update local wallet with Rubies balance
-        await wallet.update({
-          balance: rubiesBalance,
-          ledgerBalance: rubiesLedgerBalance
+        await databaseService.executeWithRetry(async () => {
+          const { error } = await supabase
+            .from('wallets')
+            .update({
+              balance: rubiesBalance,
+              ledgerBalance: rubiesLedgerBalance,
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', wallet.id);
+          
+          if (error) throw error;
         });
 
         logger.info('Wallet balance synced with Rubies', {
@@ -382,7 +402,7 @@ class RubiesWalletService {
   // Check if user has Rubies wallet
   async hasRubiesWallet(userId) {
     try {
-      const wallet = await Wallet.findOne({ where: { userId } });
+      const wallet = await walletService.getUserWallet(userId);
       return !!(wallet && wallet.virtualAccountNumber && wallet.virtualAccountBank === 'Rubies MFB');
     } catch (error) {
       logger.error('Failed to check Rubies wallet status', {
@@ -396,7 +416,7 @@ class RubiesWalletService {
   // Get Rubies wallet status
   async getRubiesWalletStatus(userId) {
     try {
-      const wallet = await Wallet.findOne({ where: { userId } });
+      const wallet = await walletService.getUserWallet(userId);
       
       if (!wallet) {
         return {
