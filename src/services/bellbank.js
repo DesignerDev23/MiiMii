@@ -8,7 +8,6 @@ const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
 const { supabase } = require('../database/connection');
 const { axiosConfig } = require('../utils/httpsAgent');
-const walletService = require('./wallet');
 const whatsappService = require('./whatsapp');
 const RetryHelper = require('../utils/retryHelper');
 
