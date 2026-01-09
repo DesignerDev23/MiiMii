@@ -24,10 +24,15 @@ router.get('/:reference',
     try {
       const { reference } = req.params;
       
-      const transaction = await Transaction.findOne({
-        where: { reference },
-        include: [{ model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }]
-      });
+      const { supabase } = require('../database/connection');
+      const { data: transaction } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber)
+        `)
+        .eq('reference', reference)
+        .maybeSingle();
 
       if (!transaction) {
         return res.status(404).json({ error: 'Transaction not found' });
@@ -99,21 +104,32 @@ router.get('/',
         if (endDate) where.createdAt[require('sequelize').Op.lte] = new Date(endDate);
       }
 
-      const { count, rows: transactions } = await Transaction.findAndCountAll({
-        where,
-        include: [{ model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }],
-        order: [['createdAt', 'DESC']],
-        limit,
-        offset
-      });
+      const { supabase } = require('../database/connection');
+      let query = supabase
+        .from('transactions')
+        .select(`
+          *,
+          user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber)
+        `, { count: 'exact' });
+      
+      if (where.userId) query = query.eq('userId', where.userId);
+      if (where.status) query = query.eq('status', where.status);
+      if (where.type) query = query.eq('type', where.type);
+      if (where.category) query = query.eq('category', where.category);
+      
+      query = query.order('createdAt', { ascending: false })
+                   .range(offset, offset + limit - 1);
+      
+      const { data: transactions, error, count } = await query;
+      if (error) throw error;
 
       res.json({
         success: true,
         pagination: {
           page,
           limit,
-          total: count,
-          pages: Math.ceil(count / limit)
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit)
         },
         transactions: transactions.map(tx => ({
           reference: tx.reference,
@@ -126,7 +142,7 @@ router.get('/',
           user: tx.user ? `${tx.user.firstName || ''} ${tx.user.lastName || ''}`.trim() || tx.user.whatsappNumber : 'Unknown',
           userPhone: tx.user?.whatsappNumber,
           createdAt: tx.createdAt,
-          processedAt: tx.processedAt
+          processedAt: tx.metadata?.processedAt || null
         }))
       });
     } catch (error) {
@@ -190,41 +206,56 @@ router.get('/stats/overview',
 
       const where = Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {};
 
+      const { supabase } = require('../database/connection');
+      
+      // Build base query
+      let baseQuery = supabase.from('transactions');
+      if (where.createdAt) {
+        if (where.createdAt[require('sequelize').Op.gte]) {
+          baseQuery = baseQuery.gte('createdAt', where.createdAt[require('sequelize').Op.gte].toISOString());
+        }
+        if (where.createdAt[require('sequelize').Op.lte]) {
+          baseQuery = baseQuery.lte('createdAt', where.createdAt[require('sequelize').Op.lte].toISOString());
+        }
+      }
+      
       const [
-        totalTransactions,
-        completedTransactions,
-        totalVolume,
-        completedVolume,
-        avgTransactionAmount,
-        transactionsByType,
-        transactionsByStatus
+        totalTransactionsResult,
+        completedTransactionsResult,
+        allTransactionsResult,
+        completedTransactionsDataResult,
+        allTransactionsDataResult
       ] = await Promise.all([
-        Transaction.count({ where }),
-        Transaction.count({ where: { ...where, status: 'completed' } }),
-        Transaction.sum('amount', { where }),
-        Transaction.sum('amount', { where: { ...where, status: 'completed' } }),
-        Transaction.findAll({
-          where: { ...where, status: 'completed' },
-          attributes: [[require('sequelize').fn('AVG', require('sequelize').col('amount')), 'avg']]
-        }),
-        Transaction.findAll({
-          where,
-          attributes: [
-            'type',
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count'],
-            [require('sequelize').fn('SUM', require('sequelize').col('amount')), 'volume']
-          ],
-          group: ['type']
-        }),
-        Transaction.findAll({
-          where,
-          attributes: [
-            'status',
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-          ],
-          group: ['status']
-        })
+        baseQuery.select('*', { count: 'exact', head: true }),
+        baseQuery.select('*', { count: 'exact', head: true }).eq('status', 'completed'),
+        baseQuery.select('amount'),
+        baseQuery.select('amount').eq('status', 'completed'),
+        baseQuery.select('type, status, amount')
       ]);
+      
+      const totalTransactions = totalTransactionsResult.count || 0;
+      const completedTransactions = completedTransactionsResult.count || 0;
+      const totalVolume = (allTransactionsResult.data || []).reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+      const completedVolume = (completedTransactionsDataResult.data || []).reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+      const avgTransactionAmount = completedTransactions > 0 ? completedVolume / completedTransactions : 0;
+      
+      // Group by type
+      const transactionsByType = {};
+      (allTransactionsDataResult.data || []).forEach(tx => {
+        const type = tx.type || 'unknown';
+        if (!transactionsByType[type]) {
+          transactionsByType[type] = { count: 0, volume: 0 };
+        }
+        transactionsByType[type].count++;
+        transactionsByType[type].volume += parseFloat(tx.amount || 0);
+      });
+      
+      // Group by status
+      const transactionsByStatus = {};
+      (allTransactionsDataResult.data || []).forEach(tx => {
+        const status = tx.status || 'unknown';
+        transactionsByStatus[status] = (transactionsByStatus[status] || 0) + 1;
+      });
 
       res.json({
         success: true,
@@ -233,17 +264,14 @@ router.get('/stats/overview',
           completedTransactions,
           totalVolume: parseFloat(totalVolume || 0),
           completedVolume: parseFloat(completedVolume || 0),
-          avgTransactionAmount: parseFloat(avgTransactionAmount[0]?.dataValues?.avg || 0),
+          avgTransactionAmount: parseFloat(avgTransactionAmount || 0),
           successRate: totalTransactions > 0 ? (completedTransactions / totalTransactions * 100).toFixed(2) : 0,
-          transactionsByType: transactionsByType.map(type => ({
-            type: type.type,
-            count: parseInt(type.dataValues.count),
-            volume: parseFloat(type.dataValues.volume || 0)
+          transactionsByType: Object.entries(transactionsByType).map(([type, data]) => ({
+            type,
+            count: data.count,
+            volume: data.volume
           })),
-          transactionsByStatus: transactionsByStatus.reduce((acc, status) => {
-            acc[status.status] = parseInt(status.dataValues.count);
-            return acc;
-          }, {})
+          transactionsByStatus: transactionsByStatus
         }
       });
     } catch (error) {
@@ -264,21 +292,34 @@ router.patch('/:reference/status',
       const { reference } = req.params;
       const { status, reason } = req.body;
       
-      const transaction = await Transaction.findOne({ where: { reference } });
+      const { supabase } = require('../database/connection');
+      const { data: transaction } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('reference', reference)
+        .maybeSingle();
+      
       if (!transaction) {
         return res.status(404).json({ error: 'Transaction not found' });
       }
 
       const updateData = { 
         status,
-        processedAt: ['completed', 'failed', 'cancelled'].includes(status) ? new Date() : null
+        metadata: {
+          ...(transaction.metadata || {}),
+          processedAt: ['completed', 'failed', 'cancelled'].includes(status) ? new Date().toISOString() : null
+        },
+        updatedAt: new Date().toISOString()
       };
 
       if (reason) {
         updateData.failureReason = reason;
       }
 
-      await transaction.update(updateData);
+      await supabase
+        .from('transactions')
+        .update(updateData)
+        .eq('id', transaction.id);
 
       res.json({
         success: true,

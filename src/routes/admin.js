@@ -364,13 +364,18 @@ router.post('/users/:userId/maintenance-fee/debit',
 
       // Update last maintenance fee date
       const now = new Date();
-      await wallet.update({ 
-        lastMaintenanceFee: new Date(now.getFullYear(), now.getMonth() - months + 1, 1)
-      });
+      const { supabase } = require('../database/connection');
+      await supabase
+        .from('wallets')
+        .update({ 
+          lastMaintenanceFee: new Date(now.getFullYear(), now.getMonth() - months + 1, 1).toISOString(),
+          updatedAt: new Date().toISOString()
+        })
+        .eq('id', wallet.id);
 
       // Send notification if requested
       if (notify) {
-        const user = await User.findByPk(userId);
+        const user = await userService.getUserById(userId);
         const whatsappService = require('../services/whatsapp');
         await whatsappService.sendTextMessage(
           user.whatsappNumber,
@@ -442,7 +447,12 @@ router.delete('/users/:userId',
 router.get('/data-pricing', async (req, res) => {
   try {
     const { DATA_PLANS } = require('./flowEndpoint');
-    const record = await KVStore.findByPk('data_pricing_overrides');
+    const { supabase } = require('../database/connection');
+    const { data: record } = await supabase
+      .from('kvStore')
+      .select('*')
+      .eq('key', 'data_pricing_overrides')
+      .maybeSingle();
     const overrides = record?.value || {};
     
     // Combine retail prices from DATA_PLANS with admin-set selling prices
@@ -482,7 +492,12 @@ router.post('/data-pricing/plan',
       const { network, planId, sellingPrice } = req.body;
       
       // Get current overrides
-      const record = await KVStore.findByPk('data_pricing_overrides');
+      const { supabase } = require('../database/connection');
+    const { data: record } = await supabase
+      .from('kvStore')
+      .select('*')
+      .eq('key', 'data_pricing_overrides')
+      .maybeSingle();
       const overrides = record?.value || {};
       
       // Initialize network if it doesn't exist
@@ -494,7 +509,9 @@ router.post('/data-pricing/plan',
       overrides[network][planId] = parseFloat(sellingPrice);
       
       // Save updated overrides
-      await KVStore.upsert({ key: 'data_pricing_overrides', value: overrides });
+      await supabase
+        .from('kvStore')
+        .upsert({ key: 'data_pricing_overrides', value: overrides, updatedAt: new Date().toISOString() }, { onConflict: 'key' });
       
       res.json({ 
         success: true, 
@@ -532,7 +549,10 @@ router.post('/data-pricing',
 // Delete overrides
 router.delete('/data-pricing', async (req, res) => {
   try {
-    await KVStore.destroy({ where: { key: 'data_pricing_overrides' } });
+    await supabase
+      .from('kvStore')
+      .delete()
+      .eq('key', 'data_pricing_overrides');
     res.json({ success: true, message: 'Overrides cleared' });
   } catch (error) {
     logger.error('Failed to clear data pricing overrides', { error: error.message });
@@ -544,7 +564,12 @@ router.delete('/data-pricing', async (req, res) => {
 router.get('/data-plans', async (req, res) => {
   try {
     const { DATA_PLANS } = require('./flowEndpoint');
-    const record = await KVStore.findByPk('data_pricing_overrides');
+    const { supabase } = require('../database/connection');
+    const { data: record } = await supabase
+      .from('kvStore')
+      .select('*')
+      .eq('key', 'data_pricing_overrides')
+      .maybeSingle();
     const overrides = record?.value || {};
     
     // Return plans with admin-set selling prices (what users see)
@@ -620,27 +645,30 @@ router.get('/users/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     
-    const user = await User.findByPk(userId, {
-      include: [
-        { model: Wallet, as: 'wallet' },
-        { 
-          model: Transaction, 
-          as: 'transactions',
-          order: [['createdAt', 'DESC']],
-          limit: 20
-        },
-        {
-          model: SupportTicket,
-          as: 'supportTickets',
-          order: [['createdAt', 'DESC']],
-          limit: 10
-        }
-      ]
-    });
-
+    const user = await userService.getUserById(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+    
+    // Get wallet
+    const wallet = await walletService.getUserWallet(userId);
+    
+    // Get transactions
+    const { supabase } = require('../database/connection');
+    const { data: transactions } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('userId', userId)
+      .order('createdAt', { ascending: false })
+      .limit(10);
+    
+    // Get support tickets
+    const { data: supportTickets } = await supabase
+      .from('supportTickets')
+      .select('*')
+      .eq('userId', userId)
+      .order('createdAt', { ascending: false })
+      .limit(10);
 
     const stats = await userService.getUserStats(userId);
 
@@ -666,16 +694,16 @@ router.get('/users/:userId', async (req, res) => {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       },
-      wallet: user.wallet ? {
-        balance: parseFloat(user.wallet.balance),
-        virtualAccountNumber: user.wallet.virtualAccountNumber,
-        virtualAccountBank: user.wallet.virtualAccountBank,
-        isActive: user.wallet.isActive,
-        isFrozen: user.wallet.isFrozen
+      wallet: wallet ? {
+        balance: parseFloat(wallet.balance || 0),
+        virtualAccountNumber: wallet.virtualAccountNumber,
+        virtualAccountBank: wallet.virtualAccountBank,
+        isActive: wallet.isActive,
+        isFrozen: wallet.isFrozen
       } : null,
       stats,
-      recentTransactions: user.transactions?.slice(0, 10) || [],
-      supportTickets: user.supportTickets || []
+      recentTransactions: transactions || [],
+      supportTickets: supportTickets || []
     });
   } catch (error) {
     logger.error('Failed to get user details', { error: error.message });
@@ -909,7 +937,7 @@ router.post('/users/:userId/kyc-status',
       const user = await userService.updateUser(userId, {
         kycStatus: status,
         metadata: {
-          ...(await User.findByPk(userId)).metadata,
+          ...(await userService.getUserById(userId))?.metadata || {},
           kycUpdatedAt: new Date(),
           kycUpdateReason: reason
         }
@@ -946,7 +974,7 @@ router.post('/retry-virtual-accounts', async (req, res) => {
     const { User, Wallet } = require('../models');
 
     // Check if user exists
-    const user = await User.findByPk(userId);
+    const user = await userService.getUserById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -955,7 +983,7 @@ router.post('/retry-virtual-accounts', async (req, res) => {
     }
 
     // Check if wallet exists
-    const wallet = await Wallet.findOne({ where: { userId } });
+    const wallet = await walletService.getUserWallet(userId);
     if (!wallet) {
       return res.status(404).json({
         success: false,
@@ -978,11 +1006,16 @@ router.post('/retry-virtual-accounts', async (req, res) => {
 
     // If force is true and account exists, clear it first
     if (force && wallet.virtualAccountNumber) {
-      await wallet.update({
-        virtualAccountNumber: null,
-        virtualAccountBank: null,
-        virtualAccountName: null
-      });
+      const { supabase } = require('../database/connection');
+      await supabase
+        .from('wallets')
+        .update({
+          virtualAccountNumber: null,
+          virtualAccountBank: null,
+          virtualAccountName: null,
+          updatedAt: new Date().toISOString()
+        })
+        .eq('id', wallet.id);
     }
 
     // Attempt to create virtual account
@@ -1049,40 +1082,58 @@ router.get('/users-without-va', async (req, res) => {
     
     const { User, Wallet } = require('../models');
 
-    const usersWithoutVA = await User.findAll({
-      include: [
-        {
-          model: Wallet,
-          as: 'wallet',
-          where: {
-            virtualAccountNumber: null
+    const { supabase } = require('../database/connection');
+    
+    // Get wallets without virtual accounts
+    const { data: walletsWithoutVA } = await supabase
+      .from('wallets')
+      .select('userId')
+      .is('virtualAccountNumber', null)
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+    
+    const userIds = (walletsWithoutVA || []).map(w => w.userId);
+    
+    if (userIds.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          users: [],
+          pagination: {
+            total: 0,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            hasMore: false
           }
         }
-      ],
-      where: {
-        isActive: true,
-        isBanned: false
-      },
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [['createdAt', 'DESC']]
-    });
-
-    const totalCount = await User.count({
-      include: [
-        {
-          model: Wallet,
-          as: 'wallet',
-          where: {
-            virtualAccountNumber: null
-          }
-        }
-      ],
-      where: {
-        isActive: true,
-        isBanned: false
-      }
-    });
+      });
+    }
+    
+    // Get users for these wallets
+    const { data: usersWithoutVA } = await supabase
+      .from('users')
+      .select('*')
+      .eq('isActive', true)
+      .eq('isBanned', false)
+      .in('id', userIds)
+      .order('createdAt', { ascending: false });
+    
+    // Get total count
+    const { count: totalCount } = await supabase
+      .from('wallets')
+      .select('*', { count: 'exact', head: true })
+      .is('virtualAccountNumber', null);
+    
+    // Get wallets for these users
+    const { data: wallets } = await supabase
+      .from('wallets')
+      .select('*')
+      .in('userId', userIds);
+    
+    const walletMap = new Map(wallets.map(w => [w.userId, w]));
+    const usersWithWallets = (usersWithoutVA || []).map(user => ({
+      ...user,
+      wallet: walletMap.get(user.id) || null
+    }));
 
     res.json({
       success: true,
@@ -1212,12 +1263,22 @@ router.post('/transactions/requery',
       
       if (rubiesResult.success) {
         // Update local transaction status
-        const transaction = await Transaction.findOne({ where: { reference } });
+        const { supabase } = require('../database/connection');
+        const { data: transaction } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('reference', reference)
+          .maybeSingle();
+        
         if (transaction) {
-          await transaction.update({
-            status: 'completed',
-            providerResponse: rubiesResult
-          });
+          await supabase
+            .from('transactions')
+            .update({
+              status: 'completed',
+              metadata: { ...(transaction.metadata || {}), providerResponse: rubiesResult },
+              updatedAt: new Date().toISOString()
+            })
+            .eq('id', transaction.id);
         }
         
         res.json({
@@ -1253,20 +1314,23 @@ router.get('/users/:userId/transactions',
       const limit = parseInt(req.query.limit) || 20;
       const offset = parseInt(req.query.offset) || 0;
       
-      const transactions = await Transaction.findAndCountAll({
-        where: { userId },
-        include: [
-          { model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }
-        ],
-        order: [['createdAt', 'DESC']],
-        limit,
-        offset
-      });
+      const { supabase } = require('../database/connection');
+      const { data: transactions, error, count } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber)
+        `, { count: 'exact' })
+        .eq('userId', userId)
+        .order('createdAt', { ascending: false })
+        .range(offset, offset + limit - 1);
+      
+      if (error) throw error;
       
       res.json({
         success: true,
-        transactions: transactions.rows,
-        total: transactions.count,
+        transactions: transactions || [],
+        total: count || 0,
         limit,
         offset
       });
@@ -1287,13 +1351,16 @@ router.get('/transactions/:transactionId',
     try {
       const { transactionId } = req.params;
       
-      const transaction = await Transaction.findOne({
-        where: { id: transactionId },
-        include: [
-          { model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber', 'email'] },
-          { model: Wallet, as: 'wallet', attributes: ['virtualAccountNumber', 'virtualAccountBank'] }
-        ]
-      });
+      const { supabase } = require('../database/connection');
+      const { data: transaction } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber, email),
+          wallet:wallets!transactions_walletId_fkey(id, virtualAccountNumber, virtualAccountBank)
+        `)
+        .eq('id', transactionId)
+        .maybeSingle();
       
       if (!transaction) {
         return res.status(404).json({ error: 'Transaction not found' });
@@ -1433,10 +1500,25 @@ router.post('/notifications/push',
       }
       
       // Get target users
-      const users = await User.findAll({
-        where: whereClause,
-        attributes: ['id', 'whatsappNumber', 'firstName', 'lastSeen']
-      });
+      const { supabase } = require('../database/connection');
+      let query = supabase
+        .from('users')
+        .select('id, whatsappNumber, firstName, lastSeen');
+      
+      if (whereClause.isActive !== undefined) query = query.eq('isActive', whereClause.isActive);
+      if (whereClause.isBanned !== undefined) query = query.eq('isBanned', whereClause.isBanned);
+      if (whereClause.createdAt) {
+        if (whereClause.createdAt[Op.gte]) {
+          query = query.gte('createdAt', whereClause.createdAt[Op.gte].toISOString());
+        }
+      }
+      if (whereClause.lastSeen) {
+        if (whereClause.lastSeen[Op.gte]) {
+          query = query.gte('lastSeen', whereClause.lastSeen[Op.gte].toISOString());
+        }
+      }
+      
+      const { data: users } = await query;
       
       if (users.length === 0) {
         return res.json({
@@ -1544,23 +1626,16 @@ router.get('/notifications/stats', async (req, res) => {
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     
     // Get user counts by activity
-    const [totalUsers, activeUsers, newUsers] = await Promise.all([
-      User.count({ where: { isActive: true, isBanned: false } }),
-      User.count({ 
-        where: { 
-          isActive: true, 
-          isBanned: false,
-          lastSeen: { [Op.gte]: startDate }
-        } 
-      }),
-      User.count({ 
-        where: { 
-          isActive: true, 
-          isBanned: false,
-          createdAt: { [Op.gte]: startDate }
-        } 
-      })
+    const { supabase } = require('../database/connection');
+    const [totalUsersResult, activeUsersResult, newUsersResult] = await Promise.all([
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('isActive', true).eq('isBanned', false),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('isActive', true).eq('isBanned', false).gte('lastSeen', startDate.toISOString()),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('isActive', true).eq('isBanned', false).gte('createdAt', startDate.toISOString())
     ]);
+    
+    const totalUsers = totalUsersResult.count || 0;
+    const activeUsers = activeUsersResult.count || 0;
+    const newUsers = newUsersResult.count || 0;
     
     res.json({
       success: true,
@@ -1592,14 +1667,13 @@ router.post('/notifications/send',
       const { title, message, userIds, type = 'info' } = req.body;
       
       // Get specific users
-      const users = await User.findAll({
-        where: { 
-          id: { [Op.in]: userIds },
-          isActive: true, 
-          isBanned: false 
-        },
-        attributes: ['id', 'whatsappNumber', 'firstName']
-      });
+      const { supabase } = require('../database/connection');
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, whatsappNumber, firstName')
+        .in('id', userIds)
+        .eq('isActive', true)
+        .eq('isBanned', false);
       
       if (users.length === 0) {
         return res.status(404).json({ 
@@ -1717,15 +1791,24 @@ router.patch('/support/tickets/:ticketId',
       const { ticketId } = req.params;
       const { status, response } = req.body;
       
-      const ticket = await SupportTicket.findByPk(ticketId, {
-        include: [{ model: User, as: 'user' }]
-      });
+      const { supabase } = require('../database/connection');
+      const { data: ticket } = await supabase
+        .from('supportTickets')
+        .select(`
+          *,
+          user:users!supportTickets_userId_fkey(*)
+        `)
+        .eq('id', ticketId)
+        .maybeSingle();
       
       if (!ticket) {
         return res.status(404).json({ error: 'Support ticket not found' });
       }
       
-      await ticket.update({ status, resolution: response });
+      await supabase
+        .from('supportTickets')
+        .update({ status, resolution: response, updatedAt: new Date().toISOString() })
+        .eq('id', ticketId);
       
       // Send response to user if provided
       if (response && ticket.user) {
@@ -1757,11 +1840,15 @@ router.get('/support/tickets/:ticketId',
     try {
       const { ticketId } = req.params;
       
-      const ticket = await SupportTicket.findByPk(ticketId, {
-        include: [
-          { model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber', 'email'] }
-        ]
-      });
+      const { supabase } = require('../database/connection');
+      const { data: ticket } = await supabase
+        .from('supportTickets')
+        .select(`
+          *,
+          user:users!supportTickets_userId_fkey(id, firstName, lastName, whatsappNumber, email)
+        `)
+        .eq('id', ticketId)
+        .maybeSingle();
       
       if (!ticket) {
         return res.status(404).json({ error: 'Support ticket not found' });
@@ -1792,7 +1879,7 @@ router.post('/support/tickets',
       const { userId, subject, description, priority = 'medium' } = req.body;
       
       // Verify user exists
-      const user = await User.findByPk(userId);
+      const user = await userService.getUserById(userId);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -1801,7 +1888,9 @@ router.post('/support/tickets',
       const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
       
       // Create support ticket
-      const ticket = await SupportTicket.create({
+      const { supabase } = require('../database/connection');
+      const supabaseHelper = require('../services/supabaseHelper');
+      const ticket = await supabaseHelper.create('supportTickets', {
         ticketNumber,
         userId,
         subject: subject.trim(),

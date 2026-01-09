@@ -551,16 +551,16 @@ class BankTransferService {
 
       // Check monthly limits
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      const monthlyTransfers = await Transaction.sum('amount', {
-        where: {
-          userId,
-          category: 'bank_transfer',
-          status: 'completed',
-          createdAt: {
-            [require('sequelize').Op.gte]: monthStart
-          }
-        }
-      });
+      const { supabase } = require('../database/connection');
+      const { data: monthlyTransactions } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('userId', userId)
+        .eq('category', 'bank_transfer')
+        .eq('status', 'completed')
+        .gte('createdAt', monthStart.toISOString());
+      
+      const monthlyTransfers = (monthlyTransactions || []).reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
 
       const totalMonthlyAmount = (monthlyTransfers || 0) + numAmount;
       if (totalMonthlyAmount > this.limits.monthlyLimit) {
@@ -984,21 +984,21 @@ class BankTransferService {
   // Get transfer history
   async getTransferHistory(userId, limit = 10, offset = 0) {
     try {
-      const { Transaction } = require('../models');
+      const { supabase } = require('../database/connection');
       
-      const transactions = await Transaction.findAndCountAll({
-        where: {
-          userId,
-          category: 'bank_transfer',
-          type: 'debit'
-        },
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const { data: transactions, error, count } = await supabase
+        .from('transactions')
+        .select('*', { count: 'exact' })
+        .eq('userId', userId)
+        .eq('category', 'bank_transfer')
+        .eq('type', 'debit')
+        .order('createdAt', { ascending: false })
+        .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+      
+      if (error) throw error;
 
       return {
-        transactions: transactions.rows.map(tx => ({
+        transactions: (transactions || []).map(tx => ({
           reference: tx.reference,
           amount: parseFloat(tx.amount),
           fee: parseFloat(tx.fee),
@@ -1010,14 +1010,14 @@ class BankTransferService {
           status: tx.status,
           description: tx.description,
           createdAt: tx.createdAt,
-          processedAt: tx.processedAt,
+          processedAt: tx.metadata?.processedAt || null,
           estimatedArrival: tx.status === 'completed' ? 'Delivered' : '5-15 minutes'
         })),
         pagination: {
-          total: transactions.count,
+          total: count || 0,
           limit: parseInt(limit),
           offset: parseInt(offset),
-          pages: Math.ceil(transactions.count / limit)
+          pages: Math.ceil((count || 0) / limit)
         }
       };
     } catch (error) {
@@ -1033,26 +1033,27 @@ class BankTransferService {
       today.setHours(0, 0, 0, 0);
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-      const { Transaction } = require('../models');
+      const { supabase } = require('../database/connection');
 
-      const [dailyUsed, monthlyUsed] = await Promise.all([
-        Transaction.sum('amount', {
-          where: {
-            userId,
-            category: 'bank_transfer',
-            status: 'completed',
-            createdAt: { [require('sequelize').Op.gte]: today }
-          }
-        }),
-        Transaction.sum('amount', {
-          where: {
-            userId,
-            category: 'bank_transfer',
-            status: 'completed',
-            createdAt: { [require('sequelize').Op.gte]: monthStart }
-          }
-        })
+      const [dailyResult, monthlyResult] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select('amount')
+          .eq('userId', userId)
+          .eq('category', 'bank_transfer')
+          .eq('status', 'completed')
+          .gte('createdAt', today.toISOString()),
+        supabase
+          .from('transactions')
+          .select('amount')
+          .eq('userId', userId)
+          .eq('category', 'bank_transfer')
+          .eq('status', 'completed')
+          .gte('createdAt', monthStart.toISOString())
       ]);
+      
+      const dailyUsed = (dailyResult.data || []).reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+      const monthlyUsed = (monthlyResult.data || []).reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
 
       return {
         limits: this.limits,
