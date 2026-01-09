@@ -1029,17 +1029,26 @@ class BilalService {
       const plans = await dataPlanService.getDataPlansByNetwork(networkName);
       
       // Format plans for WhatsApp display
-      const formattedPlans = plans.map(plan => ({
-        id: plan.providerPlanId || plan.id,
-        dataplan: plan.dataSize,
-        amount: plan.sellingPrice.toString(),
-        validity: plan.validity,
-        title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
-        description: plan.validity,
-        retailPrice: plan.retailPrice,
-        sellingPrice: plan.sellingPrice,
-        planType: plan.planType
-      }));
+      const formattedPlans = plans.map(plan => {
+        // Map database fields to expected format
+        const price = parseFloat(plan.price || 0);
+        const sellingPrice = plan.sellingPrice || price;
+        const retailPrice = plan.retailPrice || price;
+        const validity = plan.validityDays ? `${plan.validityDays} days` : plan.validity || 'N/A';
+        const planType = plan.type || plan.planType || 'SME';
+        
+        return {
+          id: plan.providerPlanId || plan.id,
+          dataplan: plan.dataSize,
+          amount: sellingPrice.toString(),
+          validity: validity,
+          title: `${plan.dataSize} - ₦${sellingPrice.toLocaleString()}`,
+          description: validity,
+          retailPrice: retailPrice,
+          sellingPrice: sellingPrice,
+          planType: planType
+        };
+      });
 
       logger.info(`Retrieved ${formattedPlans.length} data plans for ${networkName}`, {
         network: networkName,

@@ -102,19 +102,29 @@ class DataService {
       }
 
       // Format plans for WhatsApp display
-      const formattedPlans = plans.map(plan => ({
-        id: plan.providerPlanId || plan.id,
-        title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
-        validity: plan.validity,
-        type: plan.planType,
-        price: plan.sellingPrice, // Admin-set selling price (what users see)
-        retailPrice: plan.retailPrice, // Provider's retail price
-        network: plan.network,
-        margin: plan.sellingPrice - plan.retailPrice,
-        dataSize: plan.dataSize,
-        planType: plan.planType,
-        networkCode: plan.networkCode
-      }));
+      const formattedPlans = plans.map(plan => {
+        // Map database fields to expected format
+        const price = parseFloat(plan.price || 0);
+        const sellingPrice = plan.sellingPrice || price;
+        const retailPrice = plan.retailPrice || price;
+        const validity = plan.validityDays ? `${plan.validityDays} days` : plan.validity || 'N/A';
+        const planType = plan.type || plan.planType || 'SME';
+        const networkCode = plan.providerCode || plan.networkCode;
+        
+        return {
+          id: plan.providerPlanId || plan.id,
+          title: `${plan.dataSize} - ₦${sellingPrice.toLocaleString()}`,
+          validity: validity,
+          type: planType,
+          price: sellingPrice, // Admin-set selling price (what users see)
+          retailPrice: retailPrice, // Provider's retail price
+          network: plan.network,
+          margin: sellingPrice - retailPrice,
+          dataSize: plan.dataSize,
+          planType: planType,
+          networkCode: networkCode
+        };
+      });
 
       logger.info(`Retrieved ${formattedPlans.length} data plans for ${network}`, {
         network,

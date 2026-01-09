@@ -14,8 +14,7 @@ class DataPlanService {
           network: network.toUpperCase(),
           isActive: true
         }, {
-          orderBy: 'price',
-          order: 'asc'
+          order: [['price', 'asc']]
         });
       });
 
@@ -323,10 +322,15 @@ class DataPlanService {
    * Format data plan for WhatsApp list display
    */
   formatPlanForWhatsApp(plan) {
+    // Map database fields to expected format
+    const price = parseFloat(plan.price || plan.sellingPrice || 0);
+    const sellingPrice = plan.sellingPrice || price;
+    const validity = plan.validityDays ? `${plan.validityDays} days` : plan.validity || 'N/A';
+    
     return {
       id: `plan_${plan.network}_${plan.id}`,
-      title: `${plan.dataSize} - ₦${plan.sellingPrice.toLocaleString()}`,
-      description: plan.validity
+      title: `${plan.dataSize} - ₦${sellingPrice.toLocaleString()}`,
+      description: validity
     };
   }
 
