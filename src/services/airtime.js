@@ -238,37 +238,36 @@ class AirtimeService {
   // Get airtime purchase history for user
   async getAirtimePurchaseHistory(userId, limit = 10, offset = 0) {
     try {
-      const { Transaction } = require('../models');
+      const { supabase } = require('../database/connection');
+      const { data: transactions, error, count } = await supabase
+        .from('transactions')
+        .select('*', { count: 'exact' })
+        .eq('userId', userId)
+        .eq('category', 'airtime_purchase')
+        .eq('type', 'debit')
+        .order('createdAt', { ascending: false })
+        .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
       
-      const transactions = await Transaction.findAndCountAll({
-        where: {
-          userId,
-          category: 'airtime_purchase',
-          type: 'debit'
-        },
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      if (error) throw error;
 
       return {
-        transactions: transactions.rows.map(tx => ({
+        transactions: (transactions || []).map(tx => ({
           reference: tx.reference,
-          amount: parseFloat(tx.amount),
-          fee: parseFloat(tx.fee),
-          totalAmount: parseFloat(tx.totalAmount),
-          phoneNumber: tx.recipientDetails?.phoneNumber,
-          network: tx.recipientDetails?.network,
+          amount: parseFloat(tx.amount || 0),
+          fee: parseFloat(tx.fee || 0),
+          totalAmount: parseFloat(tx.totalAmount || 0),
+          phoneNumber: tx.metadata?.recipientDetails?.phoneNumber,
+          network: tx.metadata?.recipientDetails?.network,
           status: tx.status,
           description: tx.description,
           createdAt: tx.createdAt,
-          processedAt: tx.processedAt
+          processedAt: tx.metadata?.processedAt || null
         })),
         pagination: {
-          total: transactions.count,
+          total: count || 0,
           limit: parseInt(limit),
           offset: parseInt(offset),
-          pages: Math.ceil(transactions.count / limit)
+          pages: Math.ceil((count || 0) / limit)
         }
       };
     } catch (error) {

@@ -559,11 +559,11 @@ class UtilityService {
           amount: parseFloat(tx.amount),
           fee: parseFloat(tx.fee),
           totalAmount: parseFloat(tx.totalAmount),
-          category: tx.recipientDetails?.category,
-          provider: tx.recipientDetails?.provider,
-          customerNumber: tx.recipientDetails?.customerNumber,
-          customerName: tx.recipientDetails?.customerName,
-          planDetails: tx.recipientDetails?.planDetails,
+          category: tx.metadata?.recipientDetails?.category,
+          provider: tx.metadata?.recipientDetails?.provider,
+          customerNumber: tx.metadata?.recipientDetails?.customerNumber,
+          customerName: tx.metadata?.recipientDetails?.customerName,
+          planDetails: tx.metadata?.recipientDetails?.planDetails,
           status: tx.status,
           description: tx.description,
           createdAt: tx.createdAt,
@@ -612,14 +612,14 @@ class UtilityService {
       const seen = new Set();
 
       for (const tx of transactions) {
-        const key = `${tx.recipientDetails?.provider}-${tx.recipientDetails?.customerNumber}`;
-        if (!seen.has(key) && tx.recipientDetails?.customerNumber) {
+        const key = `${tx.metadata?.recipientDetails?.provider}-${tx.metadata?.recipientDetails?.customerNumber}`;
+        if (!seen.has(key) && tx.metadata?.recipientDetails?.customerNumber) {
           seen.add(key);
           uniqueCustomers.push({
-            category: tx.recipientDetails.category,
-            provider: tx.recipientDetails.provider,
-            customerNumber: tx.recipientDetails.customerNumber,
-            customerName: tx.recipientDetails.customerName,
+            category: tx.metadata?.recipientDetails?.category,
+            provider: tx.metadata?.recipientDetails?.provider,
+            customerNumber: tx.metadata?.recipientDetails?.customerNumber,
+            customerName: tx.metadata?.recipientDetails?.customerName,
             lastPayment: tx.createdAt
           });
         }

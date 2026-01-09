@@ -1003,10 +1003,10 @@ class BankTransferService {
           amount: parseFloat(tx.amount),
           fee: parseFloat(tx.fee),
           totalAmount: parseFloat(tx.totalAmount),
-          accountNumber: tx.recipientDetails?.accountNumber,
-          accountName: tx.recipientDetails?.accountName,
-          bankName: tx.recipientDetails?.bankName,
-          narration: tx.recipientDetails?.narration,
+          accountNumber: tx.metadata?.recipientDetails?.accountNumber,
+          accountName: tx.metadata?.recipientDetails?.accountName,
+          bankName: tx.metadata?.recipientDetails?.bankName,
+          narration: tx.metadata?.recipientDetails?.narration,
           status: tx.status,
           description: tx.description,
           createdAt: tx.createdAt,
@@ -1095,14 +1095,14 @@ class BankTransferService {
       const seen = new Set();
 
       for (const tx of transactions) {
-        const accountNumber = tx.recipientDetails?.accountNumber;
+        const accountNumber = tx.metadata?.recipientDetails?.accountNumber;
         if (!seen.has(accountNumber) && accountNumber) {
           seen.add(accountNumber);
           uniqueBeneficiaries.push({
             accountNumber,
-            accountName: tx.recipientDetails.accountName,
-            bankCode: tx.recipientDetails.bankCode,
-            bankName: tx.recipientDetails.bankName,
+            accountName: tx.metadata?.recipientDetails?.accountName,
+            bankCode: tx.metadata?.recipientDetails?.bankCode,
+            bankName: tx.metadata?.recipientDetails?.bankName,
             lastAmount: parseFloat(tx.amount),
             lastTransfer: tx.createdAt
           });

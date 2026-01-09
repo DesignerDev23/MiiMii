@@ -54,10 +54,10 @@ class TransactionService {
           totalAmount: parseFloat(finalTotalAmount),
           currency,
           description,
-          recipientDetails,
-          // processedAt column doesn't exist in transactions table, store in metadata instead
+          // recipientDetails doesn't exist as a column - store in metadata instead
           metadata: {
             ...(metadata || {}),
+            recipientDetails: recipientDetails || null,
             ...(status === 'completed' ? { processedAt: new Date().toISOString() } : {})
           },
           status,
@@ -444,10 +444,15 @@ class TransactionService {
       const { reference, amount, recipient_account, status } = webhookData;
       
       // Find transaction by reference
-      const transaction = await Transaction.findOne({ 
-        where: { providerReference: reference },
-        include: [{ model: User, as: 'user' }]
-      });
+      const { supabase } = require('../database/connection');
+      const { data: transaction } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          user:users!transactions_userId_fkey(*)
+        `)
+        .eq('providerReference', reference)
+        .maybeSingle();
 
       if (!transaction) {
         logger.warn('Transaction not found for BellBank webhook', { reference });
@@ -894,7 +899,7 @@ class TransactionService {
 
       // Re-initiate the transaction based on type
       if (transaction.category === 'bank_transfer' && user) {
-        const recipientDetails = transaction.recipientDetails || {};
+        const recipientDetails = transaction.metadata?.recipientDetails || {};
         
         await this.handleBankTransfer(user, {
           amount: transaction.amount,

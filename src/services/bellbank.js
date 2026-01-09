@@ -1426,9 +1426,9 @@ class BellBankService {
             amount: parseFloat(transaction.amount),
             fee: parseFloat(transaction.fee || 0),
             totalAmount: parseFloat(transaction.totalAmount),
-            recipientName: transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber,
-            recipientBank: transaction.recipientDetails?.bankName,
-            recipientAccount: transaction.recipientDetails?.accountNumber,
+            recipientName: transaction.metadata?.recipientDetails?.name || transaction.metadata?.recipientDetails?.accountNumber,
+            recipientBank: transaction.metadata?.recipientDetails?.bankName,
+            recipientAccount: transaction.metadata?.recipientDetails?.accountNumber,
             reference: transaction.reference,
             date: new Date().toLocaleString('en-US', {
               year: 'numeric',
@@ -1452,8 +1452,8 @@ class BellBankService {
           // Send text notification if receipt wasn't sent
           const completionMessage = `✅ *Transfer Successful!*\n\n` +
                                   `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
-                                  `👤 To: ${transaction.recipientDetails?.name || transaction.recipientDetails?.accountNumber}\n` +
-                                  `🏦 Bank: ${transaction.recipientDetails?.bankName}\n` +
+                                  `👤 To: ${transaction.metadata?.recipientDetails?.name || transaction.metadata?.recipientDetails?.accountNumber}\n` +
+                                  `🏦 Bank: ${transaction.metadata?.recipientDetails?.bankName}\n` +
                                   `📄 Reference: ${transaction.reference}\n\n` +
                                   `Your transfer has been completed successfully! 🎉`;
 

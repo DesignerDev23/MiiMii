@@ -424,17 +424,16 @@ class SavingsService {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
-        const { Transaction } = require('../models');
-        const dailyWithdrawals = await Transaction.sum('amount', {
-          where: {
-            userId,
-            category: 'savings_withdrawal',
-            'metadata.savingsAccountId': accountId,
-            createdAt: {
-              [require('sequelize').Op.gte]: today
-            }
-          }
-        });
+        const { supabase } = require('../database/connection');
+        const { data: withdrawalTransactions } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('userId', userId)
+          .eq('category', 'savings_withdrawal')
+          .eq('metadata->>savingsAccountId', accountId)
+          .gte('createdAt', today.toISOString());
+        
+        const dailyWithdrawals = (withdrawalTransactions || []).reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
 
         if ((dailyWithdrawals || 0) + withdrawalAmount > this.savingsConfig.limits.dailyWithdrawalLimit) {
           throw new Error(`Daily withdrawal limit of ₦${this.savingsConfig.limits.dailyWithdrawalLimit.toLocaleString()} exceeded`);
@@ -597,46 +596,46 @@ class SavingsService {
   // Get savings account transactions
   async getSavingsTransactions(userId, accountId, limit = 10, offset = 0) {
     try {
-      const { Transaction } = require('../models');
-      
       // Verify account belongs to user
-      const { SavingsAccount } = require('../models');
-      const account = await SavingsAccount.findOne({
-        where: { id: accountId, userId }
+      const supabaseHelper = require('./supabaseHelper');
+      const account = await supabaseHelper.findOne('savingsAccounts', {
+        id: accountId,
+        userId
       });
 
       if (!account) {
         throw new Error('Savings account not found');
       }
 
-      const transactions = await Transaction.findAndCountAll({
-        where: {
-          userId,
-          'metadata.savingsAccountId': accountId,
-          category: ['savings_deposit', 'savings_withdrawal', 'savings_interest']
-        },
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-      });
+      const { supabase } = require('../database/connection');
+      const { data: transactions, error, count } = await supabase
+        .from('transactions')
+        .select('*', { count: 'exact' })
+        .eq('userId', userId)
+        .eq('metadata->>savingsAccountId', accountId)
+        .in('category', ['savings_deposit', 'savings_withdrawal', 'savings_interest'])
+        .order('createdAt', { ascending: false })
+        .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+      
+      if (error) throw error;
 
       return {
-        transactions: transactions.rows.map(tx => ({
+        transactions: (transactions || []).map(tx => ({
           reference: tx.reference,
           type: tx.type,
           category: tx.category,
-          amount: parseFloat(tx.amount),
-          fee: parseFloat(tx.fee),
+          amount: parseFloat(tx.amount || 0),
+          fee: parseFloat(tx.fee || 0),
           description: tx.description,
           status: tx.status,
           createdAt: tx.createdAt,
           metadata: tx.metadata
         })),
         pagination: {
-          total: transactions.count,
+          total: count || 0,
           limit: parseInt(limit),
           offset: parseInt(offset),
-          pages: Math.ceil(transactions.count / limit)
+          pages: Math.ceil((count || 0) / limit)
         }
       };
     } catch (error) {

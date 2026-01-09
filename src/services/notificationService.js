@@ -82,7 +82,7 @@ class NotificationService {
         if (transaction.category === 'bank_transfer') {
           type = 'transfer_outgoing';
           title = '💸 Transfer Sent';
-          message = `You sent ${formattedAmount}${transaction.recipientDetails?.accountNumber ? ` to ${transaction.recipientDetails.accountNumber}` : ''}`;
+          message = `You sent ${formattedAmount}${transaction.metadata?.recipientDetails?.accountNumber ? ` to ${transaction.metadata.recipientDetails.accountNumber}` : ''}`;
         } else if (transaction.category === 'airtime_purchase') {
           type = 'airtime_purchase';
           title = '📱 Airtime Purchased';

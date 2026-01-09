@@ -3205,7 +3205,7 @@ class MessageProcessor {
            `📊 Status: ${transaction.status.toUpperCase()}\n` +
            `📅 Date: ${new Date(transaction.createdAt).toLocaleString()}\n` +
            `📝 Description: ${transaction.description}\n` +
-           `${transaction.recipientDetails ? `👤 Recipient: ${transaction.recipientDetails.name || transaction.recipientDetails.phoneNumber}\n` : ''}` +
+           `${transaction.metadata?.recipientDetails ? `👤 Recipient: ${transaction.metadata.recipientDetails.name || transaction.metadata.recipientDetails.phoneNumber}\n` : ''}` +
            `\nThank you for using MiiMii! 🎉`;
   }
 
