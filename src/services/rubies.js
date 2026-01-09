@@ -1035,26 +1035,28 @@ class RubiesService {
         if (wallet) {
           const user = await userService.getUserById(wallet.userId);
           if (user) {
-          // Credit the digital wallet using the existing mechanism
-          const walletService = require('./wallet');
-          await walletService.creditWalletFromVirtualAccount({
-            customer_id: user.id,
-            amount: data.amount,
-            reference: data.paymentReference || data.sessionId,
-            sender_name: data.originatorName || data.creditAccountName,
-            sender_bank: data.bankName || 'Unknown Bank'
-          });
-          
-          logger.info('Digital wallet credited from Rubies virtual account', {
-            userId: wallet.user.id,
-            amount,
-            reference: data.paymentReference,
-            accountNumber
-          });
+            // Credit the digital wallet using the existing mechanism
+            const walletService = require('./wallet');
+            await walletService.creditWalletFromVirtualAccount({
+              customer_id: user.id,
+              amount: data.amount,
+              reference: data.paymentReference || data.sessionId,
+              sender_name: data.originatorName || data.creditAccountName,
+              sender_bank: data.bankName || 'Unknown Bank'
+            });
+            
+            logger.info('Digital wallet credited from Rubies virtual account', {
+              userId: user.id,
+              amount: data.amount,
+              reference: data.paymentReference,
+              accountNumber
+            });
+          } else {
+            logger.warn('User not found for wallet', { walletId: wallet.id, accountNumber });
+          }
         } else {
           logger.warn('No wallet found for virtual account number', { accountNumber });
         }
-      }
     } catch (error) {
       logger.error('Failed to handle Rubies account credit', { error: error.message, data });
     }
