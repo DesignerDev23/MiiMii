@@ -1042,14 +1042,22 @@ class KYCService {
         return;
       }
 
-      await user.update({
-        kycStatus: 'rejected',
-        kycData: {
-          ...user.kycData,
-          rejectionReason: rejection_reason,
-          rejectionDetails: details,
-          rejectedAt: new Date()
-        }
+      await databaseService.executeWithRetry(async () => {
+        const { error } = await supabase
+          .from('users')
+          .update({
+            kycStatus: 'rejected',
+            kycData: {
+              ...(user.kycData || {}),
+              rejectionReason: rejection_reason,
+              rejectionDetails: details,
+              rejectedAt: new Date().toISOString()
+            },
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', user_id);
+        
+        if (error) throw error;
       });
 
       await activityLogger.logUserActivity(

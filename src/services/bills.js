@@ -6,7 +6,9 @@ const whatsappService = require('./whatsapp');
 const bilalService = require('./bilal');
 const feesService = require('./fees');
 const RetryHelper = require('../utils/retryHelper');
-const { ActivityLog } = require('../models');
+const activityLogger = require('./activityLogger');
+const databaseService = require('./database');
+const supabaseHelper = require('./supabaseHelper');
 
 class BillsService {
   constructor() {
@@ -255,13 +257,16 @@ class BillsService {
   // Get bill payment history for a user
   async getBillPaymentHistory(userId, limit = 10) {
     try {
-      const history = await ActivityLog.find({
-        userId: userId,
-        action: { $in: ['electricity_bill', 'cable_payment'] }
-      })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .select('action details createdAt');
+      const history = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('activityLogs', {
+          userId: userId,
+          action: ['electricity_bill', 'cable_payment']
+        }, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: limit
+        });
+      });
 
       return history.map(record => ({
         type: record.action,

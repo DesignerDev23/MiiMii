@@ -516,37 +516,30 @@ class VirtualCardService {
   // Get card usage statistics
   async getCardUsageStats(cardId) {
     try {
-      const { Transaction } = require('../models');
-      
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-      const [dailySpent, monthlySpent, totalTransactions] = await Promise.all([
-        Transaction.sum('amount', {
-          where: {
-            'metadata.cardId': cardId,
-            category: 'virtual_card_transaction',
-            status: 'completed',
-            createdAt: { [require('sequelize').Op.gte]: today }
-          }
-        }),
-        Transaction.sum('amount', {
-          where: {
-            'metadata.cardId': cardId,
-            category: 'virtual_card_transaction',
-            status: 'completed',
-            createdAt: { [require('sequelize').Op.gte]: monthStart }
-          }
-        }),
-        Transaction.count({
-          where: {
-            'metadata.cardId': cardId,
-            category: 'virtual_card_transaction',
-            status: 'completed'
-          }
-        })
-      ]);
+      // Get all card transactions
+      const allTransactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', {
+          category: 'virtual_card_transaction',
+          status: 'completed'
+        });
+      });
+      
+      // Filter by cardId in metadata
+      const cardTransactions = allTransactions.filter(tx => tx.metadata?.cardId === cardId);
+      
+      const dailySpent = cardTransactions
+        .filter(tx => new Date(tx.createdAt) >= today)
+        .reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+      
+      const monthlySpent = cardTransactions
+        .filter(tx => new Date(tx.createdAt) >= monthStart)
+        .reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+      
+      const totalTransactions = cardTransactions.length;
 
       return {
         dailySpent: parseFloat(dailySpent || 0),
@@ -568,15 +561,18 @@ class VirtualCardService {
   // Get last transaction for card
   async getLastTransaction(cardId) {
     try {
-      const { Transaction } = require('../models');
-      
-      const lastTransaction = await Transaction.findOne({
-        where: {
-          'metadata.cardId': cardId,
+      // Get all transactions for this card and filter
+      const allTransactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', {
           category: 'virtual_card_transaction'
-        },
-        order: [['createdAt', 'DESC']]
+        }, {
+          orderBy: 'createdAt',
+          order: 'desc'
+        });
       });
+      
+      // Filter by cardId in metadata
+      const lastTransaction = allTransactions.find(tx => tx.metadata?.cardId === cardId);
 
       if (!lastTransaction) return null;
 

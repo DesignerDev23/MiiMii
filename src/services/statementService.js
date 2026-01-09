@@ -2,7 +2,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
-const { Transaction } = require('../models');
+// Models removed - using Supabase client instead
 const transactionService = require('./transaction');
 const emailService = require('./emailService');
 
@@ -34,10 +34,12 @@ class StatementService {
       }
 
       // Fetch transactions
-      const transactions = await Transaction.findAll({
-        where,
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit, 10)
+      const transactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', where, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: parseInt(limit, 10)
+        });
       });
 
       // Generate PDF

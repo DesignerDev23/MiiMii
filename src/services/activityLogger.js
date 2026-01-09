@@ -1,8 +1,8 @@
-const { ActivityLog } = require('../models');
+// Models removed - using Supabase client instead
 const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
 const logger = require('../utils/logger');
-const { Op } = require('sequelize');
+// Sequelize removed - using Supabase client instead
 const { v4: uuidv4 } = require('uuid');
 
 class ActivityLoggerService {
@@ -246,17 +246,12 @@ class ActivityLoggerService {
         if (endDate) whereClause.createdAt[Op.lte] = endDate;
       }
 
-      return await databaseService.findWithRetry(ActivityLog, {
-        where: whereClause,
+      return await supabaseHelper.findAndCountAll('activityLogs', whereClause, {
+        orderBy: 'createdAt',
+        order: 'desc',
         limit,
-        offset,
-        order: [['createdAt', 'DESC']],
-        include: [
-          { model: require('../models').User, as: 'user' },
-          { model: require('../models').User, as: 'adminUser' },
-          { model: require('../models').Transaction, as: 'relatedTransaction' }
-        ]
-      }, { operationName: 'get activity logs' });
+        offset
+      });
     }, { operationName: 'get activity logs' });
   }
 

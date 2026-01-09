@@ -135,9 +135,10 @@ class FincraService {
 
         // Log activity
         await activityLogger.logUserActivity(
-          userId: bvnData.userId || null,
-          action: 'bvn_verification',
-          details: {
+          bvnData.userId || null,
+          'kyc_verification',
+          'bvn_verification_failed',
+          {
             bvnMasked: `***${bvn.slice(-4)}`,
             provider: 'fincra',
             status: 'failed',

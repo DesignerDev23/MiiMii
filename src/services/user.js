@@ -463,11 +463,8 @@ class UserService {
         }
       );
 
-        return snapshot;
-      });
-
       logger.info('User deleted successfully', { userId, deletedBy, force });
-      return result;
+      return snapshot;
     } catch (error) {
       logger.error('Failed to delete user', { error: error.message, userId, deletedBy, force });
       throw error;

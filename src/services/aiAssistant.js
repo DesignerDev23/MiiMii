@@ -8,7 +8,7 @@ const dataService = require('./data');
 const airtimeService = require('./airtime');
 const utilityService = require('./utility');
 const transactionService = require('./transaction');
-const { ActivityLog } = require('../models');
+// Models removed - using activityLogger service instead
 const sessionManager = require('../utils/sessionManager');
 const redisClient = require('../utils/redis');
 

@@ -540,21 +540,21 @@ class UtilityService {
   // Get utility payment history for user
   async getUtilityPaymentHistory(userId, limit = 10, offset = 0) {
     try {
-      const { Transaction } = require('../models');
-      
-      const transactions = await Transaction.findAndCountAll({
-        where: {
+      const { data: transactions, count } = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAndCountAll('transactions', {
           userId,
           category: 'utility',
           type: 'debit'
-        },
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        offset: parseInt(offset)
+        }, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        });
       });
 
       return {
-        transactions: transactions.rows.map(tx => ({
+        transactions: transactions.map(tx => ({
           reference: tx.reference,
           amount: parseFloat(tx.amount),
           fee: parseFloat(tx.fee),
@@ -599,11 +599,12 @@ class UtilityService {
         where['$recipientDetails.category$'] = category;
       }
 
-      const transactions = await Transaction.findAll({
-        where,
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        attributes: ['recipientDetails', 'createdAt']
+      const transactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', where, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: parseInt(limit)
+        });
       });
 
       // Remove duplicates based on customer number and provider

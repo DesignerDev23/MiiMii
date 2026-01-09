@@ -1269,8 +1269,8 @@ class BellBankService {
       const { data } = webhookData;
       
       // Find the wallet associated with this virtual account
-      const wallet = await Wallet.findOne({
-        where: { virtualAccountNumber: data.accountNumber }
+      const wallet = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('wallets', { virtualAccountNumber: data.accountNumber });
       });
 
       if (!wallet) {
@@ -1281,15 +1281,15 @@ class BellBankService {
       }
 
       // Find the user
-      const user = await User.findByPk(wallet.userId);
+      const user = await userService.getUserById(wallet.userId);
       if (!user) {
         logger.error('User not found for wallet', { walletId: wallet.id });
         return { success: false, message: 'User not found' };
       }
 
       // Check if transaction already exists to prevent double processing
-      const existingTransaction = await Transaction.findOne({
-        where: { providerReference: data.reference }
+      const existingTransaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { providerReference: data.reference });
       });
 
       if (existingTransaction) {
@@ -1298,7 +1298,7 @@ class BellBankService {
       }
 
       // Create credit transaction
-      const transaction = await Transaction.create({
+      const transaction = await transactionService.createTransaction(user.id, {
         reference: `WF_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
         userId: user.id,
         type: 'credit',
@@ -1314,23 +1314,38 @@ class BellBankService {
           bank: data.senderBank,
           accountNumber: data.senderAccountNumber
         },
-        providerReference: data.reference,
-        providerResponse: data,
-        balanceBefore: parseFloat(wallet.balance),
-        processedAt: new Date(),
-        source: 'webhook',
         metadata: {
+          senderDetails: {
+            name: data.senderName,
+            bank: data.senderBank,
+            accountNumber: data.senderAccountNumber
+          },
+          providerReference: data.reference,
+          providerResponse: data,
+          balanceBefore: parseFloat(wallet.balance),
           webhookType: 'virtual_account.credit',
           fundingSource: 'bank_transfer',
-          receivedAt: new Date(data.transactionDate)
+          receivedAt: data.transactionDate ? new Date(data.transactionDate).toISOString() : new Date().toISOString()
         }
       });
 
       // Update wallet balance
-      await wallet.updateBalance(data.amount, 'credit', 'Wallet funding');
+      await walletService.creditWallet(user.id, parseFloat(data.amount), 'Wallet funding', {
+        category: 'wallet_funding',
+        virtualAccountCredit: true,
+        providerReference: data.reference
+      });
 
-      transaction.balanceAfter = parseFloat(wallet.balance);
-      await transaction.save();
+      const updatedWallet = await walletService.getUserWallet(user.id);
+      const balanceAfter = parseFloat(updatedWallet.balance);
+      
+      // Update transaction with balance after
+      await transactionService.updateTransactionStatus(transaction.id, 'completed', {
+        metadata: {
+          ...transaction.metadata,
+          balanceAfter
+        }
+      });
 
       // Log activity
       await activityLogger.logTransactionActivity(
@@ -1475,8 +1490,8 @@ class BellBankService {
       const { data } = webhookData;
       
       // Find the transaction by provider reference
-      const transaction = await Transaction.findOne({
-        where: { providerReference: data.reference }
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { providerReference: data.reference });
       });
 
       if (!transaction) {
@@ -1487,21 +1502,23 @@ class BellBankService {
       }
 
       // Update transaction status
-      await transaction.update({
-        status: 'failed',
-        processedAt: new Date(),
+      await transactionService.updateTransactionStatus(transaction.id, 'failed', {
+        processedAt: new Date().toISOString(),
         providerResponse: data,
         failureReason: data.failureReason || data.message || 'Transfer failed'
       });
 
       // Refund the user's wallet
-        const wallet = await Wallet.findOne({ where: { userId: transaction.userId } });
-        if (wallet) {
-        await wallet.updateBalance(transaction.totalAmount, 'credit', 'Transfer refund');
+      const wallet = await walletService.getUserWallet(transaction.userId);
+      if (wallet) {
+        await walletService.creditWallet(transaction.userId, transaction.totalAmount, 'Transfer refund', {
+          category: 'refund',
+          originalTransactionId: transaction.id
+        });
       }
 
       // Find user and send notification
-      const user = await User.findByPk(transaction.userId);
+      const user = await userService.getUserById(transaction.userId);
       if (user) {
         const failureMessage = `❌ *Transfer Failed*\n\n` +
                              `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
@@ -1540,8 +1557,8 @@ class BellBankService {
       const { data } = webhookData;
       
       // Find the transaction by provider reference
-      const transaction = await Transaction.findOne({
-        where: { providerReference: data.reference }
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { providerReference: data.reference });
       });
 
       if (!transaction) {
@@ -1552,21 +1569,23 @@ class BellBankService {
       }
 
       // Update transaction status
-      await transaction.update({
-        status: 'reversed',
-        processedAt: new Date(),
+      await transactionService.updateTransactionStatus(transaction.id, 'reversed', {
+        processedAt: new Date().toISOString(),
         providerResponse: data,
         failureReason: data.reversalReason || 'Transfer reversed'
       });
 
       // Refund the user's wallet
-      const wallet = await Wallet.findOne({ where: { userId: transaction.userId } });
+      const wallet = await walletService.getUserWallet(transaction.userId);
       if (wallet) {
-        await wallet.updateBalance(transaction.totalAmount, 'credit', 'Transfer reversal refund');
+        await walletService.creditWallet(transaction.userId, transaction.totalAmount, 'Transfer reversal refund', {
+          category: 'refund',
+          originalTransactionId: transaction.id
+        });
       }
 
       // Find user and send notification
-      const user = await User.findByPk(transaction.userId);
+      const user = await userService.getUserById(transaction.userId);
       if (user) {
         const reversalMessage = `🔄 *Transfer Reversed*\n\n` +
                               `💰 Amount: ₦${parseFloat(transaction.amount).toLocaleString()}\n` +
@@ -1827,26 +1846,26 @@ class BellBankService {
   // Find user by virtual account number
   async findUserByVirtualAccount(virtualAccount) {
     try {
-      const { User, Wallet } = require('../models');
-      
       logger.info('Searching for user by virtual account', {
         virtualAccount,
         searchMethod: 'wallet_lookup'
       });
       
       // Find user by virtual account number stored in wallet
-      const wallet = await Wallet.findOne({
-        where: { virtualAccountNumber: virtualAccount },
-        include: [{ model: User, as: 'user' }]
+      const wallet = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('wallets', { virtualAccountNumber: virtualAccount });
       });
 
-      if (wallet && wallet.user) {
-        logger.info('User found by virtual account in wallet', {
-          virtualAccount,
-          userId: wallet.user.id,
-          userName: `${wallet.user.firstName} ${wallet.user.lastName}`
-        });
-        return wallet.user;
+      if (wallet) {
+        const user = await userService.getUserById(wallet.userId);
+        if (user) {
+          logger.info('User found by virtual account in wallet', {
+            virtualAccount,
+            userId: user.id,
+            userName: `${user.firstName} ${user.lastName}`
+          });
+          return user;
+        }
       }
 
       // Fallback: try to find by account reference or other fields
@@ -1855,37 +1874,43 @@ class BellBankService {
       });
       
       // Try to find by account reference
-      const walletByReference = await Wallet.findOne({
-        where: { accountReference: virtualAccount },
-        include: [{ model: User, as: 'user' }]
+      const walletByReference = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('wallets', { accountReference: virtualAccount });
       });
 
-      if (walletByReference && walletByReference.user) {
-        logger.info('User found by account reference', {
-          virtualAccount,
-          userId: walletByReference.user.id,
-          userName: `${walletByReference.user.firstName} ${walletByReference.user.lastName}`
-        });
-        return walletByReference.user;
+      if (walletByReference) {
+        const user = await userService.getUserById(walletByReference.userId);
+        if (user) {
+          logger.info('User found by account reference', {
+            virtualAccount,
+            userId: user.id,
+            userName: `${user.firstName} ${user.lastName}`
+          });
+          return user;
+        }
       }
 
       // Log all wallets with virtual accounts for debugging
-      const allWallets = await Wallet.findAll({
-        where: { 
-          virtualAccountNumber: { [require('sequelize').Op.not]: null }
-        },
-        include: [{ model: User, as: 'user' }],
-        limit: 10
+      const allWallets = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('wallets', { 
+          virtualAccountNumber: { not: null }
+        }, { limit: 10 });
       });
+
+      // Get user info for each wallet
+      const availableAccounts = await Promise.all(allWallets.map(async (w) => {
+        const user = await userService.getUserById(w.userId);
+        return {
+          virtualAccountNumber: w.virtualAccountNumber,
+          accountReference: w.accountReference,
+          userId: user?.id,
+          userName: user ? `${user.firstName} ${user.lastName}` : 'N/A'
+        };
+      }));
 
       logger.warn('User not found for virtual account, available virtual accounts:', {
         virtualAccount,
-        availableAccounts: allWallets.map(w => ({
-          virtualAccountNumber: w.virtualAccountNumber,
-          accountReference: w.accountReference,
-          userId: w.user?.id,
-          userName: w.user ? `${w.user.firstName} ${w.user.lastName}` : 'N/A'
-        }))
+        availableAccounts
       });
 
       return null;
@@ -1901,10 +1926,8 @@ class BellBankService {
   // Get transaction by reference
   async getTransactionByReference(reference) {
     try {
-      const { Transaction } = require('../models');
-      
-      const transaction = await Transaction.findOne({
-        where: { reference }
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { reference });
       });
 
       return transaction;

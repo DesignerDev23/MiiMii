@@ -441,7 +441,7 @@ class TransactionService {
         return;
       }
 
-      // Update transaction status
+      // Update transaction status (user is available if needed)
       await databaseService.executeWithRetry(async () => {
         const { error } = await supabase
           .from('transactions')

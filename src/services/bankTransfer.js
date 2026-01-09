@@ -527,17 +527,22 @@ class BankTransferService {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const { Transaction } = require('../models');
-      const dailyTransfers = await Transaction.sum('amount', {
-        where: {
+      const databaseService = require('./database');
+      const supabaseHelper = require('./supabaseHelper');
+      
+      // Get all transactions and sum manually
+      const allTransactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', {
           userId,
           category: 'bank_transfer',
-          status: 'completed',
-          createdAt: {
-            [require('sequelize').Op.gte]: today
-          }
-        }
+          status: 'completed'
+        });
       });
+      
+      // Filter by date and sum
+      const dailyTransfers = allTransactions
+        .filter(tx => new Date(tx.createdAt) >= today)
+        .reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
 
       const totalDailyAmount = (dailyTransfers || 0) + numAmount;
       if (totalDailyAmount > this.limits.dailyLimit) {
@@ -1068,10 +1073,11 @@ class BankTransferService {
   // Get recent beneficiaries
   async getRecentBeneficiaries(userId, limit = 5) {
     try {
-      const { Transaction } = require('../models');
+      const databaseService = require('./database');
+      const supabaseHelper = require('./supabaseHelper');
 
-      const transactions = await Transaction.findAll({
-        where: {
+      const transactions = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findAll('transactions', {
           userId,
           category: 'bank_transfer',
           type: 'debit',

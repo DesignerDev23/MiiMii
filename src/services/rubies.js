@@ -1,6 +1,6 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
-const { Transaction, ActivityLog, User, Wallet } = require('../models');
+// Models removed - using Supabase client instead
 const { axiosConfig } = require('../utils/httpsAgent');
 const whatsappService = require('./whatsapp');
 const RetryHelper = require('../utils/retryHelper');
@@ -557,11 +557,8 @@ class RubiesService {
       }
 
       // Get user's virtual account number from wallet
-      const { Wallet } = require('../models');
-      const userWallet = await Wallet.findOne({
-        where: { userId: transferData.userId },
-        include: [{ model: require('../models').User, as: 'user' }]
-      });
+      const walletService = require('./wallet');
+      const userWallet = await walletService.getUserWallet(transferData.userId);
 
       if (!userWallet || !userWallet.virtualAccountNumber) {
         throw new Error('User virtual account not found');
@@ -933,14 +930,14 @@ class RubiesService {
     try {
       const reference = data.reference || data.contractReference || data.paymentReference;
       if (reference) {
-        await Transaction.update(
-          { 
-            status: 'completed',
-            processedAt: new Date(),
+        const transactionService = require('./transaction');
+        const transaction = await transactionService.getTransactionByReference(reference);
+        if (transaction) {
+          await transactionService.updateTransactionStatus(transaction.id, 'completed', {
+            processedAt: new Date().toISOString(),
             providerResponse: data
-          },
-          { where: { reference } }
-        );
+          });
+        }
         
         logger.info('Transfer marked as successful', { reference, provider: 'rubies' });
       }
@@ -953,15 +950,15 @@ class RubiesService {
     try {
       const reference = data.reference || data.contractReference || data.paymentReference;
       if (reference) {
-        await Transaction.update(
-          { 
-            status: 'failed',
+        const transactionService = require('./transaction');
+        const transaction = await transactionService.getTransactionByReference(reference);
+        if (transaction) {
+          await transactionService.updateTransactionStatus(transaction.id, 'failed', {
             failureReason: data.responseMessage || data.message,
-            processedAt: new Date(),
+            processedAt: new Date().toISOString(),
             providerResponse: data
-          },
-          { where: { reference } }
-        );
+          });
+        }
         
         logger.info('Transfer marked as failed', { 
           reference, 
@@ -978,15 +975,15 @@ class RubiesService {
     try {
       const reference = data.reference || data.contractReference || data.paymentReference;
       if (reference) {
-        await Transaction.update(
-          { 
-            status: 'pending_settlement',
+        const transactionService = require('./transaction');
+        const transaction = await transactionService.getTransactionByReference(reference);
+        if (transaction) {
+          await transactionService.updateTransactionStatus(transaction.id, 'pending_settlement', {
             failureReason: data.responseMessage || 'Settlement Required',
-            processedAt: new Date(),
+            processedAt: new Date().toISOString(),
             providerResponse: data
-          },
-          { where: { reference } }
-        );
+          });
+        }
         
         logger.info('Transfer marked as pending settlement', { 
           reference, 
@@ -1003,14 +1000,14 @@ class RubiesService {
     try {
       const reference = data.reference || data.contractReference || data.paymentReference;
       if (reference) {
-        await Transaction.update(
-          { 
-            status: 'processing',
-            processedAt: new Date(),
+        const transactionService = require('./transaction');
+        const transaction = await transactionService.getTransactionByReference(reference);
+        if (transaction) {
+          await transactionService.updateTransactionStatus(transaction.id, 'processing', {
+            processedAt: new Date().toISOString(),
             providerResponse: data
-          },
-          { where: { reference } }
-        );
+          });
+        }
         
         logger.info('Transfer marked as processing', { reference, provider: 'rubies' });
       }
@@ -1027,17 +1024,21 @@ class RubiesService {
       
       if (accountNumber && amount > 0) {
         // Find user by virtual account number in wallet
-        const { Wallet } = require('../models');
-        const wallet = await Wallet.findOne({
-          where: { virtualAccountNumber: accountNumber },
-          include: [{ model: User, as: 'user' }]
+        const walletService = require('./wallet');
+        const databaseService = require('./database');
+        const supabaseHelper = require('./supabaseHelper');
+        
+        const wallet = await databaseService.executeWithRetry(async () => {
+          return await supabaseHelper.findOne('wallets', { virtualAccountNumber: accountNumber });
         });
         
-        if (wallet && wallet.user) {
+        if (wallet) {
+          const user = await userService.getUserById(wallet.userId);
+          if (user) {
           // Credit the digital wallet using the existing mechanism
           const walletService = require('./wallet');
           await walletService.creditWalletFromVirtualAccount({
-            customer_id: wallet.user.id,
+            customer_id: user.id,
             amount: data.amount,
             reference: data.paymentReference || data.sessionId,
             sender_name: data.originatorName || data.creditAccountName,

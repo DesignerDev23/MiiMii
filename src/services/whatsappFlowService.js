@@ -295,7 +295,8 @@ class WhatsAppFlowService {
                 
                 // Send user a message about the temporary issue
                 try {
-                  const user = await require('../models').User.findByPk(result.userId);
+                  const userService = require('./user');
+                  const user = await userService.getUserById(result.userId);
                   if (user) {
                     const fallbackMessage = `🎉 Welcome to MiiMii! Your account has been created successfully.\n\n` +
                       `⚠️ We're experiencing temporary issues with our banking partner. Your virtual account will be created automatically once the service is restored.\n\n` +
