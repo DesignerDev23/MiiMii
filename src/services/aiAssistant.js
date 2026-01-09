@@ -1173,15 +1173,24 @@ Extract intent and data from this message. Consider the user context and any ext
       
       // Auto-sync available balance if it's 0 but total balance is sufficient
       if (availableBalance === 0 && totalBalance >= transferAmount) {
-        await wallet.update({
-          availableBalance: totalBalance
-        });
+        // Use walletService to update wallet (wallet is a plain object, not Sequelize instance)
+        const { supabase } = require('../database/connection');
+        await supabase
+          .from('wallets')
+          .update({
+            availableBalance: totalBalance,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('id', wallet.id);
+        
         logger.info('Auto-synced available balance for transfer', {
           userId: user.id,
           oldAvailableBalance: availableBalance,
           newAvailableBalance: totalBalance,
           totalBalance
         });
+        // Update local wallet object
+        wallet.availableBalance = totalBalance;
       }
       
       // Check if user can perform the transfer

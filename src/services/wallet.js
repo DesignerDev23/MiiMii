@@ -153,9 +153,9 @@ class WalletService {
           metadata: {
             ...metadata,
             balanceBefore,
-            balanceAfter
+            balanceAfter,
+            processedAt: new Date().toISOString() // Store in metadata since column doesn't exist
           },
-          processedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });

@@ -24,47 +24,85 @@ const validateRequest = (req, res, next) => {
 // Dashboard overview
 router.get('/dashboard', async (req, res) => {
   try {
+    const { supabase } = require('../database/connection');
+    const supabaseHelper = require('../services/supabaseHelper');
+    
+    // Get counts using Supabase
     const [
-      totalUsers,
-      activeUsers,
-      totalTransactions,
-      totalVolume,
-      pendingTransactions,
-      openTickets,
-      recentTransactions
+      totalUsersResult,
+      activeUsersResult,
+      totalTransactionsResult,
+      completedTransactionsResult,
+      pendingTransactionsResult,
+      openTicketsResult
     ] = await Promise.all([
-      User.count(),
-      User.count({ where: { isActive: true, isBanned: false } }),
-      Transaction.count(),
-      Transaction.sum('amount', { where: { status: 'completed' } }),
-      Transaction.count({ where: { status: 'pending' } }),
-      SupportTicket.count({ where: { status: 'open' } }),
-      Transaction.findAll({
-        include: [{ model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }],
-        order: [['createdAt', 'DESC']],
-        limit: 10
-      })
+      supabase.from('users').select('*', { count: 'exact', head: true }),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('isActive', true).eq('isBanned', false),
+      supabase.from('transactions').select('*', { count: 'exact', head: true }),
+      supabase.from('transactions').select('amount').eq('status', 'completed'),
+      supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('supportTickets').select('*', { count: 'exact', head: true }).eq('status', 'open')
     ]);
+    
+    const totalUsers = totalUsersResult.count || 0;
+    const activeUsers = activeUsersResult.count || 0;
+    const totalTransactions = totalTransactionsResult.count || 0;
+    const totalVolume = completedTransactionsResult.data?.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0) || 0;
+    const pendingTransactions = pendingTransactionsResult.count || 0;
+    const openTickets = openTicketsResult.count || 0;
+    
+    // Get recent transactions with user info
+    const { data: recentTransactionsData } = await supabase
+      .from('transactions')
+      .select(`
+        *,
+        user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber)
+      `)
+      .order('createdAt', { ascending: false })
+      .limit(10);
+    
+    const recentTransactions = (recentTransactionsData || []).map(tx => ({
+      reference: tx.reference,
+      type: tx.type,
+      amount: parseFloat(tx.amount),
+      user: tx.user ? {
+        firstName: tx.user.firstName,
+        lastName: tx.user.lastName,
+        whatsappNumber: tx.user.whatsappNumber
+      } : null,
+      status: tx.status,
+      createdAt: tx.createdAt
+    }));
 
-    // KYC stats
-    const kycStats = await User.findAll({
-      attributes: [
-        'kycStatus',
-        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
-      ],
-      group: ['kycStatus']
+    // KYC stats - group by kycStatus
+    const { data: allUsers } = await supabase.from('users').select('kycStatus');
+    const kycStats = {};
+    (allUsers || []).forEach(user => {
+      const status = user.kycStatus || 'not_required';
+      kycStats[status] = (kycStats[status] || 0) + 1;
     });
 
-    // Transaction type breakdown
-    const transactionTypes = await Transaction.findAll({
-      attributes: [
-        'type',
-        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count'],
-        [require('sequelize').fn('SUM', require('sequelize').col('amount')), 'volume']
-      ],
-      where: { status: 'completed' },
-      group: ['type']
+    // Transaction type breakdown - group by type for completed transactions
+    const { data: completedTxs } = await supabase
+      .from('transactions')
+      .select('type, amount')
+      .eq('status', 'completed');
+    
+    const transactionTypes = {};
+    (completedTxs || []).forEach(tx => {
+      const type = tx.type || 'unknown';
+      if (!transactionTypes[type]) {
+        transactionTypes[type] = { count: 0, volume: 0 };
+      }
+      transactionTypes[type].count++;
+      transactionTypes[type].volume += parseFloat(tx.amount || 0);
     });
+    
+    const transactionTypesArray = Object.entries(transactionTypes).map(([type, data]) => ({
+      type,
+      count: data.count,
+      volume: data.volume
+    }));
 
     res.json({
       success: true,
@@ -76,19 +114,12 @@ router.get('/dashboard', async (req, res) => {
         pendingTransactions,
         openTickets
       },
-      kycStats: kycStats.reduce((acc, stat) => {
-        acc[stat.kycStatus] = parseInt(stat.dataValues.count);
-        return acc;
-      }, {}),
-      transactionTypes: transactionTypes.map(type => ({
-        type: type.type,
-        count: parseInt(type.dataValues.count),
-        volume: parseFloat(type.dataValues.volume || 0)
-      })),
+      kycStats: kycStats,
+      transactionTypes: transactionTypesArray,
       recentTransactions: recentTransactions.map(tx => ({
         reference: tx.reference,
         type: tx.type,
-        amount: parseFloat(tx.amount),
+        amount: tx.amount,
         user: tx.user ? `${tx.user.firstName || ''} ${tx.user.lastName || ''}`.trim() || tx.user.whatsappNumber : 'Unknown',
         status: tx.status,
         createdAt: tx.createdAt
@@ -114,26 +145,60 @@ router.get('/users',
       const offset = (page - 1) * limit;
       const { search, kycStatus } = req.query;
 
-      const where = {};
+      // Use Supabase instead of Sequelize
+      const { supabase } = require('../database/connection');
+      const supabaseHelper = require('../services/supabaseHelper');
       
+      // Build query
+      let query = supabase.from('users').select('*', { count: 'exact' });
+      
+      // Apply search filter - Supabase uses or() with multiple conditions
       if (search) {
-        where[Op.or] = [
-          { firstName: { [Op.iLike]: `%${search}%` } },
-          { lastName: { [Op.iLike]: `%${search}%` } },
-          { whatsappNumber: { [Op.like]: `%${search}%` } }
-        ];
+        const searchPattern = `%${search}%`;
+        query = query.or(`firstName.ilike.${searchPattern},lastName.ilike.${searchPattern},whatsappNumber.ilike.${searchPattern}`);
       }
       
+      // Apply kycStatus filter
       if (kycStatus) {
-        where.kycStatus = kycStatus;
+        query = query.eq('kycStatus', kycStatus);
       }
-
-      const { count, rows: users } = await User.findAndCountAll({
-        where,
-        include: [{ model: Wallet, as: 'wallet' }],
-        order: [['createdAt', 'DESC']],
-        limit,
-        offset
+      
+      // Apply pagination and ordering
+      query = query.order('createdAt', { ascending: false })
+                   .range(offset, offset + limit - 1);
+      
+      const { data: users, error, count } = await query;
+      
+      if (error) {
+        logger.error('Failed to fetch users from Supabase', { error: error.message, search, kycStatus });
+        throw error;
+      }
+      
+      // Handle empty results
+      if (!users) {
+        return res.json({
+          success: true,
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0
+          }
+        });
+      }
+      
+      // Get wallets for users
+      const userIds = users.map(u => u.id);
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('*')
+        .in('userId', userIds);
+      
+      // Map wallets to users
+      const walletMap = new Map(wallets.map(w => [w.userId, w]));
+      users.forEach(user => {
+        user.wallet = walletMap.get(user.id) || null;
       });
 
       // Get maintenance fee status for each user
@@ -174,10 +239,10 @@ router.get('/users',
         pagination: {
           page,
           limit,
-          total: count,
-          pages: Math.ceil(count / limit)
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit)
         },
-        users: usersWithMaintenanceStatus
+        data: usersWithMaintenanceStatus
       });
     } catch (error) {
       logger.error('Failed to get users', { error: error.message });
@@ -671,39 +736,47 @@ router.get('/transactions',
       const offset = (page - 1) * limit;
       const { status, type } = req.query;
 
-      const where = {};
-      if (status) where.status = status;
-      if (type) where.type = type;
-
-      const { count, rows: transactions } = await Transaction.findAndCountAll({
-        where,
-        include: [{ model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }],
-        order: [['createdAt', 'DESC']],
-        limit,
-        offset
-      });
+      const { supabase } = require('../database/connection');
+      
+      // Build query
+      let query = supabase
+        .from('transactions')
+        .select(`
+          *,
+          user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber)
+        `, { count: 'exact' });
+      
+      if (status) query = query.eq('status', status);
+      if (type) query = query.eq('type', type);
+      
+      query = query.order('createdAt', { ascending: false })
+                   .range(offset, offset + limit - 1);
+      
+      const { data: transactions, error, count } = await query;
+      
+      if (error) throw error;
 
       res.json({
         success: true,
         pagination: {
           page,
           limit,
-          total: count,
-          pages: Math.ceil(count / limit)
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit)
         },
-        transactions: transactions.map(tx => ({
+        transactions: (transactions || []).map(tx => ({
           id: tx.id,
           reference: tx.reference,
           type: tx.type,
           category: tx.category,
-          amount: parseFloat(tx.amount),
-          fee: parseFloat(tx.fee),
+          amount: parseFloat(tx.amount || 0),
+          fee: parseFloat(tx.fee || 0),
           status: tx.status,
           description: tx.description,
           user: tx.user ? `${tx.user.firstName || ''} ${tx.user.lastName || ''}`.trim() || tx.user.whatsappNumber : 'Unknown',
           userPhone: tx.user?.whatsappNumber,
           createdAt: tx.createdAt,
-          processedAt: tx.processedAt
+          processedAt: tx.metadata?.processedAt || null
         }))
       });
     } catch (error) {
@@ -726,26 +799,34 @@ router.get('/support-tickets',
       const offset = (page - 1) * limit;
       const { status } = req.query;
 
-      const where = {};
-      if (status) where.status = status;
-
-      const { count, rows: tickets } = await SupportTicket.findAndCountAll({
-        where,
-        include: [{ model: User, as: 'user', attributes: ['firstName', 'lastName', 'whatsappNumber'] }],
-        order: [['createdAt', 'DESC']],
-        limit,
-        offset
-      });
+      const { supabase } = require('../database/connection');
+      
+      // Build query
+      let query = supabase
+        .from('supportTickets')
+        .select(`
+          *,
+          user:users!supportTickets_userId_fkey(id, firstName, lastName, whatsappNumber)
+        `, { count: 'exact' });
+      
+      if (status) query = query.eq('status', status);
+      
+      query = query.order('createdAt', { ascending: false })
+                   .range(offset, offset + limit - 1);
+      
+      const { data: tickets, error, count } = await query;
+      
+      if (error) throw error;
 
       res.json({
         success: true,
         pagination: {
           page,
           limit,
-          total: count,
-          pages: Math.ceil(count / limit)
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit)
         },
-        tickets: tickets.map(ticket => ({
+        tickets: (tickets || []).map(ticket => ({
           id: ticket.id,
           ticketNumber: ticket.ticketNumber,
           type: ticket.type,
@@ -794,8 +875,8 @@ router.get('/webhook-logs',
         pagination: {
           page,
           limit,
-          total: count,
-          pages: Math.ceil(count / limit)
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit)
         },
         logs: logs.map(log => ({
           id: log.id,
@@ -1042,35 +1123,38 @@ router.get('/users-without-va', async (req, res) => {
 // Streams: transfer out charges (bank_transfer fees), monthly maintenance fees, data margin, airtime margin (+₦2 per purchase)
 router.get('/revenue/stats', async (req, res) => {
     try {
-      const { fn, col } = require('sequelize');
-      const whereBase = { status: 'completed' };
+      const { supabase } = require('../database/connection');
 
       // Transfer out charges: sum of fee for completed bank transfers
-      const transferOutFee = parseFloat(
-        (await require('../models').Transaction.findOne({
-          where: { ...whereBase, category: 'bank_transfer', type: 'debit' },
-          attributes: [[fn('SUM', col('fee')), 'sumFee']],
-          raw: true
-        }))?.sumFee || 0
-      );
+      const { data: transferOutTxs } = await supabase
+        .from('transactions')
+        .select('fee')
+        .eq('status', 'completed')
+        .eq('category', 'bank_transfer')
+        .eq('type', 'debit');
+      
+      const transferOutFee = (transferOutTxs || []).reduce((sum, tx) => sum + parseFloat(tx.fee || 0), 0);
 
       // Maintenance fees: sum of debited amount for maintenance_fee
-      const maintenanceRevenue = parseFloat(
-        (await require('../models').Transaction.findOne({
-          where: { ...whereBase, category: 'maintenance_fee', type: 'debit' },
-          attributes: [[fn('SUM', col('amount')), 'sumAmount']],
-          raw: true
-        }))?.sumAmount || 0
-      );
+      const { data: maintenanceTxs } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('status', 'completed')
+        .eq('category', 'maintenance_fee')
+        .eq('type', 'debit');
+      
+      const maintenanceRevenue = (maintenanceTxs || []).reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
 
       // Data margin: sum(selling - retail)
-      const dataRows = await require('../models').Transaction.findAll({
-        where: { ...whereBase, category: 'data_purchase', type: 'debit' },
-        attributes: ['amount', 'metadata'],
-        raw: true
-      });
+      const { data: dataRows } = await supabase
+        .from('transactions')
+        .select('amount, metadata')
+        .eq('status', 'completed')
+        .eq('category', 'data_purchase')
+        .eq('type', 'debit');
+      
       let dataMargin = 0;
-      for (const row of dataRows) {
+      for (const row of dataRows || []) {
         let meta = row.metadata;
         if (typeof meta === 'string') {
           try { meta = JSON.parse(meta); } catch (_) { meta = null; }
@@ -1085,10 +1169,14 @@ router.get('/revenue/stats', async (req, res) => {
       }
 
       // Airtime margin: ₦2 per completed airtime debit
-      const airtimeCount = await require('../models').Transaction.count({
-        where: { ...whereBase, category: 'airtime_purchase', type: 'debit' }
-      });
-      const airtimeMargin = airtimeCount * 2;
+      const { count: airtimeCount } = await supabase
+        .from('transactions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'completed')
+        .eq('category', 'airtime_purchase')
+        .eq('type', 'debit');
+      
+      const airtimeMargin = (airtimeCount || 0) * 2;
 
       const totalRevenue = transferOutFee + maintenanceRevenue + dataMargin + airtimeMargin;
 
@@ -1225,46 +1313,62 @@ router.get('/transactions/:transactionId',
 // Update Dashboard Stats for New KYC Service
 router.get('/dashboard/stats', async (req, res) => {
   try {
+    const { supabase } = require('../database/connection');
+    
+    // Get counts using Supabase
     const [
-      totalUsers,
-      activeUsers,
-      totalTransactions,
-      totalVolume,
-      pendingTransactions,
-      openTickets,
-      kycStats,
-      rubiesStats
+      totalUsersResult,
+      activeUsersResult,
+      totalTransactionsResult,
+      completedTransactionsResult,
+      pendingTransactionsResult,
+      openTicketsResult,
+      allUsersResult,
+      rubiesTransactionsResult
     ] = await Promise.all([
-      User.count(),
-      User.count({ where: { isActive: true, isBanned: false } }),
-      Transaction.count(),
-      Transaction.sum('amount', { where: { status: 'completed' } }),
-      Transaction.count({ where: { status: 'pending' } }),
-      SupportTicket.count({ where: { status: 'open' } }),
-      // KYC stats with Rubies integration
-      User.findAll({
-        attributes: [
-          'kycStatus',
-          [sequelize.fn('COUNT', sequelize.col('id')), 'count']
-        ],
-        group: ['kycStatus']
-      }),
-      // Rubies-specific stats
-      Transaction.findAll({
-        attributes: [
-          'status',
-          [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-          [sequelize.fn('SUM', sequelize.col('amount')), 'totalAmount']
-        ],
-        where: {
-          category: 'bank_transfer',
-          createdAt: {
-            [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-          }
-        },
-        group: ['status']
-      })
+      supabase.from('users').select('*', { count: 'exact', head: true }),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('isActive', true).eq('isBanned', false),
+      supabase.from('transactions').select('*', { count: 'exact', head: true }),
+      supabase.from('transactions').select('amount').eq('status', 'completed'),
+      supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('supportTickets').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+      supabase.from('users').select('kycStatus'),
+      supabase.from('transactions')
+        .select('status, amount')
+        .eq('category', 'bank_transfer')
+        .gte('createdAt', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
     ]);
+    
+    const totalUsers = totalUsersResult.count || 0;
+    const activeUsers = activeUsersResult.count || 0;
+    const totalTransactions = totalTransactionsResult.count || 0;
+    const totalVolume = completedTransactionsResult.data?.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0) || 0;
+    const pendingTransactions = pendingTransactionsResult.count || 0;
+    const openTickets = openTicketsResult.count || 0;
+    
+    // KYC stats - group by kycStatus
+    const kycStats = {};
+    (allUsersResult.data || []).forEach(user => {
+      const status = user.kycStatus || 'not_required';
+      kycStats[status] = (kycStats[status] || 0) + 1;
+    });
+    
+    // Rubies stats - group by status
+    const rubiesStats = {};
+    (rubiesTransactionsResult.data || []).forEach(tx => {
+      const status = tx.status || 'unknown';
+      if (!rubiesStats[status]) {
+        rubiesStats[status] = { count: 0, totalAmount: 0 };
+      }
+      rubiesStats[status].count++;
+      rubiesStats[status].totalAmount += parseFloat(tx.amount || 0);
+    });
+    
+    const rubiesStatsArray = Object.entries(rubiesStats).map(([status, data]) => ({
+      status,
+      count: data.count,
+      totalAmount: data.totalAmount
+    }));
 
     res.json({
       success: true,
@@ -1278,7 +1382,7 @@ router.get('/dashboard/stats', async (req, res) => {
           total: totalTransactions,
           volume: totalVolume || 0,
           pending: pendingTransactions,
-          rubiesStats: rubiesStats
+          rubiesStats: rubiesStatsArray
         },
         support: {
           openTickets: openTickets
@@ -1589,8 +1693,8 @@ router.get('/support/tickets', async (req, res) => {
     
     res.json({
       success: true,
-      tickets: tickets.rows,
-      total: tickets.count,
+      tickets: tickets || [],
+      total: count || 0,
       limit: parseInt(limit),
       offset: parseInt(offset)
     });

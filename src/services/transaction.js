@@ -55,12 +55,15 @@ class TransactionService {
           currency,
           description,
           recipientDetails,
-          metadata,
+          // processedAt column doesn't exist in transactions table, store in metadata instead
+          metadata: {
+            ...(metadata || {}),
+            ...(status === 'completed' ? { processedAt: new Date().toISOString() } : {})
+          },
           status,
           source,
           priority,
           approvalStatus,
-          processedAt: status === 'completed' ? new Date().toISOString() : null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -106,15 +109,25 @@ class TransactionService {
         throw new Error(`Transaction with reference ${reference} not found`);
       }
 
+      // Extract processedAt from additionalData if present, store in metadata
+      const { processedAt, ...restAdditionalData } = additionalData || {};
+      
       const updateData = {
         status,
-        ...additionalData,
+        ...restAdditionalData,
         updatedAt: new Date().toISOString()
       };
 
-      // Set processedAt if status is completed
-      if (status === 'completed') {
-        updateData.processedAt = new Date().toISOString();
+      // Set processedAt in metadata if status is completed (column doesn't exist in transactions table)
+      if (status === 'completed' && processedAt) {
+        // Get existing metadata and merge
+        const existingTransaction = await databaseService.executeWithRetry(async () => {
+          return await supabaseHelper.findByPk('transactions', transactionId);
+        });
+        updateData.metadata = {
+          ...(existingTransaction?.metadata || {}),
+          processedAt: processedAt || new Date().toISOString()
+        };
       }
 
       await databaseService.executeWithRetry(async () => {
