@@ -27,11 +27,9 @@ class NotificationService {
           type,
           title,
           message,
-          data,
+          metadata: data, // Store data in metadata since 'data' column doesn't exist
           priority,
           actionUrl,
-          imageUrl,
-          expiresAt: expiresAt ? expiresAt.toISOString() : null,
           isRead: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()

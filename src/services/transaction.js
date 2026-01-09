@@ -99,35 +99,54 @@ class TransactionService {
   }
 
   // Update transaction status
-  async updateTransactionStatus(reference, status, additionalData = {}) {
+  // Accepts either a reference (string) or transaction ID (UUID)
+  async updateTransactionStatus(referenceOrId, status, additionalData = {}) {
     try {
+      // Determine if it's a UUID (ID) or reference (string)
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceOrId);
+      
       const transaction = await databaseService.executeWithRetry(async () => {
-        return await supabaseHelper.findOne('transactions', { reference });
+        if (isUUID) {
+          return await supabaseHelper.findByPk('transactions', referenceOrId);
+        } else {
+          return await supabaseHelper.findOne('transactions', { reference: referenceOrId });
+        }
       });
       
       if (!transaction) {
-        throw new Error(`Transaction with reference ${reference} not found`);
+        throw new Error(`Transaction ${isUUID ? 'with ID' : 'with reference'} ${referenceOrId} not found`);
       }
 
-      // Extract processedAt from additionalData if present, store in metadata
-      const { processedAt, ...restAdditionalData } = additionalData || {};
+      // Extract processedAt and providerResponse from additionalData, store in metadata
+      const { processedAt, providerResponse, ...restAdditionalData } = additionalData || {};
       
       const updateData = {
         status,
-        ...restAdditionalData,
         updatedAt: new Date().toISOString()
       };
 
-      // Set processedAt in metadata if status is completed (column doesn't exist in transactions table)
-      if (status === 'completed' && processedAt) {
-        // Get existing metadata and merge
-        const existingTransaction = await databaseService.executeWithRetry(async () => {
-          return await supabaseHelper.findByPk('transactions', transactionId);
-        });
-        updateData.metadata = {
-          ...(existingTransaction?.metadata || {}),
-          processedAt: processedAt || new Date().toISOString()
-        };
+      // Handle metadata - merge with existing metadata
+      const existingMetadata = transaction.metadata || {};
+      const newMetadata = {
+        ...existingMetadata,
+        ...(processedAt ? { processedAt } : {}),
+        ...(providerResponse ? { providerResponse } : {})
+      };
+
+      // Only set metadata if we have something to add
+      if (processedAt || providerResponse) {
+        updateData.metadata = newMetadata;
+      }
+
+      // Add other fields that are direct columns (not metadata)
+      if (restAdditionalData.failureReason) {
+        updateData.failureReason = restAdditionalData.failureReason;
+      }
+      if (restAdditionalData.providerReference) {
+        updateData.providerReference = restAdditionalData.providerReference;
+      }
+      if (restAdditionalData.providerResponse) {
+        updateData.providerResponse = restAdditionalData.providerResponse;
       }
 
       await databaseService.executeWithRetry(async () => {
@@ -140,7 +159,8 @@ class TransactionService {
       });
 
       logger.info('Transaction status updated', {
-        reference,
+        reference: transaction.reference,
+        transactionId: transaction.id,
         oldStatus: transaction.status,
         newStatus: status,
         additionalData: Object.keys(additionalData)
@@ -461,12 +481,16 @@ class TransactionService {
 
       // Update transaction status (user is available if needed)
       await databaseService.executeWithRetry(async () => {
+        const existingMetadata = transaction.metadata || {};
         const { error } = await supabase
           .from('transactions')
           .update({
             status: 'completed',
-            processedAt: new Date().toISOString(),
-            providerResponse: webhookData,
+            metadata: {
+              ...existingMetadata,
+              processedAt: new Date().toISOString(),
+              providerResponse: webhookData
+            },
             updatedAt: new Date().toISOString()
           })
           .eq('id', transaction.id);
@@ -588,13 +612,17 @@ class TransactionService {
 
       // Update transaction status
       await databaseService.executeWithRetry(async () => {
+        const existingMetadata = transaction.metadata || {};
         const { error } = await supabase
           .from('transactions')
           .update({
             status: 'failed',
-            processedAt: new Date().toISOString(),
             failureReason: reason,
-            providerResponse: webhookData,
+            metadata: {
+              ...existingMetadata,
+              processedAt: new Date().toISOString(),
+              providerResponse: webhookData
+            },
             updatedAt: new Date().toISOString()
           })
           .eq('id', transaction.id);
