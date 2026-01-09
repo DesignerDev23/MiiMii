@@ -257,7 +257,7 @@ class BellBankService {
       });
 
       // Log activity
-      await ActivityLog.logUserActivity(
+      await activityLogger.logUserActivity(
         userData.userId,
         'wallet_funding',
         'virtual_account_created_error',
@@ -1398,8 +1398,8 @@ class BellBankService {
       const { data } = webhookData;
       
       // Find the transaction by provider reference
-      const transaction = await Transaction.findOne({
-        where: { providerReference: data.reference }
+      const transaction = await databaseService.executeWithRetry(async () => {
+        return await supabaseHelper.findOne('transactions', { providerReference: data.reference });
       });
 
       if (!transaction) {
@@ -1410,14 +1410,13 @@ class BellBankService {
       }
 
       // Update transaction status
-      await transaction.update({
-        status: 'completed',
-        processedAt: new Date(),
+      await transactionService.updateTransactionStatus(transaction.id, 'completed', {
+        processedAt: new Date().toISOString(),
         providerResponse: data
       });
 
       // Find user and send notification
-      const user = await User.findByPk(transaction.userId);
+      const user = await userService.getUserById(transaction.userId);
       if (user) {
         // Generate and send receipt
         let receiptSent = false;
@@ -1718,9 +1717,7 @@ class BellBankService {
   // Process successful incoming transfer
   async processSuccessfulIncomingTransfer(user, transferData) {
     try {
-      const transactionService = require('./transaction');
-      const walletService = require('./wallet');
-      const whatsappService = require('./whatsapp');
+      // Services already imported at top level
 
       // Create transaction record
       const transaction = await transactionService.createTransaction(user.id, {
@@ -1794,8 +1791,6 @@ class BellBankService {
   // Process pending incoming transfer
   async processPendingIncomingTransfer(user, transferData) {
     try {
-      const transactionService = require('./transaction');
-
       // Create pending transaction record
       const transaction = await transactionService.createTransaction(user.id, {
         type: 'credit',
