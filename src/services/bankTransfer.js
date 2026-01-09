@@ -1082,10 +1082,11 @@ class BankTransferService {
           category: 'bank_transfer',
           type: 'debit',
           status: 'completed'
-        },
-        order: [['createdAt', 'DESC']],
-        limit: parseInt(limit) * 2, // Get more to filter duplicates
-        attributes: ['recipientDetails', 'createdAt', 'amount']
+        }, {
+          orderBy: 'createdAt',
+          order: 'desc',
+          limit: parseInt(limit) * 2 // Get more to filter duplicates
+        });
       });
 
       // Remove duplicates based on account number

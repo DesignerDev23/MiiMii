@@ -7,7 +7,6 @@ const ocrService = require('./ocr');
 const fincraService = require('./fincra');
 const rubiesService = require('./rubies');
 const activityLogger = require('./activityLogger');
-const userService = require('./user');
 const databaseService = require('./database');
 const { supabase } = require('../database/connection');
 const { v4: uuidv4 } = require('uuid');
