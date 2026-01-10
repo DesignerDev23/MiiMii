@@ -210,7 +210,8 @@ Available Services:
 - Data purchases (MTN, Airtel, Glo, 9mobile)
 - Bill payments (Electricity, Cable TV)
 - Balance inquiries
-- Transaction history
+- Transaction history (quick view in chat)
+- Account statement (PDF sent to email) - generates branded PDF statement with logo
 - Beneficiaries list (show saved contacts)
 - PIN settings (disable/enable PIN for transactions)
 
@@ -224,6 +225,8 @@ IMPORTANT: Use these exact intent names:
 - "help" for help requests
 - "menu" for service menu
 - "greeting" for greetings
+- "transaction_history" for quick transaction history view in chat
+- "statement_request" for generating and emailing account statement PDF
 - "disable_pin" for PIN disable requests
 - "enable_pin" for PIN enable requests
 - "beneficiaries" for listing saved beneficiaries
@@ -852,7 +855,7 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'greeting':
           return {
             intent: 'greeting',
-            message: aiResponse.message || `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`,
+            message: aiResponse.message || `Hello ${user.fullName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n📄 Account Statement (PDF)\n\nWhat would you like to do today?`,
             requiresAction: 'NONE'
           };
           
@@ -879,6 +882,9 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'account_details':
           return await this.handleWalletDetails(user);
       
+        case 'statement_request':
+          return await this.handleStatementRequest(user, extractedData);
+          
         case 'transaction_history':
           return await this.handleTransactionHistory(user, extractedData);
           
@@ -903,7 +909,7 @@ Extract intent and data from this message. Consider the user context and any ext
         case 'menu':
           return {
             intent: 'menu',
-            message: aiResponse.message || "📱 *Available Services*\n\n💰 Check Balance\n💸 Send Money\n🏦 Bank Transfer\n📱 Buy Airtime\n🌐 Buy Data\n💳 Pay Bills\n📊 Transaction History\n📋 My Beneficiaries\n🔐 PIN Settings\n\nWhat would you like to do?",
+            message: aiResponse.message || "📱 *Available Services*\n\n💰 Check Balance\n💸 Send Money\n🏦 Bank Transfer\n📱 Buy Airtime\n🌐 Buy Data\n💳 Pay Bills\n📊 Transaction History\n📄 Account Statement (PDF)\n📋 My Beneficiaries\n🔐 PIN Settings\n\nWhat would you like to do?",
             requiresAction: 'NONE'
           };
           
@@ -1909,6 +1915,215 @@ Extract intent and data from this message. Consider the user context and any ext
         awaitingInput: `${transactionData.service}_pin`,
         context: `${transactionData.service}_purchase`
       };
+    }
+  }
+
+  async handleStatementRequest(user, extractedData) {
+    try {
+      const statementService = require('./statementService');
+      const whatsappService = require('./whatsapp');
+      const userService = require('./user');
+      
+      // Check if user has completed onboarding
+      if (user.onboardingStep !== 'completed') {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "I'd love to generate your statement! Let me get your account set up first - it's quick and easy.");
+        
+        const onboardingService = require('./onboarding');
+        await onboardingService.startOnboardingFlow(user);
+        return {
+          intent: 'statement_request',
+          message: 'Onboarding flow started',
+          requiresAction: 'ONBOARDING'
+        };
+      }
+
+      // Check if user has an email address - if not, collect it first
+      const email = user.appEmail || user.email;
+      if (!email) {
+        // Set conversation state to collect email
+        await user.updateConversationState({
+          intent: 'statement_request',
+          awaitingInput: 'statement_email',
+          context: 'statement_generation',
+          step: 1
+        });
+
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "📧 *Email Required for Statement*\n\n" +
+          "To send you your account statement PDF, I need your email address.\n\n" +
+          "Please provide your email address:\n" +
+          "• Reply with your email (e.g., example@email.com)\n" +
+          "• Or say \"My email is example@email.com\"\n\n" +
+          "Your email will be securely stored and used only for sending statements.");
+        
+        return {
+          intent: 'statement_request',
+          message: 'Email address required',
+          requiresAction: 'COLLECT_EMAIL'
+        };
+      }
+
+      // Email exists - show date range selection buttons
+      await this.showStatementDateRangeOptions(user);
+      
+      return {
+        intent: 'statement_request',
+        message: 'Date range selection shown',
+        requiresAction: 'SELECT_DATE_RANGE'
+      };
+    } catch (error) {
+      logger.error('Failed to handle statement request', {
+        error: error.message,
+        userId: user.id,
+        stack: error.stack
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "❌ *Statement Generation Failed*\n\n" +
+        "I encountered an error while processing your statement request. Please try again later or contact support.\n\n" +
+        "Error: " + (error.message || 'Unknown error'));
+      
+      return {
+        intent: 'statement_request',
+        message: 'Failed to handle statement request',
+        requiresAction: 'NONE',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Show interactive date range selection buttons
+   */
+  async showStatementDateRangeOptions(user) {
+    const whatsappService = require('./whatsapp');
+    const userService = require('./user');
+    
+    // Update conversation state to await date range selection
+    await user.updateConversationState({
+      intent: 'statement_request',
+      awaitingInput: 'statement_date_range',
+      context: 'statement_generation',
+      step: 2,
+      email: user.appEmail || user.email
+    });
+
+    // Get current date for display
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    await whatsappService.sendButtonMessage(
+      user.whatsappNumber,
+      `📅 *Select Statement Period*\n\n` +
+      `Choose the date range for your account statement:\n\n` +
+      `📧 Email: ${user.appEmail || user.email}\n\n` +
+      `Select an option below:`,
+      [
+        { id: 'statement_this_month', title: '📅 This Month' },
+        { id: 'statement_last_month', title: '📅 Last Month' },
+        { id: 'statement_last_3_months', title: '📅 Last 3 Months' },
+        { id: 'statement_this_year', title: '📅 This Year' }
+      ]
+    );
+  }
+
+  /**
+   * Process statement generation with selected date range
+   */
+  async processStatementGeneration(user, dateRangeType) {
+    try {
+      const statementService = require('./statementService');
+      const whatsappService = require('./whatsapp');
+      const userService = require('./user');
+      
+      // Get date range based on selection
+      const { startDate, endDate } = statementService.getDateRange(dateRangeType);
+      
+      // Get email from conversation state or user record
+      const email = user.conversationState?.email || user.appEmail || user.email;
+      
+      if (!email) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "❌ Email not found. Please provide your email address first.");
+        return;
+      }
+
+      // Clear conversation state before generating
+      await user.clearConversationState();
+
+      // Inform user that statement is being generated
+      const rangeLabels = {
+        'this_month': 'This Month',
+        'last_month': 'Last Month',
+        'last_3_months': 'Last 3 Months',
+        'this_year': 'This Year'
+      };
+
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "📄 *Generating Your Statement*\n\n" +
+        "I'm generating your account statement and will send it to your email shortly.\n\n" +
+        `📧 Email: ${email}\n` +
+        `📅 Period: ${rangeLabels[dateRangeType] || 'Custom'}\n` +
+        `📆 Date Range: ${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')}\n\n` +
+        "⏳ This might take a moment. Please check your email inbox in a few minutes! 🎉");
+
+      // Generate and send statement (pass email explicitly)
+      const result = await statementService.requestStatement(user, {
+        startDate,
+        endDate,
+        email: email, // Pass email explicitly from conversation state or user record
+        type: null,
+        category: null,
+        limit: 1000
+      });
+      
+      if (result.success && result.emailSent) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "✅ *Statement Sent Successfully!*\n\n" +
+          "Your account statement has been generated and sent to:\n" +
+          `📧 ${email}\n\n` +
+          "The PDF includes:\n" +
+          `• ${result.statement.transactionCount} transactions\n` +
+          "• Complete transaction details\n" +
+          "• Summary of credits, debits, and fees\n" +
+          "• Professional branded format with MiiMii logo\n\n" +
+          "📬 Please check your inbox (and spam folder if needed).\n\n" +
+          "If you didn't receive it, please let me know!");
+      } else if (result.success && !result.emailSent) {
+        await whatsappService.sendTextMessage(user.whatsappNumber, 
+          "⚠️ *Statement Generated But Email Failed*\n\n" +
+          "Your statement PDF was generated successfully, but I couldn't send it to your email.\n\n" +
+          "This might be due to:\n" +
+          "• Email service configuration issue\n" +
+          "• Invalid email address\n" +
+          "• Network issues\n\n" +
+          "Please try again later or contact support if the issue persists.");
+      }
+
+      logger.info('Statement generation processed', {
+        userId: user.id,
+        emailSent: result.emailSent,
+        dateRangeType,
+        transactionCount: result.statement?.transactionCount,
+        email
+      });
+    } catch (error) {
+      logger.error('Failed to process statement generation', {
+        error: error.message,
+        userId: user.id,
+        dateRangeType,
+        stack: error.stack
+      });
+      
+      const whatsappService = require('./whatsapp');
+      await whatsappService.sendTextMessage(user.whatsappNumber, 
+        "❌ *Statement Generation Failed*\n\n" +
+        "I encountered an error while generating your statement. Please try again later or contact support.\n\n" +
+        `Error: ${error.message || 'Unknown error'}`);
     }
   }
 
@@ -3575,13 +3790,14 @@ IMPORTANT: Use these exact intent names:
 7. "menu" - User wants to see available services
 8. "account_details" - User wants account information
 9. "wallet_details" - User wants to see wallet information, account details, balance, and transaction limits
-10. "transaction_history" - User wants to see transaction history, past transactions, or financial records
-11. "account_info" - User wants to see account information, account number, account name, or account details
-12. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
-13. "disable_pin" - User wants to disable PIN for transactions
-14. "enable_pin" - User wants to enable PIN for transactions
-15. "greeting" - General greeting or hello
-16. "unknown" - Cannot determine intent
+10. "transaction_history" - User wants to see transaction history, past transactions, or financial records (quick view in chat)
+11. "statement_request" - User wants to generate and receive an account statement as PDF via email (e.g., "generate statement", "send me statement PDF", "account statement", "email statement")
+12. "account_info" - User wants to see account information, account number, account name, or account details
+13. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
+14. "disable_pin" - User wants to disable PIN for transactions
+15. "enable_pin" - User wants to enable PIN for transactions
+16. "greeting" - General greeting or hello
+17. "unknown" - Cannot determine intent
 
 NATURAL LANGUAGE UNDERSTANDING:
 - "what's my current balance" → balance
@@ -3869,8 +4085,13 @@ Response format:
       return { intent: 'balance', confidence: 0.9, suggestedAction: 'Check account balance' };
     }
 
-    // Transaction history keywords
-    if (/(transaction\s+history|history|transactions?|statement|records?|my\s+history)/i.test(message)) {
+    // Statement PDF/Email keywords (higher priority - send PDF to email)
+    if (/(account\s+statement|statement\s+(pdf|document|email|send)|generate\s+statement|email\s+statement|pdf\s+statement|statement\s+to\s+email|send\s+statement)/i.test(message)) {
+      return { intent: 'statement_request', confidence: 0.95, suggestedAction: 'Generate and send statement PDF to email' };
+    }
+
+    // Transaction history keywords (quick view in chat)
+    if (/(transaction\s+history|history|transactions?|records?|my\s+history)/i.test(message)) {
       return { intent: 'transaction_history', confidence: 0.9, suggestedAction: 'Show transaction history' };
     }
 

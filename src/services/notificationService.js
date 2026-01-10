@@ -71,26 +71,28 @@ class NotificationService {
       if (transactionType === 'credit' || transaction.type === 'credit') {
         type = transaction.category === 'wallet_funding' 
           ? 'wallet_funded' 
-          : 'transfer_incoming';
+          : 'transaction_success';
         title = '💰 Money Received';
         message = `You received ${formattedAmount}${transaction.description ? ` - ${transaction.description}` : ''}`;
         actionUrl = `/transactions/${transaction.reference}`;
       } else {
-        type = 'transaction_debit';
+        // Use valid enum values: transaction_success, transaction_failed, transaction_pending
+        type = transaction.status === 'completed' 
+          ? 'transaction_success' 
+          : transaction.status === 'failed' 
+          ? 'transaction_failed' 
+          : 'transaction_pending';
+        
         if (transaction.category === 'bank_transfer') {
-          type = 'transfer_outgoing';
           title = '💸 Transfer Sent';
           message = `You sent ${formattedAmount}${transaction.metadata?.recipientDetails?.accountNumber ? ` to ${transaction.metadata.recipientDetails.accountNumber}` : ''}`;
         } else if (transaction.category === 'airtime_purchase') {
-          type = 'airtime_purchase';
           title = '📱 Airtime Purchased';
           message = `You purchased ${formattedAmount} airtime${transaction.subCategory ? ` (${transaction.subCategory})` : ''}`;
         } else if (transaction.category === 'data_purchase') {
-          type = 'data_purchase';
           title = '📶 Data Purchased';
           message = `You purchased ${formattedAmount} data${transaction.subCategory ? ` (${transaction.subCategory})` : ''}`;
         } else if (transaction.category?.startsWith('bill_payment')) {
-          type = 'bill_payment';
           title = '💡 Bill Paid';
           message = `You paid ${formattedAmount}${transaction.description ? ` - ${transaction.description}` : ''}`;
         } else {

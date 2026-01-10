@@ -681,7 +681,40 @@ class MessageProcessor {
             logger.info('Processing transfer via manual PIN fallback', { userId: user.id, hasReference: !!transferData.reference });
             const result = await bankTransferService.processBankTransfer(user.id, transferData, pinText);
             if (result.success) {
-              await user.clearConversationState();
+              // Wait a bit to ensure save beneficiary prompt (if set) is persisted to database
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              // Reload user to check if a save beneficiary prompt was set
+              await user.reload();
+              
+              // Only clear conversation state if it's still the old transfer state
+              // Don't clear if a save beneficiary prompt was set
+              if (user.conversationState?.awaitingInput === 'save_beneficiary_confirmation') {
+                logger.info('Preserving save beneficiary prompt after transfer', {
+                  userId: user.id,
+                  conversationState: user.conversationState,
+                  awaitingInput: user.conversationState.awaitingInput,
+                  hasPendingBeneficiary: !!user.conversationState.pendingBeneficiary
+                });
+                // Don't clear - let the save beneficiary flow handle it
+              } else if (user.conversationState?.intent === 'bank_transfer' || 
+                         user.conversationState?.context === 'transfer_pin_verification') {
+                logger.info('Clearing old transfer conversation state after manual PIN fallback', {
+                  userId: user.id,
+                  oldState: user.conversationState
+                });
+                await user.clearConversationState();
+              } else if (user.conversationState) {
+                logger.info('Preserving conversation state after transfer', {
+                  userId: user.id,
+                  newState: user.conversationState,
+                  intent: user.conversationState.intent
+                });
+              } else {
+                // No conversation state - safe to clear
+                await user.clearConversationState();
+              }
+              
               logger.info('Transfer completed via manual PIN fallback', { userId: user.id, reference: result.transaction?.reference });
               // Success messages handled by bankTransferService if any
             } else {
@@ -1024,9 +1057,36 @@ class MessageProcessor {
               const txResult = await bankTransferService.processBankTransfer(user.id, transferData, pin);
               if (!txResult.success) {
                 await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${txResult.message || 'Unknown error'}`);
+                await user.clearConversationState();
+                return;
               }
 
-              await user.clearConversationState();
+              // Reload user to check if a save beneficiary prompt was set
+              await user.reload();
+              
+              // Only clear conversation state if it's still the old transfer state
+              // Don't clear if a save beneficiary prompt was set
+              if (user.conversationState?.awaitingInput === 'save_beneficiary_confirmation') {
+                logger.info('Preserving save beneficiary prompt after flow completion transfer', {
+                  userId: user.id,
+                  conversationState: user.conversationState
+                });
+                // Don't clear - let the save beneficiary flow handle it
+              } else if (user.conversationState?.intent === 'bank_transfer' || 
+                         user.conversationState?.context === 'transfer_pin_verification') {
+                logger.info('Clearing old transfer conversation state after flow completion transfer', {
+                  userId: user.id,
+                  oldState: user.conversationState
+                });
+                await user.clearConversationState();
+              } else if (user.conversationState) {
+                logger.info('Preserving conversation state after flow completion transfer', {
+                  userId: user.id,
+                  newState: user.conversationState
+                });
+              } else {
+                await user.clearConversationState();
+              }
               return;
             } catch (err) {
               logger.error('Fallback transfer processing from flow completion failed', { error: err.message, userId: user.id });
@@ -1138,7 +1198,30 @@ class MessageProcessor {
               
               await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
             } finally {
-              await user.clearConversationState();
+              // Reload user to check if a save beneficiary prompt was set before clearing
+              try {
+                await user.reload();
+                const hasSaveBeneficiaryState = user.conversationState && (
+                  user.conversationState.awaitingInput === 'save_beneficiary_confirmation' ||
+                  user.conversationState.intent === 'save_beneficiary_prompt'
+                ) && user.conversationState.pendingBeneficiary;
+                
+                if (hasSaveBeneficiaryState) {
+                  logger.info('Preserving save beneficiary prompt after transfer PIN verification failure', {
+                    userId: user.id,
+                    conversationState: user.conversationState
+                  });
+                  // Don't clear - let the save beneficiary flow handle it
+                } else {
+                  await user.clearConversationState();
+                }
+              } catch (clearError) {
+                logger.warn('Failed to check/clear conversation state after transfer PIN verification', {
+                  error: clearError.message,
+                  userId: user.id
+                });
+                await user.clearConversationState();
+              }
             }
             return;
           }
@@ -1198,16 +1281,97 @@ class MessageProcessor {
         // Continue with existing user object if reload fails
       }
 
+      // Handle statement email collection (MUST be early in the flow)
+      if (user.conversationState?.awaitingInput === 'statement_email' && user.conversationState?.intent === 'statement_request') {
+        const whatsappService = require('./whatsapp');
+        const userService = require('./user');
+        
+        // Extract email from message
+        const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+        const emailMatch = messageContent.match(emailRegex);
+        
+        if (emailMatch && emailMatch[0]) {
+          const email = emailMatch[0].toLowerCase().trim();
+          
+          // Update user email
+          try {
+            await userService.updateUser(user.id, { 
+              email: email,
+              appEmail: email 
+            });
+            
+            // Reload user to get updated email
+            const updatedUser = await userService.getUserById(user.id);
+            userService.addUserHelperMethods(updatedUser);
+            
+            logger.info('Email collected for statement generation', {
+              userId: user.id,
+              email
+            });
+            
+            // Show date range selection
+            const aiAssistant = require('./aiAssistant');
+            await aiAssistant.showStatementDateRangeOptions(updatedUser);
+            return;
+          } catch (error) {
+            logger.error('Failed to save email for statement', {
+              error: error.message,
+              userId: user.id,
+              email
+            });
+            
+            await whatsappService.sendTextMessage(user.whatsappNumber, 
+              "❌ Failed to save your email address. Please try again or contact support.");
+            return;
+          }
+        } else {
+          // Invalid email format
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            "❌ *Invalid Email Format*\n\n" +
+            "Please provide a valid email address.\n\n" +
+            "Example: example@email.com\n" +
+            "Or say: \"My email is example@email.com\"");
+          return;
+        }
+      }
+
+      // Handle statement date range button selection
+      if (buttonId && buttonId.startsWith('statement_') && user.conversationState?.intent === 'statement_request') {
+        const whatsappService = require('./whatsapp');
+        const aiAssistant = require('./aiAssistant');
+        
+        // Extract date range type from button ID
+        const dateRangeType = buttonId.replace('statement_', '');
+        const validRanges = ['this_month', 'last_month', 'last_3_months', 'this_year'];
+        
+        if (validRanges.includes(dateRangeType)) {
+          // Reload user to ensure we have latest data
+          await user.reload();
+          
+          // Process statement generation
+          await aiAssistant.processStatementGeneration(user, dateRangeType);
+          return;
+        }
+      }
+
       // Handle save beneficiary confirmation (MUST be before bank_transfer check and AI processing)
+      // Check for both awaitingInput and intent to handle different state formats
+      const hasSaveBeneficiaryState = user.conversationState && (
+        user.conversationState.awaitingInput === 'save_beneficiary_confirmation' ||
+        user.conversationState.intent === 'save_beneficiary_prompt'
+      ) && user.conversationState.pendingBeneficiary;
+      
       logger.info('Checking for save beneficiary confirmation', {
         userId: user.id,
         hasConversationState: !!user.conversationState,
         awaitingInput: user.conversationState?.awaitingInput,
+        intent: user.conversationState?.intent,
         hasPendingBeneficiary: !!user.conversationState?.pendingBeneficiary,
+        hasSaveBeneficiaryState,
         fullConversationState: user.conversationState
       });
       
-      if (user.conversationState?.awaitingInput === 'save_beneficiary_confirmation' && user.conversationState?.pendingBeneficiary) {
+      if (hasSaveBeneficiaryState) {
         const state = user.conversationState;
         const whatsappService = require('./whatsapp');
         const lower = messageContent.toLowerCase().trim();
@@ -2566,6 +2730,10 @@ class MessageProcessor {
 
         // Handle different intents
         switch (aiAnalysis.intent) {
+          case 'statement_request':
+            await aiAssistant.handleStatementRequest(user, aiAnalysis.extractedData);
+            break;
+            
           case 'transaction_history':
             await aiAssistant.handleTransactionHistory(user, aiAnalysis.extractedData);
             break;
@@ -2756,7 +2924,19 @@ class MessageProcessor {
             try {
               const result = await bankTransferService.processBankTransfer(user.id, transferData, data.pin);
               if (result.success) {
-                logger.info('Transfer completed from Flow PIN', { userId: user.id, reference: result.transaction?.reference });
+                // Wait a bit to ensure save beneficiary prompt (if set) is persisted to database
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Reload user to check if a save beneficiary prompt was set
+                await user.reload();
+                
+                logger.info('Transfer completed from Flow PIN', { 
+                  userId: user.id, 
+                  reference: result.transaction?.reference,
+                  hasConversationState: !!user.conversationState,
+                  awaitingInput: user.conversationState?.awaitingInput,
+                  intent: user.conversationState?.intent
+                });
               } else {
                 await whatsappService.sendTextMessage(user.whatsappNumber, `❌ Transfer failed: ${result.message || 'Unknown error'}`);
               }
@@ -2768,7 +2948,46 @@ class MessageProcessor {
                 await sessionManager.deleteSession('transfer', flowToken, 'flow');
                 await redisClient.deleteSession(flowToken);
               } catch (_) {}
-              try { await user.clearConversationState(); } catch (_) {}
+              
+              // Only clear conversation state if it's still the old transfer state
+              // Don't clear if a save beneficiary prompt was set
+              try {
+                await user.reload();
+                const hasSaveBeneficiaryState = user.conversationState && (
+                  user.conversationState.awaitingInput === 'save_beneficiary_confirmation' ||
+                  user.conversationState.intent === 'save_beneficiary_prompt'
+                ) && user.conversationState.pendingBeneficiary;
+                
+                if (hasSaveBeneficiaryState) {
+                  logger.info('Preserving save beneficiary prompt after Flow PIN transfer (finally block)', {
+                    userId: user.id,
+                    conversationState: user.conversationState,
+                    awaitingInput: user.conversationState.awaitingInput
+                  });
+                  // Don't clear - let the save beneficiary flow handle it
+                } else if (user.conversationState?.intent === 'bank_transfer' || 
+                           user.conversationState?.context === 'transfer_pin_verification') {
+                  logger.info('Clearing old transfer conversation state after Flow PIN transfer (finally block)', {
+                    userId: user.id,
+                    oldState: user.conversationState
+                  });
+                  await user.clearConversationState();
+                } else if (user.conversationState) {
+                  // Preserve other conversation states
+                  logger.info('Preserving conversation state after Flow PIN transfer', {
+                    userId: user.id,
+                    newState: user.conversationState,
+                    intent: user.conversationState.intent
+                  });
+                } else {
+                  await user.clearConversationState();
+                }
+              } catch (clearError) {
+                logger.warn('Failed to check/clear conversation state after Flow PIN transfer (finally block)', {
+                  error: clearError.message,
+                  userId: user.id
+                });
+              }
             }
             return;
           }

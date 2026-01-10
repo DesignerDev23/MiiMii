@@ -936,7 +936,7 @@ class BankTransferService {
       
       if (!existingBeneficiary) {
         // Store pending beneficiary data in conversation state
-        await user.updateConversationState({
+        const conversationStateToSave = {
           intent: 'save_beneficiary_prompt',
           awaitingInput: 'save_beneficiary_confirmation',
           context: 'post_transfer',
@@ -947,7 +947,45 @@ class BankTransferService {
             recipientName: accountValidation.accountName,
             amount: feeCalculation.amount
           }
-        });
+        };
+        
+        await user.updateConversationState(conversationStateToSave);
+        
+        // Wait a bit to ensure state is persisted to database
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Reload user to verify state was saved
+        await user.reload();
+        
+        // Verify state was actually saved
+        if (!user.conversationState || user.conversationState?.awaitingInput !== 'save_beneficiary_confirmation') {
+          logger.error('Save beneficiary conversation state was not saved correctly', {
+            userId: user.id,
+            expectedState: conversationStateToSave,
+            actualState: user.conversationState
+          });
+          
+          // Retry saving the state once more
+          try {
+            await user.updateConversationState(conversationStateToSave);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await user.reload();
+            
+            if (!user.conversationState || user.conversationState?.awaitingInput !== 'save_beneficiary_confirmation') {
+              logger.error('Retry failed - conversation state still not saved', {
+                userId: user.id,
+                actualState: user.conversationState
+              });
+              throw new Error('Failed to save conversation state for beneficiary prompt');
+            }
+          } catch (retryError) {
+            logger.error('Failed to retry saving conversation state', {
+              error: retryError.message,
+              userId: user.id
+            });
+            throw retryError;
+          }
+        }
         
         // Ask user if they want to save this beneficiary
         const savePrompt = `💡 *Save Beneficiary?*\n\n` +
@@ -960,7 +998,7 @@ class BankTransferService {
         
         await whatsappService.sendTextMessage(user.whatsappNumber, savePrompt);
         
-        // Reload user to verify state was saved
+        // Final reload to verify state is still there
         await user.reload();
         
         logger.info('Sent save beneficiary prompt and stored pending data', {
@@ -969,7 +1007,9 @@ class BankTransferService {
           accountNumber: accountValidation.accountNumber,
           bankCode: bankCode || accountValidation.bankCode,
           conversationStateAfterSave: user.conversationState,
-          stateWasSaved: !!user.conversationState
+          stateWasSaved: !!user.conversationState,
+          awaitingInput: user.conversationState?.awaitingInput,
+          hasPendingBeneficiary: !!user.conversationState?.pendingBeneficiary
         });
       }
       
