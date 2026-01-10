@@ -3016,9 +3016,11 @@ async function handleConfirmationScreen(data, userId, tokenData = {}, flowToken 
 
     // Process the data purchase directly with PIN verification
     try {
-      const user = await User.findByPk(userId);
+      const userService = require('../services/user');
+      const user = await userService.getUserById(userId);
       
       if (user) {
+        userService.addUserHelperMethods(user);
         // Store the purchase data in user's conversation state for PIN verification
         await user.updateConversationState({
           intent: 'data',
@@ -3120,9 +3122,9 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
     const logger = require('../utils/logger');
     const whatsappService = require('../services/whatsapp');
     const redisClient = require('../utils/redis');
-    const { User } = require('../models');
+    const userService = require('../services/user');
 
-    const user = await User.findByPk(userId);
+    const user = await userService.getUserById(userId);
     if (!user) {
       logger.error('User not found for service PIN verification', { userId });
       return {
@@ -3130,6 +3132,9 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
         data: { error: 'User not found. Please try again.', message: 'User not found' }
       };
     }
+    
+    // Add helper methods to user object for compatibility
+    userService.addUserHelperMethods(user);
 
     const pin = data.pin;
     if (!pin || !/^\d{4}$/.test(pin)) {

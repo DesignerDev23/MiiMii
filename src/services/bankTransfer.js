@@ -952,8 +952,10 @@ class BankTransferService {
         // Ask user if they want to save this beneficiary
         const savePrompt = `💡 *Save Beneficiary?*\n\n` +
                           `Would you like to save *${accountValidation.accountName}* as a beneficiary?\n\n` +
-                          `Next time, you can simply say:\n` +
-                          `"Send 1k to ${accountValidation.accountName}"\n\n` +
+                          `Next time, you can just say:\n` +
+                          `"Send ₦1k to ${accountValidation.accountName}"\n\n` +
+                          `Or add a nickname like "my mum", "my brother", "my babe" and say:\n` +
+                          `"Send ₦1k to my mum"\n\n` +
                           `Reply *YES* to save or *NO* to skip.`;
         
         await whatsappService.sendTextMessage(user.whatsappNumber, savePrompt);

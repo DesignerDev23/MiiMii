@@ -1170,39 +1170,20 @@ class MessageProcessor {
         const lower = messageContent.toLowerCase().trim();
         
         if (/(^|\b)(yes|y|yeah|yep|sure|ok|okay)(\b|$)/.test(lower)) {
-          try {
-            const beneficiaryService = require('./beneficiary');
-            const { pendingBeneficiary } = state;
-            
-            const beneficiary = await beneficiaryService.autoSaveBeneficiary(user.id, {
-              accountNumber: pendingBeneficiary.accountNumber,
-              bankCode: pendingBeneficiary.bankCode,
-              bankName: pendingBeneficiary.bankName,
-              recipientName: pendingBeneficiary.recipientName,
-              amount: pendingBeneficiary.amount
-            }, null);
-            
-            if (beneficiary) {
-              await whatsappService.sendTextMessage(
-                user.whatsappNumber,
-                `✅ *Beneficiary Saved!*\n\n` +
-                `I've saved *${pendingBeneficiary.recipientName}* to your beneficiaries.\n\n` +
-                `Next time, just say:\n` +
-                `"Send 1k to ${pendingBeneficiary.recipientName}" 😊`
-              );
-              
-              logger.info('Beneficiary saved via user confirmation', {
-                userId: user.id,
-                beneficiaryId: beneficiary.id,
-                recipientName: pendingBeneficiary.recipientName
-              });
-            }
-          } catch (error) {
-            logger.error('Failed to save beneficiary', { error: error.message, userId: user.id });
-            await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Failed to save beneficiary. Please try again later.');
-          }
+          // User wants to save - ask for nickname
+          await user.updateConversationState({
+            ...state,
+            awaitingInput: 'save_beneficiary_nickname',
+            context: 'beneficiary_nickname_collection'
+          });
           
-          await user.clearConversationState();
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `Great! 🎉\n\n` +
+            `What nickname would you like to give *${state.pendingBeneficiary.recipientName}*?\n\n` +
+            `💡 Examples: "my mum", "my brother", "my babe", "John", etc.\n\n` +
+            `You can also just reply "SKIP" if you don't want a nickname.`
+          );
           return;
         }
         
@@ -1213,6 +1194,66 @@ class MessageProcessor {
         }
         
         await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply *YES* to save or *NO* to skip.');
+        return;
+      }
+      
+      // Handle nickname collection after beneficiary confirmation
+      if (user.conversationState?.awaitingInput === 'save_beneficiary_nickname' && user.conversationState?.pendingBeneficiary) {
+        const state = user.conversationState;
+        const whatsappService = require('./whatsapp');
+        const lower = messageContent.toLowerCase().trim();
+        
+        let nickname = null;
+        
+        if (!/(^|\b)(skip|none|no)(\b|$)/.test(lower)) {
+          nickname = messageContent.trim();
+        }
+        
+        try {
+          const beneficiaryService = require('./beneficiary');
+          const { pendingBeneficiary } = state;
+          
+          const beneficiary = await beneficiaryService.autoSaveBeneficiary(user.id, {
+            accountNumber: pendingBeneficiary.accountNumber,
+            bankCode: pendingBeneficiary.bankCode,
+            bankName: pendingBeneficiary.bankName,
+            recipientName: pendingBeneficiary.recipientName,
+            amount: pendingBeneficiary.amount
+          }, nickname);
+          
+          if (beneficiary) {
+            let successMessage = `✅ *Beneficiary Saved!*\n\n`;
+            successMessage += `I've saved *${pendingBeneficiary.recipientName}*`;
+            
+            if (nickname) {
+              successMessage += ` with the nickname "*${nickname}*"`;
+            }
+            
+            successMessage += ` to your beneficiaries.\n\n`;
+            successMessage += `💡 *Next time, you can say:*\n`;
+            
+            if (nickname) {
+              successMessage += `"Send ₦1k to ${nickname}"\n`;
+              successMessage += `or\n`;
+            }
+            
+            successMessage += `"Send ₦1k to ${pendingBeneficiary.recipientName}" 😊`;
+            
+            await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+            
+            logger.info('Beneficiary saved via user confirmation', {
+              userId: user.id,
+              beneficiaryId: beneficiary.id,
+              recipientName: pendingBeneficiary.recipientName,
+              nickname: nickname || 'none'
+            });
+          }
+        } catch (error) {
+          logger.error('Failed to save beneficiary', { error: error.message, userId: user.id });
+          await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Failed to save beneficiary. Please try again later.');
+        }
+        
+        await user.clearConversationState();
         return;
       }
 
