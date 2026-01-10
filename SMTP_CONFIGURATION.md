@@ -22,14 +22,23 @@ SMTP_FROM=noreply@chatmiimii.com  # Email address to send from (optional, defaul
 
 ### Gmail
 
+### Hostinger Email
+
 ```bash
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
+SMTP_HOST=smtp.hostinger.com
+SMTP_PORT=465
+SMTP_SECURE=true                 # Port 465 requires SSL (secure=true)
+SMTP_USER=noreply@chatmiimii.com
+SMTP_PASS=your-hostinger-password
 SMTP_FROM=noreply@chatmiimii.com
 ```
+
+**Note:** For Hostinger email:
+- Port 465 requires `SMTP_SECURE=true` (SSL)
+- Port 587 can be used with `SMTP_SECURE=false` (TLS)
+- Use your Hostinger email credentials
+
+### Gmail
 
 **Note:** For Gmail, you need to:
 1. Enable "Less secure app access" OR

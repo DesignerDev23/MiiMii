@@ -1309,13 +1309,26 @@ class MessageProcessor {
               email
             });
             
-            // Show date range selection
-            const aiAssistant = require('./aiAssistant');
-            await aiAssistant.showStatementDateRangeOptions(updatedUser);
+            // Show date range selection using list message (WhatsApp buttons max is 3)
+            try {
+              const aiAssistant = require('./aiAssistant');
+              await aiAssistant.showStatementDateRangeOptions(updatedUser);
+            } catch (statementError) {
+              logger.error('Failed to show statement date range options', {
+                error: statementError.message,
+                stack: statementError.stack,
+                userId: user.id,
+                email
+              });
+              
+              await whatsappService.sendTextMessage(user.whatsappNumber, 
+                "❌ Failed to display date range options. Please try again later or contact support.");
+            }
             return;
           } catch (error) {
             logger.error('Failed to save email for statement', {
               error: error.message,
+              stack: error.stack,
               userId: user.id,
               email
             });
@@ -1335,14 +1348,28 @@ class MessageProcessor {
         }
       }
 
-      // Handle statement date range button selection
-      if (buttonId && buttonId.startsWith('statement_') && user.conversationState?.intent === 'statement_request') {
+      // Handle statement date range selection (from list reply - WhatsApp buttons max is 3, so we use list)
+      const listReplyId = message?.listReply?.id || null;
+      const statementButtonId = buttonId?.startsWith('statement_') ? buttonId : null;
+      const statementListId = listReplyId?.startsWith('statement_') ? listReplyId : null;
+      
+      // Check if this is a statement date range selection
+      if ((statementButtonId || statementListId) && user.conversationState?.intent === 'statement_request') {
         const whatsappService = require('./whatsapp');
         const aiAssistant = require('./aiAssistant');
         
-        // Extract date range type from button ID
-        const dateRangeType = buttonId.replace('statement_', '');
+        // Extract date range type from button ID or list reply ID
+        const selectedId = statementButtonId || statementListId;
+        const dateRangeType = selectedId.replace('statement_', '');
         const validRanges = ['this_month', 'last_month', 'last_3_months', 'this_year'];
+        
+        logger.info('Statement date range selected', {
+          userId: user.id,
+          selectedId,
+          dateRangeType,
+          isValid: validRanges.includes(dateRangeType),
+          source: statementButtonId ? 'button' : 'list'
+        });
         
         if (validRanges.includes(dateRangeType)) {
           // Reload user to ensure we have latest data
@@ -1350,6 +1377,16 @@ class MessageProcessor {
           
           // Process statement generation
           await aiAssistant.processStatementGeneration(user, dateRangeType);
+          return;
+        } else {
+          logger.warn('Invalid statement date range selected', {
+            userId: user.id,
+            dateRangeType,
+            validRanges
+          });
+          
+          await whatsappService.sendTextMessage(user.whatsappNumber,
+            "❌ Invalid selection. Please select a valid date range option.");
           return;
         }
       }
@@ -2565,6 +2602,67 @@ class MessageProcessor {
               const awaiting = currentState.awaitingInput;
               const listId = interactiveResult.listReply.id || '';
               const isDataSelection = listId.startsWith('network_') || listId.startsWith('plan_');
+              const isStatementSelection = listId.startsWith('statement_') && currentState.intent === 'statement_request';
+              
+              logger.info('Processing list reply', {
+                userId: user.id,
+                listId,
+                isDataSelection,
+                isStatementSelection,
+                awaiting,
+                intent: currentState.intent
+              });
+              
+              // Handle statement date range selection FIRST (before data selection)
+              if (isStatementSelection && (awaiting === 'statement_date_range' || currentState.intent === 'statement_request')) {
+                try {
+                  logger.info('Processing statement date range selection from list reply', {
+                    userId: user.id,
+                    listId,
+                    dateRangeType: listId.replace('statement_', ''),
+                    awaitingInput: awaiting,
+                    intent: currentState.intent
+                  });
+                  
+                  const aiAssistant = require('./aiAssistant');
+                  const dateRangeType = listId.replace('statement_', '');
+                  const validRanges = ['this_month', 'last_month', 'last_3_months', 'this_year'];
+                  
+                  if (validRanges.includes(dateRangeType)) {
+                    // Reload user to get latest data
+                    await user.reload();
+                    
+                    // Process statement generation
+                    await aiAssistant.processStatementGeneration(user, dateRangeType);
+                    return; // Stop further processing - don't continue to data handling
+                  } else {
+                    logger.warn('Invalid statement date range selected', {
+                      userId: user.id,
+                      dateRangeType,
+                      validRanges
+                    });
+                    
+                    const whatsappService = require('./whatsapp');
+                    await whatsappService.sendTextMessage(user.whatsappNumber,
+                      "❌ Invalid selection. Please select a valid date range option from the list.");
+                    return;
+                  }
+                } catch (stmtErr) {
+                  logger.error('Failed to process statement date range from list reply', {
+                    error: stmtErr.message,
+                    userId: user.id,
+                    listId,
+                    stack: stmtErr.stack
+                  });
+                  
+                  const whatsappService = require('./whatsapp');
+                  await whatsappService.sendTextMessage(user.whatsappNumber,
+                    "❌ Failed to process statement request. Please try again later or contact support.");
+                  return;
+                }
+              }
+              
+              // Handle data selection (only if not a statement selection)
               if (awaiting && awaiting.startsWith('data_')) {
                 // Build and persist new state with the list reply captured
                 const newState = {

@@ -1995,7 +1995,7 @@ Extract intent and data from this message. Consider the user context and any ext
   }
 
   /**
-   * Show interactive date range selection buttons
+   * Show interactive date range selection using List message (WhatsApp allows max 3 buttons, so use list for 4 options)
    */
   async showStatementDateRangeOptions(user) {
     const whatsappService = require('./whatsapp');
@@ -2012,22 +2012,48 @@ Extract intent and data from this message. Consider the user context and any ext
 
     // Get current date for display
     const now = new Date();
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const thisMonthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthLabel = lastMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    const thisYearLabel = now.getFullYear().toString();
     
-    await whatsappService.sendButtonMessage(
+    // Use List message instead of buttons (WhatsApp buttons max is 3, we need 4 options)
+    const sections = [
+      {
+        title: 'Select Period',
+        rows: [
+          { 
+            id: 'statement_this_month', 
+            title: '📅 This Month', 
+            description: thisMonthLabel 
+          },
+          { 
+            id: 'statement_last_month', 
+            title: '📅 Last Month', 
+            description: lastMonthLabel 
+          },
+          { 
+            id: 'statement_last_3_months', 
+            title: '📅 Last 3 Months', 
+            description: 'Past 3 months' 
+          },
+          { 
+            id: 'statement_this_year', 
+            title: '📅 This Year', 
+            description: thisYearLabel 
+          }
+        ]
+      }
+    ];
+
+    await whatsappService.sendListMessage(
       user.whatsappNumber,
       `📅 *Select Statement Period*\n\n` +
       `Choose the date range for your account statement:\n\n` +
       `📧 Email: ${user.appEmail || user.email}\n\n` +
-      `Select an option below:`,
-      [
-        { id: 'statement_this_month', title: '📅 This Month' },
-        { id: 'statement_last_month', title: '📅 Last Month' },
-        { id: 'statement_last_3_months', title: '📅 Last 3 Months' },
-        { id: 'statement_this_year', title: '📅 This Year' }
-      ]
+      `Tap an option below:`,
+      'Select Period',
+      sections
     );
   }
 
