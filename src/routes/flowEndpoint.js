@@ -3153,8 +3153,51 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
       };
     }
 
-    const sessionData = tokenData.sessionData;
-    const service = sessionData.service;
+    let sessionData = tokenData.sessionData || {};
+    
+    // Fallback to conversation state if session data is missing or doesn't have service
+    if (!sessionData.service) {
+      // User object is already loaded, check its conversation state directly
+      if (user && user.conversationState?.data) {
+        sessionData = { ...sessionData, ...user.conversationState.data };
+        logger.info('Using conversation state data as fallback for service PIN screen', {
+          userId,
+          service: sessionData.service,
+          dataKeys: Object.keys(sessionData || {}),
+          conversationStateData: user.conversationState.data
+        });
+      } else {
+        // If user object doesn't have conversation state, reload it
+        const userService = require('../services/user');
+        const currentUser = await userService.getUserById(userId);
+        if (currentUser && currentUser.conversationState?.data) {
+          sessionData = { ...sessionData, ...currentUser.conversationState.data };
+          logger.info('Using conversation state data as fallback (after reload) for service PIN screen', {
+            userId,
+            service: sessionData.service,
+            dataKeys: Object.keys(sessionData || {}),
+            conversationStateData: currentUser.conversationState.data
+          });
+        }
+      }
+    }
+    
+    const service = sessionData?.service;
+
+    if (!service) {
+      logger.error('Service type not found in session data or conversation state', {
+        userId,
+        hasSessionData: !!tokenData.sessionData,
+        hasConversationState: !!user.conversationState,
+        sessionDataKeys: tokenData.sessionData ? Object.keys(tokenData.sessionData) : [],
+        conversationStateKeys: user.conversationState ? Object.keys(user.conversationState) : [],
+        conversationStateData: user.conversationState?.data
+      });
+      return {
+        screen: 'PIN_VERIFICATION_SCREEN',
+        data: { error: 'Unknown service type. Please try again.', message: 'Service error' }
+      };
+    }
 
     try {
       if (service === 'airtime') {

@@ -481,7 +481,7 @@ class MessageProcessor {
               return;
             }
 
-          } else if (session.service === 'enable_pin' || session.service === 'disable_pin' || 
+          } else if ((session && (session.service === 'enable_pin' || session.service === 'disable_pin')) || 
                      user.conversationState?.context === 'enable_pin_verification' || 
                      user.conversationState?.context === 'disable_pin_verification') {
             // Handle PIN enable/disable flow completion
@@ -535,20 +535,42 @@ class MessageProcessor {
 
           } else {
             // Handle airtime/data flow completion
-            logger.info('Processing airtime flow completion', {
+            logger.info('Processing airtime/data/bills flow completion', {
               userId: user.id,
               flowToken: flowCompletionData.flowToken,
               screen: flowCompletionData.screen,
               dataKeys: Object.keys(flowCompletionData.data || {}),
               hasPin: !!flowCompletionData.data?.pin,
-              sessionContext: session.context
+              sessionContext: session?.context,
+              conversationContext: user.conversationState?.context,
+              conversationData: user.conversationState?.data
             });
 
             try {
               const flowEndpoint = require('../routes/flowEndpoint');
               
+              // Extract PIN from flow completion data
+              const pin = flowCompletionData.data?.pin;
+              
+              if (!pin || !/^\d{4}$/.test(pin)) {
+                await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Invalid PIN format. Please enter a valid 4-digit PIN.');
+                return;
+              }
+              
+              // Use conversation state data if session is not found or doesn't have service
+              let sessionData = session || {};
+              if (!sessionData.service && user.conversationState?.data) {
+                sessionData = { ...sessionData, ...user.conversationState.data };
+                logger.info('Using conversation state as fallback for session data', {
+                  userId: user.id,
+                  service: sessionData.service,
+                  hasConversationState: !!user.conversationState,
+                  conversationStateData: user.conversationState.data
+                });
+              }
+              
               // Process the PIN verification through flow endpoint
-              const tokenData = { sessionData: session };
+              const tokenData = { sessionData: sessionData };
               const result = await flowEndpoint.handleServicePinScreen(
                 { pin: pin },
                 user.id,
