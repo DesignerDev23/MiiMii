@@ -14,7 +14,7 @@ class ActivityLoggerService {
       // Only log if database is healthy
       if (databaseService.isConnectionHealthy()) {
         return await databaseService.executeWithRetry(async () => {
-          // Map activityType to enum values
+          // Map activityType to enum values (must match activity_log_type_enum in schema)
           const typeMap = {
             'kyc_verification': 'kyc_verified',
             'kyc_verified': 'kyc_verified',
@@ -26,10 +26,15 @@ class ActivityLoggerService {
             'virtual_account_initiated': 'wallet_funded',
             'virtual_account_created_error': 'wallet_funded',
             'bvn_verified': 'kyc_verified',
-            'bvn_verification_failed': 'kyc_rejected'
+            'bvn_verification_failed': 'kyc_rejected',
+            'whatsapp_message_received': 'system_event', // Map to valid enum
+            'message_processed': 'system_event',
+            'voice_transcribed': 'system_event',
+            'bank_details_extracted': 'system_event',
+            'image_ocr_processed': 'system_event'
           };
           
-          const mappedType = typeMap[activityType] || activityType || 'system_event';
+          const mappedType = typeMap[activityType] || 'system_event';
           
           return await supabaseHelper.create('activityLogs', {
             id: uuidv4(),
@@ -272,19 +277,29 @@ class ActivityLoggerService {
 
         if (userId) whereClause.userId = userId;
 
-        const stats = await databaseService.query(`
-          SELECT 
-            COUNT(*) as total_activities,
-            COUNT(CASE WHEN "activityType" = 'whatsapp_message_received' THEN 1 END) as messages_received,
-            COUNT(CASE WHEN "activityType" = 'transaction' THEN 1 END) as transactions,
-            COUNT(CASE WHEN "severity" = 'critical' THEN 1 END) as critical_events,
-            COUNT(CASE WHEN "requiresAttention" = true THEN 1 END) as requires_attention
-          FROM "ActivityLogs"
-          WHERE "createdAt" >= $1 ${userId ? 'AND "userId" = $2' : ''}
-        `, {
-          bind: userId ? [new Date(Date.now() - (days * 24 * 60 * 60 * 1000)), userId] : [new Date(Date.now() - (days * 24 * 60 * 60 * 1000))],
-          type: require('sequelize').QueryTypes.SELECT
-        });
+        const { supabase } = require('../database/connection');
+        const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString();
+        
+        let query = supabase
+          .from('activityLogs')
+          .select('type, severity, metadata', { count: 'exact' })
+          .gte('createdAt', startDate);
+        
+        if (userId) {
+          query = query.eq('userId', userId);
+        }
+        
+        const { data: activities, error, count } = await query;
+        
+        if (error) throw error;
+        
+        const stats = {
+          total_activities: count || 0,
+          messages_received: (activities || []).filter(a => a.metadata?.originalActivityType === 'whatsapp_message_received').length,
+          transactions: (activities || []).filter(a => a.type === 'transaction_completed' || a.type === 'transaction_failed' || a.type === 'transaction_initiated').length,
+          critical_events: (activities || []).filter(a => a.severity === 'critical').length,
+          requires_attention: (activities || []).filter(a => a.metadata?.requiresAttention === true).length
+        };
 
         return stats[0];
       } else {

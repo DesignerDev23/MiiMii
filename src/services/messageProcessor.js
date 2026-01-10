@@ -1177,7 +1177,28 @@ class MessageProcessor {
       // Extract the actual message content for AI routing (handles both text and button replies)
       messageContent = message?.text || message?.buttonReply?.title || '';
 
-      // Handle save beneficiary confirmation (MUST be before bank_transfer check)
+      // Reload user to get the latest conversation state (important for save beneficiary flow)
+      // This ensures we have the latest conversation state that might have been set by a recent transfer
+      try {
+        const refreshedUser = await userService.getUserById(user.id);
+        if (refreshedUser) {
+          userService.addUserHelperMethods(refreshedUser);
+          user = refreshedUser;
+          logger.debug('User reloaded to get latest conversation state', {
+            userId: user.id,
+            hasConversationState: !!user.conversationState,
+            awaitingInput: user.conversationState?.awaitingInput
+          });
+        }
+      } catch (reloadError) {
+        logger.warn('Failed to reload user for conversation state check', {
+          userId: user.id,
+          error: reloadError.message
+        });
+        // Continue with existing user object if reload fails
+      }
+
+      // Handle save beneficiary confirmation (MUST be before bank_transfer check and AI processing)
       logger.info('Checking for save beneficiary confirmation', {
         userId: user.id,
         hasConversationState: !!user.conversationState,
