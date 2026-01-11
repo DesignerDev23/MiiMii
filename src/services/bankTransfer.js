@@ -483,20 +483,12 @@ class BankTransferService {
     }
   }
 
-  // Calculate transfer fees
+  // Calculate transfer fees - Flat ₦15 fee for all transfers
   calculateTransferFee(amount, transferType, sameBank = false) {
     const numAmount = parseFloat(amount);
     
-    // Determine fee based on amount tiers
-    let fee = 15; // Default to tier 1
-    
-    if (numAmount >= this.fees.tier3.min) {
-      fee = this.fees.tier3.fee; // 50k+ = ₦50
-    } else if (numAmount >= this.fees.tier2.min) {
-      fee = this.fees.tier2.fee; // 10k-50k = ₦25
-    } else {
-      fee = this.fees.tier1.fee; // 0-10k = ₦15
-    }
+    // Flat fee structure: ₦15 for all transfers
+    const fee = 15;
     
     return {
       baseFee: fee,
@@ -504,8 +496,7 @@ class BankTransferService {
       totalFee: fee,
       amount: numAmount,
       totalAmount: numAmount + fee,
-      feeTier: numAmount >= this.fees.tier3.min ? 'tier3' : 
-               numAmount >= this.fees.tier2.min ? 'tier2' : 'tier1'
+      feeTier: 'flat' // All transfers use flat fee
     };
   }
 
@@ -681,6 +672,86 @@ class BankTransferService {
             fee: feeCalculation.totalFee,
             reference: transaction.reference
           });
+
+          // Automatically transfer ₦5 platform fee to MiiMii parent account (1000000963)
+          // This is hidden from users but visible to admins
+          try {
+            const platformFeeAmount = 5; // ₦5 platform fee
+            const parentAccountNumber = '1000000963';
+            const parentBankCode = '090175'; // Rubies MFB code
+            
+            logger.info('Initiating platform fee transfer to parent account', {
+              userId,
+              parentAccountNumber,
+              platformFeeAmount,
+              originalTransferReference: transaction.reference
+            });
+
+            // Transfer ₦5 to parent account
+            const platformFeeTransfer = await this.processRubiesTransfer({
+              userId: userId,
+              accountNumber: parentAccountNumber,
+              bankCode: parentBankCode,
+              amount: platformFeeAmount,
+              narration: `Platform fee from transfer ${transaction.reference}`,
+              reference: `PFEE${transaction.reference}`,
+              senderName: 'MiiMii Platform',
+              beneficiaryName: 'MiiMii Technologies',
+              bankName: 'Rubies MFB'
+            });
+
+            if (platformFeeTransfer.success) {
+              // Create internal transaction record (hidden from users, visible to admins)
+              await transactionService.createTransaction(userId, {
+                type: 'debit',
+                category: 'platform_fee',
+                amount: platformFeeAmount,
+                fee: 0,
+                totalAmount: platformFeeAmount,
+                description: `Platform fee for transfer ${transaction.reference}`,
+                reference: `PFEE${transaction.reference}`,
+                recipientDetails: {
+                  accountNumber: parentAccountNumber,
+                  accountName: 'MiiMii Technologies',
+                  bankCode: parentBankCode,
+                  bankName: 'Rubies MFB'
+                },
+                metadata: {
+                  isInternal: true,
+                  isVisibleToUser: false,
+                  parentTransactionReference: transaction.reference,
+                  service: 'platform_fee_transfer',
+                  providerReference: platformFeeTransfer.reference
+                },
+                status: 'completed'
+              });
+
+              logger.info('Platform fee transfer completed successfully', {
+                userId,
+                parentAccountNumber,
+                platformFeeAmount,
+                platformFeeReference: platformFeeTransfer.reference,
+                originalTransferReference: transaction.reference
+              });
+            } else {
+              logger.error('Platform fee transfer failed', {
+                userId,
+                parentAccountNumber,
+                platformFeeAmount,
+                error: platformFeeTransfer.message,
+                originalTransferReference: transaction.reference
+              });
+              // Don't fail the main transfer if platform fee transfer fails
+            }
+          } catch (platformFeeError) {
+            logger.error('Failed to process platform fee transfer', {
+              error: platformFeeError.message,
+              stack: platformFeeError.stack,
+              userId,
+              originalTransferReference: transaction.reference
+            });
+            // Don't fail the main transfer if platform fee transfer fails
+          }
 
           // Update existing beneficiary usage stats if this recipient is already saved
           try {

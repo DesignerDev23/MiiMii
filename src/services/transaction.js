@@ -672,11 +672,18 @@ class TransactionService {
   async sendTransactionHistory(user, userPhoneNumber, limit = 5) {
     try {
       const transactions = await databaseService.executeWithRetry(async () => {
-        return await supabaseHelper.findAll('transactions', { userId: user.id }, {
+        // Get transactions, excluding internal transactions (hidden from users)
+        const allTransactions = await supabaseHelper.findAll('transactions', { userId: user.id }, {
           orderBy: 'createdAt',
           order: 'desc',
-          limit: limit
+          limit: limit * 2 // Get more to account for filtering
         });
+        
+        // Filter out internal transactions (platform fees, etc.)
+        return allTransactions.filter(tx => {
+          const metadata = tx.metadata || {};
+          return !metadata.isInternal && metadata.isVisibleToUser !== false;
+        }).slice(0, limit);
       });
 
       if (transactions.length === 0) {
@@ -798,11 +805,18 @@ class TransactionService {
   async sendTransactionHistoryText(user, userPhoneNumber, limit = 5) {
     try {
       const transactions = await databaseService.executeWithRetry(async () => {
-        return await supabaseHelper.findAll('transactions', { userId: user.id }, {
+        // Get transactions, excluding internal transactions (hidden from users)
+        const allTransactions = await supabaseHelper.findAll('transactions', { userId: user.id }, {
           orderBy: 'createdAt',
           order: 'desc',
-          limit: limit
+          limit: limit * 2 // Get more to account for filtering
         });
+        
+        // Filter out internal transactions (platform fees, etc.)
+        return allTransactions.filter(tx => {
+          const metadata = tx.metadata || {};
+          return !metadata.isInternal && metadata.isVisibleToUser !== false;
+        }).slice(0, limit);
       });
       
       if (transactions.length === 0) {
@@ -993,11 +1007,18 @@ class TransactionService {
   async getRecentTransactions(userId, limit = 5) {
     try {
       const transactions = await databaseService.executeWithRetry(async () => {
-        return await supabaseHelper.findAll('transactions', { userId }, {
+        // Get transactions, excluding internal transactions (hidden from users)
+        const allTransactions = await supabaseHelper.findAll('transactions', { userId }, {
           orderBy: 'createdAt',
           order: 'desc',
-          limit: parseInt(limit)
+          limit: parseInt(limit) * 2 // Get more to account for filtering
         });
+        
+        // Filter out internal transactions (platform fees, etc.)
+        const transactions = allTransactions.filter(tx => {
+          const metadata = tx.metadata || {};
+          return !metadata.isInternal && metadata.isVisibleToUser !== false;
+        }).slice(0, parseInt(limit));
       });
 
       return transactions.map(tx => ({
