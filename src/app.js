@@ -93,7 +93,7 @@ const prodOrigins = corsEnv
   ? corsEnv.split(',').map(s => s.trim()).filter(Boolean)
   : defaultProdOrigins;
 
-const devOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+const devOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:8080'];
 
 const allowAllOrigins = process.env.ALLOW_ALL_ORIGINS === 'true';
 const allowedOrigins = (process.env.NODE_ENV === 'production') ? prodOrigins : devOrigins;

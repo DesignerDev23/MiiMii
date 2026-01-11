@@ -2010,16 +2010,23 @@ router.get('/transfer-charges',
       const { startDate, endDate, page = 1, limit = 50 } = req.query;
       const { supabase } = require('../database/connection');
       
-      // Build query for platform fee transactions (internal transactions)
+      // Build query for platform fee transactions
+      // Platform fees are identified by metadata.isPlatformFee = true (not by category)
       let query = supabase
         .from('transactions')
         .select(`
           *,
           user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber)
         `, { count: 'exact' })
-        .eq('category', 'platform_fee')
         .eq('status', 'completed')
         .order('createdAt', { ascending: false });
+      
+      // Filter by platform fee using metadata
+      // Note: Supabase doesn't support direct JSONB filtering in the same way
+      // We'll filter in JavaScript after fetching, or use a different approach
+      // For now, filter by category 'fee_charge' and reference prefix 'PFEE'
+      query = query.eq('category', 'fee_charge')
+                   .like('reference', 'PFEE%');
       
       // Add date filters if provided
       if (startDate) {
@@ -2035,18 +2042,29 @@ router.get('/transfer-charges',
       const from = (pageNum - 1) * limitNum;
       const to = from + limitNum - 1;
       
-      const { data: charges, error, count } = await query.range(from, to);
+      const { data: allCharges, error, count } = await query.range(from, to);
       
       if (error) {
         throw error;
       }
       
+      // Filter to only platform fees (metadata.isPlatformFee = true)
+      // Also filter by reference starting with 'PFEE' as additional check
+      const charges = (allCharges || []).filter(charge => {
+        const metadata = charge.metadata || {};
+        return (metadata.isPlatformFee === true || metadata.isInternal === true) && 
+               charge.reference?.startsWith('PFEE');
+      });
+      
+      // Recalculate count for filtered results
+      const filteredCount = charges.length;
+      
       // Calculate totals
-      const totalCharges = (charges || []).reduce((sum, charge) => sum + parseFloat(charge.amount || 0), 0);
+      const totalCharges = charges.reduce((sum, charge) => sum + parseFloat(charge.amount || 0), 0);
       
       res.json({
         success: true,
-        charges: (charges || []).map(charge => ({
+        charges: charges.map(charge => ({
           id: charge.id,
           reference: charge.reference,
           userId: charge.userId,
@@ -2063,13 +2081,13 @@ router.get('/transfer-charges',
         })),
         summary: {
           totalCharges,
-          totalCount: count || 0
+          totalCount: filteredCount
         },
         pagination: {
           page: pageNum,
           limit: limitNum,
-          total: count || 0,
-          totalPages: Math.ceil((count || 0) / limitNum)
+          total: filteredCount,
+          totalPages: Math.ceil(filteredCount / limitNum)
         }
       });
     } catch (error) {
@@ -2087,11 +2105,13 @@ router.get('/transfer-charges/summary',
       const { supabase } = require('../database/connection');
       
       // Build query for platform fee transactions
+      // Filter by category 'fee_charge' and reference prefix 'PFEE'
       let query = supabase
         .from('transactions')
-        .select('amount, createdAt')
-        .eq('category', 'platform_fee')
-        .eq('status', 'completed');
+        .select('amount, createdAt, metadata, reference')
+        .eq('category', 'fee_charge')
+        .eq('status', 'completed')
+        .like('reference', 'PFEE%');
       
       // Add date filters if provided
       if (startDate) {
@@ -2101,19 +2121,26 @@ router.get('/transfer-charges/summary',
         query = query.lte('createdAt', new Date(endDate).toISOString());
       }
       
-      const { data: charges, error } = await query;
+      const { data: allCharges, error } = await query;
       
       if (error) {
         throw error;
       }
       
+      // Filter to only platform fees (metadata.isPlatformFee = true)
+      const charges = (allCharges || []).filter(charge => {
+        const metadata = charge.metadata || {};
+        return (metadata.isPlatformFee === true || metadata.isInternal === true) && 
+               charge.reference?.startsWith('PFEE');
+      });
+      
       // Calculate stats
-      const totalCharges = (charges || []).reduce((sum, charge) => sum + parseFloat(charge.amount || 0), 0);
-      const totalCount = (charges || []).length;
+      const totalCharges = charges.reduce((sum, charge) => sum + parseFloat(charge.amount || 0), 0);
+      const totalCount = charges.length;
       
       // Group by date
       const chargesByDate = {};
-      (charges || []).forEach(charge => {
+      charges.forEach(charge => {
         const date = new Date(charge.createdAt).toISOString().split('T')[0];
         if (!chargesByDate[date]) {
           chargesByDate[date] = { count: 0, amount: 0 };

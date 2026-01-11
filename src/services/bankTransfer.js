@@ -702,9 +702,10 @@ class BankTransferService {
 
             if (platformFeeTransfer.success) {
               // Create internal transaction record (hidden from users, visible to admins)
+              // Use 'fee_charge' category (valid enum value) and mark as platform fee in metadata
               await transactionService.createTransaction(userId, {
                 type: 'debit',
-                category: 'platform_fee',
+                category: 'fee_charge', // Valid enum value - platform fee is identified via metadata
                 amount: platformFeeAmount,
                 fee: 0,
                 totalAmount: platformFeeAmount,
@@ -719,6 +720,7 @@ class BankTransferService {
                 metadata: {
                   isInternal: true,
                   isVisibleToUser: false,
+                  isPlatformFee: true, // Mark as platform fee in metadata
                   parentTransactionReference: transaction.reference,
                   service: 'platform_fee_transfer',
                   providerReference: platformFeeTransfer.reference
