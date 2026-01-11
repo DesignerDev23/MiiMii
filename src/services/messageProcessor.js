@@ -1392,56 +1392,8 @@ class MessageProcessor {
       }
 
       // Handle save beneficiary confirmation (MUST be before bank_transfer check and AI processing)
-      // Check for both awaitingInput and intent to handle different state formats
-      const hasSaveBeneficiaryState = user.conversationState && (
-        user.conversationState.awaitingInput === 'save_beneficiary_confirmation' ||
-        user.conversationState.intent === 'save_beneficiary_prompt'
-      ) && user.conversationState.pendingBeneficiary;
-      
-      logger.info('Checking for save beneficiary confirmation', {
-        userId: user.id,
-        hasConversationState: !!user.conversationState,
-        awaitingInput: user.conversationState?.awaitingInput,
-        intent: user.conversationState?.intent,
-        hasPendingBeneficiary: !!user.conversationState?.pendingBeneficiary,
-        hasSaveBeneficiaryState,
-        fullConversationState: user.conversationState
-      });
-      
-      if (hasSaveBeneficiaryState) {
-        const state = user.conversationState;
-        const whatsappService = require('./whatsapp');
-        const lower = messageContent.toLowerCase().trim();
-        
-        if (/(^|\b)(yes|y|yeah|yep|sure|ok|okay)(\b|$)/.test(lower)) {
-          // User wants to save - ask for nickname
-          await user.updateConversationState({
-            ...state,
-            awaitingInput: 'save_beneficiary_nickname',
-            context: 'beneficiary_nickname_collection'
-          });
-          
-          await whatsappService.sendTextMessage(
-            user.whatsappNumber,
-            `Great! 🎉\n\n` +
-            `What nickname would you like to give *${state.pendingBeneficiary.recipientName}*?\n\n` +
-            `💡 Examples: "my mum", "my brother", "my babe", "John", etc.\n\n` +
-            `You can also just reply "SKIP" if you don't want a nickname.`
-          );
-          return;
-        }
-        
-        if (/(^|\b)(no|n|nope|cancel)(\b|$)/.test(lower)) {
-          await whatsappService.sendTextMessage(user.whatsappNumber, '👍 No problem! You can always save beneficiaries later.');
-          await user.clearConversationState();
-          return;
-        }
-        
-        await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply *YES* to save or *NO* to skip.');
-        return;
-      }
-      
-      // Handle nickname collection after beneficiary confirmation
+      // Handle nickname collection FIRST (before confirmation check)
+      // This must come before the confirmation check because both states have intent === 'save_beneficiary_prompt'
       if (user.conversationState?.awaitingInput === 'save_beneficiary_nickname' && user.conversationState?.pendingBeneficiary) {
         const state = user.conversationState;
         const whatsappService = require('./whatsapp');
@@ -1485,19 +1437,82 @@ class MessageProcessor {
             
             await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
             
-            logger.info('Beneficiary saved via user confirmation', {
+            logger.info('Beneficiary saved with nickname via user confirmation', {
               userId: user.id,
               beneficiaryId: beneficiary.id,
               recipientName: pendingBeneficiary.recipientName,
               nickname: nickname || 'none'
             });
           }
+          
+          // Clear conversation state after saving
+          await user.clearConversationState();
+          return;
         } catch (error) {
-          logger.error('Failed to save beneficiary', { error: error.message, userId: user.id });
-          await whatsappService.sendTextMessage(user.whatsappNumber, '❌ Failed to save beneficiary. Please try again later.');
+          logger.error('Failed to save beneficiary with nickname', {
+            error: error.message,
+            stack: error.stack,
+            userId: user.id,
+            recipientName: state.pendingBeneficiary?.recipientName,
+            nickname
+          });
+          
+          const whatsappService = require('./whatsapp');
+          await whatsappService.sendTextMessage(user.whatsappNumber, 
+            '❌ Sorry, I encountered an error while saving the beneficiary. Please try again later.');
+          await user.clearConversationState();
+          return;
+        }
+      }
+      
+      // Check for both awaitingInput and intent to handle different state formats
+      // IMPORTANT: This check must exclude 'save_beneficiary_nickname' which is handled above
+      const hasSaveBeneficiaryState = user.conversationState && (
+        user.conversationState.awaitingInput === 'save_beneficiary_confirmation' ||
+        (user.conversationState.intent === 'save_beneficiary_prompt' && 
+         user.conversationState.awaitingInput !== 'save_beneficiary_nickname')
+      ) && user.conversationState.pendingBeneficiary;
+      
+      logger.info('Checking for save beneficiary confirmation', {
+        userId: user.id,
+        hasConversationState: !!user.conversationState,
+        awaitingInput: user.conversationState?.awaitingInput,
+        intent: user.conversationState?.intent,
+        hasPendingBeneficiary: !!user.conversationState?.pendingBeneficiary,
+        hasSaveBeneficiaryState,
+        fullConversationState: user.conversationState
+      });
+      
+      if (hasSaveBeneficiaryState) {
+        const state = user.conversationState;
+        const whatsappService = require('./whatsapp');
+        const lower = messageContent.toLowerCase().trim();
+        
+        if (/(^|\b)(yes|y|yeah|yep|sure|ok|okay)(\b|$)/.test(lower)) {
+          // User wants to save - ask for nickname
+          await user.updateConversationState({
+            ...state,
+            awaitingInput: 'save_beneficiary_nickname',
+            context: 'beneficiary_nickname_collection'
+          });
+          
+          await whatsappService.sendTextMessage(
+            user.whatsappNumber,
+            `Great! 🎉\n\n` +
+            `What nickname would you like to give *${state.pendingBeneficiary.recipientName}*?\n\n` +
+            `💡 Examples: "my mum", "my brother", "my babe", "John", etc.\n\n` +
+            `You can also just reply "SKIP" if you don't want a nickname.`
+          );
+          return;
         }
         
-        await user.clearConversationState();
+        if (/(^|\b)(no|n|nope|cancel)(\b|$)/.test(lower)) {
+          await whatsappService.sendTextMessage(user.whatsappNumber, '👍 No problem! You can always save beneficiaries later.');
+          await user.clearConversationState();
+          return;
+        }
+        
+        await whatsappService.sendTextMessage(user.whatsappNumber, 'Please reply *YES* to save or *NO* to skip.');
         return;
       }
 
