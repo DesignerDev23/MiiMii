@@ -306,7 +306,7 @@ class StatementService {
 
         doc.font(this.getFont('Outfit'))
            .fillColor('#7F1D1D')
-           .text(`₦${credits.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 60, summaryBoxY + 25);
+           .text(`\u20A6${credits.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 60, summaryBoxY + 25);
 
         doc.font(this.getFont('Outfit-Bold'))
            .fillColor('#991B1B')
@@ -314,7 +314,7 @@ class StatementService {
 
         doc.font(this.getFont('Outfit'))
            .fillColor('#7F1D1D')
-           .text(`₦${debits.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 200, summaryBoxY + 25);
+           .text(`\u20A6${debits.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 200, summaryBoxY + 25);
 
         doc.font(this.getFont('Outfit-Bold'))
            .fillColor('#991B1B')
@@ -322,7 +322,7 @@ class StatementService {
 
         doc.font(this.getFont('Outfit'))
            .fillColor('#7F1D1D')
-           .text(`₦${fees.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 340, summaryBoxY + 25);
+           .text(`\u20A6${fees.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 340, summaryBoxY + 25);
 
         doc.font(this.getFont('Outfit-Bold'))
            .fillColor('#991B1B')
@@ -331,7 +331,7 @@ class StatementService {
         const netAmount = credits - debits - fees;
         doc.font(this.getFont('Outfit'))
            .fillColor('#7F1D1D')
-           .text(`₦${netAmount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 480, summaryBoxY + 25);
+           .text(`\u20A6${netAmount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 480, summaryBoxY + 25);
 
         doc.font(this.getFont('Outfit-Bold'))
            .fillColor('#991B1B')
@@ -350,21 +350,24 @@ class StatementService {
 
         tableY += 25;
 
-        // Table Header
+        // Table Header - Adjusted column positions for better spacing
         doc.rect(50, tableY, 495, 28)
            .fillColor('#DC2626') // MiiMii brand red
            .fill();
 
+        // Use Unicode naira sign for header
+        const nairaSign = '\u20A6';
+        
         doc.fontSize(9)
            .font(this.getFont('Outfit-Bold'))
            .fillColor('#ffffff')
            .text('Date', 55, tableY + 9)
            .text('Time', 55, tableY + 18)
-           .text('Type', 130, tableY + 13)
-           .text('Description', 190, tableY + 13)
-           .text('Amount', 400, tableY + 13)
-           .text('Status', 470, tableY + 13)
-           .text('Ref', 520, tableY + 13);
+           .text('Type', 120, tableY + 13)
+           .text('Description', 170, tableY + 13, { width: 180 })
+           .text(`Amount (${nairaSign})`, 360, tableY + 13, { width: 70, align: 'right' })
+           .text('Status', 440, tableY + 13)
+           .text('Ref', 490, tableY + 13);
 
         tableY += 35;
 
@@ -420,22 +423,30 @@ class StatementService {
               minute: '2-digit'
             });
 
+            // Format description - show more characters (up to 50 chars)
+            const description = transaction.description || transaction.category || 'N/A';
+            const descriptionText = description.length > 50 ? description.substring(0, 47) + '...' : description;
+            
+            // Format amount with proper naira sign
+            // Use Unicode naira sign (U+20A6 = ₦) - ensure UTF-8 encoding
+            const amount = parseFloat(transaction.amount || 0);
+            const formattedAmount = amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            // Try naira sign, fallback to "NGN" if encoding issues
+            const nairaSign = '\u20A6'; // Unicode naira sign
+            const amountText = `${isCredit ? '+' : '-'}${nairaSign}${formattedAmount}`;
+            
             doc.fontSize(8)
                .font(this.getFont('Outfit'))
                .fillColor('#4b5563')
                .text(date, 55, tableY + 6)
                .text(time, 55, tableY + 14)
-               .text(transaction.type?.toUpperCase() || 'N/A', 130, tableY + 10)
-               .text((transaction.description || transaction.category || 'N/A').substring(0, 20), 190, tableY + 10, { width: 200, ellipsis: true })
+               .text((transaction.type?.toUpperCase() || 'N/A').substring(0, 4), 120, tableY + 10)
+               .text(descriptionText, 170, tableY + 10, { width: 180, ellipsis: false })
                .fillColor(isCredit ? '#10b981' : '#ef4444')
-               .text(
-                 `${isCredit ? '+' : '-'}₦${parseFloat(transaction.amount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                 400,
-                 tableY + 10
-               )
+               .text(amountText, 360, tableY + 10, { width: 70, align: 'right' })
                .fillColor('#4b5563')
-               .text((transaction.status || 'PENDING').toUpperCase().substring(0, 6), 470, tableY + 10)
-               .text((transaction.reference || '').substring(0, 6), 520, tableY + 10);
+               .text((transaction.status || 'PENDING').toUpperCase().substring(0, 6), 440, tableY + 10)
+               .text((transaction.reference || '').substring(0, 8), 490, tableY + 10);
 
             tableY += 22;
           });

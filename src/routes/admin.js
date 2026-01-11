@@ -1940,6 +1940,204 @@ router.post('/support/tickets',
   }
 );
 
+// Get User Beneficiaries
+router.get('/users/:userId/beneficiaries',
+  [
+    param('userId').isUUID().withMessage('Invalid user ID')
+  ],
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { page = 1, limit = 20, search = '' } = req.query;
+      
+      const { supabase } = require('../database/connection');
+      const supabaseHelper = require('../services/supabaseHelper');
+      
+      // Verify user exists
+      const user = await userService.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Build query
+      let query = supabase
+        .from('beneficiaries')
+        .select('*', { count: 'exact' })
+        .eq('userId', userId)
+        .eq('isActive', true)
+        .order('lastUsedAt', { ascending: false, nullsFirst: false })
+        .order('createdAt', { ascending: false });
+      
+      // Add search filter if provided
+      if (search) {
+        query = query.or(`name.ilike.%${search}%,nickname.ilike.%${search}%,accountNumber.ilike.%${search}%,phoneNumber.ilike.%${search}%`);
+      }
+      
+      // Pagination
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const from = (pageNum - 1) * limitNum;
+      const to = from + limitNum - 1;
+      
+      const { data: beneficiaries, error, count } = await query.range(from, to);
+      
+      if (error) {
+        throw error;
+      }
+      
+      res.json({
+        success: true,
+        beneficiaries: beneficiaries || [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limitNum)
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to get user beneficiaries', { error: error.message, userId: req.params.userId });
+      res.status(500).json({ error: 'Failed to get user beneficiaries' });
+    }
+  }
+);
+
+// Get Transfer Charges (Platform Fees)
+router.get('/transfer-charges',
+  async (req, res) => {
+    try {
+      const { startDate, endDate, page = 1, limit = 50 } = req.query;
+      const { supabase } = require('../database/connection');
+      
+      // Build query for platform fee transactions (internal transactions)
+      let query = supabase
+        .from('transactions')
+        .select(`
+          *,
+          user:users!transactions_userId_fkey(id, firstName, lastName, whatsappNumber)
+        `, { count: 'exact' })
+        .eq('category', 'platform_fee')
+        .eq('status', 'completed')
+        .order('createdAt', { ascending: false });
+      
+      // Add date filters if provided
+      if (startDate) {
+        query = query.gte('createdAt', new Date(startDate).toISOString());
+      }
+      if (endDate) {
+        query = query.lte('createdAt', new Date(endDate).toISOString());
+      }
+      
+      // Pagination
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const from = (pageNum - 1) * limitNum;
+      const to = from + limitNum - 1;
+      
+      const { data: charges, error, count } = await query.range(from, to);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Calculate totals
+      const totalCharges = (charges || []).reduce((sum, charge) => sum + parseFloat(charge.amount || 0), 0);
+      
+      res.json({
+        success: true,
+        charges: (charges || []).map(charge => ({
+          id: charge.id,
+          reference: charge.reference,
+          userId: charge.userId,
+          user: charge.user ? {
+            id: charge.user.id,
+            firstName: charge.user.firstName,
+            lastName: charge.user.lastName,
+            whatsappNumber: charge.user.whatsappNumber
+          } : null,
+          amount: parseFloat(charge.amount),
+          description: charge.description,
+          parentTransactionReference: charge.metadata?.parentTransactionReference,
+          createdAt: charge.createdAt
+        })),
+        summary: {
+          totalCharges,
+          totalCount: count || 0
+        },
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limitNum)
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to get transfer charges', { error: error.message });
+      res.status(500).json({ error: 'Failed to get transfer charges' });
+    }
+  }
+);
+
+// Get Transfer Charges Summary (Stats)
+router.get('/transfer-charges/summary',
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const { supabase } = require('../database/connection');
+      
+      // Build query for platform fee transactions
+      let query = supabase
+        .from('transactions')
+        .select('amount, createdAt')
+        .eq('category', 'platform_fee')
+        .eq('status', 'completed');
+      
+      // Add date filters if provided
+      if (startDate) {
+        query = query.gte('createdAt', new Date(startDate).toISOString());
+      }
+      if (endDate) {
+        query = query.lte('createdAt', new Date(endDate).toISOString());
+      }
+      
+      const { data: charges, error } = await query;
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Calculate stats
+      const totalCharges = (charges || []).reduce((sum, charge) => sum + parseFloat(charge.amount || 0), 0);
+      const totalCount = (charges || []).length;
+      
+      // Group by date
+      const chargesByDate = {};
+      (charges || []).forEach(charge => {
+        const date = new Date(charge.createdAt).toISOString().split('T')[0];
+        if (!chargesByDate[date]) {
+          chargesByDate[date] = { count: 0, amount: 0 };
+        }
+        chargesByDate[date].count++;
+        chargesByDate[date].amount += parseFloat(charge.amount || 0);
+      });
+      
+      res.json({
+        success: true,
+        summary: {
+          totalCharges,
+          totalCount,
+          averageCharge: totalCount > 0 ? totalCharges / totalCount : 0,
+          chargesByDate
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to get transfer charges summary', { error: error.message });
+      res.status(500).json({ error: 'Failed to get transfer charges summary' });
+    }
+  }
+);
+
 // Sync data plans from Bilal dashboard
 router.post('/data-plans/sync',
   async (req, res) => {
