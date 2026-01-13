@@ -104,11 +104,43 @@ class BilalService {
     try {
       const tokenData = await this.generateToken();
       return {
-        balance: parseFloat(tokenData.balance),
+        balance: parseFloat(tokenData.balance || 0),
         currency: 'NGN'
       };
     } catch (error) {
       logger.error('Failed to get Bilal balance', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Check if provider has sufficient balance for a purchase
+  async checkProviderBalance(requiredAmount) {
+    try {
+      const tokenData = await this.generateToken();
+      const providerBalance = parseFloat(tokenData.balance || 0);
+      const amount = parseFloat(requiredAmount);
+      
+      logger.info('Checking provider balance', {
+        providerBalance,
+        requiredAmount: amount,
+        hasSufficientBalance: providerBalance >= amount
+      });
+      
+      if (providerBalance < amount) {
+        throw new Error(`Provider has insufficient balance. Required: ₦${amount.toLocaleString()}, Available: ₦${providerBalance.toLocaleString()}`);
+      }
+      
+      return {
+        hasSufficientBalance: true,
+        providerBalance,
+        requiredAmount: amount,
+        remainingBalance: providerBalance - amount
+      };
+    } catch (error) {
+      logger.error('Provider balance check failed', { 
+        error: error.message, 
+        requiredAmount 
+      });
       throw error;
     }
   }
@@ -1183,25 +1215,135 @@ class BilalService {
         message
       });
 
+      // Find transaction by request-id
+      const walletService = require('./wallet');
+      const transactionService = require('./transaction');
+      const supabaseHelper = require('./supabaseHelper');
+      
+      // Search for transaction with this request-id in metadata
+      const { data: transactions } = await supabaseHelper.findAll('transactions', {}, {
+        orderBy: 'createdAt',
+        order: 'desc',
+        limit: 100
+      });
+      
+      const transaction = transactions?.find(tx => 
+        tx.metadata?.requestId === requestId || 
+        tx.metadata?.providerReference === requestId ||
+        tx.providerReference === requestId
+      );
+
       // Process the callback based on status
       if (status === 'success') {
         logger.info('Bilal service successful via callback', {
           requestId,
-          message
+          message,
+          transactionId: transaction?.id
         });
-        // Transaction was successful - already processed in initial request
+        
+        // Update transaction status if found
+        if (transaction && transaction.status !== 'completed') {
+          await transactionService.updateTransactionStatus(transaction.reference, 'completed', {
+            providerReference: requestId,
+            providerResponse: message,
+            webhookConfirmed: true
+          });
+        }
       } else {
-        logger.error('Bilal service failed via callback', {
+        // Status is 'fail' - process refund
+        logger.error('Bilal service failed via callback - processing refund', {
           requestId,
-          message
+          message,
+          transactionId: transaction?.id,
+          userId: transaction?.userId
         });
-        // Handle failed transaction - could implement refund logic here
+        
+        if (transaction && transaction.userId) {
+          // Check if already refunded
+          if (transaction.metadata?.refunded || transaction.metadata?.refundProcessed) {
+            logger.info('Transaction already refunded', {
+              transactionId: transaction.id,
+              requestId
+            });
+          } else {
+            // Process refund
+            const refundAmount = parseFloat(transaction.totalAmount || transaction.amount || 0);
+            
+            if (refundAmount > 0) {
+              try {
+                await walletService.creditWallet(
+                  transaction.userId,
+                  refundAmount,
+                  `Refund: Service purchase failed - ${transaction.reference}`,
+                  {
+                    category: 'refund',
+                    parentTransactionId: transaction.id,
+                    refundReason: message || 'Provider service failed',
+                    providerRequestId: requestId,
+                    refundSource: 'bilal_webhook'
+                  }
+                );
+                
+                // Update transaction with refund info
+                await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
+                  failureReason: message || 'Service purchase failed',
+                  refunded: true,
+                  refundProcessed: true,
+                  refundAmount: refundAmount,
+                  refundedAt: new Date().toISOString(),
+                  providerReference: requestId,
+                  providerResponse: message
+                });
+                
+                logger.info('Refund processed successfully via webhook', {
+                  transactionId: transaction.id,
+                  userId: transaction.userId,
+                  refundAmount,
+                  requestId
+                });
+                
+                // Send notification to user
+                try {
+                  const userService = require('./user');
+                  const whatsappService = require('./whatsapp');
+                  const user = await userService.getUserById(transaction.userId);
+                  
+                  if (user && user.whatsappNumber) {
+                    const refundMessage = `💰 *Refund Processed*\n\n` +
+                      `Your payment of ₦${refundAmount.toLocaleString()} has been refunded to your wallet.\n\n` +
+                      `📋 Transaction: ${transaction.reference}\n` +
+                      `💬 Reason: ${message || 'Service purchase failed'}\n\n` +
+                      `Your wallet balance has been updated.`;
+                    
+                    await whatsappService.sendTextMessage(user.whatsappNumber, refundMessage);
+                  }
+                } catch (notifError) {
+                  logger.warn('Failed to send refund notification', { error: notifError.message });
+                }
+              } catch (refundError) {
+                logger.error('Failed to process refund via webhook', {
+                  error: refundError.message,
+                  transactionId: transaction.id,
+                  userId: transaction.userId,
+                  refundAmount
+                });
+              }
+            }
+          }
+        } else {
+          logger.warn('Transaction not found for Bilal webhook refund', {
+            requestId,
+            hasTransaction: !!transaction
+          });
+        }
       }
 
       return {
         processed: true,
         status,
-        requestId
+        requestId,
+        transactionId: transaction?.id,
+        refundProcessed: status !== 'success' && transaction?.metadata?.refundProcessed
       };
     } catch (error) {
       logger.error('Failed to handle Bilal callback', {

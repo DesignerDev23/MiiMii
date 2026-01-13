@@ -863,15 +863,59 @@ class WalletService {
     return `MII_${Date.now()}_${uuidv4().slice(0, 8).toUpperCase()}`;
   }
 
-  async getWalletBalance(userId) {
+  async getWalletBalance(userId, syncWithRubies = true) {
     try {
       const wallet = await this.getUserWallet(userId);
+      
+      // If user has a Rubies virtual account, sync balance from Rubies
+      if (syncWithRubies && wallet.virtualAccountNumber && wallet.virtualAccountBank === 'Rubies MFB') {
+        try {
+          const rubiesBalance = await rubiesService.retrieveWalletDetails(wallet.virtualAccountNumber);
+          
+          if (rubiesBalance.success) {
+            const rubiesBalanceAmount = rubiesBalance.accountBalance || 0;
+            const rubiesLedgerBalance = rubiesBalance.accountLedgerBalance || 0;
+            
+            // Update local wallet balance to match Rubies balance
+            if (parseFloat(wallet.balance) !== rubiesBalanceAmount) {
+              logger.info('Syncing wallet balance with Rubies', {
+                userId,
+                oldBalance: wallet.balance,
+                newBalance: rubiesBalanceAmount,
+                virtualAccountNumber: wallet.virtualAccountNumber
+              });
+              
+              await databaseService.executeWithRetry(async () => {
+                return await supabaseHelper.update('wallets', {
+                  balance: rubiesBalanceAmount,
+                  ledgerBalance: rubiesLedgerBalance,
+                  availableBalance: rubiesBalanceAmount,
+                  updatedAt: new Date().toISOString()
+                }, { id: wallet.id });
+              });
+              
+              // Update wallet object
+              wallet.balance = rubiesBalanceAmount;
+              wallet.ledgerBalance = rubiesLedgerBalance;
+              wallet.availableBalance = rubiesBalanceAmount;
+            }
+          }
+        } catch (rubiesError) {
+          logger.warn('Failed to sync balance with Rubies, using local balance', {
+            error: rubiesError.message,
+            userId,
+            virtualAccountNumber: wallet.virtualAccountNumber
+          });
+          // Continue with local balance if Rubies sync fails
+        }
+      }
+      
       return {
-        available: parseFloat(wallet.availableBalance),
-        total: parseFloat(wallet.balance),
-        ledger: parseFloat(wallet.ledgerBalance),
-        pending: parseFloat(wallet.pendingBalance),
-        currency: wallet.currency
+        available: parseFloat(wallet.availableBalance || wallet.balance || 0),
+        total: parseFloat(wallet.balance || 0),
+        ledger: parseFloat(wallet.ledgerBalance || wallet.balance || 0),
+        pending: parseFloat(wallet.pendingBalance || 0),
+        currency: wallet.currency || 'NGN'
       };
     } catch (error) {
       logger.error('Failed to get wallet balance', { error: error.message, userId });

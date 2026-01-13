@@ -539,19 +539,44 @@ class StatementService {
         transactionCount: statement.transactionCount
       });
 
-      if (!emailResult.success) {
-        logger.warn('Failed to send statement via email, but PDF was generated', {
+      // Also send via WhatsApp
+      let whatsappResult = { success: false };
+      try {
+        const whatsappService = require('./whatsapp');
+        await whatsappService.sendDocumentMessage(
+          user.whatsappNumber,
+          statement.pdfBuffer,
+          statement.fileName,
+          'application/pdf',
+          `Your account statement for ${statement.startDate} to ${statement.endDate}`
+        );
+        whatsappResult.success = true;
+        logger.info('Statement sent via WhatsApp', { userId: user.id });
+      } catch (whatsappError) {
+        logger.warn('Failed to send statement via WhatsApp', {
           userId: user.id,
-          error: emailResult.error
+          error: whatsappError.message
+        });
+      }
+
+      if (!emailResult.success && !whatsappResult.success) {
+        logger.warn('Failed to send statement via both email and WhatsApp, but PDF was generated', {
+          userId: user.id,
+          emailError: emailResult.error,
+          whatsappError: whatsappResult.error
         });
         // Still return success with PDF buffer for download
       }
 
+      const deliveryMethods = [];
+      if (emailResult.success) deliveryMethods.push('email');
+      if (whatsappResult.success) deliveryMethods.push('WhatsApp');
+
       return {
         success: true,
-        message: emailResult.success 
-          ? `Your account statement has been generated and sent to ${email}. Please check your email inbox.` 
-          : 'Statement generated. Email sending failed, but PDF is available for download.',
+        message: deliveryMethods.length > 0
+          ? `Your account statement has been generated and sent via ${deliveryMethods.join(' and ')}.${emailResult.success ? ` Please check your email inbox (${email}).` : ''}`
+          : 'Statement generated. Delivery failed, but PDF is available for download.',
         statement: {
           pdfBuffer: statement.pdfBuffer.toString('base64'), // Base64 for API response
           fileName: statement.fileName,

@@ -747,7 +747,8 @@ class RubiesService {
         accountNumber: accountNumber.toString().trim()
       };
 
-      const response = await this.makeRequest('POST', '/retrieve-wallet-details', payload);
+      // Use correct endpoint: /baas-wallet/retrieve-wallet-details
+      const response = await this.makeRequest('POST', '/baas-wallet/retrieve-wallet-details', payload);
 
       if (response.responseCode === '00') {
         return {
@@ -757,9 +758,9 @@ class RubiesService {
           accountNumber: response.accountNumber,
           accountName: response.accountName,
           accountCurrency: response.accountCurrency,
-          accountBalance: response.accountBalance,
+          accountBalance: parseFloat(response.accountBalance || 0),
           accountStatus: response.accountStatus,
-          accountLedgerBalance: response.accountLedgerBalance,
+          accountLedgerBalance: parseFloat(response.accountLedgerBalance || 0),
           responseCode: response.responseCode,
           responseMessage: response.responseMessage
         };

@@ -138,16 +138,31 @@ class AirtimeService {
       });
 
       try {
-        // Process airtime purchase through Bilal API
+        // Step 1: Check provider (Bilal) balance BEFORE any transfers/debits
+        const bilalService = require('./bilal');
+        await bilalService.checkProviderBalance(validAmount);
+        
+        // Step 2: Transfer amount to parent account
+        const bankTransferService = require('./bankTransfer');
+        await bankTransferService.transferToParentAccount(userId, totalAmount, 'airtime', transaction.reference);
+        
+        // Step 3: Sync and check Rubies wallet balance
+        const walletBalance = await walletService.getWalletBalance(userId, true);
+        if (walletBalance.available < totalAmount) {
+          throw new Error('Insufficient wallet balance');
+        }
+        
+        // Step 4: Debit wallet
+        await walletService.debitWallet(userId, totalAmount, `Airtime purchase: ₦${validAmount}`, {
+          category: 'airtime_purchase',
+          transactionId: transaction.id,
+          parentAccountTransferred: true
+        });
+
+        // Step 5: Process airtime purchase through Bilal API
         const purchaseResult = await this.processBilalAirtimePurchase(user, validation.cleanNumber, network, validAmount, pin);
         
         if (purchaseResult.success) {
-          // Debit wallet
-          await walletService.debitWallet(userId, totalAmount, `Airtime purchase: ₦${validAmount}`, {
-            category: 'airtime_purchase',
-            transactionId: transaction.id
-          });
-
           // Update transaction status
           await transactionService.updateTransactionStatus(transaction.reference, 'completed', {
             providerReference: purchaseResult.reference,
@@ -177,17 +192,46 @@ class AirtimeService {
             provider: purchaseResult
           };
         } else {
+          // Provider failed - refund user wallet
+          await walletService.creditWallet(userId, totalAmount, `Refund: Airtime purchase failed - ${transaction.reference}`, {
+            category: 'refund',
+            parentTransactionId: transaction.id,
+            refundReason: purchaseResult.message || 'Provider purchase failed'
+          });
+          
           // Update transaction as failed
           await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
-            failureReason: purchaseResult.message || 'Purchase failed'
+            failureReason: purchaseResult.message || 'Purchase failed',
+            refunded: true
           });
 
           throw new Error(purchaseResult.message || 'Airtime purchase failed');
         }
       } catch (providerError) {
+        // Provider error - check if it's a balance check error (before debit) or actual provider error
+        const isBalanceCheckError = providerError.message && providerError.message.includes('Provider has insufficient balance');
+        
+        if (!isBalanceCheckError) {
+          // Only refund if user was already debited (actual provider error after debit)
+          // The webhook will handle the actual refund
+          logger.warn('Airtime purchase error - webhook will handle refund if needed', {
+            userId,
+            transactionReference: transaction.reference,
+            error: providerError.message
+          });
+        } else {
+          // Balance check failed - user was never debited, no refund needed
+          logger.info('Airtime purchase rejected due to insufficient provider balance', {
+            userId,
+            transactionReference: transaction.reference,
+            error: providerError.message
+          });
+        }
+        
         // Update transaction as failed
         await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
-          failureReason: providerError.message
+          failureReason: providerError.message,
+          awaitingRefund: !isBalanceCheckError // Only await refund if user was debited
         });
 
         throw new Error(`Airtime purchase failed: ${providerError.message}`);

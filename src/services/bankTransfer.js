@@ -948,6 +948,86 @@ class BankTransferService {
     }
   }
 
+  // Helper function to transfer amount to parent account before processing service purchase
+  async transferToParentAccount(userId, amount, serviceType, transactionReference) {
+    try {
+      const parentAccountNumber = '1000000963';
+      const parentBankCode = '090175'; // Rubies MFB code
+      
+      logger.info('Transferring to parent account before service purchase', {
+        userId,
+        amount,
+        serviceType,
+        transactionReference,
+        parentAccountNumber
+      });
+
+      // Transfer amount to parent account
+      const parentTransfer = await this.processRubiesTransfer({
+        userId: userId,
+        accountNumber: parentAccountNumber,
+        bankCode: parentBankCode,
+        amount: amount,
+        narration: `Service purchase: ${serviceType} - ${transactionReference}`,
+        reference: `SVC${transactionReference}`,
+        senderName: 'MiiMii Platform',
+        beneficiaryName: 'MiiMii Technologies',
+        bankName: 'Rubies MFB'
+      });
+
+      if (parentTransfer.success) {
+        // Create internal transaction record
+        const transactionService = require('./transaction');
+        await transactionService.createTransaction(userId, {
+          type: 'debit',
+          category: 'fee_charge',
+          amount: amount,
+          fee: 0,
+          totalAmount: amount,
+          description: `Service purchase funding: ${serviceType} - ${transactionReference}`,
+          reference: `SVC${transactionReference}`,
+          recipientDetails: {
+            accountNumber: parentAccountNumber,
+            accountName: 'MiiMii Technologies',
+            bankCode: parentBankCode,
+            bankName: 'Rubies MFB'
+          },
+          metadata: {
+            isInternal: true,
+            isVisibleToUser: false,
+            isServicePurchaseFunding: true,
+            serviceType: serviceType,
+            parentTransactionReference: transactionReference,
+            service: 'service_purchase_funding',
+            providerReference: parentTransfer.reference
+          },
+          status: 'completed'
+        });
+
+        logger.info('Parent account transfer successful', {
+          userId,
+          amount,
+          serviceType,
+          transactionReference,
+          parentTransferReference: parentTransfer.reference
+        });
+
+        return { success: true, reference: parentTransfer.reference };
+      } else {
+        throw new Error(`Failed to transfer to parent account: ${parentTransfer.message}`);
+      }
+    } catch (error) {
+      logger.error('Failed to transfer to parent account', {
+        error: error.message,
+        userId,
+        amount,
+        serviceType,
+        transactionReference
+      });
+      throw error;
+    }
+  }
+
   // Send transfer success notification with fallback handling
   async sendTransferSuccessNotification(user, accountValidation, feeCalculation, reference, bankCode) {
     try {

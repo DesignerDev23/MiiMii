@@ -272,16 +272,32 @@ class DataService {
       });
 
       try {
-        // Process data purchase through Bilal API
+        // Step 1: Check provider (Bilal) balance BEFORE any transfers/debits
+        // Use retail price (what provider charges) not selling price (what we charge user)
+        const bilalService = require('./bilal');
+        await bilalService.checkProviderBalance(plan.price || retailPrice);
+        
+        // Step 2: Transfer amount to parent account
+        const bankTransferService = require('./bankTransfer');
+        await bankTransferService.transferToParentAccount(userId, sellingPrice, 'data', transaction.reference);
+        
+        // Step 3: Sync and check Rubies wallet balance
+        const walletBalance = await walletService.getWalletBalance(userId, true);
+        if (walletBalance.available < sellingPrice) {
+          throw new Error('Insufficient wallet balance');
+        }
+        
+        // Step 4: Debit wallet with selling price (our charge to user)
+        await walletService.debitWallet(userId, sellingPrice, `Data purchase: ${plan.title}`, {
+          category: 'data',
+          transactionId: transaction.id,
+          parentAccountTransferred: true
+        });
+
+        // Step 5: Process data purchase through Bilal API
         const purchaseResult = await this.processBilalDataPurchase(validation.cleanNumber, network.toUpperCase(), plan);
         
         if (purchaseResult.success) {
-          // Debit wallet with selling price (our charge to user)
-          await walletService.debitWallet(userId, sellingPrice, `Data purchase: ${plan.title}`, {
-            category: 'data',
-            transactionId: transaction.id
-          });
-
           // Update transaction status
           await transactionService.updateTransactionStatus(transaction.reference, 'completed', {
             providerReference: purchaseResult.reference,
@@ -310,17 +326,46 @@ class DataService {
             provider: purchaseResult
           };
         } else {
+          // Provider failed - refund user wallet (should be rare now with balance check)
+          await walletService.creditWallet(userId, sellingPrice, `Refund: Data purchase failed - ${transaction.reference}`, {
+            category: 'refund',
+            parentTransactionId: transaction.id,
+            refundReason: purchaseResult.message || 'Provider purchase failed'
+          });
+          
           // Update transaction as failed
           await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
-            failureReason: purchaseResult.message || 'Purchase failed'
+            failureReason: purchaseResult.message || 'Purchase failed',
+            refunded: true
           });
 
           throw new Error(purchaseResult.message || 'Data purchase failed');
         }
       } catch (providerError) {
+        // Provider error - check if it's a balance check error (before debit) or actual provider error
+        const isBalanceCheckError = providerError.message && providerError.message.includes('Provider has insufficient balance');
+        
+        if (!isBalanceCheckError) {
+          // Only refund if user was already debited (actual provider error after debit)
+          // The webhook will handle the actual refund
+          logger.warn('Data purchase error - webhook will handle refund if needed', {
+            userId,
+            transactionReference: transaction.reference,
+            error: providerError.message
+          });
+        } else {
+          // Balance check failed - user was never debited, no refund needed
+          logger.info('Data purchase rejected due to insufficient provider balance', {
+            userId,
+            transactionReference: transaction.reference,
+            error: providerError.message
+          });
+        }
+        
         // Update transaction as failed
         await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
-          failureReason: providerError.message
+          failureReason: providerError.message,
+          awaitingRefund: !isBalanceCheckError // Only await refund if user was debited
         });
 
         throw new Error(`Data purchase failed: ${providerError.message}`);

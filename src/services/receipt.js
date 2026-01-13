@@ -160,27 +160,42 @@ class ReceiptService {
         yPos += this.scaleValue(35);
       });
 
-      // Footer
+      // Footer - Short contact info
       ctx.fillStyle = '#666666';
-      ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(520));
-      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(535));
-      ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(550));
+      ctx.fillText('Support: contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(520));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(this.scaleValue(50), this.scaleValue(570));
-      ctx.lineTo(this.scaleValue(350), this.scaleValue(570));
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(540));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(540));
       ctx.stroke();
 
-      // Thank you message
+      // Brand message
       ctx.fillStyle = '#000000';
-      ctx.font = `bold ${this.scaleValue(14)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', this.scaleValue(200), this.scaleValue(590));
+      const brandMessage = 'MiiMii is powered by a CBN licensed partner and insured by NDIC. Send money, buy airtime, buy data, pay your bills and cable subscription with just a chat all inside whatsapp';
+      // Split into multiple lines if needed (max ~50 chars per line)
+      const words = brandMessage.split(' ');
+      let line = '';
+      let yPos = this.scaleValue(560);
+      words.forEach((word, index) => {
+        const testLine = line + word + ' ';
+        if (testLine.length > 50 && line.length > 0) {
+          ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+          line = word + ' ';
+          yPos += this.scaleValue(15);
+        } else {
+          line = testLine;
+        }
+      });
+      if (line.trim().length > 0) {
+        ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+      }
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
@@ -306,27 +321,42 @@ class ReceiptService {
         yPos += this.scaleValue(35);
       });
 
-      // Footer
+      // Footer - Short contact info
       ctx.fillStyle = '#666666';
-      ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(520));
-      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(535));
-      ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(550));
+      ctx.fillText('Support: contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(520));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(this.scaleValue(50), this.scaleValue(570));
-      ctx.lineTo(this.scaleValue(350), this.scaleValue(570));
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(540));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(540));
       ctx.stroke();
 
-      // Thank you message
+      // Brand message
       ctx.fillStyle = '#000000';
-      ctx.font = `bold ${this.scaleValue(14)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', this.scaleValue(200), this.scaleValue(590));
+      const brandMessage = 'MiiMii is powered by a CBN licensed partner and insured by NDIC. Send money, buy airtime, buy data, pay your bills and cable subscription with just a chat all inside whatsapp';
+      // Split into multiple lines if needed (max ~50 chars per line)
+      const words = brandMessage.split(' ');
+      let line = '';
+      let yPos = this.scaleValue(560);
+      words.forEach((word, index) => {
+        const testLine = line + word + ' ';
+        if (testLine.length > 50 && line.length > 0) {
+          ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+          line = word + ' ';
+          yPos += this.scaleValue(15);
+        } else {
+          line = testLine;
+        }
+      });
+      if (line.trim().length > 0) {
+        ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+      }
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
@@ -453,27 +483,42 @@ class ReceiptService {
         yPos += this.scaleValue(35);
       });
 
-      // Footer
+      // Footer - Short contact info
       ctx.fillStyle = '#666666';
-      ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(520));
-      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(535));
-      ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(550));
+      ctx.fillText('Support: contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(520));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(this.scaleValue(50), this.scaleValue(570));
-      ctx.lineTo(this.scaleValue(350), this.scaleValue(570));
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(540));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(540));
       ctx.stroke();
 
-      // Thank you message
+      // Brand message
       ctx.fillStyle = '#000000';
-      ctx.font = `bold ${this.scaleValue(14)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', this.scaleValue(200), this.scaleValue(590));
+      const brandMessage = 'MiiMii is powered by a CBN licensed partner and insured by NDIC. Send money, buy airtime, buy data, pay your bills and cable subscription with just a chat all inside whatsapp';
+      // Split into multiple lines if needed (max ~50 chars per line)
+      const words = brandMessage.split(' ');
+      let line = '';
+      let yPos = this.scaleValue(560);
+      words.forEach((word, index) => {
+        const testLine = line + word + ' ';
+        if (testLine.length > 50 && line.length > 0) {
+          ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+          line = word + ' ';
+          yPos += this.scaleValue(15);
+        } else {
+          line = testLine;
+        }
+      });
+      if (line.trim().length > 0) {
+        ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+      }
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
@@ -624,27 +669,42 @@ class ReceiptService {
         ctx.fillText(token, 360, yPos);
       }
 
-      // Footer
+      // Footer - Short contact info
       ctx.fillStyle = '#666666';
-      ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(570));
-      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(585));
-      ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(600));
+      ctx.fillText('Support: contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(570));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(this.scaleValue(50), this.scaleValue(620));
-      ctx.lineTo(this.scaleValue(350), this.scaleValue(620));
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(590));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(590));
       ctx.stroke();
 
-      // Thank you message
+      // Brand message
       ctx.fillStyle = '#000000';
-      ctx.font = `bold ${this.scaleValue(14)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', this.scaleValue(200), this.scaleValue(640));
+      const brandMessage = 'MiiMii is powered by a CBN licensed partner and insured by NDIC. Send money, buy airtime, buy data, pay your bills and cable subscription with just a chat all inside whatsapp';
+      // Split into multiple lines if needed (max ~50 chars per line)
+      const words = brandMessage.split(' ');
+      let line = '';
+      let yPos = this.scaleValue(610);
+      words.forEach((word, index) => {
+        const testLine = line + word + ' ';
+        if (testLine.length > 50 && line.length > 0) {
+          ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+          line = word + ' ';
+          yPos += this.scaleValue(15);
+        } else {
+          line = testLine;
+        }
+      });
+      if (line.trim().length > 0) {
+        ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+      }
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });
@@ -776,27 +836,42 @@ class ReceiptService {
         yPos += this.scaleValue(35);
       });
 
-      // Footer
+      // Footer - Short contact info
       ctx.fillStyle = '#666666';
-      ctx.font = `${this.scaleValue(10)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('If you have any questions or would like more information,', this.scaleValue(200), this.scaleValue(570));
-      ctx.fillText('please call +234 090 433 39590, +234 906 048 9754 or send an email', this.scaleValue(200), this.scaleValue(585));
-      ctx.fillText('to contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(600));
+      ctx.fillText('Support: contactcenter@chatmiimii.com', this.scaleValue(200), this.scaleValue(570));
 
       // Red line
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(this.scaleValue(50), this.scaleValue(620));
-      ctx.lineTo(this.scaleValue(350), this.scaleValue(620));
+      ctx.moveTo(this.scaleValue(50), this.scaleValue(590));
+      ctx.lineTo(this.scaleValue(350), this.scaleValue(590));
       ctx.stroke();
 
-      // Thank you message
+      // Brand message
       ctx.fillStyle = '#000000';
-      ctx.font = `bold ${this.scaleValue(14)}px Outfit, Arial`;
+      ctx.font = `${this.scaleValue(9)}px Outfit, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('Thank you for using The MiiMii.AI', this.scaleValue(200), this.scaleValue(640));
+      const brandMessage = 'MiiMii is powered by a CBN licensed partner and insured by NDIC. Send money, buy airtime, buy data, pay your bills and cable subscription with just a chat all inside whatsapp';
+      // Split into multiple lines if needed (max ~50 chars per line)
+      const words = brandMessage.split(' ');
+      let line = '';
+      let yPos = this.scaleValue(610);
+      words.forEach((word, index) => {
+        const testLine = line + word + ' ';
+        if (testLine.length > 50 && line.length > 0) {
+          ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+          line = word + ' ';
+          yPos += this.scaleValue(15);
+        } else {
+          line = testLine;
+        }
+      });
+      if (line.trim().length > 0) {
+        ctx.fillText(line.trim(), this.scaleValue(200), yPos);
+      }
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/jpeg', { quality: 1.0 });

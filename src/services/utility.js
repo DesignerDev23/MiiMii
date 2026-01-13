@@ -397,7 +397,28 @@ class UtilityService {
       });
 
       try {
-        // Process bill payment through Bilal API
+        // Step 1: Check provider (Bilal) balance BEFORE any transfers/debits
+        const bilalService = require('./bilal');
+        await bilalService.checkProviderBalance(billAmount);
+        
+        // Step 2: Transfer amount to parent account
+        const bankTransferService = require('./bankTransfer');
+        await bankTransferService.transferToParentAccount(userId, totalAmount, `bill_${category}`, transaction.reference);
+        
+        // Step 3: Sync and check Rubies wallet balance
+        const walletBalance = await walletService.getWalletBalance(userId, true);
+        if (walletBalance.available < totalAmount) {
+          throw new Error('Insufficient wallet balance');
+        }
+        
+        // Step 4: Debit wallet
+        await walletService.debitWallet(userId, totalAmount, `Utility bill payment: ${this.utilities[category].name}`, {
+          category: 'utility',
+          transactionId: transaction.id,
+          parentAccountTransferred: true
+        });
+
+        // Step 5: Process bill payment through Bilal API
         const paymentResult = await this.processBilalBillPayment(
           category, 
           providerCode, 
@@ -407,12 +428,6 @@ class UtilityService {
         );
         
         if (paymentResult.success) {
-          // Debit wallet
-          await walletService.debitWallet(userId, totalAmount, `Utility bill payment: ${this.utilities[category].name}`, {
-            category: 'utility',
-            transactionId: transaction.id
-          });
-
           // Update transaction status
           await transactionService.updateTransactionStatus(transaction.reference, 'completed', {
             providerReference: paymentResult.reference,
@@ -446,17 +461,46 @@ class UtilityService {
             provider: paymentResult
           };
         } else {
+          // Provider failed - refund user wallet (should be rare now with balance check)
+          await walletService.creditWallet(userId, totalAmount, `Refund: Bill payment failed - ${transaction.reference}`, {
+            category: 'refund',
+            parentTransactionId: transaction.id,
+            refundReason: paymentResult.message || 'Provider payment failed'
+          });
+          
           // Update transaction as failed
           await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
-            failureReason: paymentResult.message || 'Payment failed'
+            failureReason: paymentResult.message || 'Payment failed',
+            refunded: true
           });
 
           throw new Error(paymentResult.message || 'Bill payment failed');
         }
       } catch (providerError) {
+        // Provider error - check if it's a balance check error (before debit) or actual provider error
+        const isBalanceCheckError = providerError.message && providerError.message.includes('Provider has insufficient balance');
+        
+        if (!isBalanceCheckError) {
+          // Only refund if user was already debited (actual provider error after debit)
+          // The webhook will handle the actual refund
+          logger.warn('Bill payment error - webhook will handle refund if needed', {
+            userId,
+            transactionReference: transaction.reference,
+            error: providerError.message
+          });
+        } else {
+          // Balance check failed - user was never debited, no refund needed
+          logger.info('Bill payment rejected due to insufficient provider balance', {
+            userId,
+            transactionReference: transaction.reference,
+            error: providerError.message
+          });
+        }
+        
         // Update transaction as failed
         await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
-          failureReason: providerError.message
+          failureReason: providerError.message,
+          awaitingRefund: !isBalanceCheckError // Only await refund if user was debited
         });
 
         throw new Error(`Bill payment failed: ${providerError.message}`);
