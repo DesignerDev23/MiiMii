@@ -996,15 +996,20 @@ class BankTransferService {
   // Helper function to transfer amount to parent account before processing service purchase
   async transferToParentAccount(userId, amount, serviceType, transactionReference) {
     try {
-      const parentAccountNumber = '1000000963';
+      // MiiMii Technologies parent account for service purchases (airtime, data, bills)
+      const parentAccountNumber = process.env.RUBIES_PARENT_ACCOUNT || '1000000963';
       const parentBankCode = '090175'; // Rubies MFB code
+      const parentAccountName = 'MiiMii Technologies';
+      const parentBankName = 'Rubies MFB';
       
       logger.info('Transferring to parent account before service purchase', {
         userId,
         amount,
         serviceType,
         transactionReference,
-        parentAccountNumber
+        parentAccountNumber,
+        parentAccountName,
+        parentBankName
       });
 
       // Transfer amount to parent account
@@ -1016,8 +1021,8 @@ class BankTransferService {
         narration: `Service purchase: ${serviceType} - ${transactionReference}`,
         reference: `SVC${transactionReference}`,
         senderName: 'MiiMii Platform',
-        beneficiaryName: 'MiiMii Technologies',
-        bankName: 'Rubies MFB'
+        beneficiaryName: parentAccountName,
+        bankName: parentBankName
       });
 
       if (parentTransfer.success) {
@@ -1033,9 +1038,9 @@ class BankTransferService {
           reference: `SVC${transactionReference}`,
           recipientDetails: {
             accountNumber: parentAccountNumber,
-            accountName: 'MiiMii Technologies',
+            accountName: parentAccountName,
             bankCode: parentBankCode,
-            bankName: 'Rubies MFB'
+            bankName: parentBankName
           },
           metadata: {
             isInternal: true,
