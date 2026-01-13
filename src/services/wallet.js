@@ -185,6 +185,17 @@ class WalletService {
         newBalance: balanceAfter
       });
 
+      // Sync balance with Rubies after credit transaction
+      try {
+        await this.syncBalanceWithRubies(userId);
+      } catch (syncError) {
+        logger.warn('Failed to sync balance with Rubies after credit', {
+          userId,
+          error: syncError.message
+        });
+        // Don't throw - transaction is already successful
+      }
+
       // Create mobile app notification for incoming transfers/wallet funding
       try {
         const notificationService = require('./notificationService');
@@ -305,6 +316,17 @@ class WalletService {
         newBalance: balanceAfter
       });
 
+      // Sync balance with Rubies after debit transaction
+      try {
+        await this.syncBalanceWithRubies(userId);
+      } catch (syncError) {
+        logger.warn('Failed to sync balance with Rubies after debit', {
+          userId,
+          error: syncError.message
+        });
+        // Don't throw - transaction is already successful
+      }
+
       return {
         transaction: txnRecord,
         newBalance: balanceAfter,
@@ -357,6 +379,21 @@ class WalletService {
         amount: transferAmount,
         reference
       });
+
+      // Sync both wallets with Rubies after transfer
+      try {
+        await Promise.all([
+          this.syncBalanceWithRubies(fromUserId),
+          this.syncBalanceWithRubies(toUserId)
+        ]);
+      } catch (syncError) {
+        logger.warn('Failed to sync balances with Rubies after wallet transfer', {
+          error: syncError.message,
+          fromUserId,
+          toUserId
+        });
+        // Don't throw - transfer is already successful
+      }
 
       return {
         reference,
@@ -424,6 +461,17 @@ class WalletService {
         fee,
         reference
       });
+
+      // Sync balance with Rubies after webhook credit (creditWallet already syncs, but double-check)
+      try {
+        await this.syncBalanceWithRubies(user.id);
+      } catch (syncError) {
+        logger.warn('Failed to sync balance with Rubies after webhook credit', {
+          userId: user.id,
+          error: syncError.message
+        });
+        // Don't throw - transaction is already successful
+      }
 
       return result;
     } catch (error) {
@@ -861,6 +909,57 @@ class WalletService {
 
   generateReference() {
     return `MII_${Date.now()}_${uuidv4().slice(0, 8).toUpperCase()}`;
+  }
+
+  // Helper method to sync balance with Rubies and update database
+  async syncBalanceWithRubies(userId) {
+    try {
+      const wallet = await this.getUserWallet(userId);
+      
+      if (!wallet || !wallet.virtualAccountNumber || wallet.virtualAccountBank !== 'Rubies MFB') {
+        return; // No Rubies account to sync
+      }
+
+      const rubiesBalance = await rubiesService.retrieveWalletDetails(wallet.virtualAccountNumber);
+      
+      if (rubiesBalance.success) {
+        const rubiesBalanceAmount = parseFloat(rubiesBalance.accountBalance || 0);
+        const rubiesLedgerBalance = parseFloat(rubiesBalance.accountLedgerBalance || 0);
+        const currentBalance = parseFloat(wallet.balance || 0);
+        
+        // Update local wallet balance to match Rubies balance if different
+        if (Math.abs(currentBalance - rubiesBalanceAmount) > 0.01) { // Allow small floating point differences
+          logger.info('Syncing wallet balance with Rubies after transaction', {
+            userId,
+            oldBalance: currentBalance,
+            newBalance: rubiesBalanceAmount,
+            difference: rubiesBalanceAmount - currentBalance,
+            virtualAccountNumber: wallet.virtualAccountNumber
+          });
+          
+          await databaseService.executeWithRetry(async () => {
+            return await supabaseHelper.update('wallets', {
+              balance: rubiesBalanceAmount,
+              ledgerBalance: rubiesLedgerBalance,
+              availableBalance: rubiesBalanceAmount,
+              updatedAt: new Date().toISOString()
+            }, { id: wallet.id });
+          });
+          
+          logger.info('Wallet balance synced with Rubies successfully', {
+            userId,
+            newBalance: rubiesBalanceAmount,
+            virtualAccountNumber: wallet.virtualAccountNumber
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to sync balance with Rubies', {
+        error: error.message,
+        userId
+      });
+      // Don't throw - this is a background sync operation
+    }
   }
 
   async getWalletBalance(userId, syncWithRubies = true) {

@@ -1335,6 +1335,16 @@ class BellBankService {
         providerReference: data.reference
       });
 
+      // Sync balance with Rubies after webhook credit
+      try {
+        await walletService.syncBalanceWithRubies(user.id);
+      } catch (syncError) {
+        logger.warn('Failed to sync balance with Rubies after webhook credit', {
+          userId: user.id,
+          error: syncError.message
+        });
+      }
+
       const updatedWallet = await walletService.getUserWallet(user.id);
       const balanceAfter = parseFloat(updatedWallet.balance);
       

@@ -539,19 +539,41 @@ class StatementService {
         transactionCount: statement.transactionCount
       });
 
-      // Also send via WhatsApp
+      // Also send via WhatsApp - try document first, fallback to text message with download link
       let whatsappResult = { success: false };
       try {
         const whatsappService = require('./whatsapp');
-        await whatsappService.sendDocumentMessage(
-          user.whatsappNumber,
-          statement.pdfBuffer,
-          statement.fileName,
-          'application/pdf',
-          `Your account statement for ${statement.startDate} to ${statement.endDate}`
-        );
-        whatsappResult.success = true;
-        logger.info('Statement sent via WhatsApp', { userId: user.id });
+        
+        // Try sending as document
+        try {
+          await whatsappService.sendDocumentMessage(
+            user.whatsappNumber,
+            statement.pdfBuffer,
+            statement.fileName,
+            'application/pdf',
+            `Your account statement for ${statement.startDate} to ${statement.endDate}`
+          );
+          whatsappResult.success = true;
+          logger.info('Statement sent via WhatsApp as document', { userId: user.id });
+        } catch (documentError) {
+          // If document sending fails, send a text message instead
+          logger.warn('Failed to send statement as document via WhatsApp, sending text message instead', {
+            userId: user.id,
+            error: documentError.message
+          });
+          
+          const textMessage = `📄 *Account Statement Generated*\n\n` +
+            `Your account statement for ${statement.startDate} to ${statement.endDate} has been generated.\n\n` +
+            `📧 The PDF has been sent to your email: ${email}\n\n` +
+            `📊 Summary:\n` +
+            `• Period: ${statement.startDate} to ${statement.endDate}\n` +
+            `• Transactions: ${statement.transactionCount}\n\n` +
+            `Please check your email inbox (and spam folder) for the detailed statement PDF.`;
+          
+          await whatsappService.sendTextMessage(user.whatsappNumber, textMessage);
+          whatsappResult.success = true; // Mark as success since we sent a message
+          logger.info('Statement notification sent via WhatsApp text message', { userId: user.id });
+        }
       } catch (whatsappError) {
         logger.warn('Failed to send statement via WhatsApp', {
           userId: user.id,

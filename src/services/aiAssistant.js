@@ -820,11 +820,12 @@ Extract intent and data from this message. Consider the user context and any ext
 
   async buildUserContext(user) {
     try {
-      const wallet = await walletService.getUserWallet(user.id);
+      // Sync balance with Rubies before building context
+      const walletBalanceData = await walletService.getWalletBalance(user.id, true);
       const recentTransactions = await transactionService.getRecentTransactions(user.id, 3);
       
       return {
-        walletBalance: wallet ? parseFloat(wallet.balance).toLocaleString() : '0',
+        walletBalance: walletBalanceData ? walletBalanceData.total.toLocaleString() : '0',
         recentActivity: recentTransactions.length > 0 
           ? recentTransactions.map(t => `${t.type}: ₦${t.amount}`).join(', ')
           : 'No recent activity'

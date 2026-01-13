@@ -3742,10 +3742,11 @@ class MessageProcessor {
     }
 
     try {
-      // Get wallet balance
+      // Get wallet balance - SYNC WITH RUBIES FIRST
       const walletService = require('./wallet');
-      const wallet = await walletService.getUserWallet(user.id);
+      const walletBalanceData = await walletService.getWalletBalance(user.id, true); // Sync with Rubies
       
+      const wallet = await walletService.getUserWallet(user.id);
       if (!wallet) {
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, 
@@ -3753,9 +3754,10 @@ class MessageProcessor {
         return;
       }
 
-      const balanceValue = parseFloat(wallet.balance || 0);
-      const availableBalance = parseFloat(wallet.availableBalance || wallet.balance || 0);
-      const pendingBalance = parseFloat(wallet.pendingBalance || 0);
+      // Use synced balance data
+      const balanceValue = walletBalanceData.total || parseFloat(wallet.balance || 0);
+      const availableBalance = walletBalanceData.available || parseFloat(wallet.availableBalance || wallet.balance || 0);
+      const pendingBalance = walletBalanceData.pending || parseFloat(wallet.pendingBalance || 0);
 
       // Check if this is a natural language query and provide appropriate response
       const messageText = (message?.text || '').toLowerCase();

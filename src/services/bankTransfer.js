@@ -693,6 +693,16 @@ class BankTransferService {
             transactionId: transaction.id
           });
 
+          // Sync balance with Rubies after transfer debit (debitWallet already syncs, but ensure it happens)
+          try {
+            await walletService.syncBalanceWithRubies(userId);
+          } catch (syncError) {
+            logger.warn('Failed to sync balance with Rubies after transfer', {
+              userId,
+              error: syncError.message
+            });
+          }
+
           // Update transaction status
           await transactionService.updateTransactionStatus(transaction.reference, 'completed', {
             providerReference: transferResult.reference,
