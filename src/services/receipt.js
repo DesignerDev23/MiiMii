@@ -182,7 +182,7 @@ class ReceiptService {
       // Split into multiple lines if needed (max ~50 chars per line)
       const words = brandMessage.split(' ');
       let line = '';
-      let yPos = this.scaleValue(560);
+      yPos = this.scaleValue(560); // Reuse existing yPos variable
       words.forEach((word, index) => {
         const testLine = line + word + ' ';
         if (testLine.length > 50 && line.length > 0) {
@@ -343,7 +343,7 @@ class ReceiptService {
       // Split into multiple lines if needed (max ~50 chars per line)
       const words = brandMessage.split(' ');
       let line = '';
-      let yPos = this.scaleValue(560);
+      yPos = this.scaleValue(560); // Reuse existing yPos variable
       words.forEach((word, index) => {
         const testLine = line + word + ' ';
         if (testLine.length > 50 && line.length > 0) {
@@ -505,7 +505,7 @@ class ReceiptService {
       // Split into multiple lines if needed (max ~50 chars per line)
       const words = brandMessage.split(' ');
       let line = '';
-      let yPos = this.scaleValue(560);
+      yPos = this.scaleValue(560); // Reuse existing yPos variable
       words.forEach((word, index) => {
         const testLine = line + word + ' ';
         if (testLine.length > 50 && line.length > 0) {
@@ -691,7 +691,7 @@ class ReceiptService {
       // Split into multiple lines if needed (max ~50 chars per line)
       const words = brandMessage.split(' ');
       let line = '';
-      let yPos = this.scaleValue(610);
+      yPos = this.scaleValue(610); // Reuse existing yPos variable
       words.forEach((word, index) => {
         const testLine = line + word + ' ';
         if (testLine.length > 50 && line.length > 0) {
@@ -858,7 +858,7 @@ class ReceiptService {
       // Split into multiple lines if needed (max ~50 chars per line)
       const words = brandMessage.split(' ');
       let line = '';
-      let yPos = this.scaleValue(610);
+      yPos = this.scaleValue(610); // Reuse existing yPos variable
       words.forEach((word, index) => {
         const testLine = line + word + ' ';
         if (testLine.length > 50 && line.length > 0) {
