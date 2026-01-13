@@ -3201,14 +3201,15 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
 
     try {
       if (service === 'airtime') {
-        // Handle airtime purchase
-        const bilalService = require('../services/bilal');
-        const result = await bilalService.purchaseAirtime(user, {
-          phoneNumber: sessionData.phoneNumber,
-          network: sessionData.network,
-          amount: sessionData.amount,
-          pin: pin
-        }, user.whatsappNumber);
+        // Handle airtime purchase - use airtimeService which includes parent account transfer
+        const airtimeService = require('../services/airtime');
+        const result = await airtimeService.purchaseAirtime(
+          userId,
+          sessionData.phoneNumber,
+          sessionData.network,
+          sessionData.amount,
+          pin
+        );
 
         if (result.success) {
           logger.info('Airtime purchase successful via PIN flow', { userId, amount: sessionData.amount });
@@ -3224,14 +3225,15 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
           };
         }
       } else if (service === 'data') {
-        // Handle data purchase
-        const bilalService = require('../services/bilal');
-        const result = await bilalService.purchaseData(user, {
-          phoneNumber: sessionData.phoneNumber,
-          network: sessionData.network,
-          dataPlan: sessionData.dataPlan,
-          pin: pin
-        }, user.whatsappNumber);
+        // Handle data purchase - use dataService which includes parent account transfer
+        const dataService = require('../services/data');
+        const result = await dataService.purchaseData(
+          userId,
+          sessionData.phoneNumber,
+          sessionData.network,
+          sessionData.dataPlan?.id || sessionData.dataPlan,
+          pin
+        );
 
         if (result.success) {
           logger.info('Data purchase successful via PIN flow', { userId, plan: sessionData.dataPlan?.dataplan, network: sessionData.network });
@@ -3247,26 +3249,25 @@ async function handleServicePinScreen(data, userId, tokenData, flowToken) {
           };
         }
       } else if (service === 'bills') {
-        // Handle bill payment
-        const billsService = require('../services/bills');
+        // Handle bill payment - use utilityService which includes parent account transfer
+        const utilityService = require('../services/utility');
         let result;
         
-        if (sessionData.billType === 'electricity' || sessionData.provider.toLowerCase().includes('electric')) {
-          result = await billsService.payElectricityBill(user, {
-            disco: sessionData.provider,
-            meterType: 'prepaid',
-            meterNumber: sessionData.meterNumber,
-            amount: sessionData.amount,
-            pin: pin
-          }, user.whatsappNumber);
-        } else {
-          result = await billsService.payCableBill(user, {
-            provider: sessionData.provider,
-            iucNumber: sessionData.meterNumber,
-            amount: sessionData.amount,
-            pin: pin
-          }, user.whatsappNumber);
+        // Determine category and provider
+        let category = 'electricity';
+        if (sessionData.billType && !sessionData.billType.toLowerCase().includes('electric')) {
+          category = 'cable';
         }
+        
+        result = await utilityService.payBill(
+          userId,
+          category,
+          sessionData.provider,
+          sessionData.meterNumber || sessionData.iucNumber,
+          sessionData.amount,
+          pin,
+          sessionData.planId || null
+        );
 
         if (result.success) {
           logger.info('Bill payment successful via PIN flow', { userId, amount: sessionData.amount, provider: sessionData.provider });
