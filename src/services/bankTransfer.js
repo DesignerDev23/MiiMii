@@ -598,18 +598,53 @@ class BankTransferService {
       const feeCalculation = this.calculateTransferFee(amount, this.transferTypes.WALLET_TO_BANK);
       
       // Check wallet balance BEFORE creating transaction
-      const wallet = await walletService.getUserWallet(userId);
-      if (!wallet) {
-        throw new Error('Wallet not found');
-      }
-
-      const walletBalance = parseFloat(wallet.balance);
+      // Sync with Rubies to get the latest balance
+      const walletBalanceData = await walletService.getWalletBalance(userId, true); // Sync with Rubies
+      const walletBalance = walletBalanceData.available || walletBalanceData.total || 0;
       const totalAmount = feeCalculation.totalAmount;
 
       // Check if user has sufficient balance
       if (walletBalance < totalAmount) {
         const shortfall = totalAmount - walletBalance;
         throw new Error(`Insufficient wallet balance. You need ₦${totalAmount.toLocaleString()} but only have ₦${walletBalance.toLocaleString()}. Please fund your wallet with ₦${shortfall.toLocaleString()} more.`);
+      }
+      
+      // Also verify the wallet exists
+      const wallet = await walletService.getUserWallet(userId);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+      
+      // Double-check: Verify Rubies virtual account has sufficient funds
+      if (wallet.virtualAccountNumber && wallet.virtualAccountBank === 'Rubies MFB') {
+        try {
+          const rubiesService = require('./rubies');
+          const rubiesBalance = await rubiesService.retrieveWalletDetails(wallet.virtualAccountNumber);
+          
+          if (rubiesBalance.success) {
+            const rubiesAccountBalance = parseFloat(rubiesBalance.accountBalance || 0);
+            
+            if (rubiesAccountBalance < totalAmount) {
+              // Sync local balance with Rubies balance
+              await walletService.getWalletBalance(userId, true);
+              
+              throw new Error(`Insufficient funds in your account. Available balance: ₦${rubiesAccountBalance.toLocaleString()}. Required: ₦${totalAmount.toLocaleString()}. Please fund your account and try again.`);
+            }
+            
+            logger.info('Rubies balance verified before transfer', {
+              userId,
+              rubiesBalance: rubiesAccountBalance,
+              requiredAmount: totalAmount,
+              virtualAccountNumber: wallet.virtualAccountNumber
+            });
+          }
+        } catch (rubiesError) {
+          logger.warn('Failed to verify Rubies balance, proceeding with local balance check', {
+            error: rubiesError.message,
+            userId
+          });
+          // Continue with local balance check if Rubies check fails
+        }
       }
 
       // Create transaction record

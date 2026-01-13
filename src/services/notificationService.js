@@ -143,7 +143,7 @@ class NotificationService {
       }).format(amount);
 
       return await this.createNotification(userId, {
-        type: 'transfer_failed',
+        type: 'transaction_failed', // Use valid enum value
         title: '❌ Transfer Failed',
         message: `Your transfer of ${formattedAmount} failed. ${reason || 'Please try again.'}`,
         data: {

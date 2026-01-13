@@ -1936,56 +1936,84 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
        }
 
        // Step 1: Upload media using form-data to get media ID
-       const uploadUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/media`;
+       // Try different API versions as per WhatsApp documentation (same approach as images)
+       const apiVersions = ['v23.0', 'v22.0', 'v21.0'];
+       let uploadResponse;
+       let mediaId;
        
-       const formData = new FormData();
-       formData.append('messaging_product', 'whatsapp');
-       formData.append('file', documentBuffer, {
-         filename: filename,
-         contentType: contentType
-       });
+       for (const version of apiVersions) {
+         try {
+           const uploadUrl = `https://graph.facebook.com/${version}/${this.phoneNumberId}/media`;
+           logger.info(`Trying WhatsApp API version ${version} for document upload`, { uploadUrl });
+       
+           const formData = new FormData();
+           formData.append('messaging_product', 'whatsapp');
+           formData.append('type', 'document'); // Specify document type
+           formData.append('file', documentBuffer, {
+             filename: filename,
+             contentType: contentType || 'application/pdf'
+           });
 
-       logger.info('Uploading document to WhatsApp using form-data', {
-         uploadUrl,
-         phoneNumberId: this.phoneNumberId,
-         fileSize: `${fileSizeInMB.toFixed(2)}MB`,
-         filename,
-         contentType
-       });
+           logger.info('Uploading document to WhatsApp using form-data', {
+             uploadUrl,
+             phoneNumberId: this.phoneNumberId,
+             fileSize: `${fileSizeInMB.toFixed(2)}MB`,
+             filename,
+             contentType: contentType || 'application/pdf',
+             apiVersion: version
+           });
 
-       const uploadResponse = await axios.post(uploadUrl, formData, {
-         headers: {
-           'Authorization': `Bearer ${this.accessToken}`,
-           ...formData.getHeaders()
-         },
-         ...this.axiosConfig
-       });
+           uploadResponse = await axios.post(uploadUrl, formData, {
+             headers: {
+               'Authorization': `Bearer ${this.accessToken}`,
+               ...formData.getHeaders()
+             },
+             timeout: 30000 // 30 second timeout
+           });
 
-       if (!uploadResponse.data.id) {
-         logger.error('WhatsApp upload response missing media ID', {
-           response: uploadResponse.data,
-           status: uploadResponse.status
-         });
-         throw new Error('Failed to upload document to WhatsApp - no media ID returned');
+           if (uploadResponse.data.id) {
+             mediaId = uploadResponse.data.id;
+             logger.info('Document uploaded successfully', { mediaId, apiVersion: version });
+             break; // Success, exit the loop
+           } else {
+             logger.warn(`API version ${version} failed - no media ID`, {
+               response: uploadResponse.data,
+               status: uploadResponse.status
+             });
+             if (version === apiVersions[apiVersions.length - 1]) {
+               throw new Error('Failed to upload document to WhatsApp - no media ID returned from any API version');
+             }
+           }
+         } catch (versionError) {
+           logger.warn(`API version ${version} failed for document upload`, {
+             error: versionError.message,
+             status: versionError.response?.status,
+             response: versionError.response?.data
+           });
+           if (version === apiVersions[apiVersions.length - 1]) {
+             throw new Error(`WhatsApp document upload failed on all API versions: ${versionError.message}`);
+           }
+         }
        }
 
-       const mediaId = uploadResponse.data.id;
-       logger.info('Document uploaded successfully', { mediaId });
-
-       // Step 2: Send message with media ID
-       const messageUrl = `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`;
+       // Step 2: Send message with media ID using the working API version
+       const workingApiVersion = uploadResponse.config.url.includes('v22.0') ? 'v22.0' : 
+                                 uploadResponse.config.url.includes('v21.0') ? 'v21.0' : 'v23.0';
+       
+       const messageUrl = `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`;
        const messagePayload = {
          messaging_product: 'whatsapp',
          to: formattedNumber,
          type: 'document',
          document: {
-           id: mediaId
+           id: mediaId,
+           filename: filename
          }
        };
 
        // Add caption if provided
        if (caption) {
-         messagePayload.document.caption = caption;
+         messagePayload.document.caption = caption.substring(0, 1024); // WhatsApp caption limit
        }
 
        logger.info('Sending document message with media ID', {
@@ -1994,7 +2022,8 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          hasCaption: !!caption,
          mediaId,
          filename,
-         contentType,
+         contentType: contentType || 'application/pdf',
+         apiVersion: workingApiVersion,
          authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
        });
 
@@ -2003,6 +2032,7 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
            'Authorization': `Bearer ${this.accessToken}`,
            'Content-Type': 'application/json'
          },
+         timeout: 30000,
          ...this.axiosConfig
        });
 
@@ -2018,7 +2048,8 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          to: formattedNumber,
          messageId: response.data.messages[0].id,
          mediaId,
-         hasCaption: !!caption
+         hasCaption: !!caption,
+         apiVersion: workingApiVersion
        });
 
        return {
