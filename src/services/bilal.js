@@ -12,13 +12,22 @@ const dataPlanService = require('./dataPlanService');
 
 class BilalService {
   constructor() {
+    // Base URL for data and bills services
     this.baseURL = process.env.BILAL_BASE_URL || 'https://legitdataway.com/api';
+    // Base URL for airtime services only
+    this.airtimeBaseURL = process.env.BILAL_AIRTIME_BASE_URL || 'https://bilalsadasub.com/api/topup/';
     this.username = process.env.PROVIDER_USERNAME;
     this.password = process.env.PROVIDER_PASSWORD;
     this.token = null;
     this.tokenExpiry = null;
     this.balance = null;
     this.cachedUsername = null;
+    
+    // Separate token storage for airtime (different baseURL)
+    this.airtimeToken = null;
+    this.airtimeTokenExpiry = null;
+    this.airtimeBalance = null;
+    this.airtimeCachedUsername = null;
     
     // Bilal's virtual account details for payments
     this.bilalAccount = {
@@ -52,20 +61,47 @@ class BilalService {
     };
   }
 
-  async generateToken() {
+  async generateToken(forAirtime = false) {
     try {
-      if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
-        return {
-          token: this.token,
-          balance: this.balance,
-          username: this.cachedUsername
-        };
+      // Use airtime token storage if forAirtime is true
+      const tokenKey = forAirtime ? 'airtime' : 'main';
+      const baseURL = forAirtime ? this.airtimeBaseURL.replace('/topup/', '') : this.baseURL;
+      
+      // Check if we have a valid cached token
+      if (forAirtime) {
+        if (this.airtimeToken && this.airtimeTokenExpiry && Date.now() < this.airtimeTokenExpiry) {
+          return {
+            token: this.airtimeToken,
+            balance: this.airtimeBalance,
+            username: this.airtimeCachedUsername
+          };
+        }
+      } else {
+        if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+          return {
+            token: this.token,
+            balance: this.balance,
+            username: this.cachedUsername
+          };
+        }
       }
 
       // Use Basic Authentication as per Bilal documentation
       const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
       
-      const response = await axios.post(`${this.baseURL}/user/`, {}, {
+      // Extract base URL without endpoint for token generation
+      // For airtime: https://bilalsadasub.com/api/topup/ -> https://bilalsadasub.com/api
+      const tokenBaseURL = baseURL.endsWith('/topup/') 
+        ? baseURL.replace('/topup/', '') 
+        : baseURL;
+      
+      logger.info('Generating Bilal token', {
+        forAirtime,
+        tokenBaseURL,
+        originalBaseURL: baseURL
+      });
+      
+      const response = await axios.post(`${tokenBaseURL}/user/`, {}, {
         ...axiosConfig,
         headers: {
           ...axiosConfig.headers,
@@ -75,19 +111,27 @@ class BilalService {
       });
 
       if (response.data.status === 'success') {
-        this.token = response.data.AccessToken;
-        this.balance = response.data.balance;
-        this.cachedUsername = response.data.username;
-        // Set expiry to 23 hours (tokens typically last 24 hours)
-        this.tokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
+        if (forAirtime) {
+          this.airtimeToken = response.data.AccessToken;
+          this.airtimeBalance = response.data.balance;
+          this.airtimeCachedUsername = response.data.username;
+          this.airtimeTokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
+        } else {
+          this.token = response.data.AccessToken;
+          this.balance = response.data.balance;
+          this.cachedUsername = response.data.username;
+          this.tokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
+        }
         
         logger.info('Bilal token generated successfully', {
+          forAirtime,
           username: response.data.username,
-          balance: response.data.balance
+          balance: response.data.balance,
+          tokenBaseURL
         });
         
         return {
-          token: this.token,
+          token: forAirtime ? this.airtimeToken : this.token,
           balance: response.data.balance,
           username: response.data.username
         };
@@ -95,7 +139,10 @@ class BilalService {
         throw new Error('Failed to generate token');
       }
     } catch (error) {
-      logger.error('Failed to generate Bilal token', { error: error.message });
+      logger.error('Failed to generate Bilal token', { 
+        error: error.message,
+        forAirtime 
+      });
       throw error;
     }
   }
@@ -114,13 +161,14 @@ class BilalService {
   }
 
   // Check if provider has sufficient balance for a purchase
-  async checkProviderBalance(requiredAmount) {
+  async checkProviderBalance(requiredAmount, forAirtime = false) {
     try {
-      const tokenData = await this.generateToken();
+      const tokenData = await this.generateToken(forAirtime);
       const providerBalance = parseFloat(tokenData.balance || 0);
       const amount = parseFloat(requiredAmount);
       
       logger.info('Checking provider balance', {
+        forAirtime,
         providerBalance,
         requiredAmount: amount,
         hasSufficientBalance: providerBalance >= amount
@@ -139,7 +187,8 @@ class BilalService {
     } catch (error) {
       logger.error('Provider balance check failed', { 
         error: error.message, 
-        requiredAmount 
+        requiredAmount,
+        forAirtime
       });
       throw error;
     }
@@ -240,22 +289,24 @@ class BilalService {
       // Generate unique request ID (will be overridden with simple format below)
       const requestId = `Airtime_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-      // Get token
+      // Get token - use airtime-specific token generation
       logger.info('About to generate token for airtime purchase', {
         hasUsername: !!this.username,
         hasPassword: !!this.password,
-        baseURL: this.baseURL
+        airtimeBaseURL: this.airtimeBaseURL,
+        mainBaseURL: this.baseURL
       });
       
       let tokenData;
       try {
-        tokenData = await this.generateToken();
+        tokenData = await this.generateToken(true); // true = for airtime
         
         logger.info('Token generated for airtime purchase', {
           hasToken: !!tokenData.token,
           tokenLength: tokenData.token ? tokenData.token.length : 0,
           hasBalance: !!tokenData.balance,
-          hasUsername: !!tokenData.username
+          hasUsername: !!tokenData.username,
+          balance: tokenData.balance
         });
       } catch (tokenError) {
         logger.error('Token generation failed for airtime purchase', {
@@ -321,10 +372,12 @@ class BilalService {
         amount,
         endpoint: '/topup',
         method: 'POST',
+        baseURL: this.airtimeBaseURL,
         fullPayload: JSON.stringify(payload)
       });
 
-      const response = await this.makeRequest('POST', '/topup/', payload, tokenData.token);
+      // Use airtime-specific base URL for airtime purchases
+      const response = await this.makeRequest('POST', '', payload, tokenData.token, this.airtimeBaseURL);
 
       logger.info('Bilal API airtime response received', {
         status: response.status,
@@ -1122,12 +1175,14 @@ class BilalService {
     }
   }
 
-  async makeRequest(method, endpoint, data = null, token = null) {
+  async makeRequest(method, endpoint, data = null, token = null, baseURL = null) {
     return await RetryHelper.executeWithRetry(async () => {
+      // Use provided baseURL or default to this.baseURL
+      const requestBaseURL = baseURL || this.baseURL;
       const config = {
         ...axiosConfig,
         method,
-        url: `${this.baseURL}${endpoint}`,
+        url: `${requestBaseURL}${endpoint}`,
         headers: {
           ...axiosConfig.headers,
           'Content-Type': 'application/json'

@@ -139,8 +139,9 @@ class AirtimeService {
 
       try {
         // Step 1: Check provider (Bilal) balance BEFORE any transfers/debits
+        // Use airtime-specific balance check
         const bilalService = require('./bilal');
-        await bilalService.checkProviderBalance(validAmount);
+        await bilalService.checkProviderBalance(validAmount, true); // true = for airtime
         
         // Step 2: Transfer amount to parent account
         const bankTransferService = require('./bankTransfer');
