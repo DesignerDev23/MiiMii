@@ -70,17 +70,27 @@ class BilalService {
       // Check if we have a valid cached token
       if (forAirtime) {
         if (this.airtimeToken && this.airtimeTokenExpiry && Date.now() < this.airtimeTokenExpiry) {
+          // Ensure balance is a number (not a string with commas)
+          const cachedBalance = typeof this.airtimeBalance === 'string'
+            ? parseFloat(this.airtimeBalance.replace(/,/g, ''))
+            : parseFloat(this.airtimeBalance) || 0;
+          
           return {
             token: this.airtimeToken,
-            balance: this.airtimeBalance,
+            balance: cachedBalance,
             username: this.airtimeCachedUsername
           };
         }
       } else {
         if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+          // Ensure balance is a number (not a string with commas)
+          const cachedBalance = typeof this.balance === 'string'
+            ? parseFloat(this.balance.replace(/,/g, ''))
+            : parseFloat(this.balance) || 0;
+          
           return {
             token: this.token,
-            balance: this.balance,
+            balance: cachedBalance,
             username: this.cachedUsername
           };
         }
@@ -111,14 +121,20 @@ class BilalService {
       });
 
       if (response.data.status === 'success') {
+        // Parse balance - remove commas and convert to number
+        const rawBalance = response.data.balance;
+        const parsedBalance = typeof rawBalance === 'string' 
+          ? parseFloat(rawBalance.replace(/,/g, '')) 
+          : parseFloat(rawBalance) || 0;
+        
         if (forAirtime) {
           this.airtimeToken = response.data.AccessToken;
-          this.airtimeBalance = response.data.balance;
+          this.airtimeBalance = parsedBalance;
           this.airtimeCachedUsername = response.data.username;
           this.airtimeTokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
         } else {
           this.token = response.data.AccessToken;
-          this.balance = response.data.balance;
+          this.balance = parsedBalance;
           this.cachedUsername = response.data.username;
           this.tokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
         }
@@ -126,13 +142,14 @@ class BilalService {
         logger.info('Bilal token generated successfully', {
           forAirtime,
           username: response.data.username,
-          balance: response.data.balance,
+          rawBalance: rawBalance,
+          parsedBalance: parsedBalance,
           tokenBaseURL
         });
         
         return {
           token: forAirtime ? this.airtimeToken : this.token,
-          balance: response.data.balance,
+          balance: parsedBalance,
           username: response.data.username
         };
       } else {
@@ -164,11 +181,20 @@ class BilalService {
   async checkProviderBalance(requiredAmount, forAirtime = false) {
     try {
       const tokenData = await this.generateToken(forAirtime);
-      const providerBalance = parseFloat(tokenData.balance || 0);
+      
+      // Ensure balance is a number (handle string with commas)
+      let providerBalance = tokenData.balance;
+      if (typeof providerBalance === 'string') {
+        providerBalance = parseFloat(providerBalance.replace(/,/g, '')) || 0;
+      } else {
+        providerBalance = parseFloat(providerBalance) || 0;
+      }
+      
       const amount = parseFloat(requiredAmount);
       
       logger.info('Checking provider balance', {
         forAirtime,
+        rawBalance: tokenData.balance,
         providerBalance,
         requiredAmount: amount,
         hasSufficientBalance: providerBalance >= amount
