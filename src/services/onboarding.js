@@ -1503,14 +1503,59 @@ class OnboardingService {
 
       // Process onboarding data based on structure
       if (flowData.screen_1_First_Name_0 && flowData.screen_1_Last_Name_1) {
-        // Personal details screen
+        // Personal details screen - try multiple field name variations for date of birth
+        let dateOfBirth = flowData.screen_1_Date_of_Birth__5 || 
+                          flowData.screen_1_Date_of_Birth_5 ||
+                          flowData.screen_1_Date_of_Birth ||
+                          flowData.dateOfBirth || 
+                          flowData.date_of_birth ||
+                          flowData.dob;
+        
+        // Parse date if provided
+        let parsedDate = null;
+        if (dateOfBirth && String(dateOfBirth).trim().length > 0) {
+          const dateStr = String(dateOfBirth).trim();
+          
+          // Try ISO format first (YYYY-MM-DD or YYYY/MM/DD)
+          const isoRegex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/;
+          const isoMatch = dateStr.match(isoRegex);
+          if (isoMatch) {
+            parsedDate = `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+          } else {
+            // Try DD/MM/YYYY or DD-MM-YYYY format
+            const ddmmyyyyRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/;
+            const ddmmyyyyMatch = dateStr.match(ddmmyyyyRegex);
+            if (ddmmyyyyMatch) {
+              parsedDate = `${ddmmyyyyMatch[3]}-${ddmmyyyyMatch[2].padStart(2, '0')}-${ddmmyyyyMatch[1].padStart(2, '0')}`;
+            } else if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(dateStr)) {
+              // Looks like ISO format, use it directly
+              parsedDate = dateStr.replace(/\//g, '-');
+            }
+          }
+        }
+        
+        logger.info('Processing personal details from flow', {
+          userId: user.id,
+          hasDateOfBirth: !!dateOfBirth,
+          dateOfBirthValue: dateOfBirth,
+          parsedDate: parsedDate,
+          allDateFields: {
+            screen_1_Date_of_Birth__5: flowData.screen_1_Date_of_Birth__5,
+            screen_1_Date_of_Birth_5: flowData.screen_1_Date_of_Birth_5,
+            screen_1_Date_of_Birth: flowData.screen_1_Date_of_Birth,
+            dateOfBirth: flowData.dateOfBirth,
+            date_of_birth: flowData.date_of_birth,
+            dob: flowData.dob
+          }
+        });
+        
         await user.update({
           firstName: flowData.screen_1_First_Name_0,
           lastName: flowData.screen_1_Last_Name_1,
           middleName: flowData.screen_1_Middle_Name_2 || null,
           address: flowData.screen_1_Address_3,
           gender: flowData.screen_1_Gender_4,
-          dateOfBirth: flowData.screen_1_Date_of_Birth__5,
+          dateOfBirth: parsedDate || dateOfBirth || null, // Use parsed date or original value
           onboardingStep: 'bvn_verification'
         });
 

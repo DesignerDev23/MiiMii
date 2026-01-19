@@ -1260,17 +1260,65 @@ async function handleDataExchange(screen, data, tokenData, flowToken = null) {
  */
 async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
   try {
-    // Extract personal details
-    const firstName = data.screen_1_First_Name_0;
-    const lastName = data.screen_1_Last_Name_1;
-    const middleName = data.screen_1_Middle_Name_2;
-    const address = data.screen_1_Address_3;
-    const gender = data.screen_1_Gender_4;
-    const dateOfBirth = data.screen_1_Date_of_Birth__5;
+    // Log all incoming data for debugging
+    logger.info('Personal details screen data received', {
+      userId: userId || 'unknown',
+      dataKeys: Object.keys(data || {}),
+      allData: JSON.stringify(data)
+    });
+
+    // Extract personal details with fallback field names
+    const firstName = data.screen_1_First_Name_0 || data.firstName || data.first_name;
+    const lastName = data.screen_1_Last_Name_1 || data.lastName || data.last_name;
+    const middleName = data.screen_1_Middle_Name_2 || data.middleName || data.middle_name;
+    const address = data.screen_1_Address_3 || data.address;
+    const gender = data.screen_1_Gender_4 || data.gender;
+    
+    // Try multiple field name variations for date of birth
+    let dateOfBirth = data.screen_1_Date_of_Birth__5 || 
+                      data.screen_1_Date_of_Birth_5 ||
+                      data.screen_1_Date_of_Birth ||
+                      data.dateOfBirth || 
+                      data.date_of_birth ||
+                      data.dob;
+    
     const phoneNumber = data.phoneNumber || null;
 
-    // Validate required fields
-    if (!firstName || !lastName || !address || !gender || !dateOfBirth) {
+    // Log extracted values for debugging
+    logger.info('Extracted personal details', {
+      userId: userId || 'unknown',
+      firstName: !!firstName,
+      lastName: !!lastName,
+      address: !!address,
+      gender: !!gender,
+      dateOfBirth: dateOfBirth || null,
+      dateOfBirthType: typeof dateOfBirth,
+      allDateFields: {
+        screen_1_Date_of_Birth__5: data.screen_1_Date_of_Birth__5,
+        screen_1_Date_of_Birth_5: data.screen_1_Date_of_Birth_5,
+        screen_1_Date_of_Birth: data.screen_1_Date_of_Birth,
+        dateOfBirth: data.dateOfBirth,
+        date_of_birth: data.date_of_birth,
+        dob: data.dob
+      }
+    });
+
+    // Validate required fields - dateOfBirth can be empty string, null, or undefined
+    const hasDateOfBirth = dateOfBirth && String(dateOfBirth).trim().length > 0;
+    
+    if (!firstName || !lastName || !address || !gender || !hasDateOfBirth) {
+      logger.warn('Missing required fields in personal details', {
+        userId: userId || 'unknown',
+        hasFirstName: !!firstName,
+        hasLastName: !!lastName,
+        hasAddress: !!address,
+        hasGender: !!gender,
+        hasDateOfBirth: hasDateOfBirth,
+        dateOfBirthValue: dateOfBirth,
+        dateOfBirthType: typeof dateOfBirth,
+        allDataKeys: Object.keys(data || {})
+      });
+      
       return {
         screen: 'screen_poawge',
         data: {
@@ -1280,7 +1328,7 @@ async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
             lastName: !lastName ? 'Last name is required' : null,
             address: !address ? 'Address is required' : null,
             gender: !gender ? 'Gender is required' : null,
-            dateOfBirth: !dateOfBirth ? 'Date of birth is required' : null
+            dateOfBirth: !hasDateOfBirth ? 'Date of birth is required' : null
           }
         }
       };
@@ -1288,17 +1336,107 @@ async function handlePersonalDetailsScreen(data, userId, tokenData = {}) {
 
     // Parse gender
     let parsedGender = 'other';
-    if (gender.toLowerCase().includes('male')) {
-      parsedGender = gender.toLowerCase().includes('female') ? 'female' : 'male';
+    if (gender && typeof gender === 'string') {
+      const genderLower = gender.toLowerCase();
+      if (genderLower.includes('male') && !genderLower.includes('female')) {
+        parsedGender = 'male';
+      } else if (genderLower.includes('female')) {
+        parsedGender = 'female';
+      }
     }
 
-    // Parse date
+    // Parse date - handle multiple formats
     let parsedDate = null;
     if (dateOfBirth) {
-      const parts = dateOfBirth.split('/');
-      if (parts.length === 3) {
-        parsedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      // Convert to string if it's not already
+      const dateStr = String(dateOfBirth).trim();
+      
+      // Try ISO format first (YYYY-MM-DD or YYYY/MM/DD)
+      const isoRegex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/;
+      const isoMatch = dateStr.match(isoRegex);
+      if (isoMatch) {
+        parsedDate = `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+      } else {
+        // Try DD/MM/YYYY or DD-MM-YYYY format
+        const ddmmyyyyRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/;
+        const ddmmyyyyMatch = dateStr.match(ddmmyyyyRegex);
+        if (ddmmyyyyMatch) {
+          parsedDate = `${ddmmyyyyMatch[3]}-${ddmmyyyyMatch[2].padStart(2, '0')}-${ddmmyyyyMatch[1].padStart(2, '0')}`;
+        } else {
+          // Try MM/DD/YYYY format (US format)
+          const mmddyyyyRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/;
+          const mmddyyyyMatch = dateStr.match(mmddyyyyRegex);
+          if (mmddyyyyMatch) {
+            // If day > 12, it's likely DD/MM/YYYY, otherwise try MM/DD/YYYY
+            const firstPart = parseInt(mmddyyyyMatch[1]);
+            const secondPart = parseInt(mmddyyyyMatch[2]);
+            if (firstPart > 12) {
+              // DD/MM/YYYY
+              parsedDate = `${mmddyyyyMatch[3]}-${mmddyyyyMatch[2].padStart(2, '0')}-${mmddyyyyMatch[1].padStart(2, '0')}`;
+            } else if (secondPart > 12) {
+              // MM/DD/YYYY
+              parsedDate = `${mmddyyyyMatch[3]}-${mmddyyyyMatch[1].padStart(2, '0')}-${mmddyyyyMatch[2].padStart(2, '0')}`;
+            } else {
+              // Ambiguous - default to DD/MM/YYYY (common in Nigeria)
+              parsedDate = `${mmddyyyyMatch[3]}-${mmddyyyyMatch[2].padStart(2, '0')}-${mmddyyyyMatch[1].padStart(2, '0')}`;
+            }
+          }
+        }
       }
+      
+      // Validate parsed date
+      if (parsedDate) {
+        const dateObj = new Date(parsedDate);
+        if (isNaN(dateObj.getTime())) {
+          logger.warn('Invalid date parsed', { originalDate: dateOfBirth, parsedDate });
+          parsedDate = null;
+        } else {
+          // Check if date is reasonable (not in future, not too old)
+          const now = new Date();
+          const minDate = new Date('1900-01-01');
+          if (dateObj > now || dateObj < minDate) {
+            logger.warn('Date out of reasonable range', { originalDate: dateOfBirth, parsedDate, dateObj });
+            parsedDate = null;
+          }
+        }
+      }
+      
+      if (!parsedDate) {
+        logger.error('Failed to parse date of birth', { 
+          originalDate: dateOfBirth, 
+          dateType: typeof dateOfBirth,
+          userId: userId || 'unknown'
+        });
+        // If parsing failed but we have a value, try to use it as-is (might be ISO format already)
+        // Only do this if it looks like a valid date string
+        const dateStr = String(dateOfBirth).trim();
+        if (dateStr.length >= 8 && /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(dateStr)) {
+          // Looks like ISO format, use it directly
+          parsedDate = dateStr.replace(/\//g, '-');
+          logger.info('Using date of birth as-is (appears to be ISO format)', { 
+            originalDate: dateOfBirth,
+            parsedDate
+          });
+        }
+      }
+    }
+    
+    // Final validation - if we still don't have a parsed date, fail
+    if (!parsedDate && hasDateOfBirth) {
+      logger.error('Date of birth provided but could not be parsed', {
+        userId: userId || 'unknown',
+        originalDate: dateOfBirth,
+        dateType: typeof dateOfBirth
+      });
+      return {
+        screen: 'screen_poawge',
+        data: {
+          error: 'Invalid date of birth format. Please use DD/MM/YYYY format.',
+          validation: {
+            dateOfBirth: 'Invalid date format. Please use DD/MM/YYYY format.'
+          }
+        }
+      };
     }
 
     // Persist to user record if possible
@@ -1436,11 +1574,20 @@ async function handleBvnVerificationScreen(data, userId, tokenData = {}) {
       });
 
       const rubiesService = require('../services/rubies');
+      
+      // Try multiple field name variations for date of birth
+      const dateOfBirthFromData = data.screen_1_Date_of_Birth__5 || 
+                                   data.screen_1_Date_of_Birth_5 ||
+                                   data.screen_1_Date_of_Birth ||
+                                   data.dateOfBirth || 
+                                   data.date_of_birth ||
+                                   data.dob;
+      
       const bvnValidationResult = await rubiesService.validateBVN({
         bvn: bvn,
         firstName: user?.firstName || data.screen_1_First_Name_0,
         lastName: user?.lastName || data.screen_1_Last_Name_1,
-        dateOfBirth: user?.dateOfBirth || data.screen_1_Date_of_Birth_3,
+        dateOfBirth: user?.dateOfBirth || dateOfBirthFromData,
         phoneNumber: user?.whatsappNumber,
         userId: userId
       });
