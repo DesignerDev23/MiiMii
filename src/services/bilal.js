@@ -1187,6 +1187,49 @@ class BilalService {
     }
   }
 
+  // Get network name from ID (reverse mapping)
+  getNetworkNameById(networkId) {
+    try {
+      // Create reverse mapping
+      const reverseMapping = {};
+      for (const [name, id] of Object.entries(this.networkMapping)) {
+        reverseMapping[id] = name;
+      }
+      
+      const networkName = reverseMapping[networkId] || reverseMapping[parseInt(networkId)];
+      if (!networkName) {
+        logger.warn('Unknown network ID', { networkId, availableIds: Object.keys(reverseMapping) });
+        return null;
+      }
+      
+      return networkName;
+    } catch (error) {
+      logger.error('Failed to get network name from ID', { error: error.message, networkId });
+      return null;
+    }
+  }
+
+  // Get network display label from name or ID
+  getNetworkLabel(network) {
+    try {
+      // If it's a number (ID), convert to name first
+      if (typeof network === 'number' || (typeof network === 'string' && /^\d+$/.test(network))) {
+        network = this.getNetworkNameById(parseInt(network));
+        if (!network) return 'Unknown Network';
+      }
+      
+      // Convert network name to display label
+      const networkUpper = String(network).toUpperCase();
+      if (networkUpper === '9MOBILE') {
+        return '9mobile';
+      }
+      return networkUpper.charAt(0) + networkUpper.slice(1).toLowerCase();
+    } catch (error) {
+      logger.error('Failed to get network label', { error: error.message, network });
+      return String(network);
+    }
+  }
+
   // Get available networks
   async getAvailableNetworks() {
     try {

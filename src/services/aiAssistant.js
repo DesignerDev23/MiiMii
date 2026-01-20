@@ -1825,7 +1825,10 @@ Extract intent and data from this message. Consider the user context and any ext
       
       switch (transactionData.service) {
         case 'airtime':
-          serviceMessage = `Enter your 4-digit PIN to authorize airtime purchase.\n\nAmount: ₦${transactionData.amount}\nPhone: ${transactionData.phoneNumber}\nNetwork: ${transactionData.network}`;
+          // Ensure network is displayed correctly (handle both name and ID)
+          const bilalService = require('./bilal');
+          const networkLabel = bilalService.getNetworkLabel(transactionData.network);
+          serviceMessage = `Enter your 4-digit PIN to authorize airtime purchase.\n\nAmount: ₦${transactionData.amount}\nPhone: ${transactionData.phoneNumber}\nNetwork: ${networkLabel}`;
           serviceTitle = '🔐 Authorize Airtime Purchase';
           break;
         case 'data':
