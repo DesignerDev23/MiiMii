@@ -138,102 +138,185 @@ class AirtimeService {
       });
 
       try {
-        // Step 1: Check provider (Bilal) balance BEFORE any transfers/debits
+        // Step 1: Check user wallet balance FIRST
+        const walletBalance = await walletService.getWalletBalance(userId, true);
+        if (walletBalance.available < totalAmount) {
+          throw new Error(`Insufficient wallet balance. Required: ₦${totalAmount}, Available: ₦${walletBalance.available}`);
+        }
+        
+        // Step 2: Check provider (Bilal) balance
         // Use airtime-specific balance check
         const bilalService = require('./bilal');
         await bilalService.checkProviderBalance(validAmount, true); // true = for airtime
         
-        // Step 2: Transfer amount to parent account
-        const bankTransferService = require('./bankTransfer');
-        await bankTransferService.transferToParentAccount(userId, totalAmount, 'airtime', transaction.reference);
-        
-        // Step 3: Sync and check Rubies wallet balance
-        const walletBalance = await walletService.getWalletBalance(userId, true);
-        if (walletBalance.available < totalAmount) {
-          throw new Error('Insufficient wallet balance');
-        }
-        
-        // Step 4: Debit wallet
-        await walletService.debitWallet(userId, totalAmount, `Airtime purchase: ₦${validAmount}`, {
-          category: 'airtime_purchase',
-          transactionId: transaction.id,
-          parentAccountTransferred: true
-        });
-
-        // Step 5: Process airtime purchase through Bilal API
+        // Step 3: Process airtime purchase through Bilal API FIRST (before debiting user)
+        // This ensures provider purchase succeeds before we debit the user
         const purchaseResult = await this.processBilalAirtimePurchase(user, validation.cleanNumber, network, validAmount, pin);
         
-        if (purchaseResult.success) {
-          // Update transaction status
-          await transactionService.updateTransactionStatus(transaction.reference, 'completed', {
-            providerReference: purchaseResult.reference,
-            providerResponse: purchaseResult.response
-          });
-
-          logger.info('Airtime purchase completed successfully', {
-            userId,
-            phoneNumber: validation.cleanNumber,
-            network: validation.network,
-            amount: validAmount,
-            fee,
-            reference: transaction.reference
-          });
-
-          return {
-            success: true,
-            transaction: {
-              reference: transaction.reference,
-              amount: validAmount,
-              fee,
-              totalAmount,
-              phoneNumber: validation.cleanNumber,
-              network: validation.network,
-              status: 'completed'
-            },
-            provider: purchaseResult
-          };
-        } else {
-          // Provider failed - refund user wallet
-          await walletService.creditWallet(userId, totalAmount, `Refund: Airtime purchase failed - ${transaction.reference}`, {
-            category: 'refund',
-            parentTransactionId: transaction.id,
-            refundReason: purchaseResult.message || 'Provider purchase failed'
-          });
-          
-          // Update transaction as failed
+        if (!purchaseResult.success) {
+          // Provider purchase failed - user was never debited, just update transaction
           await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
-            failureReason: purchaseResult.message || 'Purchase failed',
-            refunded: true
+            failureReason: purchaseResult.message || 'Provider purchase failed',
+            providerResponse: purchaseResult.response
           });
 
           throw new Error(purchaseResult.message || 'Airtime purchase failed');
         }
+        
+        // Step 4: Provider purchase succeeded - now debit user wallet
+        // Use actual amount from provider response if available, otherwise use requested amount
+        const actualAmount = purchaseResult.data?.amount ? parseFloat(purchaseResult.data.amount) : validAmount;
+        const actualTotalAmount = actualAmount + fee;
+        
+        // Re-check wallet balance before debiting (in case it changed)
+        const finalWalletBalance = await walletService.getWalletBalance(userId, true);
+        if (finalWalletBalance.available < actualTotalAmount) {
+          // This should rarely happen, but if it does, we need to handle it
+          // The provider purchase already succeeded, so we need to log this as a critical error
+          logger.error('Critical: Provider purchase succeeded but user wallet insufficient after purchase', {
+            userId,
+            required: actualTotalAmount,
+            available: finalWalletBalance.available,
+            transactionReference: transaction.reference
+          });
+          
+          // Update transaction as failed
+          await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
+            failureReason: 'Insufficient wallet balance after provider purchase',
+            providerReference: purchaseResult.reference,
+            providerResponse: purchaseResult.response,
+            criticalError: true
+          });
+          
+          throw new Error('Insufficient wallet balance after provider purchase. Please contact support.');
+        }
+        
+        // Debit wallet with actual amount
+        await walletService.debitWallet(userId, actualTotalAmount, `Airtime purchase: ₦${actualAmount}`, {
+          category: 'airtime_purchase',
+          transactionId: transaction.id,
+          providerReference: purchaseResult.reference,
+          providerResponse: purchaseResult.response
+        });
+        
+        // Step 5: Transfer amount to parent account (after successful purchase and debit)
+        const bankTransferService = require('./bankTransfer');
+        await bankTransferService.transferToParentAccount(userId, actualTotalAmount, 'airtime', transaction.reference);
+        
+        // Step 6: Update transaction status
+        await transactionService.updateTransactionStatus(transaction.reference, 'completed', {
+          providerReference: purchaseResult.reference,
+          providerResponse: purchaseResult.response,
+          actualAmount: actualAmount,
+          actualTotalAmount: actualTotalAmount
+        });
+
+        // Step 7: Generate and send receipt
+        let receiptSent = false;
+        try {
+          const receiptService = require('./receipt');
+          const whatsappService = require('./whatsapp');
+          const activityLogger = require('./activityLogger');
+          
+          const receiptData = {
+            network: purchaseResult.data?.network || network,
+            phoneNumber: purchaseResult.data?.phone_number || validation.cleanNumber,
+            amount: actualAmount,
+            reference: purchaseResult.reference || transaction.reference,
+            date: new Date().toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+            status: 'Successful',
+            discount: purchaseResult.data?.discount || 0
+          };
+
+          const receiptBuffer = await receiptService.generateAirtimeReceipt(receiptData);
+          await whatsappService.sendImageMessage(user.whatsappNumber, receiptBuffer, 'receipt.jpg');
+          receiptSent = true;
+          
+          // Log activity
+          await activityLogger.logUserActivity(
+            userId,
+            'airtime_purchase',
+            'airtime_purchased',
+            {
+              description: 'Airtime purchased successfully',
+              network: receiptData.network,
+              phoneNumber: receiptData.phoneNumber,
+              amount: actualAmount,
+              discount: receiptData.discount,
+              provider: 'bilal',
+              success: true,
+              source: 'api'
+            }
+          );
+        } catch (receiptError) {
+          logger.warn('Failed to generate receipt, sending text message only', { error: receiptError.message });
+          const whatsappService = require('./whatsapp');
+          const successMessage = `✅ *Airtime Purchase Successful!*\n\n` +
+            `Network: ${purchaseResult.data?.network || network}\n` +
+            `Phone: ${purchaseResult.data?.phone_number || validation.cleanNumber}\n` +
+            `Amount: ₦${actualAmount}\n` +
+            `Reference: ${purchaseResult.reference || transaction.reference}\n\n` +
+            `${purchaseResult.data?.message || 'Airtime purchase completed successfully'}`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, successMessage);
+          receiptSent = true; // Mark as sent even if it's text fallback
+        }
+
+        logger.info('Airtime purchase completed successfully', {
+          userId,
+          phoneNumber: validation.cleanNumber,
+          network: validation.network,
+          amount: actualAmount,
+          fee,
+          totalAmount: actualTotalAmount,
+          reference: transaction.reference,
+          receiptSent
+        });
+
+        return {
+          success: true,
+          transaction: {
+            reference: transaction.reference,
+            amount: actualAmount,
+            fee,
+            totalAmount: actualTotalAmount,
+            phoneNumber: validation.cleanNumber,
+            network: validation.network,
+            status: 'completed'
+          },
+          provider: purchaseResult
+        };
       } catch (providerError) {
-        // Provider error - check if it's a balance check error (before debit) or actual provider error
+        // Provider error - user was never debited, so no refund needed
         const isBalanceCheckError = providerError.message && providerError.message.includes('Provider has insufficient balance');
         
-        if (!isBalanceCheckError) {
-          // Only refund if user was already debited (actual provider error after debit)
-          // The webhook will handle the actual refund
-          logger.warn('Airtime purchase error - webhook will handle refund if needed', {
-            userId,
-            transactionReference: transaction.reference,
-            error: providerError.message
-          });
-        } else {
-          // Balance check failed - user was never debited, no refund needed
-          logger.info('Airtime purchase rejected due to insufficient provider balance', {
-            userId,
-            transactionReference: transaction.reference,
-            error: providerError.message
-          });
-        }
+        logger.info('Airtime purchase failed before user debit', {
+          userId,
+          transactionReference: transaction.reference,
+          error: providerError.message,
+          isBalanceCheckError
+        });
         
         // Update transaction as failed
         await transactionService.updateTransactionStatus(transaction.reference, 'failed', {
           failureReason: providerError.message,
-          awaitingRefund: !isBalanceCheckError // Only await refund if user was debited
+          awaitingRefund: false // User was never debited
         });
+
+        // Send error message to user
+        try {
+          const whatsappService = require('./whatsapp');
+          const errorMessage = `❌ Airtime purchase failed!\n\nReason: ${providerError.message}\n\nPlease try again or contact support.`;
+          await whatsappService.sendTextMessage(user.whatsappNumber, errorMessage);
+        } catch (messageError) {
+          logger.warn('Failed to send error message to user', { error: messageError.message });
+        }
 
         throw new Error(`Airtime purchase failed: ${providerError.message}`);
       }

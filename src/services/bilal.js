@@ -415,90 +415,25 @@ class BilalService {
       });
 
       if (response.status === 'success') {
-        // Debit user wallet with actual amount
+        // NOTE: Wallet debit is now handled by the calling service (airtime.js)
+        // This method only handles the provider API call and returns the response
         const actualAmount = parseFloat(response.amount);
         
-        await walletService.debitWallet(
-          user.id,
-          actualAmount,
-          `Airtime purchase - ${response.network} ${response.phone_number}`,
-          {
-            category: 'airtime_purchase',
-            network: response.network,
-            phoneNumber: response.phone_number,
-            amount: actualAmount,
-            discount: response.discount,
-            providerReference: response['request-id'],
-            provider: 'bilal',
-            bilalResponse: response
-          }
-        );
-
-        // Log activity
-        await activityLogger.logUserActivity(
-          user.id,
-          'airtime_purchase',
-          'airtime_purchased',
-          {
-            description: 'Airtime purchased successfully',
-            network: response.network,
-            phoneNumber: response.phone_number,
-            amount: actualAmount,
-            discount: response.discount,
-            provider: 'bilal',
-            success: true,
-            source: 'api'
-          }
-        );
-
-        const successMessage = `✅ *Airtime Purchase Successful!*\n\n` +
-          `Network: ${response.network}\n` +
-          `Phone: ${response.phone_number}\n` +
-          `Amount: ₦${response.amount}\n` +
-          `Reference: ${response['request-id']}\n\n` +
-          `${response.message}`;
-
-        // Generate and send receipt
-        let receiptSent = false;
-        try {
-          const receiptData = {
-            network: response.network,
-            phoneNumber: response.phone_number,
-            amount: response.amount,
-            reference: response['request-id'],
-            date: new Date().toLocaleString('en-US', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            }),
-            status: 'Successful',
-            discount: response.discount || 0
-          };
-
-          const receiptBuffer = await receiptService.generateAirtimeReceipt(receiptData);
-          await whatsappService.sendImageMessage(userPhoneNumber, receiptBuffer, 'receipt.jpg');
-          receiptSent = true;
-        } catch (receiptError) {
-          logger.warn('Failed to generate receipt, sending text message only', { error: receiptError.message });
-          await whatsappService.sendTextMessage(userPhoneNumber, successMessage);
-          receiptSent = true; // Mark as sent even if it's text fallback
-        }
-
-        logger.info('Airtime purchase successful', {
+        logger.info('Airtime purchase successful from provider', {
           userId: user.id,
           network: response.network,
           phoneNumber: response.phone_number,
           amount: actualAmount,
-          requestId: simpleRequestId
+          requestId: simpleRequestId,
+          note: 'Wallet debit will be handled by calling service'
         });
 
         return {
           success: true,
           data: response,
-          message: receiptSent ? null : successMessage // Only return message if receipt wasn't sent
+          reference: response['request-id'],
+          response: response,
+          message: null // Receipt will be handled by calling service
         };
 
       } else {
@@ -514,15 +449,14 @@ class BilalService {
       }
 
     } catch (error) {
-      logger.error('Airtime purchase failed', { 
+      logger.error('Airtime purchase failed from provider', { 
         error: error.message, 
         userId: user.id,
         airtimeData 
       });
 
-      const errorMessage = `❌ Airtime purchase failed!\n\nReason: ${error.message}\n\nPlease try again or contact support.`;
-      await whatsappService.sendTextMessage(userPhoneNumber, errorMessage);
-      
+      // NOTE: Error messages are now handled by the calling service (airtime.js)
+      // This method only throws the error for the caller to handle
       throw error;
     }
   }
