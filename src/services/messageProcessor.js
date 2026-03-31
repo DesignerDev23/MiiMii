@@ -4781,6 +4781,10 @@ class MessageProcessor {
         return await this.handleInteractiveMessage(user, userName, message);
       case 'image':
         return await this.handleCompletedUserMessage(user, message, 'image');
+      case 'audio':
+        return await this.handleCompletedUserMessage(user, message, 'audio');
+      case 'document':
+        return await this.handleCompletedUserMessage(user, message, 'document');
       default:
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, 
