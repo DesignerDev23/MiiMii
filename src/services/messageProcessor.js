@@ -631,15 +631,15 @@ class MessageProcessor {
         return;
       }
 
-      // If image message, handle via the image-aware pipeline
-      if (messageType === 'image') {
-        logger.info('Routing image message to handleCompletedUserMessage', {
+      // Route media messages through the media-aware pipeline before text AI analysis
+      if (messageType === 'image' || messageType === 'audio' || messageType === 'document') {
+        logger.info('Routing media message to handleCompletedUserMessage', {
           userId: user.id,
           messageType,
           hasMediaId: !!message?.mediaId,
           hasCaption: !!message?.caption
         });
-        return await this.handleCompletedUserMessage(user, message, 'image');
+        return await this.handleCompletedUserMessage(user, message, messageType);
       }
 
       // Daily login check will be moved to after transfer conversation handling

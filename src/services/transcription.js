@@ -10,6 +10,13 @@ class TranscriptionService {
     this.supportedFormats = ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/m4a'];
   }
 
+  normalizeMimeType(mimeType) {
+    if (!mimeType || typeof mimeType !== 'string') {
+      return '';
+    }
+    return mimeType.split(';')[0].trim().toLowerCase();
+  }
+
   async transcribeAudio(audioStream, mimeType) {
     let tempFilePath = null;
     let convertedFilePath = null;
@@ -57,6 +64,7 @@ class TranscriptionService {
   }
 
   getFileExtension(mimeType) {
+    const normalizedMimeType = this.normalizeMimeType(mimeType);
     const extensionMap = {
       'audio/mpeg': 'mp3',
       'audio/ogg': 'ogg',
@@ -66,7 +74,7 @@ class TranscriptionService {
       'audio/aac': 'aac'
     };
     
-    return extensionMap[mimeType] || 'mp3';
+    return extensionMap[normalizedMimeType] || 'mp3';
   }
 
   async convertToWav(inputPath) {
@@ -195,7 +203,8 @@ class TranscriptionService {
 
   // Helper method to check if audio format is supported
   isSupportedFormat(mimeType) {
-    return this.supportedFormats.includes(mimeType);
+    const normalizedMimeType = this.normalizeMimeType(mimeType);
+    return this.supportedFormats.includes(normalizedMimeType);
   }
 
   // Method to get audio duration (useful for rate limiting)
