@@ -14,12 +14,33 @@ class TranscriptionService {
       throw new Error(`Google credentials file not found at configured path: ${credentialsPath}`);
     }
 
+    let credentials;
+    try {
+      const rawCredentials = fs.readFileSync(credentialsPath, 'utf8');
+      credentials = JSON.parse(rawCredentials);
+    } catch (error) {
+      throw new Error(`Google credentials file is not valid JSON: ${error.message}`);
+    }
+
+    if (!credentials.client_email || !credentials.private_key || !credentials.project_id) {
+      throw new Error('Google credentials JSON is missing required fields (client_email/private_key/project_id)');
+    }
+
     logger.info('Initializing transcription service', {
       credentialsPath,
-      credentialsPathExists: true
+      credentialsPathExists: true,
+      googleProjectId: credentials.project_id,
+      googleClientEmail: credentials.client_email
     });
 
-    this.speechClient = new speech.SpeechClient();
+    // Use explicit credentials to avoid ambiguous ADC resolution in containers.
+    this.speechClient = new speech.SpeechClient({
+      projectId: credentials.project_id,
+      credentials: {
+        client_email: credentials.client_email,
+        private_key: credentials.private_key
+      }
+    });
     this.supportedFormats = ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/m4a'];
   }
 

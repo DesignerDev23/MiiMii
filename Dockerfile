@@ -55,4 +55,4 @@ HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
 # - Decodes GOOGLE_CREDENTIALS_BASE64 into /tmp/google-credentials.json when provided
 # - Uses GOOGLE_APPLICATION_CREDENTIALS if set, otherwise defaults to /tmp path
 # - Starts app directly with node to avoid package-manager command parsing issues
-CMD ["sh", "-c", "if [ -n \"$GOOGLE_CREDENTIALS_BASE64\" ]; then echo \"$GOOGLE_CREDENTIALS_BASE64\" | base64 -d > /tmp/google-credentials.json; fi && export GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-/tmp/google-credentials.json} && node src/app.js"]
+CMD ["sh", "-c", "if [ -n \"$GOOGLE_CREDENTIALS_BASE64\" ]; then printf '%s' \"$GOOGLE_CREDENTIALS_BASE64\" | base64 -d > /tmp/google-credentials.json; fi && export GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-/tmp/google-credentials.json} && node src/app.js"]
