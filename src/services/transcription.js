@@ -6,6 +6,19 @@ const logger = require('../utils/logger');
 
 class TranscriptionService {
   constructor() {
+    const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (!credentialsPath) {
+      throw new Error('GOOGLE_APPLICATION_CREDENTIALS is not set for transcription');
+    }
+    if (!fs.existsSync(credentialsPath)) {
+      throw new Error(`Google credentials file not found at configured path: ${credentialsPath}`);
+    }
+
+    logger.info('Initializing transcription service', {
+      credentialsPath,
+      credentialsPathExists: true
+    });
+
     this.speechClient = new speech.SpeechClient();
     this.supportedFormats = ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/m4a'];
   }
@@ -161,31 +174,7 @@ class TranscriptionService {
         error: error.message, 
         audioFile: audioFilePath 
       });
-      
-      // Try offline fallback if available
-      return await this.offlineTranscriptionFallback(audioFilePath);
-    }
-  }
-
-  async offlineTranscriptionFallback(audioFilePath) {
-    // For now, return a generic message
-    // In production, you could implement offline speech recognition
-    // or use alternative services like OpenAI Whisper
-    logger.info('Using offline transcription fallback');
-    
-    try {
-      // You could implement OpenAI Whisper here as fallback
-      // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      // const transcription = await openai.audio.transcriptions.create({
-      //   file: fs.createReadStream(audioFilePath),
-      //   model: "whisper-1",
-      // });
-      // return transcription.text;
-      
-      return ''; // Return empty string for now
-    } catch (error) {
-      logger.error('Offline transcription fallback failed', { error: error.message });
-      return '';
+      throw error;
     }
   }
 
