@@ -6,6 +6,7 @@ const whatsappFlowService = require('./whatsappFlowService');
 const bellbankService = require('./bellbank');
 const rubiesService = require('./rubies');
 const imageProcessingService = require('./imageProcessing');
+const transcriptionService = require('./transcription');
 const logger = require('../utils/logger');
 const activityLogger = require('./activityLogger');
 const sessionManager = require('../utils/sessionManager');
@@ -3242,10 +3243,11 @@ class MessageProcessor {
     try {
       logger.info('Processing voice message', { mediaId, userId: user.id });
       
-      // Download and transcribe the voice message
-      const transcription = await transcriptionService.transcribeAudio(mediaId);
+      // Download media from WhatsApp, then transcribe using Google Speech-to-Text
+      const media = await whatsappService.downloadMedia(mediaId);
+      const transcriptionText = await transcriptionService.transcribeAudio(media.stream, media.mimeType);
       
-      if (transcription && transcription.text) {
+      if (transcriptionText) {
         // Log successful transcription
         await activityLogger.logUserActivity(
           user.id,
@@ -3253,19 +3255,17 @@ class MessageProcessor {
           'voice_transcribed',
           {
             source: 'whatsapp',
-            description: 'Voice message transcribed successfully',
-            transcriptionConfidence: transcription.confidence,
-            duration: transcription.duration
+            description: 'Voice message transcribed successfully'
           }
         );
 
         // Send confirmation to user
         await whatsappService.sendTextMessage(
           user.whatsappNumber,
-          `🎤 I heard: "${transcription.text}"\n\nProcessing your request...`
+          `I heard: "${transcriptionText}"\n\nProcessing your request...`
         );
         
-        return transcription.text;
+        return transcriptionText;
       } else {
         await whatsappService.sendTextMessage(
           user.whatsappNumber,

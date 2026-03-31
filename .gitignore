@@ -143,5 +143,6 @@ Thumbs.db
 uploads/
 !uploads/.gitkeep
 gcp-service-account.json
+miimii-prod-cd2a4c649d58.json
 *.pem
 *.key.env
