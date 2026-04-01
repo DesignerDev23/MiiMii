@@ -3289,11 +3289,54 @@ class MessageProcessor {
       return '';
     }
 
-    const normalized = text
+    let normalized = text
       .trim()
       .replace(/[^\p{L}\p{N}\s₦]/gu, ' ')
       .replace(/\s+/g, ' ')
       .toLowerCase();
+
+    const hausaNumberMap = {
+      daya: 1,
+      biyu: 2,
+      uku: 3,
+      hudu: 4,
+      biyar: 5,
+      shida: 6,
+      bakwai: 7,
+      takwas: 8,
+      tara: 9,
+      goma: 10
+    };
+
+    const parseLocalSmallNumber = (token) => {
+      if (!token) return null;
+      if (/^\d+$/.test(token)) return Number(token);
+      return hausaNumberMap[token] || null;
+    };
+
+    // Convert Hausa-style thousand amounts: "dubu biyar" => "5000"
+    normalized = normalized.replace(/\bdubu\s+([a-z0-9]+)\b/gi, (_, token) => {
+      const value = parseLocalSmallNumber(String(token).toLowerCase());
+      return value ? String(value * 1000) : `dubu ${token}`;
+    });
+
+    // Convert informal transfer verbs to a canonical "send" form.
+    normalized = normalized
+      .replace(/\b(turawa|tura|aikawa|aika|send am|senda|send)\b/gi, 'send')
+      .replace(/\b(kaudi|kudi|ego|owo)\b/gi, 'money');
+
+    // Normalize colloquial transfer order:
+    // "send bro 5000" -> "send 5000 to bro"
+    normalized = normalized.replace(
+      /\bsend\s+([a-z][a-z0-9_-]{1,40})\s+(\d{2,9})\b/gi,
+      'send $2 to $1'
+    );
+
+    // "send to bro 5000" -> "send 5000 to bro"
+    normalized = normalized.replace(
+      /\bsend\s+to\s+([a-z][a-z0-9_-]{1,40})\s+(\d{2,9})\b/gi,
+      'send $2 to $1'
+    );
 
     // Deterministic cross-language fast paths for key intents.
     if (/(^|\s)(balance|wallet|account balance|check balance|wetin i get|show me my balance|owo mi|ego m|kudi nawa|balance dina)(\s|$)/i.test(normalized)) {
