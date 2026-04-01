@@ -137,87 +137,88 @@ class TranscriptionService {
       // Read audio file
       const audioBytes = fs.readFileSync(audioFilePath).toString('base64');
 
-      // Use a broadly compatible config first for multilingual Nigerian usage.
-      // Some enhanced/latest models are not available for all locales.
-      const baseRequest = {
-        audio: {
-          content: audioBytes,
-        },
-        config: {
-          encoding: 'LINEAR16',
-          sampleRateHertz: 16000,
-          // Primary locale plus local language variants and global English fallbacks.
-          languageCode: 'en-NG',
-          alternativeLanguageCodes: ['en-US', 'en-GB', 'ha-NG', 'ig-NG', 'yo-NG'],
-          enableAutomaticPunctuation: true,
-          enableWordTimeOffsets: false,
-          // Nigerian-specific vocabulary hints
-          speechContexts: [{
-            phrases: [
-              'send money', 'transfer', 'balance', 'airtime', 'data',
-              'GTBank', 'UBA', 'Zenith', 'First Bank', 'Access',
-              'MTN', 'Glo', 'Airtel', '9mobile',
-              'naira', 'kobo', 'PHCN', 'DStv', 'GOtv',
-              'buy', 'pay', 'bill', 'recharge', 'credit',
-              // Nigerian Pidgin + local language intent helpers
-              'abeg', 'make', 'how far', 'wetin', 'wahala',
-              'owo', 'owo mi', 'e jowo', 'joor', // Yoruba
-              'kudi', 'don Allah', // Hausa
-              'ego', 'biko', // Igbo
-              'ranse', 'fi owo', 'siyan', 'jowo', // Yoruba variants
-              'aika', 'nawa', 'dina', 'taimako', // Hausa variants
-              'zipu', 'nyere', 'aka', 'ego m', // Igbo variants
-              'show my balance', 'check my balance'
-            ]
-          }]
-        },
-      };
+      const phraseHints = [
+        'send money', 'transfer', 'balance', 'airtime', 'data',
+        'GTBank', 'UBA', 'Zenith', 'First Bank', 'Access',
+        'MTN', 'Glo', 'Airtel', '9mobile',
+        'naira', 'kobo', 'PHCN', 'DStv', 'GOtv',
+        'buy', 'pay', 'bill', 'recharge', 'credit',
+        'abeg', 'make', 'how far', 'wetin', 'wahala',
+        'owo', 'owo mi', 'e jowo', 'joor',
+        'kudi', 'don Allah', 'nuna min', 'dina',
+        'ego', 'biko', 'gosi', 'nyere m',
+        'ranse', 'fi owo', 'siyan', 'jowo',
+        'aika', 'nawa', 'taimako',
+        'zipu', 'aka', 'ego m',
+        'show my balance', 'check my balance'
+      ];
 
-      let response;
-      try {
-        // First attempt: locale-friendly config without forced model
-        [response] = await this.speechClient.recognize(baseRequest);
-      } catch (primaryError) {
-        const isModelOrLocaleConfigError = primaryError?.message?.includes('Invalid recognition \'config\'');
-        if (!isModelOrLocaleConfigError) {
-          throw primaryError;
-        }
+      const languageConfigs = [
+        { languageCode: 'ha-NG', alt: ['en-NG', 'en-US'] },
+        { languageCode: 'yo-NG', alt: ['en-NG', 'en-US'] },
+        { languageCode: 'ig-NG', alt: ['en-NG', 'en-US'] },
+        { languageCode: 'en-NG', alt: ['en-US', 'en-GB'] }
+      ];
 
-        logger.warn('Primary speech config rejected; retrying with global fallback locale', {
-          error: primaryError.message
-        });
-
-        // Second attempt: conservative fallback locale
-        const fallbackRequest = {
-          ...baseRequest,
+      const candidates = [];
+      for (const cfg of languageConfigs) {
+        const request = {
+          audio: { content: audioBytes },
           config: {
-            ...baseRequest.config,
-            languageCode: 'en-US',
-            alternativeLanguageCodes: ['en-GB']
+            encoding: 'LINEAR16',
+            sampleRateHertz: 16000,
+            languageCode: cfg.languageCode,
+            alternativeLanguageCodes: cfg.alt,
+            enableAutomaticPunctuation: true,
+            enableWordTimeOffsets: false,
+            speechContexts: [{ phrases: phraseHints }]
           }
         };
-        [response] = await this.speechClient.recognize(fallbackRequest);
+
+        try {
+          const [resp] = await this.speechClient.recognize(request);
+          if (!resp.results || resp.results.length === 0) {
+            continue;
+          }
+          const transcript = resp.results
+            .map(result => result.alternatives[0].transcript)
+            .join(' ')
+            .trim();
+          const confidence = resp.results[0]?.alternatives?.[0]?.confidence || 0;
+          const localTokenBoost = this.getLocalLanguageTokenBoost(transcript);
+          candidates.push({
+            transcript,
+            confidence,
+            languageCode: cfg.languageCode,
+            score: confidence + localTokenBoost
+          });
+        } catch (err) {
+          logger.warn('Speech recognition failed for language candidate', {
+            languageCode: cfg.languageCode,
+            error: err.message
+          });
+        }
       }
-      
-      if (!response.results || response.results.length === 0) {
+
+      if (candidates.length === 0) {
         logger.warn('No transcription results returned');
         return '';
       }
 
-      // Get the best transcription
-      const transcription = response.results
-        .map(result => result.alternatives[0].transcript)
-        .join(' ')
-        .trim();
-
-      // Get confidence score
-      const confidence = response.results.length > 0 
-        ? response.results[0].alternatives[0].confidence 
-        : 0;
+      candidates.sort((a, b) => b.score - a.score);
+      const best = candidates[0];
+      const transcription = best.transcript;
+      const confidence = best.confidence;
 
       logger.info('Audio transcription completed', {
         transcription,
         confidence,
+        selectedLanguage: best.languageCode,
+        candidates: candidates.slice(0, 3).map(c => ({
+          languageCode: c.languageCode,
+          confidence: c.confidence,
+          score: c.score
+        })),
         audioFile: path.basename(audioFilePath)
       });
 
@@ -229,6 +230,21 @@ class TranscriptionService {
       });
       throw error;
     }
+  }
+
+  getLocalLanguageTokenBoost(transcript) {
+    if (!transcript) return 0;
+    const lower = transcript.toLowerCase();
+    const localTokens = [
+      'abeg', 'wetin', 'don allah', 'nuna', 'dina', 'kudi',
+      'jowo', 'owo', 'siyan', 'biko', 'ego', 'gosi', 'nyere',
+      'nawa', 'nawa ne', 'balance dina'
+    ];
+    let hits = 0;
+    for (const token of localTokens) {
+      if (lower.includes(token)) hits += 1;
+    }
+    return hits * 0.08;
   }
 
   cleanupFiles(filePaths) {

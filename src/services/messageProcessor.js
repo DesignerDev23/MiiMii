@@ -3353,7 +3353,7 @@ class MessageProcessor {
     );
 
     // Deterministic cross-language fast paths for key intents.
-    if (/(^|\s)(balance|wallet|account balance|check balance|wetin i get|show me my balance|owo mi|ego m|kudi nawa|balance dina)(\s|$)/i.test(normalized)) {
+    if (/(^|\s)(balance|wallet|account balance|check balance|wetin i get|show me my balance|owo mi|ego m|kudi nawa|balance dina|nawa ne balance dina|nawa ne balance|nawa balance)(\s|$)/i.test(normalized)) {
       return 'check my balance';
     }
     if (/(^|\s)(airtime|recharge|top up|load card|buy card|credit phone|saka kati|kati|kaadi|kaarte|katin waya)(\s|$)/i.test(normalized)) {
@@ -3897,7 +3897,7 @@ class MessageProcessor {
   detectPreferredLanguage(messageText = '') {
     const text = (messageText || '').toLowerCase();
     if (/(^|\s)(abeg|wetin|dey|una|how far|no wahala|make i|make we)(\s|$)/i.test(text)) return 'pidgin';
-    if (/(^|\s)(don allah|nuna|min|dina|kudi|taimako|ina kwana|nagode|sannu)(\s|$)/i.test(text)) return 'hausa';
+    if (/(^|\s)(don allah|nuna|min|dina|kudi|taimako|ina kwana|nagode|sannu|nawa|nawa ne|balance dina)(\s|$)/i.test(text)) return 'hausa';
     if (/(^|\s)(jowo|e jowo|owo|se e le|bawo ni|mo fe|e se)(\s|$)/i.test(text)) return 'yoruba';
     if (/(^|\s)(biko|ego|gosi|nye|nyere m|kedu|ndewo|iko)(\s|$)/i.test(text)) return 'igbo';
     return 'en';
