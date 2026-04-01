@@ -2569,6 +2569,7 @@ class MessageProcessor {
       // Process different message types
       let processedText = '';
       let extractedData = null;
+      let originalUserText = '';
 
       switch (messageType) {
         case 'text':
@@ -2762,7 +2763,10 @@ class MessageProcessor {
 
       // Normalize text in English/Pidgin/Yoruba/Hausa/Igbo for reliable intent detection.
       if (messageType === 'audio' || messageType === 'text') {
+        originalUserText = processedText;
         processedText = this.normalizeUserMessage(processedText);
+      } else {
+        originalUserText = processedText;
       }
 
       // Log processed message
@@ -2808,7 +2812,13 @@ class MessageProcessor {
         extractedData: extractedData
       });
       
-      const aiAnalysis = await aiAssistant.analyzeUserIntent(processedText, user, extractedData);
+      const aiInputText = originalUserText || processedText;
+      const mergedExtractedData = {
+        ...(extractedData || {}),
+        normalizedMessage: processedText,
+        originalMessage: originalUserText || processedText
+      };
+      const aiAnalysis = await aiAssistant.analyzeUserIntent(aiInputText, user, mergedExtractedData);
       
       logger.info('AI intent analysis result', {
         userId: user.id,
