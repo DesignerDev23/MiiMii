@@ -2760,6 +2760,11 @@ class MessageProcessor {
         return;
       }
 
+      // Normalize voice transcripts for more reliable intent detection.
+      if (messageType === 'audio') {
+        processedText = this.normalizeVoiceTranscript(processedText);
+      }
+
       // Log processed message
       await activityLogger.logUserActivity(
         user.id,
@@ -2854,8 +2859,8 @@ class MessageProcessor {
             
           case 'balance':
           case 'balance_inquiry':
-            await aiAssistant.handleBalanceInquiry(user);
-            break;
+            // Reuse the same proven balance pipeline as typed text.
+            return await this.handleBalanceIntent(user, { text: processedText }, messageType);
             
           case 'wallet_details':
           case 'account_info':
@@ -3277,6 +3282,21 @@ class MessageProcessor {
       );
       return null;
     }
+  }
+
+  normalizeVoiceTranscript(text) {
+    if (!text || typeof text !== 'string') {
+      return '';
+    }
+
+    const normalized = text.trim().replace(/\s+/g, ' ').toLowerCase();
+
+    // Fast-path common short voice commands.
+    if (/^(balance|my balance|check balance|account balance)$/i.test(normalized)) {
+      return 'check my balance';
+    }
+
+    return normalized;
   }
 
   async processImageMessage(mediaId, caption, user) {
