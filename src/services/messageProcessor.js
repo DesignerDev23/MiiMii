@@ -3811,10 +3811,19 @@ class MessageProcessor {
    * Handle balance check intent
    */
   async handleBalanceIntent(user, message, messageType) {
+    const messageText = (message?.text || '').toLowerCase();
+    const preferredLanguage = this.detectPreferredLanguage(messageText);
+
     if (user.onboardingStep !== 'completed') {
       const whatsappService = require('./whatsapp');
-      await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "I'd love to show you your balance! Let me get your account set up first - it's quick and easy.");
+      const setupMessages = {
+        en: "I'd love to show you your balance! Let me get your account set up first - it's quick and easy.",
+        pidgin: "I go like show you your balance! Make I help you setup your account first - e no go take time.",
+        hausa: "Zan so in nuna maka ma'aunin asusunka! Bari mu fara kammala bude asusunka cikin sauri.",
+        yoruba: "Mo le fi iye to ku han e! Je ka pari siseto account e ni kiakia.",
+        igbo: "Aga m egosi gi ego di na akauntu gi! Ka anyi buru uzo dozie account gi ngwa ngwa."
+      };
+      await whatsappService.sendTextMessage(user.whatsappNumber, setupMessages[preferredLanguage] || setupMessages.en);
       
       // Start onboarding flow immediately
       try {
@@ -3837,8 +3846,14 @@ class MessageProcessor {
       const wallet = await walletService.getUserWallet(user.id);
       if (!wallet) {
         const whatsappService = require('./whatsapp');
-        await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "❌ Wallet not found. Contact support");
+        const walletMissingMessages = {
+          en: "❌ Wallet not found. Contact support",
+          pidgin: "❌ We no see your wallet. Abeg contact support.",
+          hausa: "❌ Ba a samu wallet dinka ba. Tuntubi support.",
+          yoruba: "❌ A ko ri wallet re. Jowo kan si support.",
+          igbo: "❌ A hụghị wallet gi. Biko kpọtụrụ support."
+        };
+        await whatsappService.sendTextMessage(user.whatsappNumber, walletMissingMessages[preferredLanguage] || walletMissingMessages.en);
         return;
       }
 
@@ -3848,22 +3863,13 @@ class MessageProcessor {
       const pendingBalance = walletBalanceData.pending || parseFloat(wallet.pendingBalance || 0);
 
       // Check if this is a natural language query and provide appropriate response
-      const messageText = (message?.text || '').toLowerCase();
       const isNaturalQuery = /what'?s?\s+my\s+(current\s+)?balance|how\s+much\s+(do\s+)?i\s+have|check\s+my\s+balance|show\s+my\s+balance|my\s+balance/.test(messageText);
 
       let responseMessage;
       if (isNaturalQuery) {
-        responseMessage = `💰 *Your Balance*\n\n` +
-                         `💵 Available: ₦${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-        
-        if (pendingBalance > 0) {
-          responseMessage += `⏳ Pending: ₦${pendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
-        }
-        
-        responseMessage += `📊 Total: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\n` +
-                          `Ready to go! 💳`;
+        responseMessage = this.formatBalanceMessage(preferredLanguage, availableBalance, pendingBalance, balanceValue);
       } else {
-        responseMessage = `💰 *Account Balance*\n\nCurrent Balance: ₦${balanceValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n\nYour account is ready for transactions!`;
+        responseMessage = this.formatBalanceMessage(preferredLanguage, availableBalance, pendingBalance, balanceValue);
       }
 
       const whatsappService = require('./whatsapp');
@@ -3872,9 +3878,54 @@ class MessageProcessor {
     } catch (error) {
       logger.error('Failed to get balance', { error: error.message, userId: user.id });
       const whatsappService = require('./whatsapp');
-      await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "❌ Unable to retrieve your balance at the moment. Please try again later.");
+      const errorMessages = {
+        en: "❌ Unable to retrieve your balance at the moment. Please try again later.",
+        pidgin: "❌ I no fit check your balance now now. Abeg try again later.",
+        hausa: "❌ Ba zan iya duba balance dinka yanzu ba. A sake gwadawa daga baya.",
+        yoruba: "❌ Mi o le gba balance re bayii. Jowo gbiyanju mo ni igba miran.",
+        igbo: "❌ Enweghị m ike ilele balance gi ugbu a. Biko nwaa ọzọ e mesie."
+      };
+      const fallbackLanguage = this.detectPreferredLanguage((message?.text || '').toLowerCase());
+      await whatsappService.sendTextMessage(user.whatsappNumber, errorMessages[fallbackLanguage] || errorMessages.en);
     }
+  }
+
+  detectPreferredLanguage(messageText = '') {
+    const text = (messageText || '').toLowerCase();
+    if (/(abeg|wetin|dey|una|na how far|no wahala)/i.test(text)) return 'pidgin';
+    if (/(don allah|nuna|min|dina|kudi|taimako|ina kwana)/i.test(text)) return 'hausa';
+    if (/(jowo|e jowo|owo|mi o|se e le|bawo ni)/i.test(text)) return 'yoruba';
+    if (/(biko|ego|gosi|nyere m|kedu|ndewo)/i.test(text)) return 'igbo';
+    return 'en';
+  }
+
+  formatBalanceMessage(language, availableBalance, pendingBalance, balanceValue) {
+    const amount = (n) => `₦${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+    const templates = {
+      en: {
+        noPending: `💰 Your available balance is ${amount(availableBalance)}, and your total balance is ${amount(balanceValue)}. You are all set for transactions. 💳`,
+        withPending: `💰 Your available balance is ${amount(availableBalance)}, your pending balance is ${amount(pendingBalance)}, and your total balance is ${amount(balanceValue)}. You are all set for transactions. 💳`
+      },
+      pidgin: {
+        noPending: `💰 Your available balance na ${amount(availableBalance)}, and your total balance na ${amount(balanceValue)}. You don set for transaction. 💳`,
+        withPending: `💰 Your available balance na ${amount(availableBalance)}, your pending balance na ${amount(pendingBalance)}, and your total balance na ${amount(balanceValue)}. You don set for transaction. 💳`
+      },
+      hausa: {
+        noPending: `💰 Balance dinka da zaka iya amfani da shi yanzu shi ne ${amount(availableBalance)}, kuma jimillar balance dinka shi ne ${amount(balanceValue)}. Komai ya shirya don mu'amala. 💳`,
+        withPending: `💰 Balance dinka mai amfani yanzu shi ne ${amount(availableBalance)}, wanda ke jira shi ne ${amount(pendingBalance)}, kuma jimillar balance dinka shi ne ${amount(balanceValue)}. Komai ya shirya don mu'amala. 💳`
+      },
+      yoruba: {
+        noPending: `💰 Iye owo to wa fun lilo bayi je ${amount(availableBalance)}, ati pe lapapo owo re je ${amount(balanceValue)}. Ohun gbogbo ti setan fun transaction. 💳`,
+        withPending: `💰 Iye owo to wa fun lilo bayi je ${amount(availableBalance)}, iye to n duro je ${amount(pendingBalance)}, ati pe lapapo owo re je ${amount(balanceValue)}. Ohun gbogbo ti setan fun transaction. 💳`
+      },
+      igbo: {
+        noPending: `💰 Ego i nwere ike iji ugbu a bu ${amount(availableBalance)}, ma nchikota balance gi bu ${amount(balanceValue)}. Ihe niile adila njikere maka transaction. 💳`,
+        withPending: `💰 Ego i nwere ike iji ugbu a bu ${amount(availableBalance)}, ego ka na-eche bu ${amount(pendingBalance)}, ma nchikota balance gi bu ${amount(balanceValue)}. Ihe niile adila njikere maka transaction. 💳`
+      }
+    };
+
+    const t = templates[language] || templates.en;
+    return pendingBalance > 0 ? t.withPending : t.noPending;
   }
 
   /**
