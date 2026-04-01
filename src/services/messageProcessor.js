@@ -2869,8 +2869,12 @@ class MessageProcessor {
             
           case 'balance':
           case 'balance_inquiry':
-            // Reuse the same proven balance pipeline as typed text.
-            return await this.handleBalanceIntent(user, { text: processedText }, messageType);
+            // Preserve original user language for localized responses.
+            return await this.handleBalanceIntent(
+              user,
+              { text: aiInputText || processedText, normalizedText: processedText },
+              messageType
+            );
             
           case 'wallet_details':
           case 'account_info':
@@ -3811,7 +3815,7 @@ class MessageProcessor {
    * Handle balance check intent
    */
   async handleBalanceIntent(user, message, messageType) {
-    const messageText = (message?.text || '').toLowerCase();
+    const messageText = (message?.text || message?.originalText || '').toLowerCase();
     const preferredLanguage = this.detectPreferredLanguage(messageText);
 
     if (user.onboardingStep !== 'completed') {
@@ -3892,10 +3896,10 @@ class MessageProcessor {
 
   detectPreferredLanguage(messageText = '') {
     const text = (messageText || '').toLowerCase();
-    if (/(abeg|wetin|dey|una|na how far|no wahala)/i.test(text)) return 'pidgin';
-    if (/(don allah|nuna|min|dina|kudi|taimako|ina kwana)/i.test(text)) return 'hausa';
-    if (/(jowo|e jowo|owo|mi o|se e le|bawo ni)/i.test(text)) return 'yoruba';
-    if (/(biko|ego|gosi|nyere m|kedu|ndewo)/i.test(text)) return 'igbo';
+    if (/(^|\s)(abeg|wetin|dey|una|how far|no wahala|make i|make we)(\s|$)/i.test(text)) return 'pidgin';
+    if (/(^|\s)(don allah|nuna|min|dina|kudi|taimako|ina kwana|nagode|sannu)(\s|$)/i.test(text)) return 'hausa';
+    if (/(^|\s)(jowo|e jowo|owo|se e le|bawo ni|mo fe|e se)(\s|$)/i.test(text)) return 'yoruba';
+    if (/(^|\s)(biko|ego|gosi|nye|nyere m|kedu|ndewo|iko)(\s|$)/i.test(text)) return 'igbo';
     return 'en';
   }
 
