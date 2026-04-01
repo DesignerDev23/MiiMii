@@ -137,7 +137,7 @@ class TranscriptionService {
       // Read audio file
       const audioBytes = fs.readFileSync(audioFilePath).toString('base64');
 
-      // Use a broadly compatible config first for en-NG.
+      // Use a broadly compatible config first for multilingual Nigerian usage.
       // Some enhanced/latest models are not available for all locales.
       const baseRequest = {
         audio: {
@@ -146,8 +146,9 @@ class TranscriptionService {
         config: {
           encoding: 'LINEAR16',
           sampleRateHertz: 16000,
-          languageCode: 'en-NG', // Nigerian English
-          alternativeLanguageCodes: ['en-US', 'en-GB'], // Fallback languages
+          // Primary locale plus local language variants and global English fallbacks.
+          languageCode: 'en-NG',
+          alternativeLanguageCodes: ['en-US', 'en-GB', 'ha-NG', 'ig-NG', 'yo-NG'],
           enableAutomaticPunctuation: true,
           enableWordTimeOffsets: false,
           // Nigerian-specific vocabulary hints
@@ -157,7 +158,16 @@ class TranscriptionService {
               'GTBank', 'UBA', 'Zenith', 'First Bank', 'Access',
               'MTN', 'Glo', 'Airtel', '9mobile',
               'naira', 'kobo', 'PHCN', 'DStv', 'GOtv',
-              'buy', 'pay', 'bill', 'recharge', 'credit'
+              'buy', 'pay', 'bill', 'recharge', 'credit',
+              // Nigerian Pidgin + local language intent helpers
+              'abeg', 'make', 'how far', 'wetin', 'wahala',
+              'owo', 'owo mi', 'e jowo', 'joor', // Yoruba
+              'kudi', 'don Allah', // Hausa
+              'ego', 'biko', // Igbo
+              'ranse', 'fi owo', 'siyan', 'jowo', // Yoruba variants
+              'aika', 'nawa', 'dina', 'taimako', // Hausa variants
+              'zipu', 'nyere', 'aka', 'ego m', // Igbo variants
+              'show my balance', 'check my balance'
             ]
           }]
         },

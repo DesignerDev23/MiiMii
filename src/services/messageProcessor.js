@@ -2760,9 +2760,9 @@ class MessageProcessor {
         return;
       }
 
-      // Normalize voice transcripts for more reliable intent detection.
-      if (messageType === 'audio') {
-        processedText = this.normalizeVoiceTranscript(processedText);
+      // Normalize text in English/Pidgin/Yoruba/Hausa/Igbo for reliable intent detection.
+      if (messageType === 'audio' || messageType === 'text') {
+        processedText = this.normalizeUserMessage(processedText);
       }
 
       // Log processed message
@@ -3284,16 +3284,35 @@ class MessageProcessor {
     }
   }
 
-  normalizeVoiceTranscript(text) {
+  normalizeUserMessage(text) {
     if (!text || typeof text !== 'string') {
       return '';
     }
 
-    const normalized = text.trim().replace(/\s+/g, ' ').toLowerCase();
+    const normalized = text
+      .trim()
+      .replace(/[^\p{L}\p{N}\s₦]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
 
-    // Fast-path common short voice commands.
-    if (/^(balance|my balance|check balance|account balance)$/i.test(normalized)) {
+    // Deterministic cross-language fast paths for key intents.
+    if (/(^|\s)(balance|wallet|account balance|check balance|wetin i get|show me my balance|owo mi|ego m|kudi nawa|balance dina)(\s|$)/i.test(normalized)) {
       return 'check my balance';
+    }
+    if (/(^|\s)(airtime|recharge|top up|load card|buy card|credit phone|saka kati|kati|kaadi|kaarte|katin waya)(\s|$)/i.test(normalized)) {
+      return 'buy airtime';
+    }
+    if (/(^|\s)(data|bundle|mb|gb|internet|sub|subscription|buy data|siyan data|saya data|zuba data|giga|megabyte)(\s|$)/i.test(normalized)) {
+      return 'buy data';
+    }
+    if (/(^|\s)(transfer|send money|send am|pay person|move money|give am|tura kudi|aika kudi|kaudi|fi owo ranse|zipu ego)(\s|$)/i.test(normalized)) {
+      return normalized.replace(/(^|\s)(give am|send am|pay person|move money)(\s|$)/gi, ' send money ');
+    }
+    if (/(^|\s)(bill|light bill|electricity|nepa|phcn|dstv|gotv|startimes|pay bill|biya kudin|sisan ina|kwanan wuta)(\s|$)/i.test(normalized)) {
+      return 'pay bill';
+    }
+    if (/(^|\s)(help|menu|wetin you fit do|abeg help|taimako|jowo ran mi lowo|biko nyere m aka)(\s|$)/i.test(normalized)) {
+      return 'help';
     }
 
     return normalized;

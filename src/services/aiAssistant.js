@@ -71,7 +71,7 @@ class AIAssistantService {
     // Enhanced intent patterns for better recognition
     this.intentPatterns = {
       TRANSFER_MONEY: {
-        keywords: ['send', 'transfer', 'pay', 'give', 'move', 'forward', 'remit'],
+        keywords: ['send', 'transfer', 'pay', 'give', 'move', 'forward', 'remit', 'abeg send', 'send am', 'tura kudi', 'aika kudi', 'fi owo ranse', 'zipu ego'],
         patterns: [
           /send\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\w+)?\s*(\d{11})/i,
           /transfer\s+(\d+k?|\d+(?:,\d{3})*)\s+to\s+(\w+)?\s*(\d{11})/i,
@@ -90,7 +90,7 @@ class AIAssistantService {
         ]
       },
       BUY_AIRTIME: {
-        keywords: ['airtime', 'recharge', 'top up', 'credit', 'load', 'buy airtime', 'purchase airtime'],
+        keywords: ['airtime', 'recharge', 'top up', 'credit', 'load', 'buy airtime', 'purchase airtime', 'buy card', 'load card', 'saka kati', 'katin waya', 'kaarte'],
         patterns: [
           /buy\s+(\d+k?|\d+(?:,\d{3})*)\s+airtime(?:\s+for)?\s*(\d{11})?/i,
           /(\d+k?|\d+(?:,\d{3})*)\s+airtime(?:\s+for)?\s*(\d{11})?/i,
@@ -101,7 +101,7 @@ class AIAssistantService {
         ]
       },
       BUY_DATA: {
-        keywords: ['data', 'internet', 'mb', 'gb', 'buy data', 'purchase data', 'data bundle', 'internet bundle'],
+        keywords: ['data', 'internet', 'mb', 'gb', 'buy data', 'purchase data', 'data bundle', 'internet bundle', 'sub', 'subscription', 'siyan data', 'saya data', 'zuba data'],
         patterns: [
           /buy\s+(\d+(?:\.\d+)?(?:mb|gb))\s+data(?:\s+for)?\s*(\d{11})?/i,
           /(\d+(?:\.\d+)?(?:mb|gb))\s+data(?:\s+for)?\s*(\d{11})?/i,
@@ -112,7 +112,7 @@ class AIAssistantService {
         ]
       },
       PAY_BILL: {
-        keywords: ['bill', 'electric', 'electricity', 'cable', 'tv', 'water', 'internet bill', 'pay bill', 'utility', 'disco'],
+        keywords: ['bill', 'electric', 'electricity', 'cable', 'tv', 'water', 'internet bill', 'pay bill', 'utility', 'disco', 'nepa', 'light bill', 'biya kudin', 'kwanan wuta'],
         patterns: [
           /pay\s+(\d+k?|\d+(?:,\d{3})*)\s+(electricity|electric|cable|tv|water|internet)\s+(?:bill\s+)?(?:for\s+)?(\w+)?\s*(\d+)/i,
           /(electricity|electric|cable|tv|water|internet)\s+bill\s+(\d+k?|\d+(?:,\d{3})*)\s+(\w+)?\s*(\d+)/i,
@@ -123,7 +123,7 @@ class AIAssistantService {
         ]
       },
       CHECK_BALANCE: {
-        keywords: ['balance', 'wallet', 'account', 'money', 'fund', 'how much'],
+        keywords: ['balance', 'wallet', 'account', 'money', 'fund', 'how much', 'wetin i get', 'owo mi', 'ego m', 'kudi nawa', 'balance dina'],
         patterns: [
           /(?:check\s+)?(?:my\s+)?(?:wallet\s+)?balance/i,
           /how\s+much\s+(?:money\s+)?(?:do\s+)?i\s+have/i
@@ -144,7 +144,7 @@ class AIAssistantService {
         ]
       },
       HELP: {
-        keywords: ['help', 'support', 'assist', 'guide', 'what can you do'],
+        keywords: ['help', 'support', 'assist', 'guide', 'what can you do', 'menu', 'abeg help', 'taimako', 'jowo ran mi lowo', 'biko nyere m aka'],
         patterns: [
           /^(help|support|assist|guide)/i,
           /what\s+can\s+you\s+do/i
@@ -173,7 +173,9 @@ class AIAssistantService {
     };
 
     // System prompt for AI responses
-    this.systemPrompt = `You are MiiMii, a friendly financial assistant. Talk like a real person - warm, casual, and natural. Use proper English, not pidgin!
+    this.systemPrompt = `You are MiiMii, a friendly financial assistant. Talk like a real person - warm, casual, and natural.
+You must understand and interpret messages in Nigerian Pidgin, Yoruba, Hausa, Igbo, and standard English (including mixed-language messages).
+For intent extraction, mentally normalize/translate user text to English first, then classify intent and entities.
 
 🔥 ABSOLUTE PRIORITY: If user mentions "beneficiaries" in ANY way, the intent MUST be "beneficiaries"!
 EXAMPLES: "Show my beneficiaries" → intent: "beneficiaries", "List beneficiaries" → intent: "beneficiaries", "My beneficiaries" → intent: "beneficiaries"
@@ -197,7 +199,7 @@ OVERRIDE RULE: If the message contains "opay" or "opay bank", the intent MUST be
 
 Your personality:
 - Friendly and approachable like a helpful friend
-- Use natural, proper English (not Nigerian pidgin)
+- Understand local language inputs; respond in simple clear English by default
 - Keep responses short and to the point
 - Be conversational, not formal
 - Use emojis naturally (not too many)
@@ -444,7 +446,7 @@ For Beneficiaries List:
 
 FINAL CHECK: ALL transfers are "bank_transfer" - NO P2P transfers. If the message contains "opay" or "opay bank", the intent MUST be "bank_transfer".
 
-Keep responses natural, friendly, and human-like. Use proper English, not pidgin!`;
+Keep responses natural, friendly, and human-like while correctly understanding Nigerian local languages and Pidgin.`;
 
     // Test API key validity on startup
     this.validateApiKey();
