@@ -137,8 +137,9 @@ class TranscriptionService {
       // Read audio file
       const audioBytes = fs.readFileSync(audioFilePath).toString('base64');
 
-      // Configure the request
-      const request = {
+      // Use a broadly compatible config first for en-NG.
+      // Some enhanced/latest models are not available for all locales.
+      const baseRequest = {
         audio: {
           content: audioBytes,
         },
@@ -149,8 +150,6 @@ class TranscriptionService {
           alternativeLanguageCodes: ['en-US', 'en-GB'], // Fallback languages
           enableAutomaticPunctuation: true,
           enableWordTimeOffsets: false,
-          model: 'latest_long', // Best model for longer audio
-          useEnhanced: true,
           // Nigerian-specific vocabulary hints
           speechContexts: [{
             phrases: [
@@ -164,8 +163,31 @@ class TranscriptionService {
         },
       };
 
-      // Perform the speech recognition request
-      const [response] = await this.speechClient.recognize(request);
+      let response;
+      try {
+        // First attempt: locale-friendly config without forced model
+        [response] = await this.speechClient.recognize(baseRequest);
+      } catch (primaryError) {
+        const isModelOrLocaleConfigError = primaryError?.message?.includes('Invalid recognition \'config\'');
+        if (!isModelOrLocaleConfigError) {
+          throw primaryError;
+        }
+
+        logger.warn('Primary speech config rejected; retrying with global fallback locale', {
+          error: primaryError.message
+        });
+
+        // Second attempt: conservative fallback locale
+        const fallbackRequest = {
+          ...baseRequest,
+          config: {
+            ...baseRequest.config,
+            languageCode: 'en-US',
+            alternativeLanguageCodes: ['en-GB']
+          }
+        };
+        [response] = await this.speechClient.recognize(fallbackRequest);
+      }
       
       if (!response.results || response.results.length === 0) {
         logger.warn('No transcription results returned');
