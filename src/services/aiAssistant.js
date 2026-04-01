@@ -482,6 +482,7 @@ Rules:
 5. Keep the same meaning and information
 6. Make it sound human, not robotic
 7. For Nigerian context, use ₦ for amounts, understand "k" means thousand
+8. Never change numeric values, names, account details, or factual financial figures
 
 Examples:
 "Transfer successful" → "All done! ✅ Your money has been sent"

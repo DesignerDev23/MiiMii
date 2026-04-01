@@ -3819,7 +3819,6 @@ class MessageProcessor {
     const preferredLanguage = this.detectPreferredLanguage(messageText);
 
     if (user.onboardingStep !== 'completed') {
-      const whatsappService = require('./whatsapp');
       const setupMessages = {
         en: "I'd love to show you your balance! Let me get your account set up first - it's quick and easy.",
         pidgin: "I go like show you your balance! Make I help you setup your account first - e no go take time.",
@@ -3827,7 +3826,16 @@ class MessageProcessor {
         yoruba: "Mo le fi iye to ku han e! Je ka pari siseto account e ni kiakia.",
         igbo: "Aga m egosi gi ego di na akauntu gi! Ka anyi buru uzo dozie account gi ngwa ngwa."
       };
-      await whatsappService.sendTextMessage(user.whatsappNumber, setupMessages[preferredLanguage] || setupMessages.en);
+      await this.sendNaturalResponse(
+        user,
+        setupMessages[preferredLanguage] || setupMessages.en,
+        {
+          preferredLanguage,
+          originalMessage: message?.text || '',
+          intent: 'balance',
+          tone: 'short_human'
+        }
+      );
       
       // Start onboarding flow immediately
       try {
@@ -3849,7 +3857,6 @@ class MessageProcessor {
       
       const wallet = await walletService.getUserWallet(user.id);
       if (!wallet) {
-        const whatsappService = require('./whatsapp');
         const walletMissingMessages = {
           en: "❌ Wallet not found. Contact support",
           pidgin: "❌ We no see your wallet. Abeg contact support.",
@@ -3857,7 +3864,16 @@ class MessageProcessor {
           yoruba: "❌ A ko ri wallet re. Jowo kan si support.",
           igbo: "❌ A hụghị wallet gi. Biko kpọtụrụ support."
         };
-        await whatsappService.sendTextMessage(user.whatsappNumber, walletMissingMessages[preferredLanguage] || walletMissingMessages.en);
+        await this.sendNaturalResponse(
+          user,
+          walletMissingMessages[preferredLanguage] || walletMissingMessages.en,
+          {
+            preferredLanguage,
+            originalMessage: message?.text || '',
+            intent: 'balance_error',
+            tone: 'short_human'
+          }
+        );
         return;
       }
 
@@ -3876,12 +3892,19 @@ class MessageProcessor {
         responseMessage = this.formatBalanceMessage(preferredLanguage, availableBalance, pendingBalance, balanceValue);
       }
 
-      const whatsappService = require('./whatsapp');
-      await whatsappService.sendTextMessage(user.whatsappNumber, responseMessage);
+      await this.sendNaturalResponse(
+        user,
+        responseMessage,
+        {
+          preferredLanguage,
+          originalMessage: message?.text || '',
+          intent: 'balance',
+          tone: 'short_human'
+        }
+      );
       
     } catch (error) {
       logger.error('Failed to get balance', { error: error.message, userId: user.id });
-      const whatsappService = require('./whatsapp');
       const errorMessages = {
         en: "❌ Unable to retrieve your balance at the moment. Please try again later.",
         pidgin: "❌ I no fit check your balance now now. Abeg try again later.",
@@ -3890,7 +3913,34 @@ class MessageProcessor {
         igbo: "❌ Enweghị m ike ilele balance gi ugbu a. Biko nwaa ọzọ e mesie."
       };
       const fallbackLanguage = this.detectPreferredLanguage((message?.text || '').toLowerCase());
-      await whatsappService.sendTextMessage(user.whatsappNumber, errorMessages[fallbackLanguage] || errorMessages.en);
+      await this.sendNaturalResponse(
+        user,
+        errorMessages[fallbackLanguage] || errorMessages.en,
+        {
+          preferredLanguage: fallbackLanguage,
+          originalMessage: message?.text || '',
+          intent: 'balance_error',
+          tone: 'short_human'
+        }
+      );
+    }
+  }
+
+  async sendNaturalResponse(user, baseMessage, context = {}) {
+    const whatsappService = require('./whatsapp');
+    try {
+      const aiAssistant = require('./aiAssistant');
+      const naturalMessage = await aiAssistant.makeResponseNatural(baseMessage, {
+        ...context,
+        preserveFacts: true
+      });
+      await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage || baseMessage);
+    } catch (err) {
+      logger.warn('Natural response generation failed; using base message', {
+        userId: user.id,
+        error: err.message
+      });
+      await whatsappService.sendTextMessage(user.whatsappNumber, baseMessage);
     }
   }
 
