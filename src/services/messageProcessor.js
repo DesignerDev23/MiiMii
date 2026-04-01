@@ -3259,12 +3259,8 @@ class MessageProcessor {
           }
         );
 
-        // Send confirmation to user
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          `I heard: "${transcriptionText}"\n\nProcessing your request...`
-        );
-        
+        // Keep voice UX concise: proceed directly to intent handling
+        // without an intermediate "I heard..." acknowledgment message.
         return transcriptionText;
       } else {
         await whatsappService.sendTextMessage(
