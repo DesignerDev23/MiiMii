@@ -92,7 +92,22 @@ class OnboardingService {
   }
 
   async handleInteractiveGreeting(user, message, contactName = null) {
-    const greetingKeywords = ['hi', 'hello', 'hey', 'start', '/start', 'good morning', 'good afternoon', 'good evening'];
+    const greetingKeywords = [
+      'hi',
+      'hello',
+      'hey',
+      'start',
+      '/start',
+      'good morning',
+      'good afternoon',
+      'good evening',
+      'sannu',
+      'barka',
+      'ina kwana',
+      'ndewo',
+      'bawo ni',
+      'kedu'
+    ];
     
     // Ensure message is a string before calling toLowerCase
     const messageText = typeof message === 'string' ? message : (message?.text || '');

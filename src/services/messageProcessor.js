@@ -112,6 +112,20 @@ class MessageProcessor {
         // Non-fatal
       }
 
+      // Transcribe voice once here so onboarding, transfers, PIN flows, and AI all see the same text
+      if (messageType === 'audio' && message?.mediaId) {
+        try {
+          const voiceText = await this.processVoiceMessage(message.mediaId, user);
+          if (voiceText && String(voiceText).trim()) {
+            const t = String(voiceText).trim();
+            message = { ...message, text: t };
+            messageContent = t;
+          }
+        } catch (e) {
+          logger.warn('Early voice transcription failed', { error: e.message, userId: user.id });
+        }
+      }
+
       // If interactive (buttons/lists/flows), handle via the interactive-aware pipeline
       // BUT do not short-circuit Flow completions (nfm_reply with flowResponse)
       if (messageType === 'interactive') {
@@ -620,13 +634,25 @@ class MessageProcessor {
       // Check if user has completed onboarding (virtual account creation)
       const onboardingStatus = await userService.checkUserOnboardingStatus(user.id);
       if (!onboardingStatus.isComplete) {
-        logger.info('User has not completed onboarding, redirecting to onboarding flow', {
+        logger.info('User has not completed onboarding', {
           userId: user.id,
           onboardingStep: user.onboardingStep,
           hasVirtualAccount: onboardingStatus.hasVirtualAccount,
-          missingFields: onboardingStatus.missingFields
+          missingFields: onboardingStatus.missingFields,
+          hasTextFromUser: !!(messageContent && String(messageContent).trim())
         });
-        
+
+        if (messageContent && String(messageContent).trim()) {
+          const onboardingService = require('./onboarding');
+          await onboardingService.handleOnboarding(
+            user.whatsappNumber,
+            message,
+            'text',
+            userName
+          );
+          return;
+        }
+
         await this.redirectToOnboarding(user, onboardingStatus);
         return;
       }
@@ -2565,7 +2591,9 @@ class MessageProcessor {
           break;
           
         case 'audio':
-          processedText = await this.processVoiceMessage(message.mediaId, user);
+          processedText =
+            (message.text && String(message.text).trim()) ||
+            (await this.processVoiceMessage(message.mediaId, user));
           break;
           
         case 'image':
@@ -3283,10 +3311,12 @@ class MessageProcessor {
     try {
       logger.info('Processing voice message', { mediaId, userId: user.id });
       
-      // Download media from WhatsApp, then transcribe (e.g. Whisper)
+      // Download media from WhatsApp, then transcribe via OpenAI Whisper API only (no Google STT)
       const media = await whatsappService.downloadMedia(mediaId);
-      const transcriptionText = await transcriptionService.transcribeAudio(media.stream, media.mimeType);
-      
+      const txResult = await transcriptionService.transcribeAudio(media.stream, media.mimeType);
+      const transcriptionText =
+        typeof txResult === 'string' ? txResult : (txResult && txResult.text ? String(txResult.text).trim() : '');
+
       if (transcriptionText) {
         // Log successful transcription
         await activityLogger.logUserActivity(

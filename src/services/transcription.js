@@ -5,22 +5,31 @@ const { Readable } = require('stream');
 const logger = require('../utils/logger');
 
 /**
- * Voice transcription via OpenAI Whisper (better multilingual accuracy than Google STT for Pidgin/Hausa/Yoruba/Igbo).
- * Uses AI_API_KEY and optional AI_BASE_URL (same as aiAssistant).
+ * Voice transcription via the OpenAI API only — Whisper model (`whisper-1`).
+ * Google Cloud Speech-to-Text is not used anywhere in this codebase.
+ *
+ * Env: AI_API_KEY (or OPENAI_API_KEY), optional AI_BASE_URL.
+ * Optional: WHISPER_MODEL (default whisper-1). WHISPER_FALLBACK_MODEL — second OpenAI STT model id only if you set it (e.g. another OpenAI transcribe model); leave unset for Whisper-only.
  */
 class TranscriptionService {
   constructor() {
     this.apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
     this.baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-    this.model = process.env.WHISPER_MODEL || 'whisper-1';
+    this.model = (process.env.WHISPER_MODEL || 'whisper-1').trim();
+    this.fallbackModel = (process.env.WHISPER_FALLBACK_MODEL || '').trim();
+    /** Normalize compressed audio to 16k mono WAV before STT (often helps OGG/Opus from WhatsApp). */
+    this.alwaysNormalizeWav =
+      String(process.env.WHISPER_ALWAYS_WAV || 'true').toLowerCase() === 'true';
 
     this.supportedFormats = ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/m4a', 'audio/mp4', 'audio/aac'];
 
     if (!this.apiKey) {
       logger.warn('Transcription: AI_API_KEY not set — voice notes will fail until configured');
     } else {
-      logger.info('Transcription service initialized (OpenAI Whisper)', {
+      logger.info('Transcription: OpenAI Whisper API only (no Google STT)', {
         model: this.model,
+        fallbackModel: this.fallbackModel || '(none)',
+        alwaysNormalizeWav: this.alwaysNormalizeWav,
         hasBaseUrlOverride: !!process.env.AI_BASE_URL
       });
     }
@@ -33,13 +42,16 @@ class TranscriptionService {
     return mimeType.split(';')[0].trim().toLowerCase();
   }
 
+  /**
+   * @returns {{ text: string, language?: string|null }}
+   */
   async transcribeAudio(audioStream, mimeType = 'audio/mpeg') {
     let tempFilePath = null;
     let alternatePath = null;
 
     try {
       if (!this.apiKey) {
-        throw new Error('AI_API_KEY is not set for Whisper transcription');
+        throw new Error('AI_API_KEY is not set for transcription');
       }
 
       const stream = Buffer.isBuffer(audioStream) ? Readable.from(audioStream) : audioStream;
@@ -47,23 +59,33 @@ class TranscriptionService {
 
       let fileForWhisper = tempFilePath;
       const ext = path.extname(tempFilePath).toLowerCase();
-      // Some providers are picky about opus-in-ogg; normalize to WAV for reliability.
-      if (ext === '.ogg' || ext === '.opus') {
+
+      const shouldWav =
+        this.alwaysNormalizeWav ||
+        ext === '.ogg' ||
+        ext === '.opus' ||
+        ext === '.m4a' ||
+        ext === '.aac' ||
+        ext === '.mp3' ||
+        ext === '.mp4';
+
+      if (shouldWav) {
         try {
           alternatePath = await this.convertToWav(tempFilePath);
           fileForWhisper = alternatePath;
         } catch (convErr) {
-          logger.warn('OGG→WAV conversion failed, trying original file with Whisper', {
-            error: convErr.message
+          logger.warn('Audio→WAV normalization failed, using original file', {
+            error: convErr.message,
+            ext
           });
         }
       }
 
-      const text = await this.transcribeWithWhisper(fileForWhisper);
+      const result = await this.transcribeViaOpenAI(fileForWhisper);
 
       this.cleanupFiles([tempFilePath, alternatePath]);
 
-      return text;
+      return result;
     } catch (error) {
       logger.error('Audio transcription failed', { error: error.message, mimeType });
       this.cleanupFiles([tempFilePath, alternatePath]);
@@ -71,35 +93,83 @@ class TranscriptionService {
     }
   }
 
-  async transcribeWithWhisper(filePath) {
+  buildLanguagePrompt() {
+    return (
+      'This is Nigerian WhatsApp banking. Transcribe faithfully in the language spoken. ' +
+      'Primary languages: English, Nigerian Pidgin, Hausa, Yoruba, Igbo. Do not translate to English. ' +
+      'Common terms: balance, kudi, naira, ₦, transfer, tura, aika, airtime, data, PIN, MTN, Airtel, Glo, 9mobile, ' +
+      'GTBank, UBA, Opay, BVN, beneficiary. ' +
+      'Hausa examples: nawa ne balance dina, don Allah nuna min, ina kwana, sannu, yaya kake, aika kudi. ' +
+      'Yoruba examples: bawo ni, jowo, owo mi, se e le ran mi lowo. ' +
+      'Igbo examples: biko, ego, kedu, gosi m balance.'
+    );
+  }
+
+  async transcribeViaOpenAI(filePath) {
     const OpenAI = require('openai');
     const client = new OpenAI({
       apiKey: this.apiKey,
       baseURL: this.baseUrl
     });
 
-    const readStream = fs.createReadStream(filePath);
-    const prompt =
-      'Nigerian banking and mobile money: balance, transfer, airtime, data, naira, PIN, ' +
-      'MTN Airtel Glo 9mobile, GTBank UBA Opay. ' +
-      'Languages may include English, Nigerian Pidgin, Hausa, Yoruba, or Igbo.';
+    const prompt = this.buildLanguagePrompt();
+    const tryModel = async (modelId) => {
+      const readStream = fs.createReadStream(filePath);
+      const useJsonOnly =
+        typeof modelId === 'string' && /^gpt-4o.*transcribe/i.test(modelId);
 
-    const response = await client.audio.transcriptions.create({
-      file: readStream,
-      model: this.model,
-      prompt
-    });
+      const params = {
+        file: readStream,
+        model: modelId,
+        prompt
+      };
 
-    const transcription = (response && typeof response.text === 'string' ? response.text : '')
-      .trim();
+      if (useJsonOnly) {
+        params.response_format = 'json';
+      }
 
-    logger.info('Audio transcription completed (Whisper)', {
-      transcriptionLength: transcription.length,
-      audioFile: path.basename(filePath),
-      model: this.model
-    });
+      const response = await client.audio.transcriptions.create(params);
 
-    return transcription;
+      let text = '';
+      let language = null;
+
+      if (response && typeof response.text === 'string') {
+        text = response.text.trim();
+      }
+      if (response && typeof response.language === 'string') {
+        language = response.language;
+      }
+
+      return { text, language };
+    };
+
+    try {
+      const out = await tryModel(this.model);
+      logger.info('Transcription completed', {
+        model: this.model,
+        transcriptionLength: out.text.length,
+        detectedLanguage: out.language,
+        audioFile: path.basename(filePath)
+      });
+      return out;
+    } catch (primaryErr) {
+      if (this.fallbackModel && this.fallbackModel !== this.model) {
+        const msg = primaryErr?.message || String(primaryErr);
+        logger.warn('Primary OpenAI transcription failed, trying WHISPER_FALLBACK_MODEL', {
+          primary: this.model,
+          fallback: this.fallbackModel,
+          error: msg
+        });
+        const out = await tryModel(this.fallbackModel);
+        logger.info('Transcription completed (fallback OpenAI model)', {
+          model: this.fallbackModel,
+          transcriptionLength: out.text.length,
+          detectedLanguage: out.language
+        });
+        return out;
+      }
+      throw primaryErr;
+    }
   }
 
   async saveStreamToFile(stream, mimeType) {
@@ -141,7 +211,7 @@ class TranscriptionService {
         .toFormat('wav')
         .audioChannels(1)
         .audioFrequency(16000)
-        .audioBitrate('16k')
+        .audioCodec('pcm_s16le')
         .on('end', () => resolve(outputPath))
         .on('error', (error) => reject(error))
         .save(outputPath);

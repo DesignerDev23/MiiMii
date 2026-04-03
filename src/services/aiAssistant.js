@@ -174,7 +174,8 @@ class AIAssistantService {
 
     // System prompt for AI responses
     this.systemPrompt = `You are MiiMii, a friendly financial assistant. Talk like a real person - warm, casual, and natural.
-You must understand and interpret messages in Nigerian Pidgin, Yoruba, Hausa, Igbo, and standard English (including mixed-language messages).
+You must understand and interpret messages in these primary user languages (including mixed speech):
+English, Hausa, Yoruba, Igbo, and Nigerian Pidgin. Treat all five as first-class — detect which is dominant from the user's words.
 For intent extraction, mentally normalize/translate user text to English first, then classify intent and entities.
 CRITICAL LANGUAGE MIRRORING RULE: reply in the same language/style the user used most recently (Pidgin/Yoruba/Hausa/Igbo/English), unless the user explicitly asks for another language.
 
@@ -589,9 +590,11 @@ Return only the final message, no quotes or labels.
 
     const scenarioGuide = {
       voice_failed:
-        'User sent a voice note but transcription failed or was empty. Reply with ONE short warm sentence: ask to repeat more clearly or type the request. Match the language of userUtterance if any text was captured; otherwise use light Nigerian Pidgin mixed with English (not formal).',
+        'User sent a voice note but transcription failed or was empty. ONE short polite sentence in simple, neutral English (not Pidgin): ask them to repeat slowly or type. Say they may use English, Hausa, Yoruba, Igbo, or Pidgin.',
+      voice_failed_multilingual:
+        'Same as voice_failed: neutral simple English only; mention they can speak or type in English, Hausa, Yoruba, Igbo, or Nigerian Pidgin.',
       message_unclear:
-        'We could not get usable text from their message. ONE short sentence: ask them to try again or type help. Match userUtterance language if present.',
+        'We could not get usable text. ONE short sentence in the same language as userUtterance if it is clearly Hausa/Yoruba/Igbo/Pidgin/English; otherwise simple neutral English. Invite retry or typing help.',
       unsupported_format:
         'They used an unsupported message type. ONE sentence: say you handle text, voice notes, and images and ask them to resend that way. Match userUtterance language if present.',
       processing_error:
@@ -683,7 +686,10 @@ Return only the final message, no quotes or labels.
       }
     }
     const fallbacks = {
-      voice_failed: 'No hear you well — abeg repeat or type wetin you want.',
+      voice_failed:
+        "Sorry, I didn't catch that. Please repeat a bit slower or type your message — English, Hausa, Yoruba, Igbo, or Pidgin is fine.",
+      voice_failed_multilingual:
+        "Sorry, I didn't catch that. Please repeat or type in English, Hausa, Yoruba, Igbo, or Pidgin.",
       message_unclear: 'No catch wetin you mean — abeg try again or type help.',
       unsupported_format: 'Send as text, voice note, or picture with caption abeg.',
       processing_error: 'Small issue dey — abeg try again.',
