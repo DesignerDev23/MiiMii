@@ -1826,7 +1826,9 @@ class MessageProcessor {
       if (user.conversationState && user.conversationState.awaitingInput && user.conversationState.intent === 'data') {
         try {
           const aiAssistantConv = require('./aiAssistant');
-          await aiAssistantConv.handleConversationFlow(user, messageContent, user.conversationState);
+          await aiAssistantConv.handleConversationFlow(user, messageContent, user.conversationState, {
+            userOriginalMessage: messageContent
+          });
           return;
         } catch (convErr) {
           logger.error('Data conversation handling failed in main pipeline', { error: convErr.message, userId: user.id, awaitingInput: user.conversationState.awaitingInput });
@@ -2681,7 +2683,10 @@ class MessageProcessor {
                 // Immediately advance the data conversation using the list selection
                 try {
                   const aiAssistant = require('./aiAssistant');
-                  await aiAssistant.handleConversationFlow(user, interactiveResult.originalText || interactiveResult.listReply.title, user.conversationState);
+                  const flowOrig = interactiveResult.originalText || interactiveResult.listReply.title;
+                  await aiAssistant.handleConversationFlow(user, flowOrig, user.conversationState, {
+                    userOriginalMessage: flowOrig
+                  });
                   return; // stop further processing to avoid fallback messages
                 } catch (flowErr) {
                   logger.error('Failed to advance data flow from list reply', { error: flowErr.message, userId: user.id });
@@ -2711,7 +2716,10 @@ class MessageProcessor {
                   user.conversationState = bootstrapState;
 
                   const aiAssistant = require('./aiAssistant');
-                  await aiAssistant.handleConversationFlow(user, interactiveResult.originalText || interactiveResult.listReply.title, user.conversationState);
+                  const flowOrig2 = interactiveResult.originalText || interactiveResult.listReply.title;
+                  await aiAssistant.handleConversationFlow(user, flowOrig2, user.conversationState, {
+                    userOriginalMessage: flowOrig2
+                  });
                   return; // stop further processing to avoid fallback messages
                 } catch (bootErr) {
                   logger.error('Failed to bootstrap data flow from list reply', { error: bootErr.message, userId: user.id });
@@ -2760,6 +2768,8 @@ class MessageProcessor {
         originalUserText = processedText;
       }
 
+      const aiInputText = originalUserText || processedText;
+
       // Log processed message
       await activityLogger.logUserActivity(
         user.id,
@@ -2788,7 +2798,9 @@ class MessageProcessor {
       // If user is mid-conversation (e.g., data purchase), route to conversation handler first
       if (user.conversationState && user.conversationState.awaitingInput) {
         try {
-          await aiAssistant.handleConversationFlow(user, processedText, user.conversationState);
+          await aiAssistant.handleConversationFlow(user, processedText, user.conversationState, {
+            userOriginalMessage: aiInputText
+          });
           return;
         } catch (flowErr) {
           logger.error('Conversation flow handling failed', { error: flowErr.message, userId: user.id, awaitingInput: user.conversationState.awaitingInput });
@@ -2803,7 +2815,6 @@ class MessageProcessor {
         extractedData: extractedData
       });
       
-      const aiInputText = originalUserText || processedText;
       const mergedExtractedData = {
         ...(extractedData || {}),
         normalizedMessage: processedText,
@@ -2838,7 +2849,7 @@ class MessageProcessor {
             (user.conversationState?.data?.accountNumber || user.conversationState?.data?.phoneNumber);
           
           if (hasValidTransferData) {
-            return await this.handlePinVerification(user, { text: processedText }, messageType);
+            return await this.handlePinVerification(user, { text: aiInputText, normalizedText: processedText }, messageType);
           } else {
             // Clear invalid conversation state and ask user to start over
             await user.updateConversationState(null);
@@ -2878,39 +2889,49 @@ class MessageProcessor {
             break;
             
           case 'bank_transfer':
-            return await this.handleTransferIntent(user, { text: processedText }, messageType, aiAnalysis.extractedData);
+            return await this.handleTransferIntent(user, { text: aiInputText, normalizedText: processedText }, messageType, aiAnalysis.extractedData);
             
           case 'transfer':
-            return await this.handleTransferIntent(user, { text: processedText }, messageType, aiAnalysis.extractedData);
+            return await this.handleTransferIntent(user, { text: aiInputText, normalizedText: processedText }, messageType, aiAnalysis.extractedData);
             
           case 'airtime':
-            return await this.handleAirtimeIntent(user, { text: processedText }, messageType);
+            return await this.handleAirtimeIntent(user, { text: aiInputText, normalizedText: processedText }, messageType);
             
           case 'data':
-            return await this.handleDataIntent(user, { text: processedText }, messageType);
+            return await this.handleDataIntent(user, { text: aiInputText, normalizedText: processedText }, messageType);
             
           case 'bills':
-            return await this.handleBillsIntent(user, { text: processedText }, messageType);
+            return await this.handleBillsIntent(user, { text: aiInputText, normalizedText: processedText }, messageType);
             
           case 'help':
-            return await this.handleHelpIntent(user, { text: processedText }, messageType);
+            return await this.handleHelpIntent(user, { text: aiInputText, normalizedText: processedText }, messageType);
             
           case 'menu':
-            return await this.handleMenuIntent(user, { text: processedText }, messageType);
+            return await this.handleMenuIntent(user, { text: aiInputText, normalizedText: processedText }, messageType);
             
-          case 'beneficiaries':
+          case 'beneficiaries': {
             const beneficiariesResult = await aiAssistant.handleBeneficiariesList(user);
-            await whatsappService.sendTextMessage(user.whatsappNumber, beneficiariesResult.message);
+            const benText = await aiAssistant.mirrorReplyToUserLanguage(
+              aiInputText,
+              beneficiariesResult.message
+            );
+            await whatsappService.sendTextMessage(user.whatsappNumber, benText);
             break;
+          }
             
-          case 'greeting':
-            const greetingMessage = `Hey ${user.firstName || 'there'}! 👋 I'm MiiMii, your money assistant on WhatsApp. I can sort out your balance, transfers, airtime and data, bills, and your recent transactions — what would you like to do?`;
+          case 'greeting': {
+            const greetingMessage = await aiAssistantService.generateShortReply({
+              userUtterance: aiInputText,
+              scenario: 'greeting_reply',
+              facts: { firstName: user.firstName || '' }
+            });
             await whatsappService.sendTextMessage(user.whatsappNumber, greetingMessage);
             break;
+          }
             
           default:
             // If AI couldn't determine intent, try traditional processing
-            return await this.processMessageByType(user, userName, { text: processedText }, messageType);
+            return await this.processMessageByType(user, userName, { text: aiInputText, normalizedText: processedText }, messageType);
         }
       } else {
         // If AI couldn't determine intent, check if user is awaiting PIN verification
@@ -2920,7 +2941,7 @@ class MessageProcessor {
             (user.conversationState?.data?.accountNumber || user.conversationState?.data?.phoneNumber);
           
           if (hasValidTransferData) {
-            return await this.handlePinVerification(user, { text: processedText }, messageType);
+            return await this.handlePinVerification(user, { text: aiInputText, normalizedText: processedText }, messageType);
           } else {
             // Clear invalid conversation state and ask user to start over
             await user.updateConversationState(null);
@@ -2931,7 +2952,7 @@ class MessageProcessor {
         }
         
         // If AI couldn't determine intent, try traditional processing
-        return await this.processMessageByType(user, userName, { text: processedText }, messageType);
+        return await this.processMessageByType(user, userName, { text: aiInputText, normalizedText: processedText }, messageType);
       }
 
     } catch (error) {
@@ -4687,7 +4708,10 @@ class MessageProcessor {
         }
       ];
 
-      const prompt = 'Which network would you like to buy data for?';
+      const prompt = await aiAssistantService.mirrorReplyToUserLanguage(
+        message.text || '',
+        'Which network would you like to buy data for?'
+      );
       await whatsappService.sendListMessage(user.whatsappNumber, prompt, 'Select Network', sections);
 
       logger.info('Started regular data purchase conversation', {
@@ -4744,7 +4768,11 @@ class MessageProcessor {
       
       if (result && result.message) {
         const whatsappService = require('./whatsapp');
-        await whatsappService.sendTextMessage(user.whatsappNumber, result.message);
+        const billText = await aiAssistantService.mirrorReplyToUserLanguage(
+          message.text || '',
+          result.message
+        );
+        await whatsappService.sendTextMessage(user.whatsappNumber, billText);
       }
     } catch (error) {
       logger.error('Bill payment failed', { error: error.message, userId: user.id });
@@ -4759,8 +4787,11 @@ class MessageProcessor {
    * Handle help intent
    */
   async handleHelpIntent(user, message, messageType) {
-    const helpMessage = `I'm here whenever you need me. You can ask about your balance, your transactions, or your account details, and I can help you send money, buy airtime or data, pay bills, or reach support if something's wrong — just tell me what you're trying to do.`;
-    
+    const userUtterance = message?.text || message?.originalText || '';
+    const helpMessage = await aiAssistantService.generateShortReply({
+      userUtterance,
+      scenario: 'help_overview'
+    });
     const whatsappService = require('./whatsapp');
     await whatsappService.sendTextMessage(user.whatsappNumber, helpMessage);
   }
@@ -4769,8 +4800,11 @@ class MessageProcessor {
    * Handle menu intent
    */
   async handleMenuIntent(user, message, messageType) {
-    const menuMessage = `Here's what I do: money stuff like your balance, sending cash, and transaction history; airtime and data bundles; bills like electricity and water; plus your account and virtual account details. If you're stuck, ask for help or support and I'll point you the right way — what do you need?`;
-
+    const userUtterance = message?.text || message?.originalText || '';
+    const menuMessage = await aiAssistantService.generateShortReply({
+      userUtterance,
+      scenario: 'menu_overview'
+    });
     const whatsappService = require('./whatsapp');
     await whatsappService.sendTextMessage(user.whatsappNumber, menuMessage);
   }

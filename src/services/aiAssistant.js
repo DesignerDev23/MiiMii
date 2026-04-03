@@ -178,6 +178,12 @@ You must understand and interpret messages in Nigerian Pidgin, Yoruba, Hausa, Ig
 For intent extraction, mentally normalize/translate user text to English first, then classify intent and entities.
 CRITICAL LANGUAGE MIRRORING RULE: reply in the same language/style the user used most recently (Pidgin/Yoruba/Hausa/Igbo/English), unless the user explicitly asks for another language.
 
+NON-NEGOTIABLE — JSON "response" FIELD LANGUAGE:
+- Whatever language the USER MESSAGE is in (Hausa, Yoruba, Igbo, Nigerian Pidgin, English, or mixed), the entire "response" string MUST be in THAT SAME language.
+- Hausa in → Hausa out. Never answer a Hausa user in English. Never default to English when the user did not use English.
+- You may think in English internally for intent and extraction; only the user-visible "response" must mirror the user.
+- Keep numbers, ₦ amounts, bank names, and person names inside the sentence naturally.
+
 🔥 ABSOLUTE PRIORITY: If user mentions "beneficiaries" in ANY way, the intent MUST be "beneficiaries"!
 EXAMPLES: "Show my beneficiaries" → intent: "beneficiaries", "List beneficiaries" → intent: "beneficiaries", "My beneficiaries" → intent: "beneficiaries"
 
@@ -211,6 +217,7 @@ USER-FACING TEXT FORMAT (for the JSON "response" field and any message the user 
 - Do NOT use bullet lists, numbered lists, line breaks used as a menu, section titles with asterisks, or "•" items.
 - If you mention several things the user can do, weave them into one or two sentences (e.g. "I can help you check your balance, send money, buy airtime or data, or pay bills — just say what you need.").
 - Avoid robotic labels like "Here is the list:"; sound natural instead.
+- Write those sentences in the USER'S language — not English unless the user used English.
 
 Available Services:
 - Money transfers (P2P)
@@ -482,6 +489,12 @@ Keep responses natural, friendly, and human-like while correctly understanding N
         context.originalMessage ||
         '';
 
+      const strictMirror = context.strictMirrorLanguage
+        ? `
+STRICT: Detect the language of the user's actual words (Hausa, Yoruba, Igbo, Nigerian Pidgin, English, or mixed). The final message must be entirely in THAT language. If the user wrote Hausa, translate/localize the whole draft into natural Hausa — no English leftovers. If the user wrote English, keep natural English. Same rule for Yoruba, Igbo, and Pidgin.
+`
+        : '';
+
       const prompt = `
 You are MiiMii, a friendly Nigerian fintech assistant. Polish the DRAFT reply while keeping it SHORT.
 
@@ -489,8 +502,8 @@ User's actual words (mirror THIS language — English, Nigerian Pidgin, Hausa, Y
 
 Draft reply to deliver (keep every fact, number, ₦ amount, and name exactly as written): """${String(message).slice(0, 1200)}"""
 
-Other context (do not contradict): ${JSON.stringify({ ...context, userUtterance: undefined, originalMessage: undefined })}
-
+Other context (do not contradict): ${JSON.stringify({ ...context, userUtterance: undefined, originalMessage: undefined, strictMirrorLanguage: undefined })}
+${strictMirror}
 Rules:
 1. Max 2 short sentences; sound like WhatsApp chat, not a brochure.
 2. Output in the SAME language as the user's actual words above. If those words are empty or unclear, keep the draft's language.
@@ -529,6 +542,43 @@ Return only the final message, no quotes or labels.
   }
 
   /**
+   * Force user-facing text into the same language as the user's message (e.g. Hausa in → Hausa out).
+   */
+  async mirrorReplyToUserLanguage(userUtterance, draftReply) {
+    const u = String(userUtterance || '').trim();
+    const d = String(draftReply || '').trim();
+    if (!u || !d || !this.openaiApiKey) {
+      return d || draftReply;
+    }
+    try {
+      return await this.makeResponseNatural(d, {
+        userUtterance: u,
+        originalMessage: u,
+        strictMirrorLanguage: true,
+        intent: 'language_mirror'
+      });
+    } catch (e) {
+      logger.warn('mirrorReplyToUserLanguage failed; using draft', { error: e.message });
+      return d;
+    }
+  }
+
+  /** Localize `response` on an intent result object when present. */
+  async withMirroredIntentResponse(userMessage, intentResult) {
+    if (
+      intentResult &&
+      typeof intentResult.response === 'string' &&
+      intentResult.response.trim()
+    ) {
+      intentResult.response = await this.mirrorReplyToUserLanguage(
+        userMessage,
+        intentResult.response
+      );
+    }
+    return intentResult;
+  }
+
+  /**
    * One short WhatsApp reply; mirrors userUtterance language when present.
    * Used for voice fallbacks, balance copy, and other paths that must not be hardcoded English blocks.
    */
@@ -554,7 +604,13 @@ Return only the final message, no quotes or labels.
       balance_fetch_error:
         'Balance could not be loaded. ONE short sentence: try again later. Mirror userUtterance language.',
       onboarding_start_failed:
-        'We failed to start account setup. ONE sentence: type help or try again. Mirror userUtterance language if any.'
+        'We failed to start account setup. ONE sentence: type help or try again. Mirror userUtterance language if any.',
+      greeting_reply:
+        'User greeted or said hello. ONE or TWO short warm sentences back; use facts.firstName if present. Entire reply MUST be in the same language as userUtterance (Hausa→Hausa, etc.).',
+      help_overview:
+        'User asked for help. In ONE or TWO sentences, say you can help with balance, transfers, airtime, data, bills, account — entirely in the same language as userUtterance.',
+      menu_overview:
+        'User asked for menu or services. In ONE or TWO sentences summarize what MiiMii does; entirely in the same language as userUtterance.'
     };
 
     const guide = scenarioGuide[scenario] || scenarioGuide.processing_error;
@@ -575,7 +631,7 @@ Return only the final message, no quotes or labels.
             {
               role: 'system',
               content:
-                'You are MiiMii on WhatsApp for Nigeria. Output ONLY the reply text — plain full sentences like a human typing chat, no bullets, numbered lists, or markdown. Max 2 short sentences unless balance_success needs slightly more to state amounts clearly. Never invent amounts or balances.'
+                'You are MiiMii on WhatsApp for Nigeria. Output ONLY the reply text — plain full sentences like a human typing chat, no bullets, numbered lists, or markdown. If userUtterance is non-empty, the ENTIRE reply must be in that same language (Hausa, Yoruba, Igbo, Pidgin, or English) — never answer Hausa in English. Max 2 short sentences unless balance_success needs slightly more to state amounts clearly. Never invent amounts or balances.'
             },
             {
               role: 'user',
@@ -634,7 +690,12 @@ Return only the final message, no quotes or labels.
       balance_need_onboarding: 'Make we finish setup first, then I go show your balance.',
       balance_wallet_missing: 'Wallet no dey — abeg contact support.',
       balance_fetch_error: 'I no fit load balance now — try again later.',
-      onboarding_start_failed: 'Setup no start — type help if you need hand.'
+      onboarding_start_failed: 'Setup no start — type help if you need hand.',
+      greeting_reply: 'How far! Wetin we go do today?',
+      help_overview:
+        'I dey here — I fit help you check balance, send money, buy airtime or data, pay bills, or look your account. Talk wetin you want.',
+      menu_overview:
+        'I fit help with balance, transfers, airtime, data, bills, and your account — say wetin you need.'
     };
     return fallbacks[scenario] || fallbacks.processing_error;
   }
@@ -2403,7 +2464,11 @@ Extract intent and data from this message. Consider the user context and any ext
     };
   }
 
-  async handleConversationFlow(user, message, conversationState) {
+  async handleConversationFlow(user, message, conversationState, flowOptions = {}) {
+    const langSource =
+      (flowOptions && flowOptions.userOriginalMessage) ||
+      message ||
+      '';
     const { intent, awaitingInput, transactionData } = conversationState;
     
     // Check if user wants to switch to a different service mid-conversation
@@ -2424,7 +2489,13 @@ Extract intent and data from this message. Consider the user context and any ext
       const whatsappService = require('./whatsapp');
       const naturalMessage = await this.makeResponseNatural(
         `Got it! Let me help you with ${switchIntent.intent === 'airtime' ? 'airtime' : switchIntent.intent === 'data' ? 'data' : switchIntent.intent === 'bank_transfer' ? 'that transfer' : switchIntent.intent} instead.`,
-        { service: switchIntent.intent, switching: true }
+        {
+          service: switchIntent.intent,
+          switching: true,
+          userUtterance: langSource,
+          originalMessage: langSource,
+          strictMirrorLanguage: true
+        }
       );
       await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage);
       
@@ -2433,9 +2504,12 @@ Extract intent and data from this message. Consider the user context and any ext
       
       // Send the response message if one was generated
       if (intentResult && intentResult.message) {
-        const finalMessage = await this.makeResponseNatural(intentResult.message, { 
-          service: switchIntent.intent, 
-          context: 'service_result' 
+        const finalMessage = await this.makeResponseNatural(intentResult.message, {
+          service: switchIntent.intent,
+          context: 'service_result',
+          userUtterance: langSource,
+          originalMessage: langSource,
+          strictMirrorLanguage: true
         });
         await whatsappService.sendTextMessage(user.whatsappNumber, finalMessage);
       }
@@ -3664,7 +3738,7 @@ Welcome to the future of banking! 🚀`;
           });
           
           if (amount) {
-            return {
+            return await this.withMirroredIntentResponse(message, {
               intent: 'bank_transfer',
               confidence: 0.95,
               extractedData: {
@@ -3675,14 +3749,14 @@ Welcome to the future of banking! 🚀`;
               },
               response: `Processing transfer of ₦${amount.toLocaleString()} to ${extractedData.bankDetails.bankName} ${extractedData.bankDetails.accountNumber}`,
               suggestedAction: 'Process bank transfer with image-extracted details'
-            };
+            });
           } else {
             // Amount not found in caption, but we have bank details from image
             logger.warn('Image bank details found but no amount in caption', {
               message: message,
               bankDetails: extractedData.bankDetails
             });
-            return {
+            return await this.withMirroredIntentResponse(message, {
               intent: 'bank_transfer',
               confidence: 0.8,
               extractedData: {
@@ -3693,7 +3767,7 @@ Welcome to the future of banking! 🚀`;
               },
               response: `I found bank details in your image (${extractedData.bankDetails.bankName} ${extractedData.bankDetails.accountNumber}), but I need the amount. Please specify the amount you want to send.`,
               suggestedAction: 'Request amount for image-extracted bank details'
-            };
+            });
           }
         }
         
@@ -3905,7 +3979,7 @@ Welcome to the future of banking! 🚀`;
             }
           }
 
-          return {
+          return await this.withMirroredIntentResponse(message, {
             intent: 'bank_transfer',
             confidence: 0.99,
             extractedData: {
@@ -3918,18 +3992,29 @@ Welcome to the future of banking! 🚀`;
             response: `Perfect! I can see you want to send money. Let me verify the account details and get the recipient name for you. 🔍`,
             suggestedAction: 'Process bank transfer',
             reasoning: 'Hard override: Transfer detected - all transfers are bank transfers'
-          };
+          });
         }
       }
       
       if (!this.isConfigured) {
         // Fallback to basic keyword matching
-        return this.basicIntentAnalysis(message);
+        return await this.basicIntentAnalysis(message);
       }
+
+      const normHint =
+        extractedData &&
+        extractedData.normalizedMessage &&
+        String(extractedData.normalizedMessage).trim() !== String(message).trim()
+          ? `\n(Internal intent-classification hint only — ignore for choosing the language of "response":) Normalized: "${String(extractedData.normalizedMessage).slice(0, 500)}"`
+          : '';
 
       const prompt = `Analyze this WhatsApp message and determine the user's intent.
 
 Message: "${message}"
+${normHint}
+
+MANDATORY — JSON "response" LANGUAGE:
+Write the entire "response" field in the SAME natural language as the Message above (Hausa, Yoruba, Igbo, Nigerian Pidgin, English, or mixed to match the user). Never answer in English if the user wrote in another language.
 
 User Context:
 - Onboarding Status: ${user.onboardingStep || 'unknown'}
@@ -4169,17 +4254,17 @@ Response format:
             intent: analysis.intent,
             confidence: analysis.confidence
           });
-          return analysis;
+          return await this.withMirroredIntentResponse(message, analysis);
         } catch (parseError) {
           logger.warn('Failed to parse AI intent analysis, using fallback', {
             error: parseError.message,
             analysisText
           });
-          return this.basicIntentAnalysis(message);
+          return await this.basicIntentAnalysis(message);
         }
       }
 
-      return this.basicIntentAnalysis(message);
+      return await this.basicIntentAnalysis(message);
       
     } catch (error) {
       const status = error.response?.status;
@@ -4210,24 +4295,25 @@ Response format:
         }, 60000); // 1 minute cooldown
       }
       
-      return this.basicIntentAnalysis(message);
+      return await this.basicIntentAnalysis(message);
     }
   }
 
   /**
    * Basic keyword-based intent analysis as fallback
    */
-  basicIntentAnalysis(message) {
+  async basicIntentAnalysis(message) {
     const lowerMessage = (message || '').toLowerCase();
 
     // Handle common responses in flows
     if (['yes', 'no', 'cancel', 'ok', 'okay', 'confirm', 'proceed'].includes(lowerMessage)) {
-      return { 
-        intent: 'unknown', 
-        confidence: 0.5, 
+      return await this.withMirroredIntentResponse(message, {
+        intent: 'unknown',
+        confidence: 0.5,
         suggestedAction: 'Ask for clarification',
-        response: "I'm not sure what you want yet — tell me in your own words. I can help with balance, sending money, airtime, data, bills, or your transactions."
-      };
+        response:
+          "I'm not sure what you want yet — tell me in your own words. I can help with balance, sending money, airtime, data, bills, or your transactions."
+      });
     }
 
     // Highest priority: explicit account details requests
@@ -4235,8 +4321,12 @@ Response format:
       return { intent: 'account_details', confidence: 0.95, suggestedAction: 'Show virtual account details' };
     }
 
-    // Balance keywords - improved to catch more natural language
-    if (/(balance|how\s+much\s+(do\s+)?i\s+have|what'?s?\s+my\s+(current\s+)?balance|check\s+my\s+balance|show\s+my\s+balance|my\s+balance)/i.test(message)) {
+    // Balance keywords — English + Hausa/Yoruba/Igbo-style phrases (when AI is off)
+    if (
+      /(balance|how\s+much\s+(do\s+)?i\s+have|what'?s?\s+my\s+(current\s+)?balance|check\s+my\s+balance|show\s+my\s+balance|my\s+balance|nawa\s+ne\s+balance|balance\s+dina|kudi\s+nawa|nawa\s+balance|ego\s+m|owo\s+mi|wetin\s+i\s+get)/i.test(
+        message
+      )
+    ) {
       return { intent: 'balance', confidence: 0.9, suggestedAction: 'Check account balance' };
     }
 
@@ -4315,8 +4405,12 @@ Response format:
       return { intent: 'menu', confidence: 0.8, suggestedAction: 'Show available services' };
     }
 
-    // Greeting keywords
-    if (/(^|\b)(hi|hello|hey)(\b|$)/i.test(message)) {
+    // Greeting keywords (English + common Nigerian languages)
+    if (
+      /(^|\b)(hi|hello|hey|sannu|barka\s+da\s+kwana|ina\s+kwana|ndewo|bawo\s+ni|kedu)(\b|$)/i.test(
+        message
+      )
+    ) {
       return { intent: 'greeting', confidence: 0.9, suggestedAction: 'Send welcome message' };
     }
 
