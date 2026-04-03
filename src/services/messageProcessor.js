@@ -2045,7 +2045,7 @@ class MessageProcessor {
           if (intentAnalysis.intent === 'unknown') {
             const whatsappService = require('./whatsapp');
             await whatsappService.sendTextMessage(user.whatsappNumber, 
-              intentAnalysis.response || "I'm not sure what you'd like to do. Here are some things I can help you with:\n\n💰 Check balance\n💸 Send money\n📱 Buy airtime\n📶 Buy data\n⚡ Pay bills\n📊 View transactions\n\nJust tell me what you need!");
+              intentAnalysis.response || "I'm not quite sure what you need yet. I can help with your balance, sending money, airtime, data, bills, or your transactions — just say it in your own words and we'll go from there.");
             return;
           }
           
@@ -2492,17 +2492,10 @@ class MessageProcessor {
 
   async sendLearnMoreMessage(user) {
     try {
-      const learnMoreText = `📖 *About MiiMii* 📖\n\n` +
-                           `🏦 *Digital Banking Made Simple*\n` +
-                           `• Send and receive money instantly\n` +
-                           `• Pay bills and buy airtime\n` +
-                           `• Save money with our savings plans\n` +
-                           `• Get virtual cards for online shopping\n\n` +
-                           `🔐 *Secure & Licensed*\n` +
-                           `• Bank-level security\n` +
-                           `• Licensed by regulatory authorities\n` +
-                           `• Your money is safe with us\n\n` +
-                           `Ready to get started?`;
+      const learnMoreText =
+        `MiiMii keeps banking simple on WhatsApp: you can send and receive money quickly, pay bills, buy airtime, grow savings, and use virtual cards for online shopping. ` +
+        `We're built with strong security and work within regulated banking rules, so your money is looked after properly. ` +
+        `Ready to finish setup when you are.`;
       
       const learnButtons = [
         { id: 'complete_onboarding', title: '✅ Complete Setup' },
@@ -2521,17 +2514,10 @@ class MessageProcessor {
 
   async sendHelpMessage(user) {
     try {
-      const helpText = `❓ *Need Help?* ❓\n\n` +
-                      `I'm here to help you with:\n\n` +
-                      `📞 *Contact Support*\n` +
-                      `• WhatsApp: +234 XXX XXX XXXX\n` +
-                      `• Email: support@miimii.com\n` +
-                      `• Hours: 8AM - 8PM (WAT)\n\n` +
-                      `📚 *Quick Start Guide*\n` +
-                      `• Complete onboarding to get started\n` +
-                      `• Add money to your wallet\n` +
-                      `• Start sending and receiving money\n\n` +
-                      `Would you like to continue with setup?`;
+      const helpText =
+        `I'm here if you need me. For a human on the team, WhatsApp us on +234 XXX XXX XXXX or email support@miimii.com — we're usually around 8am to 8pm WAT. ` +
+        `To get going, finish onboarding, add money to your wallet, then you can send and receive freely. ` +
+        `Want to continue setup now?`;
       
       const helpButtons = [
         { id: 'complete_onboarding', title: '✅ Continue Setup' },
@@ -2745,19 +2731,24 @@ class MessageProcessor {
           }
           break;
           
-        default:
-          await whatsappService.sendTextMessage(
-            user.whatsappNumber, 
-            "I can understand text, voice notes, and images. Please send your request in one of these formats."
-          );
+        default: {
+          const aiAssistant = require('./aiAssistant');
+          const fallbackText = await aiAssistant.generateShortReply({
+            userUtterance: '',
+            scenario: 'unsupported_format'
+          });
+          await whatsappService.sendTextMessage(user.whatsappNumber, fallbackText);
           return;
+        }
       }
 
       if (!processedText) {
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          "I couldn't understand your message. Please try again or type 'help' for assistance."
-        );
+        const aiAssistant = require('./aiAssistant');
+        const unclearText = await aiAssistant.generateShortReply({
+          userUtterance: '',
+          scenario: messageType === 'audio' ? 'voice_failed' : 'message_unclear'
+        });
+        await whatsappService.sendTextMessage(user.whatsappNumber, unclearText);
         return;
       }
 
@@ -2913,7 +2904,7 @@ class MessageProcessor {
             break;
             
           case 'greeting':
-            const greetingMessage = `Hello ${user.firstName || 'there'}! 👋\n\nI'm MiiMii, your financial assistant. I can help you with:\n\n💰 Check Balance\n💸 Send Money\n📱 Buy Airtime/Data\n💳 Pay Bills\n📊 Transaction History\n\nWhat would you like to do today?`;
+            const greetingMessage = `Hey ${user.firstName || 'there'}! 👋 I'm MiiMii, your money assistant on WhatsApp. I can sort out your balance, transfers, airtime and data, bills, and your recent transactions — what would you like to do?`;
             await whatsappService.sendTextMessage(user.whatsappNumber, greetingMessage);
             break;
             
@@ -2949,10 +2940,19 @@ class MessageProcessor {
         userId: user.id 
       });
       
-      await whatsappService.sendTextMessage(
-        user.whatsappNumber,
-        "I encountered an error processing your request. Please try again or contact support."
-      );
+      try {
+        const aiAssistant = require('./aiAssistant');
+        const errReply = await aiAssistant.generateShortReply({
+          userUtterance: '',
+          scenario: 'processing_error'
+        });
+        await whatsappService.sendTextMessage(user.whatsappNumber, errReply);
+      } catch (_) {
+        await whatsappService.sendTextMessage(
+          user.whatsappNumber,
+          'Something went wrong. Abeg try again.'
+        );
+      }
     }
   }
 
@@ -3262,7 +3262,7 @@ class MessageProcessor {
     try {
       logger.info('Processing voice message', { mediaId, userId: user.id });
       
-      // Download media from WhatsApp, then transcribe using Google Speech-to-Text
+      // Download media from WhatsApp, then transcribe (e.g. Whisper)
       const media = await whatsappService.downloadMedia(mediaId);
       const transcriptionText = await transcriptionService.transcribeAudio(media.stream, media.mimeType);
       
@@ -3281,19 +3281,10 @@ class MessageProcessor {
         // Keep voice UX concise: proceed directly to intent handling
         // without an intermediate "I heard..." acknowledgment message.
         return transcriptionText;
-      } else {
-        await whatsappService.sendTextMessage(
-          user.whatsappNumber,
-          "I couldn't understand your voice message. Please try sending it as text or speak more clearly."
-        );
-        return null;
       }
+      return null;
     } catch (error) {
       logger.error('Voice message processing failed', { error: error.message, mediaId });
-      await whatsappService.sendTextMessage(
-        user.whatsappNumber,
-        "I couldn't process your voice message. Please try sending it as text instead."
-      );
       return null;
     }
   }
@@ -3815,114 +3806,68 @@ class MessageProcessor {
    * Handle balance check intent
    */
   async handleBalanceIntent(user, message, messageType) {
-    const messageText = (message?.text || message?.originalText || '').toLowerCase();
-    const preferredLanguage = this.detectPreferredLanguage(messageText);
+    const userUtterance = message?.text || message?.originalText || '';
 
     if (user.onboardingStep !== 'completed') {
-      const setupMessages = {
-        en: "I'd love to show you your balance! Let me get your account set up first - it's quick and easy.",
-        pidgin: "I go like show you your balance! Make I help you setup your account first - e no go take time.",
-        hausa: "Zan so in nuna maka ma'aunin asusunka! Bari mu fara kammala bude asusunka cikin sauri.",
-        yoruba: "Mo le fi iye to ku han e! Je ka pari siseto account e ni kiakia.",
-        igbo: "Aga m egosi gi ego di na akauntu gi! Ka anyi buru uzo dozie account gi ngwa ngwa."
-      };
-      await this.sendNaturalResponse(
-        user,
-        setupMessages[preferredLanguage] || setupMessages.en,
-        {
-          preferredLanguage,
-          originalMessage: message?.text || '',
-          intent: 'balance',
-          tone: 'short_human'
-        }
-      );
-      
-      // Start onboarding flow immediately
+      const setupReply = await aiAssistantService.generateShortReply({
+        userUtterance,
+        scenario: 'balance_need_onboarding'
+      });
+      await whatsappService.sendTextMessage(user.whatsappNumber, setupReply);
+
       try {
         const onboardingService = require('./onboarding');
         await onboardingService.startOnboardingFlow(user);
         logger.info('Started onboarding flow for balance inquiry intent', { userId: user.id });
       } catch (onboardingError) {
         logger.error('Failed to start onboarding flow', { error: onboardingError.message, userId: user.id });
-        await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "I'm having trouble starting the setup process. Please type 'help' for assistance.");
+        const errReply = await aiAssistantService.generateShortReply({
+          userUtterance,
+          scenario: 'onboarding_start_failed'
+        });
+        await whatsappService.sendTextMessage(user.whatsappNumber, errReply);
       }
       return;
     }
 
     try {
-      // Get wallet balance - SYNC WITH RUBIES FIRST
       const walletService = require('./wallet');
-      const walletBalanceData = await walletService.getWalletBalance(user.id, true); // Sync with Rubies
-      
+      const walletBalanceData = await walletService.getWalletBalance(user.id, true);
+
       const wallet = await walletService.getUserWallet(user.id);
       if (!wallet) {
-        const walletMissingMessages = {
-          en: "❌ Wallet not found. Contact support",
-          pidgin: "❌ We no see your wallet. Abeg contact support.",
-          hausa: "❌ Ba a samu wallet dinka ba. Tuntubi support.",
-          yoruba: "❌ A ko ri wallet re. Jowo kan si support.",
-          igbo: "❌ A hụghị wallet gi. Biko kpọtụrụ support."
-        };
-        await this.sendNaturalResponse(
-          user,
-          walletMissingMessages[preferredLanguage] || walletMissingMessages.en,
-          {
-            preferredLanguage,
-            originalMessage: message?.text || '',
-            intent: 'balance_error',
-            tone: 'short_human'
-          }
-        );
+        const missingReply = await aiAssistantService.generateShortReply({
+          userUtterance,
+          scenario: 'balance_wallet_missing'
+        });
+        await whatsappService.sendTextMessage(user.whatsappNumber, missingReply);
         return;
       }
 
-      // Use synced balance data
       const balanceValue = walletBalanceData.total || parseFloat(wallet.balance || 0);
       const availableBalance = walletBalanceData.available || parseFloat(wallet.availableBalance || wallet.balance || 0);
       const pendingBalance = walletBalanceData.pending || parseFloat(wallet.pendingBalance || 0);
 
-      // Check if this is a natural language query and provide appropriate response
-      const isNaturalQuery = /what'?s?\s+my\s+(current\s+)?balance|how\s+much\s+(do\s+)?i\s+have|check\s+my\s+balance|show\s+my\s+balance|my\s+balance/.test(messageText);
-
-      let responseMessage;
-      if (isNaturalQuery) {
-        responseMessage = this.formatBalanceMessage(preferredLanguage, availableBalance, pendingBalance, balanceValue);
-      } else {
-        responseMessage = this.formatBalanceMessage(preferredLanguage, availableBalance, pendingBalance, balanceValue);
-      }
-
-      await this.sendNaturalResponse(
-        user,
-        responseMessage,
-        {
-          preferredLanguage,
-          originalMessage: message?.text || '',
-          intent: 'balance',
-          tone: 'short_human'
+      const amount = (n) =>
+        `₦${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+      const balanceReply = await aiAssistantService.generateShortReply({
+        userUtterance,
+        scenario: 'balance_success',
+        facts: {
+          availableFormatted: amount(availableBalance),
+          pendingFormatted: amount(pendingBalance),
+          totalFormatted: amount(balanceValue),
+          includePending: pendingBalance > 0
         }
-      );
-      
+      });
+      await whatsappService.sendTextMessage(user.whatsappNumber, balanceReply);
     } catch (error) {
       logger.error('Failed to get balance', { error: error.message, userId: user.id });
-      const errorMessages = {
-        en: "❌ Unable to retrieve your balance at the moment. Please try again later.",
-        pidgin: "❌ I no fit check your balance now now. Abeg try again later.",
-        hausa: "❌ Ba zan iya duba balance dinka yanzu ba. A sake gwadawa daga baya.",
-        yoruba: "❌ Mi o le gba balance re bayii. Jowo gbiyanju mo ni igba miran.",
-        igbo: "❌ Enweghị m ike ilele balance gi ugbu a. Biko nwaa ọzọ e mesie."
-      };
-      const fallbackLanguage = this.detectPreferredLanguage((message?.text || '').toLowerCase());
-      await this.sendNaturalResponse(
-        user,
-        errorMessages[fallbackLanguage] || errorMessages.en,
-        {
-          preferredLanguage: fallbackLanguage,
-          originalMessage: message?.text || '',
-          intent: 'balance_error',
-          tone: 'short_human'
-        }
-      );
+      const errorReply = await aiAssistantService.generateShortReply({
+        userUtterance,
+        scenario: 'balance_fetch_error'
+      });
+      await whatsappService.sendTextMessage(user.whatsappNumber, errorReply);
     }
   }
 
@@ -3932,6 +3877,7 @@ class MessageProcessor {
       const aiAssistant = require('./aiAssistant');
       const naturalMessage = await aiAssistant.makeResponseNatural(baseMessage, {
         ...context,
+        userUtterance: context.userUtterance ?? context.originalMessage,
         preserveFacts: true
       });
       await whatsappService.sendTextMessage(user.whatsappNumber, naturalMessage || baseMessage);
@@ -3942,44 +3888,6 @@ class MessageProcessor {
       });
       await whatsappService.sendTextMessage(user.whatsappNumber, baseMessage);
     }
-  }
-
-  detectPreferredLanguage(messageText = '') {
-    const text = (messageText || '').toLowerCase();
-    if (/(^|\s)(abeg|wetin|dey|una|how far|no wahala|make i|make we)(\s|$)/i.test(text)) return 'pidgin';
-    if (/(^|\s)(don allah|nuna|min|dina|kudi|taimako|ina kwana|nagode|sannu|nawa|nawa ne|balance dina)(\s|$)/i.test(text)) return 'hausa';
-    if (/(^|\s)(jowo|e jowo|owo|se e le|bawo ni|mo fe|e se)(\s|$)/i.test(text)) return 'yoruba';
-    if (/(^|\s)(biko|ego|gosi|nye|nyere m|kedu|ndewo|iko)(\s|$)/i.test(text)) return 'igbo';
-    return 'en';
-  }
-
-  formatBalanceMessage(language, availableBalance, pendingBalance, balanceValue) {
-    const amount = (n) => `₦${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-    const templates = {
-      en: {
-        noPending: `💰 Your available balance is ${amount(availableBalance)}, and your total balance is ${amount(balanceValue)}. You are all set for transactions. 💳`,
-        withPending: `💰 Your available balance is ${amount(availableBalance)}, your pending balance is ${amount(pendingBalance)}, and your total balance is ${amount(balanceValue)}. You are all set for transactions. 💳`
-      },
-      pidgin: {
-        noPending: `💰 Your available balance na ${amount(availableBalance)}, and your total balance na ${amount(balanceValue)}. You don set for transaction. 💳`,
-        withPending: `💰 Your available balance na ${amount(availableBalance)}, your pending balance na ${amount(pendingBalance)}, and your total balance na ${amount(balanceValue)}. You don set for transaction. 💳`
-      },
-      hausa: {
-        noPending: `💰 Balance dinka da zaka iya amfani da shi yanzu shi ne ${amount(availableBalance)}, kuma jimillar balance dinka shi ne ${amount(balanceValue)}. Komai ya shirya don mu'amala. 💳`,
-        withPending: `💰 Balance dinka mai amfani yanzu shi ne ${amount(availableBalance)}, wanda ke jira shi ne ${amount(pendingBalance)}, kuma jimillar balance dinka shi ne ${amount(balanceValue)}. Komai ya shirya don mu'amala. 💳`
-      },
-      yoruba: {
-        noPending: `💰 Iye owo to wa fun lilo bayi je ${amount(availableBalance)}, ati pe lapapo owo re je ${amount(balanceValue)}. Ohun gbogbo ti setan fun transaction. 💳`,
-        withPending: `💰 Iye owo to wa fun lilo bayi je ${amount(availableBalance)}, iye to n duro je ${amount(pendingBalance)}, ati pe lapapo owo re je ${amount(balanceValue)}. Ohun gbogbo ti setan fun transaction. 💳`
-      },
-      igbo: {
-        noPending: `💰 Ego i nwere ike iji ugbu a bu ${amount(availableBalance)}, ma nchikota balance gi bu ${amount(balanceValue)}. Ihe niile adila njikere maka transaction. 💳`,
-        withPending: `💰 Ego i nwere ike iji ugbu a bu ${amount(availableBalance)}, ego ka na-eche bu ${amount(pendingBalance)}, ma nchikota balance gi bu ${amount(balanceValue)}. Ihe niile adila njikere maka transaction. 💳`
-      }
-    };
-
-    const t = templates[language] || templates.en;
-    return pendingBalance > 0 ? t.withPending : t.noPending;
   }
 
   /**
@@ -4127,7 +4035,7 @@ class MessageProcessor {
         if (walletBalance < totalAmount) {
           const shortfall = totalAmount - walletBalance;
           await whatsappService.sendTextMessage(user.whatsappNumber, 
-            `❌ *Insufficient Balance*\n\nYou need ₦${totalAmount.toLocaleString()} for this transfer but only have ₦${walletBalance.toLocaleString()}.\n\n💰 Please fund your wallet with ₦${shortfall.toLocaleString()} more to complete this transfer.`);
+            `You need ₦${totalAmount.toLocaleString()} for this transfer but your wallet only has ₦${walletBalance.toLocaleString()}, so you're short by ₦${shortfall.toLocaleString()}. Top up with at least that much and try again when you're ready.`);
           return;
         }
 
@@ -4445,7 +4353,7 @@ class MessageProcessor {
         if (walletBalance < totalAmount) {
           const shortfall = totalAmount - walletBalance;
           await whatsappService.sendTextMessage(user.whatsappNumber, 
-            `❌ *Insufficient Balance*\n\nYou need ₦${totalAmount.toLocaleString()} for this transfer but only have ₦${walletBalance.toLocaleString()}.\n\n💰 Please fund your wallet with ₦${shortfall.toLocaleString()} more to complete this transfer.`);
+            `You need ₦${totalAmount.toLocaleString()} for this transfer but your wallet only has ₦${walletBalance.toLocaleString()}, so you're short by ₦${shortfall.toLocaleString()}. Top up with at least that much and try again when you're ready.`);
           return;
         }
 
@@ -4851,7 +4759,7 @@ class MessageProcessor {
    * Handle help intent
    */
   async handleHelpIntent(user, message, messageType) {
-    const helpMessage = `❓ *Help & Support*\n\nI'm here to help! Here's what I can do:\n\n💰 *Account Management*\n• Check balance\n• View transactions\n• Account details\n\n💸 *Money Services*\n• Send money\n• Buy airtime\n• Buy data\n• Pay bills\n\n📞 *Support*\n• Contact support\n• Report issues\n\nJust tell me what you need!`;
+    const helpMessage = `I'm here whenever you need me. You can ask about your balance, your transactions, or your account details, and I can help you send money, buy airtime or data, pay bills, or reach support if something's wrong — just tell me what you're trying to do.`;
     
     const whatsappService = require('./whatsapp');
     await whatsappService.sendTextMessage(user.whatsappNumber, helpMessage);
@@ -4861,8 +4769,8 @@ class MessageProcessor {
    * Handle menu intent
    */
   async handleMenuIntent(user, message, messageType) {
-    const menuMessage = `📋 *MiiMii Services Menu*\n\n💰 *Money*\n• Check balance\n• Send money\n• Transaction history\n\n📱 *Airtime & Data*\n• Buy airtime\n• Buy data bundles\n• Data subscriptions\n\n�� *Bills & Utilities*\n• Pay electricity\n• Pay water\n• Pay other bills\n\n📊 *Account*\n• Account details\n• Virtual account info\n\n❓ *Support*\n• Get help\n• Contact support\n\nJust say what you need!`;
-    
+    const menuMessage = `Here's what I do: money stuff like your balance, sending cash, and transaction history; airtime and data bundles; bills like electricity and water; plus your account and virtual account details. If you're stuck, ask for help or support and I'll point you the right way — what do you need?`;
+
     const whatsappService = require('./whatsapp');
     await whatsappService.sendTextMessage(user.whatsappNumber, menuMessage);
   }
@@ -4895,16 +4803,10 @@ class MessageProcessor {
       const walletDetails = await walletService.getWalletDetails(user.id);
       
       if (walletDetails) {
-        const accountMessage = `📋 *Account Details*\n\n` +
-          `🏦 *Virtual Account:* ${walletDetails.user.accountNumber || 'N/A'}\n` +
-          `🏛️ *Bank:* ${walletDetails.user.bankName || 'BellBank'}\n` +
-          `👤 *Account Name:* ${walletDetails.user.accountName}\n` +
-          `💰 *Balance:* ₦${parseFloat(walletDetails.wallet.balance).toLocaleString()}\n` +
-          `📱 *Phone:* ${user.whatsappNumber}\n\n` +
-          `📈 *Transaction Limits*\n` +
-          `• Daily: ₦${walletDetails.limits.daily.toLocaleString()}\n` +
-          `• Monthly: ₦${walletDetails.limits.monthly.toLocaleString()}\n` +
-          `• Single: ₦${walletDetails.limits.single.toLocaleString()}`;
+        const accountMessage =
+          `Your virtual account number is ${walletDetails.user.accountNumber || 'N/A'} with ${walletDetails.user.bankName || 'BellBank'}, in the name ${walletDetails.user.accountName}. ` +
+          `Your balance right now is ₦${parseFloat(walletDetails.wallet.balance).toLocaleString()}, and this chat is linked to ${user.whatsappNumber}. ` +
+          `For transfers, your limits are ₦${walletDetails.limits.daily.toLocaleString()} per day, ₦${walletDetails.limits.monthly.toLocaleString()} per month, and up to ₦${walletDetails.limits.single.toLocaleString()} on a single transaction.`;
         
         const whatsappService = require('./whatsapp');
         await whatsappService.sendTextMessage(user.whatsappNumber, accountMessage);
@@ -5016,7 +4918,7 @@ class MessageProcessor {
           await this.sendOnboardingFlow(user, userName);
           break;
         case 'learn_more':
-          const learnMessage = `📚 *About MiiMii*\n\nI'm your personal financial assistant! I can help you with:\n\n💰 *Money Management*\n• Send money to anyone\n• Check your balance\n• View transaction history\n\n📱 *Airtime & Data*\n• Buy airtime for any network\n• Purchase data bundles\n• Recharge family & friends\n\n💡 *Bill Payments*\n• Pay electricity bills\n• Cable TV subscriptions\n• Water and other utilities\n\n🔐 *Security*\n• Secure transactions\n• PIN protection\n• 24/7 support\n\nReady to get started?`;
+          const learnMessage = `I'm MiiMii, your personal finance assistant on WhatsApp. I help you send money, check your balance, and see what you've spent; buy airtime and data for any network; pay electricity, TV, water, and other bills; and everything stays protected with your PIN. Ready when you are — say what you'd like to do first.`;
           await whatsappService.sendTextMessage(user.whatsappNumber, learnMessage);
           break;
         case 'get_help':

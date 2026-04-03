@@ -206,6 +206,12 @@ Your personality:
 - Use emojis naturally (not too many)
 - Sound human, not like an AI
 
+USER-FACING TEXT FORMAT (for the JSON "response" field and any message the user reads):
+- Always write in full sentences, like a real WhatsApp chat with a friend — flowing prose only.
+- Do NOT use bullet lists, numbered lists, line breaks used as a menu, section titles with asterisks, or "•" items.
+- If you mention several things the user can do, weave them into one or two sentences (e.g. "I can help you check your balance, send money, buy airtime or data, or pay bills — just say what you need.").
+- Avoid robotic labels like "Here is the list:"; sound natural instead.
+
 Available Services:
 - Money transfers (P2P)
 - Bank transfers
@@ -271,6 +277,9 @@ Response Style Examples:
 
 ❌ DON'T SAY: "Make I send money give you" (pidgin)
 ✅ SAY: "Ready to send the money to you"
+
+❌ DON'T SAY: "I can help with:\n• balance\n• transfers" (bullets or list layout)
+✅ SAY: "I can help with balance, transfers, airtime, and bills — what do you want to do?"
 
 For ALL transfers (bank transfers only), extract:
 - amount (convert "5k" to 5000, "10k" to 10000, etc.)
@@ -464,58 +473,170 @@ Keep responses natural, friendly, and human-like while correctly understanding N
 
       const openai = require('openai');
       const client = new openai.OpenAI({
-        apiKey: this.openaiApiKey
+        apiKey: this.openaiApiKey,
+        baseURL: this.openaiBaseUrl
       });
 
+      const userUtterance =
+        context.userUtterance ||
+        context.originalMessage ||
+        '';
+
       const prompt = `
-You are MiiMii, a friendly Nigerian fintech assistant. Make this bot response more natural, conversational, and human-like while keeping it SHORT and to the point.
+You are MiiMii, a friendly Nigerian fintech assistant. Polish the DRAFT reply while keeping it SHORT.
 
-Original message: "${message}"
+User's actual words (mirror THIS language — English, Nigerian Pidgin, Hausa, Yoruba, or Igbo): """${String(userUtterance).slice(0, 800)}"""
 
-Context: ${JSON.stringify(context)}
+Draft reply to deliver (keep every fact, number, ₦ amount, and name exactly as written): """${String(message).slice(0, 1200)}"""
+
+Other context (do not contradict): ${JSON.stringify({ ...context, userUtterance: undefined, originalMessage: undefined })}
 
 Rules:
-1. Keep it very short and natural (max 2 sentences)
-2. Preserve and mirror the language/style of the original message
-3. Be warm and friendly like talking to a friend
-4. Use appropriate emojis naturally (not too many)
-5. Keep the same meaning and information
-6. Make it sound human, not robotic
-7. For Nigerian context, use ₦ for amounts, understand "k" means thousand
-8. Never change numeric values, names, account details, or factual financial figures
+1. Max 2 short sentences; sound like WhatsApp chat, not a brochure.
+2. Output in the SAME language as the user's actual words above. If those words are empty or unclear, keep the draft's language.
+3. Never change numeric values, ₦ figures, account details, or factual data.
+4. Light emoji ok (0–1).
+5. Full sentences only — if the draft uses bullets, dashes, or line-break lists, rewrite as natural connected sentences.
 
-Examples:
-"Transfer successful" → "All done! ✅ Your money has been sent"
-"Please enter your PIN" → "Just need your PIN to complete this 🔐"
-"Invalid account number" → "Hmm, that account number doesn't look right 🤔"
-
-Return only the improved message, nothing else.
+Return only the final message, no quotes or labels.
 `;
 
       const response = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: this.model,
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful assistant that makes bot messages more natural and conversational. Always return only the improved message.'
+            content:
+              'You rewrite fintech bot replies as short, natural prose — full sentences only, no bullet lists or markdown. Return only the final user-facing text.'
           },
           {
             role: 'user',
             content: prompt
           }
         ],
-        temperature: 0.7,
-        max_tokens: 150
+        temperature: 0.65,
+        max_tokens: 180
       });
 
       const naturalResponse = response.choices[0].message.content.trim();
-      
+
       // Remove quotes if AI wrapped the response
       return naturalResponse.replace(/^["']|["']$/g, '');
     } catch (error) {
       logger.error('Failed to make response natural', { error: error.message, originalMessage: message });
       return message; // Return original on error
     }
+  }
+
+  /**
+   * One short WhatsApp reply; mirrors userUtterance language when present.
+   * Used for voice fallbacks, balance copy, and other paths that must not be hardcoded English blocks.
+   */
+  async generateShortReply({ userUtterance = '', scenario, facts = null } = {}) {
+    if (!this.openaiApiKey) {
+      return this._generateShortReplyFallback(scenario, facts);
+    }
+
+    const scenarioGuide = {
+      voice_failed:
+        'User sent a voice note but transcription failed or was empty. Reply with ONE short warm sentence: ask to repeat more clearly or type the request. Match the language of userUtterance if any text was captured; otherwise use light Nigerian Pidgin mixed with English (not formal).',
+      message_unclear:
+        'We could not get usable text from their message. ONE short sentence: ask them to try again or type help. Match userUtterance language if present.',
+      unsupported_format:
+        'They used an unsupported message type. ONE sentence: say you handle text, voice notes, and images and ask them to resend that way. Match userUtterance language if present.',
+      processing_error:
+        'Something went wrong on our side. ONE short apology and ask to try again. Match userUtterance language if present.',
+      balance_success: `Tell them their wallet balances in a natural ONE or TWO short sentences. You MUST include these exact figures verbatim (copy the strings exactly, including ₦ and commas): ${facts ? JSON.stringify(facts) : '{}'}. Mirror the language of userUtterance.`,
+      balance_need_onboarding:
+        'They asked for balance but onboarding is not finished. ONE or TWO short friendly sentences: you will show balance after quick setup, invite them to continue. Mirror userUtterance language.',
+      balance_wallet_missing:
+        'Wallet record missing; they should contact support. ONE short sentence, mirror userUtterance language. Stay calm.',
+      balance_fetch_error:
+        'Balance could not be loaded. ONE short sentence: try again later. Mirror userUtterance language.',
+      onboarding_start_failed:
+        'We failed to start account setup. ONE sentence: type help or try again. Mirror userUtterance language if any.'
+    };
+
+    const guide = scenarioGuide[scenario] || scenarioGuide.processing_error;
+
+    const userPayload = {
+      scenario,
+      instruction: guide,
+      userUtterance: String(userUtterance).slice(0, 1000),
+      facts: facts || undefined
+    };
+
+    try {
+      const response = await axios.post(
+        `${this.openaiBaseUrl}/chat/completions`,
+        {
+          model: this.model,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are MiiMii on WhatsApp for Nigeria. Output ONLY the reply text — plain full sentences like a human typing chat, no bullets, numbered lists, or markdown. Max 2 short sentences unless balance_success needs slightly more to state amounts clearly. Never invent amounts or balances.'
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(userPayload)
+            }
+          ],
+          temperature: 0.55,
+          max_tokens: 200
+        },
+        {
+          ...axiosConfig,
+          headers: {
+            ...axiosConfig.headers,
+            Authorization: `Bearer ${this.openaiApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 20000
+        }
+      );
+
+      const text = (response.data?.choices?.[0]?.message?.content || '').trim();
+      const cleaned = text.replace(/^["']|["']$/g, '');
+      return cleaned || this._generateShortReplyFallback(scenario, facts);
+    } catch (error) {
+      logger.error('generateShortReply failed', {
+        error: error.message,
+        scenario
+      });
+      return this._generateShortReplyFallback(scenario, facts);
+    }
+  }
+
+  _generateShortReplyFallback(scenario, facts) {
+    if (scenario === 'balance_success' && facts) {
+      if (facts.availableFormatted) {
+        if (facts.includePending) {
+          return `Available ${facts.availableFormatted}, pending ${facts.pendingFormatted}, total ${facts.totalFormatted}.`;
+        }
+        return `Available ${facts.availableFormatted}, total ${facts.totalFormatted}.`;
+      }
+      const { available, pending, total } = facts;
+      if (available != null && total != null) {
+        const fmt = (n) =>
+          `₦${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+        if (pending > 0) {
+          return `Available ${fmt(available)}, pending ${fmt(pending)}, total ${fmt(total)}.`;
+        }
+        return `Available ${fmt(available)}, total ${fmt(total)}.`;
+      }
+    }
+    const fallbacks = {
+      voice_failed: 'No hear you well — abeg repeat or type wetin you want.',
+      message_unclear: 'No catch wetin you mean — abeg try again or type help.',
+      unsupported_format: 'Send as text, voice note, or picture with caption abeg.',
+      processing_error: 'Small issue dey — abeg try again.',
+      balance_need_onboarding: 'Make we finish setup first, then I go show your balance.',
+      balance_wallet_missing: 'Wallet no dey — abeg contact support.',
+      balance_fetch_error: 'I no fit load balance now — try again later.',
+      onboarding_start_failed: 'Setup no start — type help if you need hand.'
+    };
+    return fallbacks[scenario] || fallbacks.processing_error;
   }
 
   /**
@@ -4105,7 +4226,7 @@ Response format:
         intent: 'unknown', 
         confidence: 0.5, 
         suggestedAction: 'Ask for clarification',
-        response: "I'm not sure what you'd like to do. Could you please tell me what you need help with? You can say things like:\n\n• Check balance\n• Send money\n• Buy airtime\n• Buy data\n• Pay bills\n• View transactions"
+        response: "I'm not sure what you want yet — tell me in your own words. I can help with balance, sending money, airtime, data, bills, or your transactions."
       };
     }
 
