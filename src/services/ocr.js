@@ -1,11 +1,13 @@
-const Tesseract = require('tesseract.js');
+const vision = require('@google-cloud/vision');
 const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 const logger = require('../utils/logger');
 
 class OCRService {
   constructor() {
+    this.visionClient = new vision.ImageAnnotatorClient();
     this.supportedMimeTypes = [
       'image/jpeg',
       'image/png',
@@ -15,12 +17,12 @@ class OCRService {
     ];
   }
 
-  async extractText(imageStream, options = {}) {
+  async extractText(imageStreamOrBuffer, options = {}) {
     let tempFilePath = null;
     
     try {
       // Save stream to temporary file
-      tempFilePath = await this.saveStreamToFile(imageStream);
+      tempFilePath = await this.saveInputToFile(imageStreamOrBuffer);
       
       // Preprocess image for better OCR results
       const processedImagePath = await this.preprocessImage(tempFilePath);
@@ -44,7 +46,7 @@ class OCRService {
     }
   }
 
-  async saveStreamToFile(stream) {
+  async saveInputToFile(streamOrBuffer) {
     const tempDir = path.join(__dirname, '../../uploads/temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
@@ -53,6 +55,7 @@ class OCRService {
     const tempFilePath = path.join(tempDir, `ocr_${Date.now()}.jpg`);
     const writeStream = fs.createWriteStream(tempFilePath);
     
+    const stream = Buffer.isBuffer(streamOrBuffer) ? Readable.from(streamOrBuffer) : streamOrBuffer;
     return new Promise((resolve, reject) => {
       stream.pipe(writeStream);
       writeStream.on('finish', () => resolve(tempFilePath));
@@ -80,46 +83,36 @@ class OCRService {
   }
 
   async performOCR(imagePath, options = {}) {
-    const {
-      language = 'eng',
-      psm = 6, // Uniform block of text
-      oem = 3  // Default OCR Engine Mode
-    } = options;
-
     try {
-      const { data } = await Tesseract.recognize(
-        imagePath,
-        language,
-        {
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              logger.debug(`OCR Progress: ${Math.round(m.progress * 100)}%`);
-            }
-          },
-          tessedit_pageseg_mode: psm,
-          tessedit_ocr_engine_mode: oem,
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,;:!?-()[]{}@#$%&*+=/_|~`"\'',
-        }
-      );
+      const [result] = await this.visionClient.documentTextDetection(imagePath);
+      const annotation = result.fullTextAnnotation || {};
+      const extractedText = annotation.text || result.textAnnotations?.[0]?.description || '';
+      const pages = annotation.pages || [];
+      const wordCount = pages.reduce((count, page) => {
+        const blocks = page.blocks || [];
+        return count + blocks.reduce((bCount, block) => {
+          const paragraphs = block.paragraphs || [];
+          return bCount + paragraphs.reduce((pCount, para) => pCount + (para.words?.length || 0), 0);
+        }, 0);
+      }, 0);
 
       // Post-process the extracted text
-      const processedText = this.postProcessText(data.text);
+      const processedText = this.postProcessText(extractedText);
       
       // Extract potential financial information
       const extractedData = this.extractFinancialInfo(processedText);
 
       return {
         text: processedText,
-        confidence: data.confidence,
+        confidence: wordCount > 0 ? 90 : 0,
         extractedData,
         rawData: {
-          words: data.words,
-          lines: data.lines,
-          paragraphs: data.paragraphs
+          pagesCount: pages.length,
+          textAnnotations: result.textAnnotations?.length || 0
         }
       };
     } catch (error) {
-      logger.error('Tesseract OCR failed', { error: error.message, imagePath });
+      logger.error('Google Vision OCR failed', { error: error.message, imagePath });
       throw new Error('OCR processing failed');
     }
   }

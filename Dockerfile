@@ -14,7 +14,6 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libfontconfig1-dev \
     ffmpeg \
-    tesseract-ocr \
     imagemagick \
     python3 \
     make \

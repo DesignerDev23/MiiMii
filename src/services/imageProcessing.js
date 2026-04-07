@@ -1,8 +1,8 @@
-const Tesseract = require('tesseract.js');
 const sharp = require('sharp');
 const axios = require('axios');
 const logger = require('../utils/logger');
 const config = require('../config');
+const ocrService = require('./ocr');
 
 class ImageProcessingService {
   constructor() {
@@ -104,30 +104,14 @@ class ImageProcessingService {
    */
   async extractTextFromImage(imageBuffer) {
     try {
-      logger.info('Starting OCR text extraction', {
+      logger.info('Starting OCR text extraction (Google Vision)', {
         imageBufferSize: imageBuffer.length
       });
-      
-      const result = await Tesseract.recognize(imageBuffer, 'eng', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            logger.debug('OCR progress', { progress: Math.round(m.progress * 100) });
-          }
-        },
-        // Enhanced OCR configuration for better text recognition
-        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,-:()',
-        tessedit_pageseg_mode: '6', // Assume a single uniform block of text
-        tessedit_ocr_engine_mode: '3', // Default, based on what is available
-        preserve_interword_spaces: '1', // Preserve spaces between words
-        textord_min_linesize: '2.5', // Minimum line size
-        textord_old_baselines: '1', // Use old baseline detection
-        textord_old_xheight: '1' // Use old x-height detection
-      });
-
-      const extractedText = result.data.text;
+      const result = await ocrService.extractText(imageBuffer);
+      const extractedText = result.text || '';
       logger.info('OCR text extraction completed', {
         textLength: extractedText.length,
-        confidence: result.data.confidence,
+        confidence: result.confidence,
         extractedText: extractedText.substring(0, 200) + (extractedText.length > 200 ? '...' : ''),
         fullText: extractedText, // Log the full text for debugging
         rawText: extractedText.replace(/\n/g, '\\n').replace(/\r/g, '\\r') // Show newlines as escape sequences
@@ -135,7 +119,7 @@ class ImageProcessingService {
 
       return {
         text: extractedText,
-        confidence: result.data.confidence
+        confidence: result.confidence
       };
     } catch (error) {
       logger.error('OCR text extraction failed', { error: error.message });
