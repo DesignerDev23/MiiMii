@@ -2584,6 +2584,13 @@ class MessageProcessor {
           if (interactiveResult) {
             processedText = interactiveResult.text;
             if (interactiveResult.buttonReply) {
+              if (interactiveResult.buttonReply.id === 'fund_wallet') {
+                return await this.handleAccountDetailsIntent(
+                  user,
+                  { text: interactiveResult.originalText || 'fund wallet' },
+                  'interactive'
+                );
+              }
               // For button replies, we might want to store state or pass data
               // For now, we'll just pass the text and the button reply
               await this.storeConversationState(user, {
@@ -3609,6 +3616,9 @@ class MessageProcessor {
           case 'get_help':
             processedText = 'help';
             break;
+          case 'fund_wallet':
+            processedText = 'account details';
+            break;
           default:
             processedText = buttonTitle;
         }
@@ -3874,7 +3884,9 @@ class MessageProcessor {
           includePending: pendingBalance > 0
         }
       });
-      await whatsappService.sendTextMessage(user.whatsappNumber, balanceReply);
+      await whatsappService.sendButtonMessage(user.whatsappNumber, balanceReply, [
+        { id: 'fund_wallet', title: 'Fund Wallet' }
+      ]);
     } catch (error) {
       logger.error('Failed to get balance', { error: error.message, userId: user.id });
       const errorReply = await aiAssistantService.generateShortReply({
