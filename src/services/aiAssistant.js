@@ -613,7 +613,13 @@ Return only the final message, no quotes or labels.
       help_overview:
         'User asked for help. In ONE or TWO sentences, say you can help with balance, transfers, airtime, data, bills, account — entirely in the same language as userUtterance.',
       menu_overview:
-        'User asked for menu or services. In ONE or TWO sentences summarize what MiiMii does; entirely in the same language as userUtterance.'
+        'User asked for menu or services. In ONE or TWO sentences summarize what MiiMii does; entirely in the same language as userUtterance.',
+      transfer_need_amount:
+        'User wants transfer but amount is missing. ONE short sentence asking for amount, with a tiny natural example. Same language as userUtterance.',
+      transfer_need_details:
+        'User wants transfer but details are incomplete. ONE short sentence asking for amount + account number + bank name. Same language as userUtterance.',
+      transfer_processing_error:
+        'Transfer parsing/processing failed. ONE short apology + ask user to resend transfer details. Same language as userUtterance.'
     };
 
     const guide = scenarioGuide[scenario] || scenarioGuide.processing_error;
@@ -701,7 +707,13 @@ Return only the final message, no quotes or labels.
       help_overview:
         'I dey here — I fit help you check balance, send money, buy airtime or data, pay bills, or look your account. Talk wetin you want.',
       menu_overview:
-        'I fit help with balance, transfers, airtime, data, bills, and your account — say wetin you need.'
+        'I fit help with balance, transfers, airtime, data, bills, and your account — say wetin you need.',
+      transfer_need_amount:
+        'Please send the amount you want transfer, e.g. 1000 or 5k.',
+      transfer_need_details:
+        'Please send transfer details: amount, account number, and bank name.',
+      transfer_processing_error:
+        'I no process that transfer well. Abeg resend amount, account number, and bank name.'
     };
     return fallbacks[scenario] || fallbacks.processing_error;
   }

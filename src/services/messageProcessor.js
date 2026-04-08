@@ -19,7 +19,7 @@ class MessageProcessor {
         throw new Error('parsedMessage is required');
       }
       
-      const { from, message, messageType, contact, messageId } = parsedMessage;
+      let { from, message, messageType, contact, messageId } = parsedMessage;
       
       // Validate required fields
       if (!from) {
@@ -124,6 +124,24 @@ class MessageProcessor {
         } catch (e) {
           logger.warn('Early voice transcription failed', { error: e.message, userId: user.id });
         }
+      }
+
+      // First-contact behavior: send onboarding flow immediately for brand-new users.
+      // No need for "hi" or extra trigger words.
+      const isFreshUser =
+        user.onboardingStep === 'initial' || user.onboardingStep === 'greeting';
+      const isFlowCompletion =
+        messageType === 'interactive' && !!message?.flowResponse?.responseJson;
+      const isInteractiveReply =
+        messageType === 'interactive' && (!!message?.buttonReply || !!message?.listReply);
+      if (isFreshUser && !isFlowCompletion && !isInteractiveReply) {
+        logger.info('Auto-starting onboarding flow for first-contact user', {
+          userId: user.id,
+          onboardingStep: user.onboardingStep,
+          messageType
+        });
+        await this.sendOnboardingFlow(user, userName, messageId);
+        return;
       }
 
       // If interactive (buttons/lists/flows), handle via the interactive-aware pipeline
@@ -3894,7 +3912,14 @@ class MessageProcessor {
     let aiAnalysis;
     
     // If we have extracted data (e.g., from image processing), use it directly
-    if (extractedData && (extractedData.bankDetails || (extractedData.accountNumber && extractedData.bankName))) {
+    if (
+      extractedData &&
+      (
+        extractedData.bankDetails ||
+        extractedData.accountNumber ||
+        extractedData.phoneNumber
+      )
+    ) {
       logger.info('Using extracted bank details for transfer', {
         userId: user.id,
         hasBankDetails: !!(extractedData.bankDetails || (extractedData.accountNumber && extractedData.bankName)),
@@ -3933,8 +3958,11 @@ class MessageProcessor {
         const { amount, accountNumber, bankName, bankCode, recipientName, phoneNumber } = extractedData;
         
         if (!amount) {
-          await whatsappService.sendTextMessage(user.whatsappNumber, 
-            "I can see you want to make a transfer! 💸\n\nTo help you better, I need the amount.\n\nTry something like: *Send 5k to John 1234567890 GTBank* or *Send 100 to 08123456789*");
+          const shortText = await aiAssistantService.generateShortReply({
+            userUtterance: message?.text || '',
+            scenario: 'transfer_need_amount'
+          });
+          await whatsappService.sendTextMessage(user.whatsappNumber, shortText);
           return;
         }
 
@@ -4226,15 +4254,12 @@ class MessageProcessor {
           return;
         } else {
           // Not enough information for either type
-          await whatsappService.sendTextMessage(user.whatsappNumber, 
-            "I can see you want to make a transfer! 💸\n\n" +
-            "To help you better, I need more details:\n\n" +
-            "📝 *Amount* (e.g., 1000, 5k, 10k)\n" +
-            "👤 *Recipient name*\n" +
-            "🏦 *Bank details* (account number + bank name)\n\n" +
-            "Try something like:\n" +
-            "• *Send 5k to John 1234567890 GTBank*\n" +
-            "• *Send 1000 to 1234567890 First Bank Jane Doe*");
+          const shortText = await aiAssistantService.generateShortReply({
+            userUtterance: message?.text || '',
+            scenario: 'transfer_need_details'
+          });
+          await whatsappService.sendTextMessage(user.whatsappNumber, shortText);
+          return;
         }
 
       } catch (error) {
@@ -4251,8 +4276,11 @@ class MessageProcessor {
         }
         
         // Fallback to manual processing
-        await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "I'm having trouble processing that transfer request. Let me help you manually:\n\nPlease send:\n• Amount (e.g., 5k or 5000)\n• Account number (10 digits) and bank name for bank transfers\n• Phone number for P2P transfers\n\nExample: *Send 5k to 1234567890 GTBank* or *Send 100 to 08123456789*");
+        const shortText = await aiAssistantService.generateShortReply({
+          userUtterance: message?.text || '',
+          scenario: 'transfer_processing_error'
+        });
+        await whatsappService.sendTextMessage(user.whatsappNumber, shortText);
         return;
       }
     }
@@ -4377,8 +4405,11 @@ class MessageProcessor {
     }
 
     // If we couldn't parse the transfer details, ask for them
-    await whatsappService.sendTextMessage(user.whatsappNumber, 
-      "I'd love to help you with that transfer! 💸\n\nTo make it quick and easy, please send me:\n• Amount (like 5k or 5000)\n• Account number (10 digits) and bank name for bank transfers\n• Phone number for P2P transfers\n\nFor example: *Send 5k to 1234567890 GTBank* or *Send 100 to 08123456789*");
+    const shortText = await aiAssistantService.generateShortReply({
+      userUtterance: message?.text || '',
+      scenario: 'transfer_need_details'
+    });
+    await whatsappService.sendTextMessage(user.whatsappNumber, shortText);
   }
 
   // Handle PIN verification for transfers
