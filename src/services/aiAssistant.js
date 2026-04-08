@@ -228,7 +228,7 @@ Available Services:
 - Bill payments (Electricity, Cable TV)
 - Balance inquiries
 - Transaction history (quick view in chat)
-- Account statement (PDF sent to email) - generates branded PDF statement with logo
+- Account statement (PDF sent on WhatsApp) - generates branded PDF statement with logo
 - Beneficiaries list (show saved contacts)
 - PIN settings (disable/enable PIN for transactions)
 
@@ -243,7 +243,7 @@ IMPORTANT: Use these exact intent names:
 - "menu" for service menu
 - "greeting" for greetings
 - "transaction_history" for quick transaction history view in chat
-- "statement_request" for generating and emailing account statement PDF
+- "statement_request" for generating and sending account statement PDF on WhatsApp
 - "disable_pin" for PIN disable requests
 - "enable_pin" for PIN enable requests
 - "beneficiaries" for listing saved beneficiaries
@@ -2134,33 +2134,7 @@ Extract intent and data from this message. Consider the user context and any ext
         };
       }
 
-      // Check if user has an email address - if not, collect it first
-      const email = user.appEmail || user.email;
-      if (!email) {
-        // Set conversation state to collect email
-        await user.updateConversationState({
-          intent: 'statement_request',
-          awaitingInput: 'statement_email',
-          context: 'statement_generation',
-          step: 1
-        });
-
-        await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "📧 *Email Required for Statement*\n\n" +
-          "To send you your account statement PDF, I need your email address.\n\n" +
-          "Please provide your email address:\n" +
-          "• Reply with your email (e.g., example@email.com)\n" +
-          "• Or say \"My email is example@email.com\"\n\n" +
-          "Your email will be securely stored and used only for sending statements.");
-        
-        return {
-          intent: 'statement_request',
-          message: 'Email address required',
-          requiresAction: 'COLLECT_EMAIL'
-        };
-      }
-
-      // Email exists - show date range selection buttons
+      // Statement is delivered on WhatsApp directly - no email collection needed.
       await this.showStatementDateRangeOptions(user);
       
       return {
@@ -2202,8 +2176,7 @@ Extract intent and data from this message. Consider the user context and any ext
       intent: 'statement_request',
       awaitingInput: 'statement_date_range',
       context: 'statement_generation',
-      step: 2,
-      email: user.appEmail || user.email
+      step: 1
     });
 
     // Get current date for display
@@ -2244,10 +2217,7 @@ Extract intent and data from this message. Consider the user context and any ext
 
     await whatsappService.sendListMessage(
       user.whatsappNumber,
-      `📅 *Select Statement Period*\n\n` +
-      `Choose the date range for your account statement:\n\n` +
-      `📧 Email: ${user.appEmail || user.email}\n\n` +
-      `Tap an option below:`,
+      `Choose the date range for your account statement. I will send the PDF here on WhatsApp once it's ready.`,
       'Select Period',
       sections
     );
@@ -2265,15 +2235,6 @@ Extract intent and data from this message. Consider the user context and any ext
       // Get date range based on selection
       const { startDate, endDate } = statementService.getDateRange(dateRangeType);
       
-      // Get email from conversation state or user record
-      const email = user.conversationState?.email || user.appEmail || user.email;
-      
-      if (!email) {
-        await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "❌ Email not found. Please provide your email address first.");
-        return;
-      }
-
       // Clear conversation state before generating
       await user.clearConversationState();
 
@@ -2286,52 +2247,30 @@ Extract intent and data from this message. Consider the user context and any ext
       };
 
       await whatsappService.sendTextMessage(user.whatsappNumber, 
-        "📄 *Generating Your Statement*\n\n" +
-        "I'm generating your account statement and will send it to your email shortly.\n\n" +
-        `📧 Email: ${email}\n` +
-        `📅 Period: ${rangeLabels[dateRangeType] || 'Custom'}\n` +
-        `📆 Date Range: ${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')}\n\n` +
-        "⏳ This might take a moment. Please check your email inbox in a few minutes! 🎉");
+        "I'm generating your account statement PDF now and will send it here on WhatsApp shortly.");
 
-      // Generate and send statement (pass email explicitly)
+      // Generate and send statement to WhatsApp
       const result = await statementService.requestStatement(user, {
         startDate,
         endDate,
-        email: email, // Pass email explicitly from conversation state or user record
         type: null,
         category: null,
         limit: 1000
       });
       
-      if (result.success && result.emailSent) {
+      if (result.success && result.whatsappSent) {
         await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "✅ *Statement Sent Successfully!*\n\n" +
-          "Your account statement has been generated and sent to:\n" +
-          `📧 ${email}\n\n` +
-          "The PDF includes:\n" +
-          `• ${result.statement.transactionCount} transactions\n` +
-          "• Complete transaction details\n" +
-          "• Summary of credits, debits, and fees\n" +
-          "• Professional branded format with MiiMii logo\n\n" +
-          "📬 Please check your inbox (and spam folder if needed).\n\n" +
-          "If you didn't receive it, please let me know!");
-      } else if (result.success && !result.emailSent) {
+          `Your statement is ready and has been sent here on WhatsApp. It covers ${result.statement.transactionCount} transactions.`);
+      } else if (result.success && !result.whatsappSent) {
         await whatsappService.sendTextMessage(user.whatsappNumber, 
-          "⚠️ *Statement Generated But Email Failed*\n\n" +
-          "Your statement PDF was generated successfully, but I couldn't send it to your email.\n\n" +
-          "This might be due to:\n" +
-          "• Email service configuration issue\n" +
-          "• Invalid email address\n" +
-          "• Network issues\n\n" +
-          "Please try again later or contact support if the issue persists.");
+          "Your statement was generated, but I couldn't deliver the PDF on WhatsApp right now. Please try again shortly.");
       }
 
       logger.info('Statement generation processed', {
         userId: user.id,
-        emailSent: result.emailSent,
+        whatsappSent: result.whatsappSent,
         dateRangeType,
-        transactionCount: result.statement?.transactionCount,
-        email
+        transactionCount: result.statement?.transactionCount
       });
     } catch (error) {
       logger.error('Failed to process statement generation', {
@@ -4037,7 +3976,7 @@ IMPORTANT: Use these exact intent names:
 8. "account_details" - User wants account information
 9. "wallet_details" - User wants to see wallet information, account details, balance, and transaction limits
 10. "transaction_history" - User wants to see transaction history, past transactions, or financial records (quick view in chat)
-11. "statement_request" - User wants to generate and receive an account statement as PDF via email (e.g., "generate statement", "send me statement PDF", "account statement", "email statement")
+11. "statement_request" - User wants to generate and receive an account statement PDF on WhatsApp (e.g., "generate statement", "send me statement PDF", "account statement")
 12. "account_info" - User wants to see account information, account number, account name, or account details
 13. "transfer_limits" - User wants to know transfer limits, daily limits, monthly limits, or transaction limits
 14. "disable_pin" - User wants to disable PIN for transactions
@@ -4336,9 +4275,9 @@ Response format:
       return { intent: 'balance', confidence: 0.9, suggestedAction: 'Check account balance' };
     }
 
-    // Statement PDF/Email keywords (higher priority - send PDF to email)
-    if (/(account\s+statement|statement\s+(pdf|document|email|send)|generate\s+statement|email\s+statement|pdf\s+statement|statement\s+to\s+email|send\s+statement)/i.test(message)) {
-      return { intent: 'statement_request', confidence: 0.95, suggestedAction: 'Generate and send statement PDF to email' };
+    // Statement keywords (higher priority - send PDF on WhatsApp)
+    if (/(account\s+statement|statement\s+(pdf|document|send)|generate\s+statement|pdf\s+statement|send\s+statement)/i.test(message)) {
+      return { intent: 'statement_request', confidence: 0.95, suggestedAction: 'Generate and send statement PDF on WhatsApp' };
     }
 
     // Transaction history keywords (quick view in chat)

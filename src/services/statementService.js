@@ -5,7 +5,6 @@ const logger = require('../utils/logger');
 const databaseService = require('./database');
 const supabaseHelper = require('./supabaseHelper');
 const { supabase } = require('../database/connection');
-const emailService = require('./emailService');
 
 class StatementService {
   constructor() {
@@ -511,35 +510,13 @@ class StatementService {
     try {
       logger.info('Statement request received', {
         userId: user.id,
-        options,
-        hasEmail: !!(user.appEmail || user.email)
+        options
       });
 
       // Generate statement
       const statement = await this.generateStatement(user, options);
 
-      // Get user email (from options if provided during interactive flow, otherwise from user record)
-      const email = options.email || user.appEmail || user.email;
-      if (!email) {
-        logger.error('User email not found for statement generation', {
-          userId: user.id,
-          hasAppEmail: !!user.appEmail,
-          hasEmail: !!user.email,
-          optionsEmail: !!options.email
-        });
-        throw new Error('User email not found. Please update your email address in settings.');
-      }
-
-      // Send via email
-      const emailResult = await emailService.sendStatement(email, {
-        pdfBuffer: statement.pdfBuffer,
-        fileName: statement.fileName,
-        startDate: statement.startDate,
-        endDate: statement.endDate,
-        transactionCount: statement.transactionCount
-      });
-
-      // Also send via WhatsApp - try document first, fallback to text message with download link
+      // Send via WhatsApp - try document first, fallback to text message
       let whatsappResult = { success: false };
       try {
         const whatsappService = require('./whatsapp');
@@ -564,11 +541,11 @@ class StatementService {
           
           const textMessage = `📄 *Account Statement Generated*\n\n` +
             `Your account statement for ${statement.startDate} to ${statement.endDate} has been generated.\n\n` +
-            `📧 The PDF has been sent to your email: ${email}\n\n` +
+            `I couldn't send the PDF document directly in this chat right now.\n\n` +
             `📊 Summary:\n` +
             `• Period: ${statement.startDate} to ${statement.endDate}\n` +
             `• Transactions: ${statement.transactionCount}\n\n` +
-            `Please check your email inbox (and spam folder) for the detailed statement PDF.`;
+            `Please try requesting the statement again in a moment.`;
           
           await whatsappService.sendTextMessage(user.whatsappNumber, textMessage);
           whatsappResult.success = true; // Mark as success since we sent a message
@@ -581,24 +558,19 @@ class StatementService {
         });
       }
 
-      if (!emailResult.success && !whatsappResult.success) {
-        logger.warn('Failed to send statement via both email and WhatsApp, but PDF was generated', {
+      if (!whatsappResult.success) {
+        logger.warn('Failed to send statement via WhatsApp, but PDF was generated', {
           userId: user.id,
-          emailError: emailResult.error,
           whatsappError: whatsappResult.error
         });
         // Still return success with PDF buffer for download
       }
 
-      const deliveryMethods = [];
-      if (emailResult.success) deliveryMethods.push('email');
-      if (whatsappResult.success) deliveryMethods.push('WhatsApp');
-
       return {
         success: true,
-        message: deliveryMethods.length > 0
-          ? `Your account statement has been generated and sent via ${deliveryMethods.join(' and ')}.${emailResult.success ? ` Please check your email inbox (${email}).` : ''}`
-          : 'Statement generated. Delivery failed, but PDF is available for download.',
+        message: whatsappResult.success
+          ? 'Your account statement has been generated and sent on WhatsApp.'
+          : 'Statement generated. WhatsApp delivery failed, but PDF is available for retry/download.',
         statement: {
           pdfBuffer: statement.pdfBuffer.toString('base64'), // Base64 for API response
           fileName: statement.fileName,
@@ -607,8 +579,7 @@ class StatementService {
           startDate: statement.startDate,
           endDate: statement.endDate
         },
-        emailSent: emailResult.success,
-        email: email
+        whatsappSent: whatsappResult.success
       };
     } catch (error) {
       logger.error('Failed to request statement', {
