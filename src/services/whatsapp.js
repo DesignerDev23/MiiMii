@@ -219,7 +219,7 @@ class WhatsAppService {
     }
   }
 
-  async sendTextMessage(to, text, makeNatural = true) {
+  async sendTextMessage(to, text, makeNatural = false) {
     // Make response more natural using AI if enabled
     let finalText = text;
     if (makeNatural && text && text.length < 500) { // Only for short messages to avoid API costs

@@ -1720,14 +1720,6 @@ class MessageProcessor {
                 accountNumber: state.data.accountNumber
               }
             );
-            // Fallback instruction if Flow submission fails (encryption issues)
-            try {
-              await whatsappService.sendTextMessage(
-                user.whatsappNumber,
-                "If the PIN form doesn't submit, reply with your 4-digit PIN here to authorize the transfer."
-              );
-            } catch (_) {}
-            
             logger.info('Transfer PIN flow sent to user', {
               userId: user.id,
               phoneNumber: user.whatsappNumber,
@@ -4210,16 +4202,12 @@ class MessageProcessor {
             }
           });
 
-          const confirmMsg = `💸 *Transfer Confirmation*\n\n` +
-                            `💰 Amount: ₦${transferAmount.toLocaleString()}\n` +
-                            `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
-                            `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
-                            `👤 Recipient: ${validation.accountName}\n` +
-                            `🏦 Bank: ${validation.bank}\n` +
-                            `🔢 Account: ${validation.accountNumber}\n\n` +
-                            `Does this look correct? Reply *YES* to confirm or *NO* to cancel.`;
-
-          await whatsappService.sendTextMessage(user.whatsappNumber, confirmMsg);
+          const confirmMsg =
+            `You're about to send ₦${transferAmount.toLocaleString()} (fee ₦${feeInfo.totalFee.toLocaleString()}, total ₦${feeInfo.totalAmount.toLocaleString()}) to ${validation.accountName} at ${validation.bank} (${validation.accountNumber}). Confirm to continue.`;
+          await whatsappService.sendButtonMessage(user.whatsappNumber, confirmMsg, [
+            { id: 'confirm_transfer_yes', title: '✅ Yes' },
+            { id: 'confirm_transfer_no', title: '❌ No' }
+          ]);
           return;
 
         } else if (phoneNumber) {
@@ -4367,16 +4355,12 @@ class MessageProcessor {
           }
         });
 
-        const confirmMsg = `💸 *Transfer Confirmation*\n\n` +
-                          `💰 Amount: ₦${amount.toLocaleString()}\n` +
-                          `💳 Fee: ₦${feeInfo.totalFee.toLocaleString()}\n` +
-                          `🧾 Total: ₦${feeInfo.totalAmount.toLocaleString()}\n\n` +
-                          `👤 Recipient: ${validation.accountName}\n` +
-                          `🏦 Bank: ${validation.bank}\n` +
-                          `🔢 Account: ${validation.accountNumber}\n\n` +
-                          `Does this look correct? Reply *YES* to confirm or *NO* to cancel.`;
-
-        await whatsappService.sendTextMessage(user.whatsappNumber, confirmMsg);
+        const confirmMsg =
+          `You're about to send ₦${amount.toLocaleString()} (fee ₦${feeInfo.totalFee.toLocaleString()}, total ₦${feeInfo.totalAmount.toLocaleString()}) to ${validation.accountName} at ${validation.bank} (${validation.accountNumber}). Confirm to continue.`;
+        await whatsappService.sendButtonMessage(user.whatsappNumber, confirmMsg, [
+          { id: 'confirm_transfer_yes', title: '✅ Yes' },
+          { id: 'confirm_transfer_no', title: '❌ No' }
+        ]);
         return;
 
       } catch (err) {
