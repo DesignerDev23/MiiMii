@@ -495,6 +495,9 @@ Keep responses natural, friendly, and human-like while correctly understanding N
 STRICT: Detect the language of the user's actual words (Hausa, Yoruba, Igbo, Nigerian Pidgin, English, or mixed). The final message must be entirely in THAT language. If the user wrote Hausa, translate/localize the whole draft into natural Hausa — no English leftovers. If the user wrote English, keep natural English. Same rule for Yoruba, Igbo, and Pidgin.
 `
         : '';
+      const forcedLanguageRule = context.forcedLanguage
+        ? `\nFORCED OUTPUT LANGUAGE: ${context.forcedLanguage}. You MUST output the final message fully in ${context.forcedLanguage}.\n`
+        : '';
 
       const prompt = `
 You are MiiMii, a friendly Nigerian fintech assistant. Polish the DRAFT reply while keeping it SHORT.
@@ -505,6 +508,7 @@ Draft reply to deliver (keep every fact, number, ₦ amount, and name exactly as
 
 Other context (do not contradict): ${JSON.stringify({ ...context, userUtterance: undefined, originalMessage: undefined, strictMirrorLanguage: undefined })}
 ${strictMirror}
+${forcedLanguageRule}
 Rules:
 1. Prefer 1 short sentence; at most 2 if needed for clarity.
 2. Output in the SAME language as the user's actual words above. If those words are empty or unclear, keep the draft's language.
@@ -551,11 +555,13 @@ Return only the final message, no quotes or labels.
     if (!u || !d || !this.openaiApiKey) {
       return d || draftReply;
     }
+    const forcedLanguage = this.detectLocalLanguage(u);
     try {
       return await this.makeResponseNatural(d, {
         userUtterance: u,
         originalMessage: u,
         strictMirrorLanguage: true,
+        forcedLanguage,
         intent: 'language_mirror'
       });
     } catch (e) {
@@ -577,6 +583,15 @@ Return only the final message, no quotes or labels.
       );
     }
     return intentResult;
+  }
+
+  detectLocalLanguage(text = '') {
+    const t = String(text || '').toLowerCase();
+    if (/(^|\s)(turawa|tura|aikawa|aika|don allah|nawa|kudi|ina kwana|sannu|nagode|yaya)(\s|$)/i.test(t)) return 'hausa';
+    if (/(^|\s)(jowo|e jowo|owo mi|bawo ni|mo fe|e se)(\s|$)/i.test(t)) return 'yoruba';
+    if (/(^|\s)(biko|ego m|kedu|ndewo|nyere m|iko)(\s|$)/i.test(t)) return 'igbo';
+    if (/(^|\s)(abeg|wetin|dey|una|how far|no wahala|make i|make we)(\s|$)/i.test(t)) return 'pidgin';
+    return 'en';
   }
 
   /**
@@ -1640,17 +1655,15 @@ Extract intent and data from this message. Consider the user context and any ext
         totalAmount: feeInfo.totalAmount,
         recipientName: validation.accountName,
         bankName: resolvedBankName,
-        accountNumber: finalAccountNumber
+        accountNumber: finalAccountNumber,
+        originalUserMessage: originalMessage
       });
 
       return {
         intent: 'bank_transfer',
         message: confirmationMessage,
         messageType: 'buttons',  // Signal to use interactive buttons
-        buttons: [
-          { id: 'confirm_transfer_yes', title: 'Confirm' },
-          { id: 'confirm_transfer_no', title: 'Cancel' }
-        ],
+        buttons: this.getTransferConfirmationButtons(originalMessage),
         awaitingInput: 'confirm_transfer',
         context: 'bank_transfer_confirmation',
         transactionDetails: {
@@ -2992,7 +3005,8 @@ Extract intent and data from this message. Consider the user context and any ext
             totalAmount: feeInfo.totalAmount,
             recipientName: validation.accountName,
             bankName: bankName,
-            accountNumber: accountNumber
+            accountNumber: accountNumber,
+            originalUserMessage: message
           });
 
           await whatsappService.sendTextMessage(user.whatsappNumber, confirmationMessage);
@@ -4377,7 +4391,7 @@ Response format:
   // Generate AI-powered transfer confirmation message
   async generateTransferConfirmationMessage(transferData) {
     try {
-      const { amount, recipientName, bankName, accountNumber, bankCode } = transferData;
+      const { amount, recipientName, bankName, accountNumber, bankCode, originalUserMessage } = transferData;
       
       // Ensure all values are properly defined
       const safeAmount = amount || 0;
@@ -4430,7 +4444,7 @@ Transfer details:
 
 Requirements:
 - Keep it natural and conversational (like talking to a friend)
-- Use proper English (not Nigerian pidgin)
+- Mirror the language of this user message exactly: "${originalUserMessage || ''}"
 - Make recipient name and bank name BOLD using *text*
 - Include amount, fee, total, recipient name, bank, and account number
 - DO NOT use emojis (no 💰, ✅, ❌, etc.)
@@ -4464,7 +4478,11 @@ Example:
       const aiMessage = response.data.choices[0]?.message?.content?.trim();
       
       if (aiMessage) {
-        return aiMessage;
+        const cleaned = aiMessage.replace(/^["']|["']$/g, '');
+        if (originalUserMessage) {
+          return await this.mirrorReplyToUserLanguage(originalUserMessage, cleaned);
+        }
+        return cleaned;
       }
       
       // Fallback message if AI fails
@@ -4481,6 +4499,32 @@ Example:
       
       return `Ready to send ₦${safeAmount.toLocaleString()} to *${safeRecipientName}* at *${safeBankName}* (${safeAccountNumber})? Just reply YES or NO!`;
     }
+  }
+
+  getTransferConfirmationButtons(userUtterance = '') {
+    const lang = this.detectLocalLanguage(userUtterance);
+    if (lang === 'hausa') {
+      return [
+        { id: 'confirm_transfer_yes', title: 'Tabbatar' },
+        { id: 'confirm_transfer_no', title: 'Soke' }
+      ];
+    }
+    if (lang === 'yoruba') {
+      return [
+        { id: 'confirm_transfer_yes', title: 'Jerisi' },
+        { id: 'confirm_transfer_no', title: 'Fagilee' }
+      ];
+    }
+    if (lang === 'igbo') {
+      return [
+        { id: 'confirm_transfer_yes', title: 'Kwenye' },
+        { id: 'confirm_transfer_no', title: 'Kagbuo' }
+      ];
+    }
+    return [
+      { id: 'confirm_transfer_yes', title: 'Confirm' },
+      { id: 'confirm_transfer_no', title: 'Cancel' }
+    ];
   }
 
   // Generate reference for transactions

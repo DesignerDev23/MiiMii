@@ -772,8 +772,31 @@ class MessageProcessor {
           return;
         }
 
-        await whatsappService.sendTextMessage(user.whatsappNumber, "Please enter your 4-digit PIN here or in the Flow above, or type 'cancel'.");
-        return;
+        // Let users switch to other services without forcing transfer completion
+        try {
+          const aiAssistant = require('./aiAssistant');
+          const switchIntent = await aiAssistant.analyzeUserIntent(messageContent, user);
+          const isTransferIntent = ['bank_transfer', 'transfer'].includes(switchIntent?.intent);
+          if (switchIntent?.intent && !isTransferIntent) {
+            logger.info('User switched service during transfer PIN flow', {
+              userId: user.id,
+              newIntent: switchIntent.intent
+            });
+            await user.clearConversationState();
+            // Continue normal processing below with cleared state
+          } else {
+            await whatsappService.sendTextMessage(user.whatsappNumber, "Please enter your 4-digit PIN here or in the Flow above, or type 'cancel'.");
+            return;
+          }
+        } catch (switchErr) {
+          logger.error('Service switch detection failed in transfer PIN flow', {
+            userId: user.id,
+            error: switchErr.message
+          });
+          await whatsappService.sendTextMessage(user.whatsappNumber, "Please enter your 4-digit PIN here or in the Flow above, or type 'cancel'.");
+          return;
+        }
+
       }
 
       // If this is a Flow completion (nfm_reply), process immediately (bypass AI)
@@ -1811,6 +1834,16 @@ class MessageProcessor {
       }
 
       // Check conversation state first - handle ongoing conversations before AI analysis
+      const isTransferConversationActive = !!(user.conversationState && (
+        user.conversationState.intent === 'bank_transfer' ||
+        user.conversationState.context === 'transfer_pin_verification' ||
+        user.conversationState.context === 'bank_transfer_confirmation' ||
+        user.conversationState.awaitingInput === 'confirm_transfer' ||
+        user.conversationState.awaitingInput === 'pin_for_transfer' ||
+        user.conversationState.awaitingInput === 'transfer_pin_flow' ||
+        user.conversationState.awaitingInput === 'bank_details'
+      ));
+
       if (user.conversationState?.awaitingInput === 'pin_confirmation') {
         logger.info('PIN disable/enable confirmation detected - handling before AI analysis', {
           userId: user.id,
@@ -1839,18 +1872,30 @@ class MessageProcessor {
           intent: user.conversationState?.intent,
           context: user.conversationState?.context
         });
-        
+
+        // Allow natural task switching while waiting for bank details
         try {
-          return await this.handleBankDetailsInput(user, message, messageType);
-        } catch (handlerError) {
-          logger.error('handleBankDetailsInput failed', {
-            error: handlerError?.message || 'Unknown error',
-            stack: handlerError?.stack,
+          const aiAssistantSwitch = require('./aiAssistant');
+          const switchIntent = await aiAssistantSwitch.analyzeUserIntent(messageContent, user);
+          const isTransferIntent = ['bank_transfer', 'transfer'].includes(switchIntent?.intent);
+          if (switchIntent?.intent && !isTransferIntent) {
+            logger.info('Interrupting bank_details transfer step for new intent', {
+              userId: user.id,
+              newIntent: switchIntent.intent
+            });
+            await user.clearConversationState();
+          } else {
+            return await this.handleBankDetailsInput(user, message, messageType);
+          }
+        } catch (switchError) {
+          logger.error('Failed switch detection for bank_details state', {
             userId: user.id,
-            hasMessage: !!message
+            error: switchError.message
           });
-          throw handlerError; // Re-throw to be caught by outer catch
+          return await this.handleBankDetailsInput(user, message, messageType);
         }
+
+        // State was cleared above; continue through normal intent routing.
       }
 
       // Analyze user message with AI to determine intent
@@ -1888,6 +1933,17 @@ class MessageProcessor {
         confidence: intentAnalysis.confidence,
         suggestedAction: intentAnalysis.suggestedAction
       });
+
+      // Allow users to switch tasks naturally even if transfer is in progress
+      const transferIntents = new Set(['bank_transfer', 'transfer']);
+      if (isTransferConversationActive && !transferIntents.has(intentAnalysis.intent)) {
+        logger.info('Interrupting active transfer flow for non-transfer intent', {
+          userId: user.id,
+          oldState: user.conversationState,
+          newIntent: intentAnalysis.intent
+        });
+        await user.clearConversationState();
+      }
 
       // Route based on AI analysis
       switch (intentAnalysis.intent) {
@@ -1940,6 +1996,8 @@ class MessageProcessor {
           if (aiResult && aiResult.message) {
             // Send the AI response to the user
             const whatsappService = require('./whatsapp');
+            const cleanedMessage = String(aiResult.message).replace(/^["']|["']$/g, '');
+            const mirroredMessage = await aiAssistant.mirrorReplyToUserLanguage(messageContent, cleanedMessage);
             
             // Check if this is a button message (transfer confirmation)
             if (aiResult.messageType === 'buttons' && aiResult.buttons) {
@@ -1947,9 +2005,9 @@ class MessageProcessor {
                 userId: user.id,
                 buttonsCount: aiResult.buttons.length
               });
-              await whatsappService.sendButtonMessage(user.whatsappNumber, aiResult.message, aiResult.buttons);
+              await whatsappService.sendButtonMessage(user.whatsappNumber, mirroredMessage, aiResult.buttons);
             } else {
-              await whatsappService.sendTextMessage(user.whatsappNumber, aiResult.message);
+              await whatsappService.sendTextMessage(user.whatsappNumber, mirroredMessage);
             }
           } else {
             // Handle AI processing error
@@ -1967,17 +2025,6 @@ class MessageProcessor {
         case 'data':
         case 'buy_data':
         case 'internet':
-          // Check if user is already in a transfer flow state
-          if (user.conversationState?.awaitingInput === 'transfer_pin_flow') {
-            logger.info('User is in transfer PIN flow state, clearing state for data purchase', {
-              userId: user.id,
-              currentState: user.conversationState
-            });
-            
-            // Clear the transfer state and proceed with data purchase
-            await user.clearConversationState();
-          }
-          
           return await this.handleDataIntent(user, message, messageType, messageId);
           
         case 'bills':
@@ -2145,8 +2192,12 @@ class MessageProcessor {
       // Send welcome flow message with the verified Flow ID
       await whatsappService.sendWelcomeFlowMessage(user.whatsappNumber, userName, messageId);
       
-      // Update user onboarding step
-      await user.update({ onboardingStep: 'greeting' });
+      // Update user onboarding step (support plain objects without instance .update)
+      if (typeof user?.update === 'function') {
+        await user.update({ onboardingStep: 'greeting' });
+      } else {
+        await userService.updateUser(user.id, { onboardingStep: 'greeting' });
+      }
       
       logger.info('Sent welcome flow message', {
         userId: user.id,
@@ -2164,31 +2215,7 @@ class MessageProcessor {
         messageId: messageId
       });
       
-      // Fallback to button message if flow fails
-      try {
-        const aiAssistant = require('./aiAssistant');
-        const personalizedMessage = await aiAssistant.generatePersonalizedWelcome(userName, user.whatsappNumber);
-        
-        const buttons = [
-          { id: 'start_onboarding', title: '🚀 Start Setup' },
-          { id: 'learn_more', title: '📚 Learn More' },
-          { id: 'get_help', title: '❓ Get Help' }
-        ];
-        
-        await whatsappService.sendButtonMessage(user.whatsappNumber, personalizedMessage, buttons);
-        
-        logger.info('Sent fallback welcome message', {
-          userId: user.id,
-          phoneNumber: user.whatsappNumber,
-          userName: userName
-        });
-      } catch (fallbackError) {
-        logger.error('Failed to send fallback welcome message', {
-          error: fallbackError.message,
-          userId: user.id,
-          phoneNumber: user.whatsappNumber
-        });
-      }
+      // Onboarding should remain flow-only (no button fallback).
     }
   }
 
@@ -2274,8 +2301,12 @@ class MessageProcessor {
         await whatsappService.sendWelcomeFlowMessage(user.whatsappNumber, userName, messageId);
       }
       
-      // Update user onboarding step
-      await user.update({ onboardingStep: 'flow_onboarding' });
+      // Update user onboarding step (support plain objects without instance .update)
+      if (typeof user?.update === 'function') {
+        await user.update({ onboardingStep: 'flow_onboarding' });
+      } else {
+        await userService.updateUser(user.id, { onboardingStep: 'flow_onboarding' });
+      }
       
       logger.info('Sent onboarding flow to new user', {
         userId: user.id,
@@ -2293,19 +2324,8 @@ class MessageProcessor {
         messageId: messageId
       });
       
-      // Fallback to interactive buttons if flow fails
-      const fallbackText = `Hey ${userName}! 👋 I'm MiiMii, your financial assistant. Let's get you set up with your account. This will only take a few minutes.`;
-        
-      const buttons = [
-        { id: 'start_onboarding', title: '🚀 Start Setup' },
-        { id: 'learn_more', title: '📚 Learn More' },
-        { id: 'get_help', title: '❓ Get Help' }
-      ];
-      
-      await whatsappService.sendButtonMessage(user.whatsappNumber, fallbackText, buttons);
-      
-      // Update user onboarding step
-      await user.update({ onboardingStep: 'greeting' });
+      // Onboarding should remain flow-only (no interactive button fallback).
+      throw error;
     }
   }
 
