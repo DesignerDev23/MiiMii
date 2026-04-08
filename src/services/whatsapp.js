@@ -1996,67 +1996,112 @@ To get started, please complete your KYC by saying "Start KYC" or send your ID d
          }
        }
 
-       // Step 2: Send message with media ID using the working API version
-       const workingApiVersion = uploadResponse.config.url.includes('v22.0') ? 'v22.0' : 
-                                 uploadResponse.config.url.includes('v21.0') ? 'v21.0' : 'v23.0';
-       
-       const messageUrl = `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`;
-       const messagePayload = {
-         messaging_product: 'whatsapp',
-         to: formattedNumber,
-         type: 'document',
-         document: {
-           id: mediaId,
-           filename: filename
-         }
-       };
+      // Step 2: Send message with media ID (try robust variants)
+      const workingApiVersion = uploadResponse.config.url.includes('v22.0') ? 'v22.0' :
+        uploadResponse.config.url.includes('v21.0') ? 'v21.0' : 'v23.0';
 
-       // Add caption if provided
-       if (caption) {
-         messagePayload.document.caption = caption.substring(0, 1024); // WhatsApp caption limit
-       }
+      const sendAttempts = [
+        {
+          name: 'working_version_full_payload',
+          url: `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`,
+          payload: {
+            messaging_product: 'whatsapp',
+            to: formattedNumber,
+            type: 'document',
+            document: {
+              id: mediaId,
+              filename
+            }
+          }
+        },
+        {
+          name: 'working_version_without_caption',
+          url: `https://graph.facebook.com/${workingApiVersion}/${this.phoneNumberId}/messages`,
+          payload: {
+            messaging_product: 'whatsapp',
+            to: formattedNumber,
+            type: 'document',
+            document: {
+              id: mediaId,
+              filename
+            }
+          }
+        },
+        {
+          name: 'v23_without_filename',
+          url: `https://graph.facebook.com/v23.0/${this.phoneNumberId}/messages`,
+          payload: {
+            messaging_product: 'whatsapp',
+            to: formattedNumber,
+            type: 'document',
+            document: {
+              id: mediaId
+            }
+          }
+        }
+      ];
 
-       logger.info('Sending document message with media ID', {
-         url: messageUrl,
-         payload: messagePayload,
-         hasCaption: !!caption,
-         mediaId,
-         filename,
-         contentType: contentType || 'application/pdf',
-         apiVersion: workingApiVersion,
-         authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
-       });
+      // Add caption only on the first attempt
+      if (caption) {
+        sendAttempts[0].payload.document.caption = caption.substring(0, 1024);
+      }
 
-       const response = await axios.post(messageUrl, messagePayload, {
-         headers: {
-           'Authorization': `Bearer ${this.accessToken}`,
-           'Content-Type': 'application/json'
-         },
-         timeout: 30000,
-         ...this.axiosConfig
-       });
+      for (let i = 0; i < sendAttempts.length; i += 1) {
+        const attempt = sendAttempts[i];
+        try {
+          logger.info('Sending document message with media ID', {
+            attempt: attempt.name,
+            url: attempt.url,
+            payload: attempt.payload,
+            hasCaption: !!attempt.payload.document.caption,
+            mediaId,
+            filename,
+            contentType: contentType || 'application/pdf',
+            authorizationHeader: `Bearer ${this.accessToken.substring(0, 20)}...`
+          });
 
-       if (!response.data.messages || !response.data.messages[0]?.id) {
-         logger.error('WhatsApp message response missing message ID', {
-           response: response.data,
-           status: response.status
-         });
-         throw new Error('Failed to send document message - no message ID returned');
-       }
+          const response = await axios.post(
+            attempt.url,
+            attempt.payload,
+            {
+              ...this.axiosConfig,
+              headers: {
+                ...this.axiosConfig.headers,
+                Authorization: `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: 30000
+            }
+          );
 
-       logger.info('WhatsApp document message sent successfully', {
-         to: formattedNumber,
-         messageId: response.data.messages[0].id,
-         mediaId,
-         hasCaption: !!caption,
-         apiVersion: workingApiVersion
-       });
+          if (response.data?.messages?.[0]?.id) {
+            logger.info('WhatsApp document message sent successfully', {
+              to: formattedNumber,
+              messageId: response.data.messages[0].id,
+              mediaId,
+              attempt: attempt.name
+            });
 
-       return {
-         success: true,
-         messageId: response.data.messages?.[0]?.id,
-         response: response.data
-       };
+            return {
+              success: true,
+              messageId: response.data.messages[0].id,
+              response: response.data
+            };
+          }
+        } catch (sendErr) {
+          logger.warn('Document send attempt failed', {
+            attempt: attempt.name,
+            error: sendErr.message,
+            status: sendErr.response?.status,
+            response: sendErr.response?.data
+          });
+          if (i === sendAttempts.length - 1) {
+            throw sendErr;
+          }
+        }
+      }
+
+      throw new Error('Failed to send document message after all retries');
      } catch (error) {
        logger.error('Failed to send WhatsApp document message', {
          error: error.message,

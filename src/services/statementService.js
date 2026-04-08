@@ -539,13 +539,8 @@ class StatementService {
             error: documentError.message
           });
           
-          const textMessage = `📄 *Account Statement Generated*\n\n` +
-            `Your account statement for ${statement.startDate} to ${statement.endDate} has been generated.\n\n` +
-            `I couldn't send the PDF document directly in this chat right now.\n\n` +
-            `📊 Summary:\n` +
-            `• Period: ${statement.startDate} to ${statement.endDate}\n` +
-            `• Transactions: ${statement.transactionCount}\n\n` +
-            `Please try requesting the statement again in a moment.`;
+          const textMessage =
+            `Your statement for ${statement.startDate} to ${statement.endDate} is ready, but I couldn't send the PDF now. Please try again in a moment.`;
           
           await whatsappService.sendTextMessage(user.whatsappNumber, textMessage);
           whatsappResult.success = true; // Mark as success since we sent a message

@@ -506,7 +506,7 @@ Draft reply to deliver (keep every fact, number, ₦ amount, and name exactly as
 Other context (do not contradict): ${JSON.stringify({ ...context, userUtterance: undefined, originalMessage: undefined, strictMirrorLanguage: undefined })}
 ${strictMirror}
 Rules:
-1. Max 2 short sentences; sound like WhatsApp chat, not a brochure.
+1. Prefer 1 short sentence; at most 2 if needed for clarity.
 2. Output in the SAME language as the user's actual words above. If those words are empty or unclear, keep the draft's language.
 3. Never change numeric values, ₦ figures, account details, or factual data.
 4. Light emoji ok (0–1).
@@ -634,7 +634,7 @@ Return only the final message, no quotes or labels.
             {
               role: 'system',
               content:
-                'You are MiiMii on WhatsApp for Nigeria. Output ONLY the reply text — plain full sentences like a human typing chat, no bullets, numbered lists, or markdown. If userUtterance is non-empty, the ENTIRE reply must be in that same language (Hausa, Yoruba, Igbo, Pidgin, or English) — never answer Hausa in English. Max 2 short sentences unless balance_success needs slightly more to state amounts clearly. Never invent amounts or balances.'
+                'You are MiiMii on WhatsApp for Nigeria. Output ONLY one short natural sentence (two only if unavoidable), no bullets or markdown. If userUtterance is non-empty, the ENTIRE reply must be in that same language (Hausa, Yoruba, Igbo, Pidgin, or English) — never answer Hausa in English. Never invent amounts or balances.'
             },
             {
               role: 'user',
